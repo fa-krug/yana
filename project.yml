@@ -1,0 +1,92 @@
+name: Yana
+
+options:
+  bundleIdPrefix: de.fa-krug
+  deploymentTarget:
+    iOS: "26.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+  fileTypes:
+    icon:
+      file: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: HS26J3YA63
+    INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Sascha Krug. All rights reserved."
+    VERSIONING_SYSTEM: apple-generic
+    INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: false
+  configs:
+    Release:
+      ENABLE_TESTABILITY: false
+
+targets:
+  Yana:
+    type: application
+    platform: iOS
+    sources:
+      - path: Yana
+        excludes:
+          - "Info-iOS.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana
+        SWIFT_EMIT_LOC_STRINGS: YES
+        CODE_SIGN_ENTITLEMENTS: Yana/Entitlements/Yana-iOS.entitlements
+        INFOPLIST_FILE: Yana/Info-iOS.plist
+        GENERATE_INFOPLIST_FILE: false
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.news
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "Yana uses Face ID to protect your reading data."
+
+  YanaTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: YanaTests
+      - path: Yana
+        excludes:
+          - "YanaApp.swift"
+          - "Info-iOS.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana.tests
+        GENERATE_INFOPLIST_FILE: true
+
+  YanaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: YanaUITests
+    dependencies:
+      - target: Yana
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana.uitests
+        GENERATE_INFOPLIST_FILE: true
+
+schemes:
+  Yana:
+    build:
+      targets:
+        Yana: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - YanaTests
+        - YanaUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

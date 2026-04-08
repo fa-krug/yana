@@ -1,0 +1,64 @@
+# SwiftLint configuration for Yana
+
+excluded:
+  - .build/
+  - Yana.xcodeproj/
+
+disabled_rules:
+  - todo
+  - trailing_comma
+  - opening_brace
+  - multiple_closures_with_trailing_closure
+  - function_parameter_count
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - contains_over_first_not_nil
+  - fatal_error_message
+  - first_where
+  - joined_default_parameter
+  - modifier_order
+  - operator_usage_whitespace
+  - overridden_super_call
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - vertical_whitespace_closing_braces
+
+line_length:
+  warning: 150
+  error: 200
+
+type_body_length:
+  warning: 400
+  error: 600
+
+file_length:
+  warning: 850
+  error: 1200
+
+function_body_length:
+  warning: 60
+  error: 100
+
+type_name:
+  min_length: 2
+
+identifier_name:
+  min_length: 1
+  excluded:
+    - id
+    - x
+    - y
+    - i
+    - j
+    - k
+
+large_tuple:
+  warning: 4
+
+nesting:
+  type_level: 3
+  function_level: 3

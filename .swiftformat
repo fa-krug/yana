@@ -1,0 +1,17 @@
+# SwiftFormat configuration for Yana
+
+--swiftversion 5.9
+--indent 4
+--indentcase false
+--trimwhitespace always
+--voidtype void
+--wraparguments before-first
+--wrapcollections before-first
+--maxwidth 150
+--semicolons never
+--commas always
+--stripunusedargs closure-only
+--header strip
+
+# Excluded paths
+--exclude .build,Yana.xcodeproj
