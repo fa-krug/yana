@@ -3,11 +3,7 @@ import SwiftUI
 
 struct ArticleReaderView: View {
     @Bindable var appState: AppState
-    @Query(
-        filter: #Predicate<Article> { !$0.read },
-        sort: \Article.date,
-        order: .reverse
-    ) private var articles: [Article]
+    @Query(sort: \Article.date, order: .reverse) private var articles: [Article]
 
     @State private var dragOffset: CGFloat = 0
     @State private var shareURL: URL?
@@ -46,7 +42,7 @@ struct ArticleReaderView: View {
                 }
             }
             .sheet(isPresented: $appState.showSettings) {
-                SettingsView(appState: appState)
+                ConfigHubView()
             }
             .sheet(isPresented: $isShowingShare) {
                 if let url = shareURL {
@@ -158,14 +154,10 @@ struct ArticleReaderView: View {
             }
     }
 
-    /// Mark the current article read. The unread-only `@Query` drops it on the next
-    /// view update, so the next unread article shifts into the current index
-    /// automatically. When the list empties, `currentArticle`'s bounds-guard returns
-    /// nil and the "All Caught Up" state shows. No index manipulation is needed; the
-    /// stale `articles` snapshot inside this call must not be used to recompute it.
     private func markCurrentAsReadAndAdvance() {
-        guard let article = currentArticle else { return }
-        article.read = true
+        // Read state removed; advance to the next article. Timeline reader lands in Phase 3.
+        guard appState.currentIndex < articles.count - 1 else { return }
+        appState.currentIndex += 1
     }
 }
 

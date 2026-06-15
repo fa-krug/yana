@@ -7,7 +7,10 @@ struct YanaApp: App {
 
     let container: ModelContainer = {
         do {
-            return try ModelContainer(for: Feed.self, FeedGroup.self, Article.self)
+            let container = try ModelContainer(for: Feed.self, Tag.self, Article.self)
+            Tag.ensureBuiltIns(in: container.mainContext)
+            try? container.mainContext.save()
+            return container
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }

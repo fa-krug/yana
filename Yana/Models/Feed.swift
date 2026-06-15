@@ -15,12 +15,12 @@ final class Feed {
     var createdAt: Date = Date.now
     var updatedAt: Date = Date.now
 
-    var group: FeedGroup?
+    /// Template tags applied (as a snapshot) to this feed's articles at import time.
+    var tags: [Tag] = []
 
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article] = []
 
-    /// Typed accessor for `aggregatorType`.
     var type: AggregatorType {
         get { AggregatorType(rawValue: aggregatorType) ?? .feedContent }
         set { aggregatorType = newValue.rawValue }

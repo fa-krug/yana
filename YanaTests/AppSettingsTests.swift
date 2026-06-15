@@ -35,4 +35,33 @@ struct AppSettingsTests {
         KeychainService.deleteAPIKey(for: .youtubeAPIKey)
         #expect(KeychainService.loadAPIKey(for: .youtubeAPIKey) == nil)
     }
+
+    @Test func aiKnobsHaveServerParityDefaults() {
+        let s = AppSettings(defaults: freshDefaults())
+        #expect(s.aiTemperature == 0.3)
+        #expect(s.aiMaxTokens == 2000)
+        #expect(s.aiRequestDelay == 2)
+        #expect(s.redditUserAgent == "Yana/1.0")
+        #expect(s.openaiAPIURL == "https://api.openai.com/v1")
+        #expect(s.openaiModel == "gpt-4o-mini")
+    }
+
+    @Test func providerModelListsAreNonEmpty() {
+        #expect(AIProvider.openai.models.contains("gpt-4o-mini"))
+        #expect(!AIProvider.anthropic.models.isEmpty)
+        #expect(!AIProvider.gemini.models.isEmpty)
+        #expect(AIProvider.none.models.isEmpty)
+    }
+
+    @Test func newFieldsPersist() {
+        let defaults = freshDefaults()
+        let s = AppSettings(defaults: defaults)
+        s.aiTemperature = 0.7
+        s.anthropicModel = "claude-sonnet-4-6"
+        s.redditEnabled = true
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(reloaded.aiTemperature == 0.7)
+        #expect(reloaded.anthropicModel == "claude-sonnet-4-6")
+        #expect(reloaded.redditEnabled == true)
+    }
 }

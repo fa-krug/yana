@@ -28,30 +28,38 @@ designed for privacy-conscious users who want their feeds without any backend.
 
 ### SwiftUI + SwiftData + local aggregation
 
-- **Models** (`Yana/Models/`): SwiftData `@Model` classes — `Feed`, `FeedGroup`, `Article` —
+- **Models** (`Yana/Models/`): SwiftData `@Model` classes — `Feed`, `Tag`, `Article` —
   plus the typed `AggregatorOptions` enum and the `AppSettings` preferences store.
 - **Aggregators** (`Yana/Aggregators/`): the pluggable aggregation system — `AggregatorType`
   (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO, and
   `AggregatorRegistry`. Concrete aggregators are added incrementally.
 - **Services** (`Yana/Services/`): `AggregationService` (orchestrates feed updates and
   upserts into SwiftData) and `KeychainService` (stores aggregator API keys).
-- **Views** (`Yana/Views/`): the swipe-through `ArticleReaderView` (home surface) and the
-  configuration hub (feeds, groups, article list, settings).
+- **Views** (`Yana/Views/`): the swipe-through `ArticleReaderView` (the endless-timeline home
+  surface) and the configuration hub (feeds, tags, settings).
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
 
 - `Yana/YanaApp.swift` — app entry point; creates the SwiftData `ModelContainer`
 - `Yana/ContentView.swift` — root view (opens directly into the reader; no auth gate)
-- `Yana/Models/AppState.swift` — thin observable UI state (scope, current index, errors)
+- `Yana/Models/AppState.swift` — thin observable UI state (timeline anchor, tag filter, errors)
 - `Yana/Utilities/Constants.swift` — app constants
 
 ### Key patterns
 
 - **No server:** all content is aggregated on-device. There is no login.
+- **No read/unread state:** the home surface is a single **endless timeline** of all articles
+  ordered by date, swiped both directions, with the position remembered across launches.
+- **Tags, not groups:** feeds carry tags, which are **snapshotted onto each article at import
+  time** (not retroactive). **Starred is a built-in tag** applied per-article. The timeline is
+  filtered by toggling tags (all on by default; an "Untagged" entry covers tagless articles).
+- **Force update:** a **pull-down gesture** on the reader refreshes the current article and
+  the whole timeline; per-feed / all-feeds updates also live in the config hub.
 - **SwiftData source of truth:** views read via `@Query`; `AggregationService` writes.
 - **Pluggable aggregators:** each content source is an `Aggregator` keyed by `AggregatorType`.
-- **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum, not a JSON blob.
+- **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum (one case per
+  aggregator type, including per-scraper structs), not a JSON blob.
 - **Swift 6:** strict concurrency with `@MainActor` annotations throughout.
 - **Platform:** iOS 26.0+ (iPhone and iPad).
 
@@ -78,22 +86,24 @@ designed for privacy-conscious users who want their feeds without any backend.
 ## Planned Features
 
 ### Core (MVP)
-1. **Feed configuration** — create/edit/delete feeds and groups, choose an aggregator type, set per-feed options
-2. **Local aggregation** — fetch & parse feeds on-device, store articles in SwiftData
-3. **Article list** — list all articles, filter by feed/group and read/unread/starred
-4. **Article detail** — render article HTML content in the swipe reader
-5. **Read/Unread & Starred** — mark articles read/starred locally
-6. **Force update** — update all feeds, a single feed, or a single article on demand
-7. **Background refresh** — best-effort periodic aggregation via BGAppRefreshTask
-8. **AI post-processing** — optional summarize / improve / translate per feed
+1. **Feed configuration** — create/edit/delete feeds, choose an aggregator type, set per-feed options, assign tags
+2. **Tag management** — create/rename/recolor/delete/reorder tags; Starred is a locked built-in tag
+3. **Local aggregation** — fetch & parse feeds on-device, store articles in SwiftData (tags snapshotted per article at import)
+4. **Endless timeline** — single date-ordered stream of all articles, swiped both directions, position remembered
+5. **Tag filter** — filter the timeline by toggling tags (all on by default; includes an "Untagged" entry)
+6. **Article detail** — render article HTML content in the swipe reader
+7. **Starred** — star/unstar an article (adds/removes the built-in Starred tag); starred articles are exempt from cleanup
+8. **Force update** — pull-down on the reader (current article + whole timeline); per-feed / all-feeds from the config hub
+9. **Retention** — keep ~one month of articles; delete older ones (except Starred)
+10. **Background refresh** — best-effort periodic aggregation via BGAppRefreshTask
+11. **AI post-processing** — optional summarize / improve / translate per feed
 
 ### Enhanced
-9. **Search** — search across articles
-10. **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
-11. **Multiple libraries** — support multiple independent local feed libraries/profiles
-12. **Offline reading** — cache articles locally for offline access
-13. **Feed management** — add/remove/rename feeds and groups from the app
-14. **Share extension** — share URLs to add as feeds
-15. **iPad layout** — multi-column NavigationSplitView for iPad
-16. **Widgets** — home screen widgets showing unread counts
-17. **Notifications** — local notifications for new articles after a background refresh
+- **Search** — search across articles
+- **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
+- **Multiple libraries** — support multiple independent local feed libraries/profiles
+- **Offline reading** — cache articles locally for offline access
+- **Share extension** — share URLs to add as feeds
+- **iPad layout** — multi-column NavigationSplitView for iPad
+- **Widgets** — home screen widgets
+- **Notifications** — local notifications for new articles after a background refresh

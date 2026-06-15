@@ -9,7 +9,7 @@ struct ModelTests {
     private func makeContext() throws -> ModelContext {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
-            for: Feed.self, FeedGroup.self, Article.self,
+            for: Feed.self, Yana.Tag.self, Article.self,
             configurations: config
         )
         return ModelContext(container)
@@ -43,18 +43,18 @@ struct ModelTests {
         #expect(out.subredditSort == "top")
     }
 
-    @Test func groupFeedRelationship() throws {
+    @Test func feedTagRelationship() throws {
         let context = try makeContext()
-        let group = FeedGroup(name: "Tech")
+        let tag = Yana.Tag(name: "Tech")
         let feed = Feed(name: "Heise", aggregatorType: .heise, identifier: "https://heise.de")
-        feed.group = group
-        context.insert(group)
+        feed.tags = [tag]
+        context.insert(tag)
         context.insert(feed)
         try context.save()
 
-        let reloadedGroup = try context.fetch(FetchDescriptor<FeedGroup>()).first
-        #expect(reloadedGroup?.feeds.count == 1)
-        #expect(reloadedGroup?.feeds.first?.name == "Heise")
+        let reloadedTag = try context.fetch(FetchDescriptor<Yana.Tag>()).first
+        #expect(reloadedTag?.feeds.count == 1)
+        #expect(reloadedTag?.feeds.first?.name == "Heise")
     }
 
     @Test func deletingFeedCascadesToArticles() throws {
