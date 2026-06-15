@@ -26,6 +26,10 @@ final class AppSettings {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        defaults.register(defaults: [
+            Key.retentionDays: 30,
+            Key.backgroundInterval: 1800.0,
+        ])
     }
 
     private enum Key {
@@ -45,19 +49,13 @@ final class AppSettings {
 
     /// Read articles older than this many days are eligible for cleanup. Default 30.
     var retentionDays: Int {
-        get {
-            let value = defaults.integer(forKey: Key.retentionDays)
-            return value == 0 ? 30 : value
-        }
+        get { defaults.integer(forKey: Key.retentionDays) }
         set { defaults.set(newValue, forKey: Key.retentionDays) }
     }
 
     /// Background refresh interval in seconds. Default 1800 (30 min).
     var backgroundInterval: TimeInterval {
-        get {
-            let value = defaults.double(forKey: Key.backgroundInterval)
-            return value == 0 ? 1800 : value
-        }
+        get { defaults.double(forKey: Key.backgroundInterval) }
         set { defaults.set(newValue, forKey: Key.backgroundInterval) }
     }
 }

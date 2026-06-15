@@ -158,14 +158,14 @@ struct ArticleReaderView: View {
             }
     }
 
-    /// Mark the current article read. The `@Query` (unread-only) drops it, so the next
-    /// unread article shifts into the current index automatically; clamp the index.
+    /// Mark the current article read. The unread-only `@Query` drops it on the next
+    /// view update, so the next unread article shifts into the current index
+    /// automatically. When the list empties, `currentArticle`'s bounds-guard returns
+    /// nil and the "All Caught Up" state shows. No index manipulation is needed; the
+    /// stale `articles` snapshot inside this call must not be used to recompute it.
     private func markCurrentAsReadAndAdvance() {
         guard let article = currentArticle else { return }
         article.read = true
-        if appState.currentIndex >= articles.count - 1 {
-            appState.currentIndex = max(0, articles.count - 2)
-        }
     }
 }
 

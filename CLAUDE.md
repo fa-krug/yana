@@ -90,10 +90,10 @@ designed for privacy-conscious users who want their feeds without any backend.
 ### Enhanced
 9. **Search** — search across articles
 10. **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
-11. **Multiple servers** — support connecting to multiple Yana instances
+11. **Multiple libraries** — support multiple independent local feed libraries/profiles
 12. **Offline reading** — cache articles locally for offline access
 13. **Feed management** — add/remove/rename feeds and groups from the app
 14. **Share extension** — share URLs to add as feeds
 15. **iPad layout** — multi-column NavigationSplitView for iPad
 16. **Widgets** — home screen widgets showing unread counts
-17. **Notifications** — push notifications for new articles (if server supports it)
+17. **Notifications** — local notifications for new articles after a background refresh
