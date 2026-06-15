@@ -1,11 +1,15 @@
-# Local Aggregator — Phase 2 (Configuration UI) High-Level Plan
+# Local Aggregator — Configuration & Reader UI High-Level Plan (Phases 2–3)
 
-> **Status:** High-level roadmap, NOT a bite-sized implementation plan. Feed this into the
-> `superpowers:writing-plans` skill (with the spec) to generate the detailed TDD plan when
-> Phase 2 begins.
+> **Status:** High-level roadmap. The detailed, bite-sized TDD plans now exist and are the
+> authoritative implementation docs — this file is the overview behind them. The UI work is
+> split into **two** shippable phases:
+> - **Phase 2 — Data model + Configuration hub:**
+>   `docs/superpowers/plans/2026-06-15-local-aggregator-phase2-config-tdd.md`
+> - **Phase 3 — Endless-timeline reader:**
+>   `docs/superpowers/plans/2026-06-15-local-aggregator-phase3-reader-tdd.md`
 >
 > **Spec:** `docs/superpowers/specs/2026-06-15-local-aggregator-design.md`
-> **Depends on:** Phase 1 (models + app shell) complete and merged.
+> **Depends on:** Phase 1 (models + app shell) complete and merged. Aggregation is **Phase 4**.
 
 **Goal:** Build the configuration hub and the endless-timeline reader on top of the Phase 1
 SwiftData foundation — manage feeds and **tags**, edit per-feed typed options, configure
@@ -116,7 +120,7 @@ Modified:
   (default empty = all on), so it survives launches and tolerates tag deletion.
 - **iPad:** stay single-surface (timeline home) per spec; no split view this phase.
 
-## Out of Scope (Phase 3)
+## Out of Scope (Phase 4)
 
 Concrete aggregators, real network fetching/parsing, AI post-processing, tag snapshotting at
 import, dedup/upsert, daily-limit enforcement, age-based retention cleanup, background

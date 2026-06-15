@@ -257,13 +257,20 @@ Full parity with the server's `UserSettings`.
   `FeedContentOptions.fetchFullContent`, and expand `AppSettings` to full parity. (Phase 1
   is merged but unreleased, so this is plain model evolution — no user-data migration.)
 
-### Phase 2 — UI
+### Phase 2 — Data model + Configuration hub
 
+- The model revisions above (Tag, retag Feed/Article, per-scraper options, expanded
+  `AppSettings`).
 - Config hub: Feeds list, Feed editor (dynamic options + tag multi-select), Tags, Settings.
-- Endless timeline reader: identity-based position memory, pull-down to refresh, tag filter.
-- Wired to SwiftData with a stub/no-op `AggregationService`.
+- A stub/no-op `AggregationService` as the seam Phase 4 fills in.
 
-### Phase 3 — Aggregation
+### Phase 3 — Endless-timeline reader
+
+- The global, date-ordered timeline reader: identity-based position memory, pull-down to
+  refresh (current article + whole timeline), star toggle, and the tag filter (all tags +
+  Untagged). Reads via `@Query`, filtered in-memory by the persisted filter.
+
+### Phase 4 — Aggregation
 
 - Implement `AggregatorRegistry` concretes, in order: `feedContent` (RSS/Atom),
   `fullWebsite`, then managed scrapers, then Reddit / YouTube / podcast, then AI
@@ -284,7 +291,7 @@ Full parity with the server's `UserSettings`.
 - `Yana/Aggregators/Aggregator.swift`
 - `Yana/Aggregators/AggregatedArticle.swift`
 - `Yana/Aggregators/AggregatorRegistry.swift`
-- `Yana/Services/AggregationService.swift` (stub in phase 2, real in phase 3)
+- `Yana/Services/AggregationService.swift` (stub in phase 2, real in phase 4)
 - Phase 2 views under `Yana/Views/Config/` (FeedsView, FeedEditorView, AggregatorOptionsForm,
   TagsView, SettingsScreenView)
 

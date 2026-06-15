@@ -1,22 +1,24 @@
-# Local Aggregator Phase 2 (Configuration UI) — Implementation Plan
+# Local Aggregator Phase 2 (Data Model + Configuration Hub) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the configuration hub (Feeds, Tags, Settings) and the endless-timeline reader on the existing SwiftData foundation, wired to a no-op `AggregationService` stub that Phase 3 fills in.
+**Goal:** Revise the Phase 1 models for the tags + no-read-state design and build the configuration hub (Feeds, Tags, Settings) on top, wired to a no-op `AggregationService` stub.
 
-**Architecture:** Pure SwiftUI + SwiftData. Phase 1 models are revised first (drop `FeedGroup`, drop read/starred state, introduce a per-feed `Tag` system snapshotted onto articles, split managed options into per-scraper structs, expand `AppSettings` to full server parity). Then logic helpers (tag filter, timeline anchor, feed-editor view model), the stub service, and the views. Testable logic is extracted into pure functions/types; views are verified by building.
+**Architecture:** Pure SwiftUI + SwiftData. Phase 1 models are revised first (drop `FeedGroup`, drop read/starred state, introduce a per-feed `Tag` system, split managed options into per-scraper structs, expand `AppSettings` to full server parity). Then the stub service, the feed-editor view model, and the config-hub views. The existing swipe reader is kept building via a small interim patch; the full timeline reader is **Phase 3**.
 
 **Tech Stack:** Swift 6 (strict concurrency, `@MainActor`), SwiftUI, SwiftData, Swift Testing (`import Testing`), XcodeGen.
 
 **Spec:** `docs/superpowers/specs/2026-06-15-local-aggregator-design.md`
-**Roadmap:** `docs/superpowers/plans/2026-06-15-local-aggregator-phase2-ui.md`
+**Next phase:** `docs/superpowers/plans/2026-06-15-local-aggregator-phase3-reader-tdd.md` (timeline reader)
 
 **Conventions for every task:**
 - Tests live in `YanaTests/` (host-app target — `@testable import Yana` works).
 - After adding/removing **files**, run `xcodegen generate` before building (XcodeGen includes sources by folder).
-- Build/test command: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-- Build-only (for view tasks): `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Test command: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
+- Build-only (view tasks): `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build`
 - All user-facing strings use `String(localized:)` / `LocalizedStringKey`.
+
+**Definition of done (Phase 2):** the app builds and all tests pass; you can create/edit/delete feeds, manage tags (Starred locked), and configure all settings/secrets. The reader still opens (interim swipe view); the real timeline lands in Phase 3.
 
 ---
 
@@ -124,7 +126,7 @@ final class Tag {
 }
 ```
 
-> Note: `Feed.tags` and `Article.tags` are added in Task 2; this file references them, so Tasks 1 and 2 are compiled together. If implementing strictly one task at a time, apply Task 2's model edits before building.
+> Note: `Tag` references `Feed.tags`/`Article.tags`, added in Task 2. Tasks 1 and 2 compile together — apply Task 2's model edits before building.
 
 - [ ] **Step 4: Delete `FeedGroup` and update the container**
 
@@ -163,9 +165,7 @@ struct YanaApp: App {
 - [ ] **Step 5: Run `xcodegen generate`** (a file was deleted)
 
 Run: `xcodegen generate`
-Expected: "Created project at Yana.xcodeproj"
-
-(Proceed to Task 2 before building — `Tag` references `Feed.tags`/`Article.tags`.)
+Expected: "Created project at Yana.xcodeproj". (Proceed to Task 2 before building.)
 
 ---
 
@@ -175,6 +175,7 @@ Expected: "Created project at Yana.xcodeproj"
 - Modify: `Yana/Models/Feed.swift`
 - Modify: `Yana/Models/Article.swift`
 - Modify: `YanaTests/ModelTests.swift`
+- Modify: `Yana/Views/ArticleReaderView.swift` (interim build-fix only)
 - Test: `YanaTests/ArticleStarredTests.swift`
 
 - [ ] **Step 1: Write the failing test**
@@ -217,11 +218,11 @@ struct ArticleStarredTests {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-Expected: FAIL — `setStarred`/`isStarred` undefined; `Article.read`/`Feed.group` references may also fail to compile.
+Expected: FAIL — `setStarred`/`isStarred` undefined; `Article.read`/`Feed.group` references also fail to compile.
 
 - [ ] **Step 3: Update `Feed`**
 
-In `Yana/Models/Feed.swift`, remove the `group` property and add `tags`:
+Replace `Yana/Models/Feed.swift`:
 
 ```swift
 import Foundation
@@ -335,7 +336,7 @@ final class Article {
 
 - [ ] **Step 5: Fix the existing `ModelTests`**
 
-In `YanaTests/ModelTests.swift`: (a) change `makeContext` to register `Tag.self` instead of `FeedGroup.self`; (b) replace the `groupFeedRelationship` test with a tag relationship test. The cascade-delete and typed-options tests stay (the `Article(...)` call there already omits read/starred). New `makeContext` and replacement test:
+In `YanaTests/ModelTests.swift`: change `makeContext` to register `Tag.self` instead of `FeedGroup.self`, and replace the `groupFeedRelationship` test with a tag relationship test.
 
 ```swift
     private func makeContext() throws -> ModelContext {
@@ -366,10 +367,9 @@ Replace `groupFeedRelationship()` with:
     }
 ```
 
-- [ ] **Step 6: Run the tests**
+- [ ] **Step 6: Interim reader build-fix**
 
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-Expected: PASS (Tag, ArticleStarred, Model suites green). The reader still references `Article.read`; if the build fails there, it is fixed in Task 11 — to keep this task green, temporarily that reference must compile. **Apply the minimal reader fix now:** in `Yana/Views/ArticleReaderView.swift` change the `@Query` filter to `sort: \Article.date, order: .reverse` with no predicate, and delete the `markCurrentAsReadAndAdvance` body's `article.read = true` (replace the method body with `// replaced by timeline in Task 11`). Full reader rewrite lands in Task 11.
+The current `Yana/Views/ArticleReaderView.swift` references `Article.read`. Keep it compiling (the full rewrite is Phase 3). Change the `@Query` to drop the read predicate, and replace the advance method body:
 
 ```swift
     @Query(sort: \Article.date, order: .reverse) private var articles: [Article]
@@ -377,13 +377,18 @@ Expected: PASS (Tag, ArticleStarred, Model suites green). The reader still refer
 
 ```swift
     private func markCurrentAsReadAndAdvance() {
-        // Timeline reader (Task 11) replaces read-based advancing.
+        // Read state removed; advance to the next article. Timeline reader lands in Phase 3.
         guard appState.currentIndex < articles.count - 1 else { return }
         appState.currentIndex += 1
     }
 ```
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Run the tests**
+
+Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
 
 ```bash
 git add -A
@@ -895,109 +900,7 @@ git commit -m "feat: expand AppSettings to full server parity + provider model l
 
 ---
 
-## Task 5: Pure logic helpers — tag filter + timeline anchor
-
-**Files:**
-- Create: `Yana/Utilities/TimelineFiltering.swift`
-- Test: `YanaTests/TimelineFilteringTests.swift`
-
-- [ ] **Step 1: Write the failing test**
-
-Create `YanaTests/TimelineFilteringTests.swift`:
-
-```swift
-import Foundation
-import SwiftData
-import Testing
-@testable import Yana
-
-@MainActor
-@Suite("Timeline filtering + anchor")
-struct TimelineFilteringTests {
-    private func article(_ id: String, tags: [Tag]) -> Article {
-        let a = Article(title: id, identifier: id, url: "https://x.com/\(id)")
-        a.tags = tags
-        return a
-    }
-
-    @Test func untaggedRespectsToggle() {
-        let a = article("a", tags: [])
-        #expect(TagFilter.apply(to: [a], disabledTagNames: [], includeUntagged: true).count == 1)
-        #expect(TagFilter.apply(to: [a], disabledTagNames: [], includeUntagged: false).isEmpty)
-    }
-
-    @Test func showsArticleWithAnyActiveTag() {
-        let tech = Tag(name: "Tech")
-        let fun = Tag(name: "Fun")
-        let a = article("a", tags: [tech, fun])
-        // Tech disabled but Fun active -> still shown.
-        #expect(TagFilter.apply(to: [a], disabledTagNames: ["Tech"], includeUntagged: true).count == 1)
-        // Both disabled -> hidden.
-        #expect(TagFilter.apply(to: [a], disabledTagNames: ["Tech", "Fun"], includeUntagged: true).isEmpty)
-    }
-
-    @Test func anchorResolvesToIndexOrZero() {
-        let a = article("a", tags: [])
-        let b = article("b", tags: [])
-        let list = [a, b]
-        #expect(TimelineAnchor.index(for: "b", in: list) == 1)
-        #expect(TimelineAnchor.index(for: "missing", in: list) == 0)
-        #expect(TimelineAnchor.index(for: nil, in: list) == 0)
-    }
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-Expected: FAIL — `TagFilter` / `TimelineAnchor` undefined.
-
-- [ ] **Step 3: Create the helpers**
-
-Create `Yana/Utilities/TimelineFiltering.swift`:
-
-```swift
-import Foundation
-
-/// Filters the timeline by active tags. OR semantics: an article is shown if it has at
-/// least one tag that is *not* disabled. Untagged articles are shown only when
-/// `includeUntagged` is true.
-enum TagFilter {
-    static func apply(to articles: [Article], disabledTagNames: Set<String>, includeUntagged: Bool) -> [Article] {
-        articles.filter { article in
-            let names = Set(article.tags.map(\.name))
-            if names.isEmpty { return includeUntagged }
-            return !names.isSubset(of: disabledTagNames)
-        }
-    }
-}
-
-/// Resolves the persisted timeline anchor (an article `identifier`) to an index in the
-/// currently displayed list, falling back to 0 (newest) when it is missing.
-enum TimelineAnchor {
-    static func index(for identifier: String?, in articles: [Article]) -> Int {
-        guard let identifier,
-              let idx = articles.firstIndex(where: { $0.identifier == identifier }) else { return 0 }
-        return idx
-    }
-}
-```
-
-- [ ] **Step 4: Run the tests**
-
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add -A
-git commit -m "feat: tag filter + timeline anchor pure helpers"
-```
-
----
-
-## Task 6: `AggregationService` stub
+## Task 5: `AggregationService` stub
 
 **Files:**
 - Create: `Yana/Services/AggregationService.swift`
@@ -1063,7 +966,7 @@ Create `Yana/Services/AggregationService.swift`:
 import Foundation
 import SwiftData
 
-/// Phase 2 stub. The public API the UI wires to; Phase 3 replaces the bodies with real
+/// Phase 2 stub. The public API the UI wires to; Phase 4 replaces the bodies with real
 /// fetching/parsing/upsert. For now it only flips `isUpdating` and touches `lastFetchedAt`.
 @MainActor
 @Observable
@@ -1115,7 +1018,7 @@ git commit -m "feat: add AggregationService stub"
 
 ---
 
-## Task 7: `FeedEditorModel` (enum↔form bridge — the risky logic)
+## Task 6: `FeedEditorModel` (enum↔form bridge — the risky logic)
 
 **Files:**
 - Create: `Yana/Views/Config/FeedEditorModel.swift`
@@ -1276,7 +1179,7 @@ git commit -m "feat: FeedEditorModel enum<->form bridge"
 
 ---
 
-## Task 8: Config hub shell + `AggregatorOptionsForm` + `FeedEditorView`
+## Task 7: Config hub shell + `AggregatorOptionsForm` + `FeedEditorView`
 
 **Files:**
 - Create: `Yana/Views/Config/ConfigHubView.swift`
@@ -1285,7 +1188,7 @@ git commit -m "feat: FeedEditorModel enum<->form bridge"
 - Delete: `Yana/Views/SettingsView.swift`
 - Modify: `Yana/Views/ArticleReaderView.swift` (point the sheet at `ConfigHubView`)
 
-> Views in this task are verified by **building** (no unit tests). `FeedsView`, `TagsView`, and `SettingsScreenView` are referenced by `ConfigHubView` and created in Tasks 9–10; create lightweight versions here is unnecessary — instead, build after Task 10. To keep this task independently buildable, `ConfigHubView` links are added incrementally: include only the Feed editor path now and add Tags/Settings links in their tasks.
+> `ConfigHubView` references `FeedsView`, `TagsView`, `SettingsScreenView` (Tasks 8–9). Build verification happens at the **end of Task 9**, once all three exist.
 
 - [ ] **Step 1: Create `AggregatorOptionsForm`**
 
@@ -1315,20 +1218,21 @@ struct AggregatorOptionsForm: View {
             case .heise(let o):
                 heiseSection(o)
             case .merkur(let o):
-                toggleSection("Merkur", isOn: o.removeEmptyElements,
-                              label: "Remove Empty Elements") { var n = o; n.removeEmptyElements = $0; options = .merkur(n) }
+                toggleSection(isOn: o.removeEmptyElements, label: "Remove Empty Elements") {
+                    var n = o; n.removeEmptyElements = $0; options = .merkur(n)
+                }
             case .tagesschau(let o):
                 tagesschauSection(o)
             case .explosm(let o):
-                toggleSection("Explosm", isOn: o.showAltText, label: "Show Alt Text") {
+                toggleSection(isOn: o.showAltText, label: "Show Alt Text") {
                     var n = o; n.showAltText = $0; options = .explosm(n)
                 }
             case .darkLegacy(let o):
-                toggleSection("Dark Legacy", isOn: o.showAltText, label: "Show Alt Text") {
+                toggleSection(isOn: o.showAltText, label: "Show Alt Text") {
                     var n = o; n.showAltText = $0; options = .darkLegacy(n)
                 }
             case .caschysBlog(let o):
-                toggleSection("Caschy's Blog", isOn: o.skipAds, label: "Skip Advertisements") {
+                toggleSection(isOn: o.skipAds, label: "Skip Advertisements") {
                     var n = o; n.skipAds = $0; options = .caschysBlog(n)
                 }
             case .mactechnews(let o):
@@ -1336,7 +1240,7 @@ struct AggregatorOptionsForm: View {
             case .oglaf(let o):
                 oglafSection(o)
             case .meinMmo(let o):
-                toggleSection("Mein-MMO", isOn: o.combinePages, label: "Combine Multi-page Articles") {
+                toggleSection(isOn: o.combinePages, label: "Combine Multi-page Articles") {
                     var n = o; n.combinePages = $0; options = .meinMmo(n)
                 }
             }
@@ -1386,7 +1290,7 @@ struct AggregatorOptionsForm: View {
 
     // MARK: - Per-type sections
 
-    private func toggleSection(_ title: String, isOn: Bool, label: LocalizedStringKey, set: @escaping (Bool) -> Void) -> some View {
+    private func toggleSection(isOn: Bool, label: LocalizedStringKey, set: @escaping (Bool) -> Void) -> some View {
         Section("Options") {
             Toggle(label, isOn: Binding(get: { isOn }, set: set))
         }
@@ -1611,12 +1515,10 @@ Delete `Yana/Views/SettingsView.swift`. In `Yana/Views/ArticleReaderView.swift`,
             }
 ```
 
-> `FeedsView`, `TagsView`, and `SettingsScreenView` are created in Tasks 9 and 10. Build verification for this task happens at the **end of Task 10**, once all three referenced views exist.
-
 - [ ] **Step 4: Run `xcodegen generate`**
 
 Run: `xcodegen generate`
-Expected: project regenerated (new files added, `SettingsView.swift` removed).
+Expected: project regenerated. (Do not build yet — Task 8/9 add the referenced views.)
 
 - [ ] **Step 5: Commit**
 
@@ -1627,7 +1529,7 @@ git commit -m "feat: config hub shell, dynamic options form, feed editor"
 
 ---
 
-## Task 9: `FeedsView` + `TagsView`
+## Task 8: `FeedsView` + `TagsView` + `TagEditorView`
 
 **Files:**
 - Create: `Yana/Views/Config/FeedsView.swift`
@@ -1642,7 +1544,7 @@ Create `Yana/Views/Config/FeedsView.swift`:
 import SwiftData
 import SwiftUI
 
-/// Flat list of feeds with tag chips, last-fetched time, error badge, enable toggle,
+/// Flat list of feeds with tag chips, last-fetched time, error badge, enable state,
 /// per-feed update, and article count. Add / delete; "Update all".
 struct FeedsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -1888,7 +1790,7 @@ git commit -m "feat: FeedsView, TagsView, TagEditorView"
 
 ---
 
-## Task 10: `SettingsScreenView` (full parity)
+## Task 9: `SettingsScreenView` (full parity) + build + regression
 
 **Files:**
 - Create: `Yana/Views/Config/SettingsScreenView.swift`
@@ -2041,325 +1943,9 @@ git commit -m "feat: full-parity settings screen"
 
 ---
 
-## Task 11: Timeline reader — position memory, star toggle, pull-down refresh, tag filter
+## Self-Review Notes
 
-**Files:**
-- Create: `Yana/Views/TagFilterView.swift`
-- Modify: `Yana/Views/ArticleReaderView.swift`
-- Modify: `Yana/Models/AppState.swift`
-
-- [ ] **Step 1: Trim `AppState`**
-
-Replace `Yana/Models/AppState.swift`:
-
-```swift
-import Foundation
-
-@MainActor
-@Observable
-final class AppState {
-    /// Index into the (filtered) timeline.
-    var currentIndex: Int = 0
-    var isUpdating = false
-    var errorMessage: String?
-    var showSettings = false
-    var showFilter = false
-}
-```
-
-- [ ] **Step 2: Create `TagFilterView`**
-
-Create `Yana/Views/TagFilterView.swift`:
-
-```swift
-import SwiftData
-import SwiftUI
-
-/// Filter sheet: every tag plus an "Untagged" entry, each a toggle. All active by default.
-/// Writes the disabled set / untagged flag to `AppSettings`.
-struct TagFilterView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Tag.sortOrder) private var tags: [Tag]
-    @State private var settings = AppSettings()
-    /// Local mirror so toggles animate; synced to settings on change.
-    @State private var disabled: Set<String> = []
-    @State private var includeUntagged = true
-
-    var body: some View {
-        NavigationStack {
-            List {
-                ForEach(tags) { tag in
-                    toggleRow(tag.name, isActive: !disabled.contains(tag.name)) { active in
-                        if active { disabled.remove(tag.name) } else { disabled.insert(tag.name) }
-                        settings.disabledTagNames = disabled
-                    }
-                }
-                toggleRow(String(localized: "Untagged"), isActive: includeUntagged) { active in
-                    includeUntagged = active
-                    settings.includeUntagged = active
-                }
-            }
-            .navigationTitle("Filter")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
-            .onAppear {
-                disabled = settings.disabledTagNames
-                includeUntagged = settings.includeUntagged
-            }
-        }
-    }
-
-    private func toggleRow(_ name: String, isActive: Bool, set: @escaping (Bool) -> Void) -> some View {
-        Toggle(name, isOn: Binding(get: { isActive }, set: set))
-    }
-}
-```
-
-- [ ] **Step 3: Rewrite `ArticleReaderView` as the timeline**
-
-Replace the contents of `Yana/Views/ArticleReaderView.swift` (keep the `ShareSheet` struct at the bottom):
-
-```swift
-import SwiftData
-import SwiftUI
-
-struct ArticleReaderView: View {
-    @Bindable var appState: AppState
-    @Environment(\.modelContext) private var modelContext
-
-    @Query(sort: \Article.date, order: .reverse) private var allArticles: [Article]
-    @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
-    @State private var settings = AppSettings()
-
-    @State private var dragOffset: CGFloat = 0
-    @State private var shareURL: URL?
-    @State private var isShowingShare = false
-
-    /// The timeline after applying the persisted tag filter.
-    private var articles: [Article] {
-        TagFilter.apply(
-            to: allArticles,
-            disabledTagNames: settings.disabledTagNames,
-            includeUntagged: settings.includeUntagged
-        )
-    }
-
-    private var currentArticle: Article? {
-        guard appState.currentIndex >= 0, appState.currentIndex < articles.count else { return nil }
-        return articles[appState.currentIndex]
-    }
-
-    private var starredTag: Tag? { builtInTags.first }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                if let article = currentArticle {
-                    articleContent(article)
-                        .offset(x: dragOffset)
-                        .gesture(swipeGesture)
-                        .animation(.interactiveSpring, value: dragOffset)
-                } else {
-                    ContentUnavailableView {
-                        Label("No Articles", systemImage: "tray")
-                    } description: {
-                        Text("Add feeds in Configuration, then pull down to refresh.")
-                    }
-                }
-            }
-            .refreshable { await refresh() }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if let article = currentArticle, let starredTag {
-                        Button {
-                            article.setStarred(!article.isStarred, using: starredTag)
-                            try? modelContext.save()
-                        } label: {
-                            Image(systemName: article.isStarred ? "star.fill" : "star")
-                        }
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { appState.showSettings = true } label: { Image(systemName: "gear") }
-                }
-            }
-            .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
-            .sheet(isPresented: $appState.showFilter) { TagFilterView() }
-            .sheet(isPresented: $isShowingShare) {
-                if let url = shareURL { ShareSheet(activityItems: [url]) }
-            }
-            .onAppear { restoreAnchor() }
-            .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
-        }
-    }
-
-    // MARK: - Anchor (position memory)
-
-    private func restoreAnchor() {
-        appState.currentIndex = TimelineAnchor.index(for: settings.timelineAnchorIdentifier, in: articles)
-    }
-
-    private func saveAnchor() {
-        settings.timelineAnchorIdentifier = currentArticle?.identifier
-    }
-
-    // MARK: - Refresh
-
-    private func refresh() async {
-        let service = AggregationService(context: modelContext)
-        if let article = currentArticle { await service.update(article: article) }
-        await service.updateAll()
-    }
-
-    // MARK: - Article Content
-
-    @ViewBuilder
-    private func articleContent(_ article: Article) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(article.title)
-                    .font(.title2.bold())
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 8) {
-                    if let feedTitle = article.feed?.name, !feedTitle.isEmpty {
-                        Text(feedTitle)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    if !article.author.isEmpty {
-                        Text("·").foregroundStyle(.secondary)
-                        Text(article.author).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(article.date, style: .relative).font(.subheadline).foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                ArticleWebView(htmlContent: article.content).frame(minHeight: 400)
-            }
-            .padding()
-        }
-        .safeAreaInset(edge: .bottom) { bottomBar(article) }
-    }
-
-    private func bottomBar(_ article: Article) -> some View {
-        HStack {
-            Spacer()
-            if let url = URL(string: article.url) {
-                Button { UIApplication.shared.open(url) } label: {
-                    Label("Open in Browser", systemImage: "safari")
-                }
-                Button { shareURL = url; isShowingShare = true } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-            }
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.bordered)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.bar)
-    }
-
-    // MARK: - Swipe Gesture (bidirectional, no read state)
-
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 50)
-            .onChanged { value in dragOffset = value.translation.width }
-            .onEnded { value in
-                let threshold: CGFloat = 100
-                if value.translation.width < -threshold, appState.currentIndex < articles.count - 1 {
-                    withAnimation(.easeOut(duration: 0.2)) { dragOffset = -UIScreen.main.bounds.width }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(200))
-                        appState.currentIndex += 1
-                        dragOffset = 0
-                    }
-                } else if value.translation.width > threshold, appState.currentIndex > 0 {
-                    withAnimation(.easeOut(duration: 0.2)) { dragOffset = UIScreen.main.bounds.width }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(200))
-                        appState.currentIndex -= 1
-                        dragOffset = 0
-                    }
-                } else {
-                    withAnimation(.interactiveSpring) { dragOffset = 0 }
-                }
-            }
-    }
-}
-
-// MARK: - Share Sheet
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-```
-
-- [ ] **Step 4: Run `xcodegen generate` and build**
-
-Run: `xcodegen generate`
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build`
-Expected: BUILD SUCCEEDED.
-
-- [ ] **Step 5: Run the full test suite**
-
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add -A
-git commit -m "feat: endless timeline reader with tag filter, star, position memory, pull-to-refresh"
-```
-
----
-
-## Task 12: Manual smoke test + localization sweep
-
-**Files:**
-- Modify: `Yana/Resources/Localizable.xcstrings` (via Xcode build extraction)
-
-- [ ] **Step 1: Build extracts strings**
-
-`SWIFT_EMIT_LOC_STRINGS: YES` is already set, so a build extracts new `String(localized:)` keys. Run a build, then open `Yana/Resources/Localizable.xcstrings` in Xcode and confirm the new UI strings (e.g. "Configuration", "Feeds", "Tags", "Filter", "Untagged", "AI Tuning") are present. Provide translations as needed (English is the source and needs no translation).
-
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build`
-Expected: BUILD SUCCEEDED.
-
-- [ ] **Step 2: Manual smoke test (simulator)**
-
-Use the `run` skill (or Xcode) to launch the app and verify, since views have no unit tests:
-- Open Configuration → Tags: the locked **Starred** tag is present; create "Tech" and "Fun"; reorder; recolor; delete a non-builtin (Starred cannot be deleted).
-- Configuration → Feeds → +: create a feed of several types; confirm the **identifier label adapts** (URL vs Subreddit vs Channel) and **disappears** for Oglaf/Explosm/Dark Legacy/Tagesschau; confirm the **Options section changes per type** (e.g. Reddit shows sort + min-age; Oglaf shows Convert to Base64); assign a tag; Save.
-- Configuration → Settings: enter keys (verify they persist across reopening — they load from Keychain), toggle providers, change models, adjust knobs, change retention.
-- Reader: with no articles, the "No Articles" state shows; the filter button opens the sheet listing tags + Untagged (all on); the gear opens Configuration. Pull-to-refresh runs without crashing (stub touches `lastFetchedAt`).
-
-- [ ] **Step 3: Commit any string-catalog changes**
-
-```bash
-git add -A
-git commit -m "chore: extract Phase 2 localizable strings"
-```
-
----
-
-## Self-Review Notes (already reconciled)
-
-- **Spec coverage:** Tag model + seeding (T1), retag Feed/Article + drop read/group (T2), per-scraper options incl. `minAgeHours`/`convertToBase64` and dropped `fetchFullContent` (T3), full `AppSettings` parity + model lists (T4), tag filter + anchor (T5), service stub (T6), feed-editor bridge (T7), config hub + dynamic options + feed editor (T8), feeds/tags CRUD (T9), settings screen (T10), timeline reader with filter/star/anchor/pull-refresh (T11), localization (T12). All spec UI surfaces and data-model changes map to a task.
-- **Type consistency:** `Tag.ensureBuiltIns`, `Tag.starredName`, `Article.isStarred`/`setStarred(_:using:)`, `TagFilter.apply(to:disabledTagNames:includeUntagged:)`, `TimelineAnchor.index(for:in:)`, `FeedEditorModel.changeType`/`apply(to:availableTags:)`, `AggregationService(context:)`/`updateAll()`/`update(feed:)`/`update(article:)`, and the `AppSettings` property names are used identically across tasks and tests.
-- **Ordering constraint:** Tasks 1–2 compile together (cross-references between `Tag` and `Feed`/`Article`); Task 8's `ConfigHubView` only fully builds after Task 10. These dependencies are called out inline.
+- **Spec coverage (Phase 2 scope):** Tag model + seeding (T1), retag Feed/Article + drop read/group (T2), per-scraper options incl. `minAgeHours`/`convertToBase64` and dropped `fetchFullContent` (T3), full `AppSettings` parity + model lists (T4), service stub (T5), feed-editor bridge (T6), config hub + dynamic options + feed editor (T7), feeds/tags CRUD (T8), settings screen (T9). The timeline reader, tag-filter sheet, position memory, star toggle, and pull-to-refresh are **Phase 3**.
+- **Type consistency:** `Tag.ensureBuiltIns`/`Tag.starredName`, `Article.isStarred`/`setStarred(_:using:)`, `FeedEditorModel.changeType`/`apply(to:availableTags:)`, `AggregationService(context:)`/`updateAll()`/`update(feed:)`/`update(article:)`, and the `AppSettings` property names match the tests and Phase 3.
+- **Ordering constraints:** Tasks 1–2 compile together; Task 7's `ConfigHubView` only fully builds after Task 9 (called out inline). The interim reader patch in T2 keeps the app building until Phase 3 rewrites the reader.
 - **Model-list caveat:** the per-provider model id lists in Task 4 are current at planning time and intentionally maintained in code — verify against each provider's current API model ids when implementing.
