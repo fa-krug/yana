@@ -29,7 +29,9 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
     // Overridable hooks (override these in subclasses, not aggregate()):
     func fetchEntries() async throws -> [FeedEntry]                  // default: fetch+parse config.identifier
     func makeArticle(from entry: FeedEntry) -> AggregatedArticle     // default mapping
-    func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle  // default: processContent on RSS content
+    func shouldInclude(_ article: AggregatedArticle) -> Bool          // pre-enrich filter (title/url skip-lists); default true
+    func postFilter(_ article: AggregatedArticle) -> Bool             // post-enrich filter (content-based); default true
+    func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle  // default: processContent on RSS content; may throw AggregatorError.articleSkip to omit
     func processContent(_ html: String, article: AggregatedArticle, headerHTML: String?) async throws -> String  // default: embeds+images+sanitize+format
     func finalize(_ articles: [AggregatedArticle]) async throws -> [AggregatedArticle]   // default: identity (AI added in 4f)
 
@@ -153,13 +155,22 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
         var result: [AggregatedArticle] = []
         for entry in limited {
             let base = makeArticle(from: entry)
-            let enriched = try await enrich(base, entry: entry)
-            result.append(enriched)
+            guard shouldInclude(base) else { continue }
+            do {
+                let enriched = try await enrich(base, entry: entry)
+                guard postFilter(enriched) else { continue }
+                result.append(enriched)
+            } catch AggregatorError.articleSkip {
+                continue                                  // 4xx / explicit skip → omit article
+            }
         }
         return try await finalize(result)
     }
 
     // MARK: - Hooks
+
+    func shouldInclude(_ article: AggregatedArticle) -> Bool { true }
+    func postFilter(_ article: AggregatedArticle) -> Bool { true }
 
     func fetchEntries() async throws -> [FeedEntry] {
         guard let url = URL(string: config.identifier) else { throw AggregatorError.missingIdentifier }
