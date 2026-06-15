@@ -5,6 +5,19 @@ struct AggregatorCredentials: Sendable {
     var redditClientID: String?
     var redditClientSecret: String?
     var youtubeAPIKey: String?
+
+    /// Read the user-supplied API keys out of the Keychain. Empty strings map to `nil`.
+    static func resolved() -> AggregatorCredentials {
+        func nonEmpty(_ item: KeychainService.APIKeyItem) -> String? {
+            let value = KeychainService.loadAPIKey(for: item)
+            return (value?.isEmpty == false) ? value : nil
+        }
+        return AggregatorCredentials(
+            redditClientID: nonEmpty(.redditClientID),
+            redditClientSecret: nonEmpty(.redditClientSecret),
+            youtubeAPIKey: nonEmpty(.youtubeAPIKey)
+        )
+    }
 }
 
 /// A pluggable content source. Concrete implementations land in Phase 4b+.
