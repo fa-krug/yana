@@ -5,8 +5,15 @@ import Testing
 @Suite("AggregatorRegistry")
 struct AggregatorRegistryTests {
     @Test func returnsNilForUnregisteredType() {
-        // No concrete aggregators are registered in Phase 1.
-        #expect(AggregatorRegistry.shared.makeAggregator(for: .feedContent, identifier: "https://example.com/feed", options: .feedContent(FeedContentOptions())) == nil)
+        // No concrete aggregators are registered yet (Phase 4b+ fills the switch).
+        let config = FeedConfig(
+            type: .feedContent,
+            identifier: "https://example.com/feed",
+            dailyLimit: 20,
+            options: .feedContent(FeedContentOptions()),
+            collectedToday: 0
+        )
+        #expect(AggregatorRegistry.shared.makeAggregator(config, credentials: .init()) == nil)
     }
 
     @Test func aggregatedArticleStoresAllFields() {

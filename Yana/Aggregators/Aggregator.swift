@@ -7,10 +7,9 @@ struct AggregatorCredentials: Sendable {
     var youtubeAPIKey: String?
 }
 
-/// A pluggable content source. Concrete implementations are added in Phase 3.
+/// A pluggable content source. Concrete implementations land in Phase 4b+.
+/// Constructed by an `AggregatorFactory` that captures its `FeedConfig` + credentials.
 protocol Aggregator: Sendable {
-    static var type: AggregatorType { get }
-
     /// Validate configuration before a run. Throws if the feed is misconfigured.
     func validate() throws
 
