@@ -10,11 +10,12 @@ final class Article {
     var rawContent: String = ""
     var content: String = ""
     var date: Date = Date.now
-    var read: Bool = false
-    var starred: Bool = false
     var author: String = ""
     var iconURL: String?
     var createdAt: Date = Date.now
+
+    /// Snapshot of the feed's tags at import, plus the built-in Starred tag when starred.
+    var tags: [Tag] = []
 
     var feed: Feed?
 
@@ -25,8 +26,6 @@ final class Article {
         rawContent: String = "",
         content: String = "",
         date: Date = .now,
-        read: Bool = false,
-        starred: Bool = false,
         author: String = "",
         iconURL: String? = nil
     ) {
@@ -36,10 +35,20 @@ final class Article {
         self.rawContent = rawContent
         self.content = content
         self.date = date
-        self.read = read
-        self.starred = starred
         self.author = author
         self.iconURL = iconURL
         self.createdAt = .now
+    }
+
+    /// Starred state is expressed purely as membership of the built-in tag.
+    var isStarred: Bool { tags.contains { $0.isBuiltIn } }
+
+    /// Add or remove the built-in Starred tag.
+    func setStarred(_ starred: Bool, using starredTag: Tag) {
+        if starred {
+            if !tags.contains(where: { $0.id == starredTag.id }) { tags.append(starredTag) }
+        } else {
+            tags.removeAll { $0.isBuiltIn }
+        }
     }
 }
