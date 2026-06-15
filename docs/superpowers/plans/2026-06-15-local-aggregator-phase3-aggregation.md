@@ -18,9 +18,10 @@ all three granularities and best-effort background refresh.
 **Architecture:** Each `AggregatorType` gets a concrete `Aggregator` returning
 `[AggregatedArticle]`. `AggregationService` orchestrates: resolve credentials → build
 aggregator via registry → `validate()` → `aggregate()` → upsert into SwiftData (dedup by
-`(feed, identifier)`, preserve read/starred) → enforce `dailyLimit` → optional AI
-post-processing → set `lastFetchedAt`/`lastError`. Networking off the main actor; SwiftData
-writes on `@MainActor`.
+`(feed, identifier)`, snapshot the feed's tags onto each article, preserve the Starred tag)
+→ enforce `dailyLimit` → optional AI post-processing → set `lastFetchedAt`/`lastError`.
+Networking off the main actor; SwiftData writes on `@MainActor`. There is **no read/unread
+state**.
 
 ---
 
@@ -31,10 +32,13 @@ writes on `@MainActor`.
 - **`AggregationService` real implementation:** `updateAll()`, `update(feed:)`,
   `update(article:)`. Concurrency model (sequential per feed vs. bounded parallel), error
   isolation (one feed's failure doesn't abort the run), `isUpdating` state.
-- **Upsert + dedup:** look up `Article` by `(feed, identifier)`; insert or update;
-  **preserve** `read`/`starred` on update. Pure, heavily unit-tested.
+- **Upsert + dedup:** look up `Article` by `(feed, identifier)`. On **insert**, set
+  `article.tags = feed.tags` (snapshot). On **update**, refresh content and recompute tags as
+  `feed.tags` **plus the Starred tag if the article currently carries it** — feed-derived tags
+  re-snapshot while the user's star survives. Pure, heavily unit-tested.
 - **Daily limit + retention cleanup:** cap new articles per run at `Feed.dailyLimit`;
-  delete read, unstarred articles older than `AppSettings.retentionDays`.
+  delete articles older than `AppSettings.retentionDays` (by `date`) **except** those tagged
+  Starred. (No read state — age is the only cleanup criterion besides Starred.)
 - **Credential resolution:** read API keys from Keychain into `AggregatorCredentials`.
 - Test the whole orchestration against a fake `Aggregator` returning canned
   `AggregatedArticle`s (no network) — this is where most correctness lives.
@@ -50,23 +54,25 @@ writes on `@MainActor`.
 
 ### 3c. Generic aggregators (highest value)
 
-- **`feedContent` (RSS/Atom):** parse feed XML → entries; honor `fetchFullContent`
-  (follow link, extract body via 3b). Test against fixture RSS + Atom files.
-- **`fullWebsite`:** fetch page, extract article links + content via selectors. Test
-  against fixture HTML.
+- **`feedContent` (RSS/Atom):** parse feed XML → entries; use the entry content as-is (no
+  full-article fetch — matches the server's `FeedContentAggregator`). Test against fixture
+  RSS + Atom files.
+- **`fullWebsite`:** fetch page, extract article content via selectors (`useFullContent`,
+  `customContentSelector`, `customSelectorsToRemove`). Test against fixture HTML.
 
 ### 3d. Managed site-specific scrapers
 
 Port from `../Yana/core/aggregators/{heise,merkur,tagesschau,explosm,dark_legacy,
-caschys_blog,mactechnews,oglaf,mein_mmo}`. Each reads its subset of `ManagedOptions`
-(`includeComments`, `skipVideos`, `showAltText`, etc.). One detailed plan can batch several;
+caschys_blog,mactechnews,oglaf,mein_mmo}`. Each reads its own typed options struct
+(`HeiseOptions.includeComments`, `TagesschauOptions.skipVideos`, `OglafOptions.showAltText`/
+`convertToBase64`, etc.) — see the spec's options table. One detailed plan can batch several;
 each aggregator tested against captured fixture pages. **Flag:** scrapers are fragile and
 break when sites change — include fixture-based tests and graceful per-feed failure.
 
 ### 3e. Social / media aggregators (need API keys)
 
-- **`reddit`:** Reddit API (OAuth via stored client id/secret); honor `subredditSort`,
-  `minComments`, `commentLimit`, `includeHeaderImage`.
+- **`reddit`:** Reddit API (OAuth via stored client id/secret + `redditUserAgent`); honor
+  `subredditSort`, `minComments`, `commentLimit`, `includeHeaderImage`, `minAgeHours`.
 - **`youtube`:** YouTube Data API (stored key); honor `commentLimit`.
 - **`podcast`:** podcast RSS + enclosures; honor `includePlayer`, `includeDownloadLink`,
   `artworkSize`.
@@ -75,9 +81,13 @@ break when sites change — include fixture-based tests and graceful per-feed fa
 
 ### 3f. AI post-processing
 
-- AI client abstraction over OpenAI / Anthropic / Gemini (provider + key from
-  `AppSettings`/Keychain). Apply per-feed `AIOptions`: `summarize`, `improveWriting`,
-  `translate(translateLanguage)` — mirrors `../Yana/core/aggregators/base.py` lines ~290–360.
+- AI client abstraction over OpenAI / Anthropic / Gemini (active provider + key + model +
+  OpenAI URL from `AppSettings`/Keychain). Apply per-feed `AIOptions`: `summarize`,
+  `improveWriting`, `translate(translateLanguage)` — mirrors
+  `../Yana/core/aggregators/base.py` lines ~290–360.
+- Honor the AI knobs in `AppSettings`: `aiTemperature`, `aiMaxTokens`, `aiMaxPromptLength`,
+  `aiDefaultDailyLimit`, `aiDefaultMonthlyLimit`, `aiRequestTimeout`, `aiMaxRetries`,
+  `aiRetryDelay`, `aiRequestDelay`.
 - Rate-limit/delay handling; per-article failure non-fatal.
 - Wired into the orchestration step after upsert; `update(article:)` re-runs it.
 

@@ -1,13 +1,16 @@
 # Yana iOS
 
-A native iOS client for [Yana](../Yana), a self-hosted RSS aggregator. Built with SwiftUI, communicates with the Yana server via the Google Reader-compatible API.
+A native SwiftUI iOS app that is a fully **self-contained RSS/content aggregator**. It
+fetches, parses, and processes feeds **on-device** and stores everything locally with
+SwiftData. There is **no server and no login** — it mirrors the aggregation model of the
+[Yana server](https://github.com/fa-krug/Yana) but runs entirely on the phone, for
+privacy-conscious users who want their feeds without any backend.
 
 ## Requirements
 
 - iOS 26.0+
 - Xcode 26.0+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.38+
-- A running [Yana](../Yana) server instance
 
 ## Setup
 
@@ -31,43 +34,58 @@ A native iOS client for [Yana](../Yana), a self-hosted RSS aggregator. Built wit
 
 4. Select the **Yana** scheme and run on a simulator or device.
 
-## Connecting to Your Server
+## How It Works
 
-1. Launch the app
-2. Enter your Yana server URL (e.g., `http://192.168.1.100:8000`)
-3. Sign in with your Yana admin credentials
-4. Your feeds and articles will sync automatically
+- **Add feeds.** In the config hub, create a feed, pick an aggregator type (RSS/Atom, full
+  website, a site-specific scraper, Reddit, YouTube, or podcast), set its identifier
+  (URL / subreddit / channel) and per-type options, and assign **tags**.
+- **Aggregate on-device.** The app fetches and parses each feed locally and stores articles
+  in SwiftData. Articles inherit a snapshot of their feed's tags at import time.
+- **Read the timeline.** The home surface is a single **endless timeline** of all articles
+  ordered by date. Swipe in either direction; the app remembers your position. There is no
+  read/unread state.
+- **Filter by tags.** A filter button lists every tag (plus "Untagged"), each toggleable —
+  all on by default. **Starred** is itself a built-in tag.
+- **Refresh.** Pull down on the reader to force-update the current article and the whole
+  timeline. Per-feed and all-feeds updates are available in the config hub.
+- **Keys.** Reddit and YouTube require user-supplied API keys; AI post-processing
+  (summarize / improve / translate) uses your own OpenAI / Anthropic / Gemini key. Secrets
+  are stored in the Keychain.
 
 ## Features
 
-### Planned (MVP)
-- Server connection with Google Reader API authentication
-- Feed list with unread counts, organized by groups/labels
-- Article list with pull-to-refresh
-- Article detail view with HTML rendering
-- Mark read/unread, star/unstar articles
-- Mark all as read
-- Background refresh
+### Core (MVP)
+- Feed configuration (create / edit / delete, aggregator type, per-feed options, tags)
+- Tag management (create / rename / recolor / delete / reorder; Starred is a locked built-in)
+- On-device aggregation into SwiftData
+- Endless date-ordered timeline with remembered position
+- Tag-based filtering (all on by default; includes "Untagged")
+- HTML article rendering in the swipe reader
+- Star / unstar; starred articles are exempt from cleanup
+- Force update via pull-down; per-feed / all-feeds updates
+- ~One-month retention (older non-starred articles are cleaned up)
+- Best-effort background refresh
+- Optional AI post-processing per feed
 
-### Planned (Enhanced)
+### Enhanced (backlog)
+- Search across articles
 - Biometric authentication (Face ID / Touch ID)
 - Offline article caching
-- Feed management (add/remove/rename)
-- Search across articles
+- Share extension to add feeds
 - iPad multi-column layout
-- Multiple server support
-- Share extension
 - Home screen widgets
+- New-article notifications after a background refresh
 
 ## Project Structure
 
 ```
 Yana/
-  YanaApp.swift             # App entry point
-  ContentView.swift         # Root view with auth gating
-  Models/                   # Data models (AppState, API response types)
-  Views/                    # SwiftUI views by feature
-  Services/                 # Business logic (API client, auth, sync)
+  YanaApp.swift             # App entry point; creates the SwiftData ModelContainer
+  ContentView.swift         # Root view; opens directly into the timeline reader
+  Models/                   # SwiftData @Model types (Feed, Tag, Article), options, settings
+  Aggregators/              # AggregatorType, Aggregator protocol, registry, DTOs
+  Services/                 # AggregationService, KeychainService
+  Views/                    # SwiftUI views (reader + config hub)
   Utilities/                # Constants and extensions
   Resources/                # Asset catalogs, string catalog
   Entitlements/             # iOS entitlements
@@ -81,24 +99,17 @@ project.yml                 # XcodeGen project definition
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-## Yana Server
-
-This app requires a running Yana server. See the [Yana project](../Yana) for setup instructions. The quickest way:
-
-```bash
-docker-compose up -d
-# Access admin at http://localhost:8000/admin
-# API at http://localhost:8000/api/greader/
-```
+- `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`)
+- `YanaUITests/` — UI tests using XCTest
 
 ## Architecture
 
 - **UI Framework:** SwiftUI (iOS 26.0+)
-- **Language:** Swift 6 with strict concurrency
-- **API Protocol:** Google Reader API (GReader-compatible)
-- **Auth:** Google Reader ClientLogin (email/password -> token)
-- **Storage:** Keychain for auth tokens
+- **Language:** Swift 6 with strict concurrency (`@MainActor` throughout)
+- **Persistence:** SwiftData — the single source of truth for feeds, tags, and articles
+- **Aggregation:** pluggable on-device `Aggregator`s keyed by `AggregatorType`, orchestrated
+  by `AggregationService`
+- **Secrets:** Keychain (Reddit / YouTube / AI provider keys); non-secret prefs in
+  `UserDefaults` via `AppSettings`
 - **Project Generation:** XcodeGen (`project.yml`)
-- **CI/CD:** Xcode Cloud with `ci_scripts/ci_post_clone.sh`
 - **Code Quality:** SwiftLint + SwiftFormat
-- **Build Automation:** Fastlane for screenshots
