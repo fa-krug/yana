@@ -78,7 +78,15 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .reddit: .reddit(RedditOptions())
         case .youtube: .youtube(YouTubeOptions())
         case .podcast: .podcast(PodcastOptions())
-        default: .managed(ManagedOptions())
+        case .heise: .heise(HeiseOptions())
+        case .merkur: .merkur(MerkurOptions())
+        case .tagesschau: .tagesschau(TagesschauOptions())
+        case .explosm: .explosm(ExplosmOptions())
+        case .darkLegacy: .darkLegacy(DarkLegacyOptions())
+        case .caschysBlog: .caschysBlog(CaschysBlogOptions())
+        case .mactechnews: .mactechnews(MactechnewsOptions())
+        case .oglaf: .oglaf(OglafOptions())
+        case .meinMmo: .meinMmo(MeinMmoOptions())
         }
     }
 }

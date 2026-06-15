@@ -41,4 +41,32 @@ struct AggregatorOptionsTests {
         #expect(PodcastOptions().includePlayer == true)
         #expect(AIOptions().translateLanguage == "English")
     }
+
+    @Test func redditHasMinAgeHours() {
+        #expect(RedditOptions().minAgeHours == 48)
+    }
+
+    @Test func oglafHasConvertToBase64() throws {
+        var opts = OglafOptions()
+        opts.convertToBase64 = false
+        let decoded = try roundTrip(.oglaf(opts))
+        guard case .oglaf(let out) = decoded else { Issue.record("wrong case"); return }
+        #expect(out.convertToBase64 == false)
+        #expect(out.showAltText == true)
+    }
+
+    @Test func heiseRoundTrip() throws {
+        var opts = HeiseOptions()
+        opts.maxComments = 9
+        let decoded = try roundTrip(.heise(opts))
+        guard case .heise(let out) = decoded else { Issue.record("wrong case"); return }
+        #expect(out.maxComments == 9)
+        #expect(out.includeComments == true)
+    }
+
+    @Test func defaultOptionsMatchType() {
+        if case .heise = AggregatorType.heise.defaultOptions {} else { Issue.record("heise default") }
+        if case .tagesschau = AggregatorType.tagesschau.defaultOptions {} else { Issue.record("tagesschau default") }
+        if case .meinMmo = AggregatorType.meinMmo.defaultOptions {} else { Issue.record("meinMmo default") }
+    }
 }
