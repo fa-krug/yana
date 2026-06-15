@@ -3,12 +3,6 @@ import Security
 
 enum KeychainService: Sendable {
 
-    // MARK: - Keys
-
-    private static let authTokenKey = "authToken"
-    private static let serverURLKey = "serverURL"
-    private static let emailKey = "email"
-
     // MARK: - Core Operations
 
     @discardableResult
@@ -57,29 +51,28 @@ enum KeychainService: Sendable {
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    // MARK: - Convenience Methods
+    // MARK: - API Keys
 
-    static func saveCredentials(serverURL: String, email: String, token: String) {
-        save(key: serverURLKey, value: serverURL)
-        save(key: emailKey, value: email)
-        save(key: authTokenKey, value: token)
+    enum APIKeyItem: String, Sendable {
+        case redditClientID = "reddit_client_id"
+        case redditClientSecret = "reddit_client_secret"
+        case youtubeAPIKey = "youtube_api_key"
+        case openaiAPIKey = "openai_api_key"
+        case anthropicAPIKey = "anthropic_api_key"
+        case geminiAPIKey = "gemini_api_key"
     }
 
-    static func loadServerURL() -> String? {
-        load(key: serverURLKey)
+    @discardableResult
+    static func saveAPIKey(_ value: String, for item: APIKeyItem) -> Bool {
+        save(key: item.rawValue, value: value)
     }
 
-    static func loadEmail() -> String? {
-        load(key: emailKey)
+    static func loadAPIKey(for item: APIKeyItem) -> String? {
+        load(key: item.rawValue)
     }
 
-    static func loadAuthToken() -> String? {
-        load(key: authTokenKey)
-    }
-
-    static func clearAll() {
-        delete(key: authTokenKey)
-        delete(key: serverURLKey)
-        delete(key: emailKey)
+    @discardableResult
+    static func deleteAPIKey(for item: APIKeyItem) -> Bool {
+        delete(key: item.rawValue)
     }
 }
