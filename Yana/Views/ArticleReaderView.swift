@@ -3,7 +3,8 @@ import SwiftUI
 struct ArticleReaderView: View {
     @Bindable var appState: AppState
     @State private var dragOffset: CGFloat = 0
-    @State private var shareItem: URL?
+    @State private var shareURL: URL?
+    @State private var isShowingShare = false
 
     var body: some View {
         NavigationStack {
@@ -38,7 +39,7 @@ struct ArticleReaderView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarRight) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         appState.showSettings = true
                     } label: {
@@ -49,8 +50,10 @@ struct ArticleReaderView: View {
             .sheet(isPresented: $appState.showSettings) {
                 SettingsView(appState: appState)
             }
-            .sheet(item: $shareItem) { url in
-                ShareSheet(activityItems: [url])
+            .sheet(isPresented: $isShowingShare) {
+                if let url = shareURL {
+                    ShareSheet(activityItems: [url])
+                }
             }
             .task {
                 if appState.articles.isEmpty && appState.isAuthenticated {
@@ -76,7 +79,7 @@ struct ArticleReaderView: View {
                     if !article.feedTitle.isEmpty {
                         Text(article.feedTitle)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.accent)
+                            .foregroundStyle(Color.accentColor)
                     }
 
                     if !article.author.isEmpty {
@@ -121,7 +124,8 @@ struct ArticleReaderView: View {
                 }
 
                 Button {
-                    shareItem = url
+                    shareURL = url
+                    isShowingShare = true
                 } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -186,8 +190,3 @@ struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-// MARK: - URL + Identifiable
-
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
-}
