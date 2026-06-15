@@ -42,7 +42,7 @@ struct ArticleReaderView: View {
                 }
             }
             .sheet(isPresented: $appState.showSettings) {
-                SettingsView(appState: appState)
+                ConfigHubView()
             }
             .sheet(isPresented: $isShowingShare) {
                 if let url = shareURL {
