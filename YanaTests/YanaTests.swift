@@ -6,9 +6,9 @@ import Testing
 struct YanaTests {
     @Test func appStateDefaults() {
         let state = AppState()
-        #expect(state.scope == .allUnread)
         #expect(state.currentIndex == 0)
         #expect(state.isUpdating == false)
         #expect(state.showSettings == false)
+        #expect(state.showFilter == false)
     }
 }
