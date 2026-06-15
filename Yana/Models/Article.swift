@@ -1,27 +1,45 @@
 import Foundation
+import SwiftData
 
-struct Article: Identifiable, Sendable {
-    let id: String          // "tag:google.com,2005:reader/item/000000000000007b"
-    var title: String
-    var author: String
-    var published: Date
-    var url: String         // link to original article
-    var content: String     // HTML content
-    var read: Bool
-    var starred: Bool
-    var feedTitle: String
-    var feedStreamId: String
-    var feedHtmlUrl: String
+@Model
+final class Article {
+    var title: String = ""
+    /// URL or external id; dedup key within a feed.
+    var identifier: String = ""
+    var url: String = ""
+    var rawContent: String = ""
+    var content: String = ""
+    var date: Date = Date.now
+    var read: Bool = false
+    var starred: Bool = false
+    var author: String = ""
+    var iconURL: String?
+    var createdAt: Date = Date.now
 
-    /// Numeric ID extracted from the tag:google.com format, used for API calls
-    var numericId: String {
-        // Extract hex from "tag:google.com,2005:reader/item/000000000000007b"
-        if let range = id.range(of: "reader/item/") {
-            let hex = String(id[range.upperBound...])
-            if let value = UInt64(hex, radix: 16) {
-                return String(value)
-            }
-        }
-        return id
+    var feed: Feed?
+
+    init(
+        title: String,
+        identifier: String,
+        url: String,
+        rawContent: String = "",
+        content: String = "",
+        date: Date = .now,
+        read: Bool = false,
+        starred: Bool = false,
+        author: String = "",
+        iconURL: String? = nil
+    ) {
+        self.title = title
+        self.identifier = identifier
+        self.url = url
+        self.rawContent = rawContent
+        self.content = content
+        self.date = date
+        self.read = read
+        self.starred = starred
+        self.author = author
+        self.iconURL = iconURL
+        self.createdAt = .now
     }
 }

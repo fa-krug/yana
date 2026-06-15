@@ -1,44 +1,43 @@
+import SwiftData
 import SwiftUI
 
 struct ArticleReaderView: View {
     @Bindable var appState: AppState
+    @Query(
+        filter: #Predicate<Article> { !$0.read },
+        sort: \Article.date,
+        order: .reverse
+    ) private var articles: [Article]
+
     @State private var dragOffset: CGFloat = 0
-    @State private var shareItem: URL?
+    @State private var shareURL: URL?
+    @State private var isShowingShare = false
+
+    private var currentArticle: Article? {
+        guard appState.currentIndex >= 0, appState.currentIndex < articles.count else {
+            return nil
+        }
+        return articles[appState.currentIndex]
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                if appState.isLoading && appState.articles.isEmpty {
-                    ProgressView("Loading articles…")
-                } else if let article = appState.currentArticle {
+                if let article = currentArticle {
                     articleContent(article)
                         .offset(x: dragOffset)
                         .gesture(swipeGesture)
                         .animation(.interactiveSpring, value: dragOffset)
-                } else if let error = appState.errorMessage {
-                    ContentUnavailableView {
-                        Label("Error", systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(error)
-                    } actions: {
-                        Button("Retry") {
-                            Task { await appState.loadArticles() }
-                        }
-                    }
                 } else {
                     ContentUnavailableView {
                         Label("All Caught Up", systemImage: "checkmark.circle")
                     } description: {
-                        Text("No unread articles.")
-                    } actions: {
-                        Button("Refresh") {
-                            Task { await appState.loadArticles() }
-                        }
+                        Text("No unread articles. Add feeds in Settings.")
                     }
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarRight) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         appState.showSettings = true
                     } label: {
@@ -49,12 +48,9 @@ struct ArticleReaderView: View {
             .sheet(isPresented: $appState.showSettings) {
                 SettingsView(appState: appState)
             }
-            .sheet(item: $shareItem) { url in
-                ShareSheet(activityItems: [url])
-            }
-            .task {
-                if appState.articles.isEmpty && appState.isAuthenticated {
-                    await appState.loadArticles()
+            .sheet(isPresented: $isShowingShare) {
+                if let url = shareURL {
+                    ShareSheet(activityItems: [url])
                 }
             }
         }
@@ -66,22 +62,19 @@ struct ArticleReaderView: View {
     private func articleContent(_ article: Article) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                // Title
                 Text(article.title)
                     .font(.title2.bold())
                     .fixedSize(horizontal: false, vertical: true)
 
-                // Metadata row
                 HStack(spacing: 8) {
-                    if !article.feedTitle.isEmpty {
-                        Text(article.feedTitle)
+                    if let feedTitle = article.feed?.name, !feedTitle.isEmpty {
+                        Text(feedTitle)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.accent)
+                            .foregroundStyle(Color.accentColor)
                     }
 
                     if !article.author.isEmpty {
-                        Text("·")
-                            .foregroundStyle(.secondary)
+                        Text("·").foregroundStyle(.secondary)
                         Text(article.author)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -89,14 +82,13 @@ struct ArticleReaderView: View {
 
                     Spacer()
 
-                    Text(article.published, style: .relative)
+                    Text(article.date, style: .relative)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
                 Divider()
 
-                // Article HTML content
                 ArticleWebView(htmlContent: article.content)
                     .frame(minHeight: 400)
             }
@@ -107,21 +99,18 @@ struct ArticleReaderView: View {
         }
     }
 
-    // MARK: - Bottom Bar
-
     private func bottomBar(_ article: Article) -> some View {
         HStack {
             Spacer()
-
             if let url = URL(string: article.url) {
                 Button {
                     UIApplication.shared.open(url)
                 } label: {
                     Label("Open in Browser", systemImage: "safari")
                 }
-
                 Button {
-                    shareItem = url
+                    shareURL = url
+                    isShowingShare = true
                 } label: {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
@@ -143,34 +132,40 @@ struct ArticleReaderView: View {
             }
             .onEnded { value in
                 let threshold: CGFloat = 100
-
                 if value.translation.width < -threshold {
-                    // Swipe left: mark as read and next
                     withAnimation(.easeOut(duration: 0.2)) {
                         dragOffset = -UIScreen.main.bounds.width
                     }
                     Task {
                         try? await Task.sleep(for: .milliseconds(200))
-                        await appState.markCurrentAsReadAndAdvance()
+                        markCurrentAsReadAndAdvance()
                         dragOffset = 0
                     }
-                } else if value.translation.width > threshold && appState.hasPreviousArticle {
-                    // Swipe right: previous article
+                } else if value.translation.width > threshold && appState.currentIndex > 0 {
                     withAnimation(.easeOut(duration: 0.2)) {
                         dragOffset = UIScreen.main.bounds.width
                     }
                     Task {
                         try? await Task.sleep(for: .milliseconds(200))
-                        appState.goToPreviousArticle()
+                        appState.currentIndex -= 1
                         dragOffset = 0
                     }
                 } else {
-                    // Snap back
                     withAnimation(.interactiveSpring) {
                         dragOffset = 0
                     }
                 }
             }
+    }
+
+    /// Mark the current article read. The unread-only `@Query` drops it on the next
+    /// view update, so the next unread article shifts into the current index
+    /// automatically. When the list empties, `currentArticle`'s bounds-guard returns
+    /// nil and the "All Caught Up" state shows. No index manipulation is needed; the
+    /// stale `articles` snapshot inside this call must not be used to recompute it.
+    private func markCurrentAsReadAndAdvance() {
+        guard let article = currentArticle else { return }
+        article.read = true
     }
 }
 
@@ -184,10 +179,4 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-// MARK: - URL + Identifiable
-
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
 }

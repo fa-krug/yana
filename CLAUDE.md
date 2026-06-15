@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Yana iOS is a **native SwiftUI iOS app** that serves as a mobile client for the [Yana RSS aggregator](../Yana). It communicates with a self-hosted Yana server via the **Google Reader API** to display feeds, articles, and manage read/starred state. The app is designed for privacy-conscious users who run their own Yana instance.
+Yana iOS is a **native SwiftUI iOS app** that is a fully **self-contained RSS/content
+aggregator**. It fetches, parses, and processes feeds on-device and stores everything
+locally with SwiftData. There is no server and no network authentication — it mirrors the
+aggregation model of the [Yana server](../Yana) but runs entirely on the phone. The app is
+designed for privacy-conscious users who want their feeds without any backend.
 
 ## Commands
 
@@ -22,57 +26,41 @@ Yana iOS is a **native SwiftUI iOS app** that serves as a mobile client for the 
 
 ## Architecture
 
-### SwiftUI + Google Reader API
-- **Views** (`Yana/Views/`): SwiftUI views organized by feature area. Uses `TabView` with tab sections for main navigation.
-- **Models** (`Yana/Models/`): Data models — both local state (`AppState`) and API response models for the Google Reader protocol.
-- **Services** (`Yana/Services/`): Business logic — API client, authentication, keychain, background sync.
-- **Utilities** (`Yana/Utilities/`): Constants (API paths, bundle IDs) and extensions.
+### SwiftUI + SwiftData + local aggregation
+
+- **Models** (`Yana/Models/`): SwiftData `@Model` classes — `Feed`, `FeedGroup`, `Article` —
+  plus the typed `AggregatorOptions` enum and the `AppSettings` preferences store.
+- **Aggregators** (`Yana/Aggregators/`): the pluggable aggregation system — `AggregatorType`
+  (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO, and
+  `AggregatorRegistry`. Concrete aggregators are added incrementally.
+- **Services** (`Yana/Services/`): `AggregationService` (orchestrates feed updates and
+  upserts into SwiftData) and `KeychainService` (stores aggregator API keys).
+- **Views** (`Yana/Views/`): the swipe-through `ArticleReaderView` (home surface) and the
+  configuration hub (feeds, groups, article list, settings).
+- **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
-- `Yana/YanaApp.swift` — app entry point, defines root scene
-- `Yana/ContentView.swift` — root view with auth gating (login vs main app)
-- `Yana/Models/AppState.swift` — observable app state (auth status, server URL, token)
-- `Yana/Utilities/Constants.swift` — app constants (bundle ID, all Google Reader API paths and tag constants)
-- `Yana/Entitlements/Yana-iOS.entitlements` — iOS entitlements (keychain access)
-- `Yana/Resources/Assets.xcassets` — asset catalog (app icon, accent color)
-- `Yana/Resources/Localizable.xcstrings` — string catalog for localization
-- `Yana/Resources/PrivacyInfo.xcprivacy` — privacy manifest
-- `project.yml` — XcodeGen project definition (iOS target)
+
+- `Yana/YanaApp.swift` — app entry point; creates the SwiftData `ModelContainer`
+- `Yana/ContentView.swift` — root view (opens directly into the reader; no auth gate)
+- `Yana/Models/AppState.swift` — thin observable UI state (scope, current index, errors)
+- `Yana/Utilities/Constants.swift` — app constants
 
 ### Key patterns
-- **Auth flow**: App starts with login screen → user enters server URL + credentials → authenticates via Google Reader ClientLogin API → stores token in Keychain → shows main feed view
-- **Google Reader API**: All server communication uses the GReader-compatible API exposed by the Yana Django backend. Endpoints are defined in `Constants.swift`
-- **No local database**: Articles are fetched from the server on demand. Local caching may be added later.
-- **Swift 6**: Strict concurrency with `@MainActor` annotations throughout
-- **Platform**: iOS 26.0+ (iPhone and iPad)
 
-### Yana Server API Reference
+- **No server:** all content is aggregated on-device. There is no login.
+- **SwiftData source of truth:** views read via `@Query`; `AggregationService` writes.
+- **Pluggable aggregators:** each content source is an `Aggregator` keyed by `AggregatorType`.
+- **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum, not a JSON blob.
+- **Swift 6:** strict concurrency with `@MainActor` annotations throughout.
+- **Platform:** iOS 26.0+ (iPhone and iPad).
 
-The app communicates with a Yana server instance via these Google Reader API endpoints:
+### Aggregator types
 
-**Authentication:**
-- `POST /api/greader/accounts/ClientLogin` — email + password → returns auth token
-- `GET /api/greader/reader/api/0/token` — get action token for write operations
-- `GET /api/greader/reader/api/0/user-info` — get authenticated user info
-
-**Feeds & Groups:**
-- `GET /api/greader/reader/api/0/subscription/list` — list all feeds with metadata
-- `POST /api/greader/reader/api/0/subscription/edit` — add/remove/rename feeds
-- `POST /api/greader/reader/api/0/subscription/quickadd` — quick-add feed by URL
-- `GET /api/greader/reader/api/0/tag/list` — list all feed groups/labels
-
-**Articles:**
-- `GET /api/greader/reader/api/0/unread-count` — unread counts per feed
-- `GET /api/greader/reader/api/0/stream/items/ids` — get article IDs (paginated)
-- `POST /api/greader/reader/api/0/stream/items/contents` — get full article content
-- `POST /api/greader/reader/api/0/edit-tag` — mark articles read/starred
-- `POST /api/greader/reader/api/0/mark-all-as-read` — mark entire feed as read
-
-**Auth header:** `Authorization: GoogleLogin auth=<TOKEN>`
-
-**ID formats:**
-- Stream ID: `feed/{id}`, `user/-/label/{name}`, `user/-/state/com.google/starred`
-- Item ID: `tag:google.com,2005:reader/item/{16-hex-digits}`
+`AggregatorType` mirrors the Yana server's aggregators: `fullWebsite`, `feedContent`
+(RSS/Atom), the managed scrapers (`heise`, `merkur`, `tagesschau`, `explosm`, `darkLegacy`,
+`caschysBlog`, `mactechnews`, `oglaf`, `meinMmo`), and the social/media sources (`youtube`,
+`reddit`, `podcast`). Reddit and YouTube require user-supplied API keys (stored in Keychain).
 
 ### Tests
 - `YanaTests/` — unit tests using Swift Testing framework (`import Testing`)
@@ -90,22 +78,22 @@ The app communicates with a Yana server instance via these Google Reader API end
 ## Planned Features
 
 ### Core (MVP)
-1. **Server connection** — configure server URL, authenticate with email/password
-2. **Feed list** — show all subscriptions grouped by label/folder
-3. **Article list** — show articles for a feed or group, with unread counts
-4. **Article detail** — render article HTML content in a reader view
-5. **Read/Unread** — mark articles as read, mark all as read
-6. **Starred articles** — star/unstar articles, view starred list
-7. **Pull-to-refresh** — refresh feed content from server
-8. **Background refresh** — periodic background fetch of new articles
+1. **Feed configuration** — create/edit/delete feeds and groups, choose an aggregator type, set per-feed options
+2. **Local aggregation** — fetch & parse feeds on-device, store articles in SwiftData
+3. **Article list** — list all articles, filter by feed/group and read/unread/starred
+4. **Article detail** — render article HTML content in the swipe reader
+5. **Read/Unread & Starred** — mark articles read/starred locally
+6. **Force update** — update all feeds, a single feed, or a single article on demand
+7. **Background refresh** — best-effort periodic aggregation via BGAppRefreshTask
+8. **AI post-processing** — optional summarize / improve / translate per feed
 
 ### Enhanced
 9. **Search** — search across articles
 10. **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
-11. **Multiple servers** — support connecting to multiple Yana instances
+11. **Multiple libraries** — support multiple independent local feed libraries/profiles
 12. **Offline reading** — cache articles locally for offline access
 13. **Feed management** — add/remove/rename feeds and groups from the app
 14. **Share extension** — share URLs to add as feeds
 15. **iPad layout** — multi-column NavigationSplitView for iPad
 16. **Widgets** — home screen widgets showing unread counts
-17. **Notifications** — push notifications for new articles (if server supports it)
+17. **Notifications** — local notifications for new articles after a background refresh
