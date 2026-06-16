@@ -33,8 +33,12 @@ final class AggregationService {
 
     /// Build the `AIConfig` snapshot from settings + Keychain. Returns a `.none`-provider
     /// config when AI is off; the processor then no-ops. Per-provider model + key are read
-    /// from the dedicated AppSettings properties and the matching Keychain item.
-    static func makeAIConfig(settings: AppSettings) -> AIConfig {
+    /// from the dedicated AppSettings properties and the matching Keychain item. `loadKey`
+    /// is injectable so tests stay hermetic (no real Keychain access).
+    static func makeAIConfig(
+        settings: AppSettings,
+        loadKey: (KeychainService.APIKeyItem) -> String? = { KeychainService.loadAPIKey(for: $0) }
+    ) -> AIConfig {
         let provider = settings.activeAIProvider
         let model: String
         let keyItem: KeychainService.APIKeyItem?
@@ -52,7 +56,7 @@ final class AggregationService {
             model = settings.geminiModel
             keyItem = .geminiAPIKey
         }
-        let key = keyItem.flatMap { KeychainService.loadAPIKey(for: $0) } ?? ""
+        let key = keyItem.flatMap(loadKey) ?? ""
         return AIConfig(
             provider: provider,
             model: model,
