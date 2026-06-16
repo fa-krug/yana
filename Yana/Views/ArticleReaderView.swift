@@ -12,6 +12,7 @@ struct ArticleReaderView: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var viewWidth: CGFloat = 0
+    @State private var didRestoreAnchor = false
     @State private var shareURL: URL?
     @State private var isShowingShare = false
 
@@ -83,14 +84,23 @@ struct ArticleReaderView: View {
             }
             .onAppear { restoreAnchor() }
             .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
-            .onChange(of: allArticles) { _, _ in clampIndex() }
+            .onChange(of: allArticles) { _, _ in
+                if didRestoreAnchor {
+                    clampIndex()
+                } else {
+                    restoreAnchor()
+                }
+            }
         }
     }
 
     // MARK: - Anchor (position memory)
 
     private func restoreAnchor() {
-        appState.currentIndex = TimelineAnchor.index(for: settings.timelineAnchorIdentifier, in: filteredArticles)
+        let articles = filteredArticles
+        guard !articles.isEmpty, !didRestoreAnchor else { return }
+        appState.currentIndex = TimelineAnchor.index(for: settings.timelineAnchorIdentifier, in: articles)
+        didRestoreAnchor = true
     }
 
     private func saveAnchor() {
