@@ -33,4 +33,11 @@ final class BackgroundRefreshManager {
         let clamped = interval > 0 ? interval : minimumInterval
         return reference.addingTimeInterval(clamped)
     }
+
+    /// The work performed for one background run, isolated from `BGTask` so it can be
+    /// unit-tested against an in-memory `AggregationService`. Errors are swallowed by the
+    /// caller (`handle(task:)`) — a failed background run must never crash the app.
+    static func runRefresh(service: AggregationService) async {
+        await service.updateAll()
+    }
 }
