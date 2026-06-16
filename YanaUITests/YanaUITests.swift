@@ -10,7 +10,9 @@ final class YanaUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         // The app opens directly into the reader. With no feeds configured yet, the reader
-        // shows its empty-state ContentUnavailableView ("No Articles").
-        XCTAssertTrue(app.staticTexts["No Articles"].waitForExistence(timeout: 5))
+        // shows its empty-state ContentUnavailableView. Assert on a stable accessibility
+        // identifier rather than the visible title, which is localized (e.g. "Keine Artikel"
+        // on a German-locale simulator).
+        XCTAssertTrue(app.staticTexts["emptyArticlesTitle"].waitForExistence(timeout: 5))
     }
 }

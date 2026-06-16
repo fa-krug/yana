@@ -44,6 +44,7 @@ struct ArticleReaderView: View {
                 } else {
                     ContentUnavailableView {
                         Label("No Articles", systemImage: "tray")
+                            .accessibilityIdentifier("emptyArticlesTitle")
                     } description: {
                         Text("Add feeds in Configuration, then pull down to refresh.")
                     } actions: {
