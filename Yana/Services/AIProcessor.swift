@@ -42,6 +42,7 @@ struct AIProcessor: AIProcessing {
 
         var output: [AggregatedArticle] = []
         for (i, article) in input.enumerated() {
+            if Task.isCancelled { break }   // background run expired — stop making network calls
             if i > 0, requestDelay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(requestDelay) * 1_000_000_000)
             }
