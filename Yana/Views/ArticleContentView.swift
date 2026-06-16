@@ -42,21 +42,22 @@ struct ArticleContentView: View {
     }
 
     private var bottomBar: some View {
-        HStack {
-            Spacer()
-            if let url = URL(string: article.url) {
-                Button { openURL(url) } label: {
-                    Label("Open in Browser", systemImage: "safari")
-                }
-                Button { shareURL = url; isShowingShare = true } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                Spacer()
+                if let url = URL(string: article.url) {
+                    Button { openURL(url) } label: {
+                        Label("Open in Browser", systemImage: "safari")
+                    }
+                    Button { shareURL = url; isShowingShare = true } label: {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glass)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
         }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.bordered)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.bar)
     }
 }
