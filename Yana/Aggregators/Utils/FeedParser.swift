@@ -61,10 +61,11 @@ private final class FeedXMLDelegate: NSObject, XMLParserDelegate {
             inItem = true
             current = FeedEntry()
         } else if inItem, lower == "link", let href = attrs["href"], !href.isEmpty {
-            current?.link = href                      // Atom <link href=...>
+            let rel = attrs["rel"] ?? "alternate"     // Atom: absent rel means "alternate"
+            if rel == "alternate" { current?.link = href }   // ignore self/enclosure/etc.
         } else if inItem, lower == "enclosure", let url = attrs["url"] {
             current?.enclosures.append(FeedEnclosure(url: url, type: attrs["type"]))
-        } else if inItem, lower.hasSuffix("itunes:image") || lower == "itunes:image", let href = attrs["href"] {
+        } else if inItem, lower == "itunes:image", let href = attrs["href"] {
             current?.itunesImage = href
         } else if inItem, lower == "media:thumbnail", let url = attrs["url"] {
             current?.mediaThumbnails.append(url)

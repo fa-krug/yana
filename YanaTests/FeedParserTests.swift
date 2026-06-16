@@ -58,4 +58,23 @@ struct FeedParserTests {
         #expect(entry.content?.contains("Atom body") == true)
         #expect(entry.published != nil)
     }
+
+    private let atomMultiLink = """
+    <?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+      <entry>
+        <title>Multi</title>
+        <link rel="alternate" href="https://ex.com/article"/>
+        <link rel="self" href="https://ex.com/feed.xml"/>
+        <updated>2003-12-13T18:30:02Z</updated>
+        <content type="html">body</content>
+      </entry>
+    </feed>
+    """
+
+    @Test func atomPrefersAlternateLinkOverSelf() throws {
+        let feed = try FeedParser.parse(Data(atomMultiLink.utf8))
+        let entry = try #require(feed.entries.first)
+        #expect(entry.link == "https://ex.com/article")
+    }
 }
