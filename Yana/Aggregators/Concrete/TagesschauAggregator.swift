@@ -94,8 +94,10 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
             return article
         } catch let error as AggregatorError {
             if case .articleSkip = error { throw error }
+            article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
             return article
         } catch {
+            article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
             return article
         }
     }
@@ -131,6 +133,8 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     // MARK: - Media header (div[data-v-type=MediaPlayer])
 
+    // Streams-only: builds the header from MediaPlayer stream JSON. The Python `sharing@web.embedCode`
+    // and DOM-image fallbacks are intentionally not ported (omission is deliberate, not a bug).
     static func extractMediaHeader(_ html: String) throws -> String? {
         let doc = try HTMLUtils.parse(html)
         var players = try doc.select("div[data-v-type=MediaPlayer]").array().filter {
