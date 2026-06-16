@@ -12,8 +12,12 @@ enum ArticleUpsert {
         context: ModelContext,
         now: Date
     ) {
+        // Build the dedup index once (O(n)) instead of scanning the relationship per item.
+        var byIdentifier: [String: Article] = [:]
+        for article in feed.articles { byIdentifier[article.identifier] = article }
+
         for item in aggregated {
-            if let existing = feed.articles.first(where: { $0.identifier == item.identifier }) {
+            if let existing = byIdentifier[item.identifier] {
                 // Update: refresh content; re-snapshot feed tags; preserve Starred.
                 let wasStarred = existing.isStarred
                 existing.title = item.title
@@ -44,6 +48,8 @@ enum ArticleUpsert {
                 article.feed = feed
                 context.insert(article)
                 article.tags = feed.tags
+                // Track it so a duplicate identifier later in the same batch updates, not re-inserts.
+                byIdentifier[item.identifier] = article
             }
         }
     }
