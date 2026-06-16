@@ -62,4 +62,42 @@ enum OPMLCodec {
             .replacingOccurrences(of: "\"", with: "&quot;")
             .replacingOccurrences(of: "'", with: "&apos;")
     }
+
+    // MARK: Decode
+
+    static func decode(_ xml: String) -> [OPMLFeed] {
+        guard let data = xml.data(using: .utf8) else { return [] }
+        let parser = XMLParser(data: data)
+        let delegate = OutlineCollector()
+        parser.delegate = delegate
+        guard parser.parse() else { return [] }
+        return delegate.feeds
+    }
+}
+
+/// Collects every `<outline>` that carries an `xmlUrl` into an `OPMLFeed`. Folder outlines
+/// (no `xmlUrl`) are ignored; nested feed outlines are flattened.
+private final class OutlineCollector: NSObject, XMLParserDelegate {
+    var feeds: [OPMLFeed] = []
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?,
+                attributes attributeDict: [String: String]) {
+        guard elementName == "outline" else { return }
+        guard let xmlUrl = attributeDict["xmlUrl"], !xmlUrl.isEmpty else { return }
+        let name = attributeDict["text"] ?? attributeDict["title"] ?? xmlUrl
+        let tagsRaw = attributeDict["yana:tags"] ?? ""
+        let tags = tagsRaw.isEmpty ? [] : tagsRaw.split(separator: ",").map { String($0) }
+        let dailyLimit = attributeDict["yana:dailyLimit"].flatMap { Int($0) }
+        let enabled = attributeDict["yana:enabled"].map { $0 == "true" }
+        feeds.append(OPMLFeed(
+            name: name,
+            identifier: xmlUrl,
+            aggregatorType: attributeDict["yana:aggregatorType"],
+            optionsJSONBase64: attributeDict["yana:options"] ?? "",
+            tags: tags,
+            dailyLimit: dailyLimit,
+            enabled: enabled
+        ))
+    }
 }
