@@ -8,6 +8,7 @@ enum RedditMarkdown {
     static func toHTML(_ text: String) -> String {
         guard !text.isEmpty else { return "" }
         var t = String(text.prefix(100_000))     // DoS guard (server: 100KB)
+        t = escape(t)          // escape user-generated text before emitting any HTML tags
 
         t = replacePreviewImages(t)
         t = applyInline(t)                        // superscript / strikethrough / spoiler
@@ -21,7 +22,7 @@ enum RedditMarkdown {
         var t = text
         // markdown link to preview image -> <img>
         t = regexReplace(t, #"\[([^\]]{0,200})\]\((https?://preview\.redd\.it/[^\s)]{1,500})\)"#) { groups in
-            let alt = groups[1].isEmpty ? "Reddit preview image" : escape(groups[1])
+            let alt = groups[1].isEmpty ? "Reddit preview image" : groups[1]
             return "<img src=\"\(decodeEntities(groups[2]))\" alt=\"\(alt)\">"
         }
         // bare preview image url -> <img> (not already inside a markdown link)
@@ -38,7 +39,7 @@ enum RedditMarkdown {
         t = regexReplace(t, #"\^\(([^)]+)\)"#) { "<sup>\($0[1])</sup>" }
         t = regexReplace(t, #"\^(\w+)"#) { "<sup>\($0[1])</sup>" }
         t = regexReplace(t, #"~~(.+?)~~"#) { "<del>\($0[1])</del>" }
-        t = regexReplace(t, #">!(.+?)!<"#) {
+        t = regexReplace(t, #"&gt;!(.+?)!&lt;"#) {
             "<span class=\"spoiler\" style=\"background: #000; color: #000;\">\($0[1])</span>"
         }
         return t
@@ -56,9 +57,9 @@ enum RedditMarkdown {
         var out: [String] = []
         for block in blocks {
             let lines = block.components(separatedBy: "\n")
-            if lines.allSatisfy({ $0.hasPrefix("> ") || $0 == ">" }) {
+            if lines.allSatisfy({ $0.hasPrefix("&gt; ") || $0 == "&gt;" }) {
                 let inner = lines.map { line in
-                    emphasisAndLinks(String(line.dropFirst(line.hasPrefix("> ") ? 2 : 1)))
+                    emphasisAndLinks(String(line.dropFirst(line.hasPrefix("&gt; ") ? 5 : 4)))
                 }.joined(separator: "<br>")
                 out.append("<blockquote><p>\(inner)</p></blockquote>")
             } else if lines.allSatisfy({ isUnorderedItem($0) }) {
@@ -129,9 +130,7 @@ enum RedditMarkdown {
     }
 
     static func decodeEntities(_ s: String) -> String {
-        var d = s.replacingOccurrences(of: "&amp;", with: "&")
-        if d.contains("&") { d = d.replacingOccurrences(of: "&amp;", with: "&") }
-        return d
+        return s.replacingOccurrences(of: "&amp;", with: "&")
     }
 
     /// Regex replace with a closure receiving capture groups (group 0 = whole match).

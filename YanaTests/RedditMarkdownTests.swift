@@ -56,4 +56,26 @@ struct RedditMarkdownTests {
         #expect(html.contains("<img"))
         #expect(html.contains("preview.redd.it/abc.png"))
     }
+
+    @Test func escapesRawHTMLInBody() {
+        let html = RedditMarkdown.toHTML("Hello <script>alert(1)</script> world")
+        #expect(html.contains("&lt;script&gt;"))
+        #expect(!html.contains("<script>"))
+    }
+
+    @Test func escapesEventHandlerInjection() {
+        let html = RedditMarkdown.toHTML("text <img src=x onerror=alert(1)>")
+        #expect(!html.contains("<img src=x onerror"))   // raw tag neutralized
+        #expect(html.contains("&lt;img"))
+    }
+
+    @Test func escapingDoesNotBreakMarkdownStructure() {
+        // blockquote, spoiler, bold, and a link all still work through the escaped path
+        #expect(RedditMarkdown.toHTML("> quoted").contains("<blockquote>"))
+        #expect(RedditMarkdown.toHTML(">!secret!<").contains("class=\"spoiler\""))
+        #expect(RedditMarkdown.toHTML("**bold**").contains("<strong>bold</strong>"))
+        let link = RedditMarkdown.toHTML("[docs](https://e.com/x)")
+        #expect(link.contains("href=\"https://e.com/x\""))
+        #expect(link.contains(">docs</a>"))
+    }
 }
