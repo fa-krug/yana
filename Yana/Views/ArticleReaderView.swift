@@ -46,6 +46,11 @@ struct ArticleReaderView: View {
                         Label("No Articles", systemImage: "tray")
                     } description: {
                         Text("Add feeds in Configuration, then pull down to refresh.")
+                    } actions: {
+                        Button(String(localized: "Add Your First Feed")) {
+                            appState.showSettings = true
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                 }
             }
