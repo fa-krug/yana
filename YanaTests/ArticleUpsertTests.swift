@@ -52,4 +52,19 @@ struct ArticleUpsertTests {
         #expect(article.tags.contains { $0.name == "News" })
         #expect(article.createdAt == originalCreatedAt)    // timeline position preserved
     }
+
+    @Test func returnsCountOfNewlyInsertedOnly() throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "f")
+        context.insert(feed)
+
+        // First import: both are new.
+        let firstCount = ArticleUpsert.apply([aggregated("x1"), aggregated("x2")], to: feed, starredTag: nil, context: context, now: .now)
+        #expect(firstCount == 2)
+
+        // Re-import x1 (update) + x3 (new) → only 1 newly inserted.
+        let secondCount = ArticleUpsert.apply([aggregated("x1"), aggregated("x3")], to: feed, starredTag: nil, context: context, now: .now)
+        #expect(secondCount == 1)
+        #expect(feed.articles.count == 3)
+    }
 }
