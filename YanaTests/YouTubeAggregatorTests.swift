@@ -52,7 +52,7 @@ struct YouTubeAggregatorTests {
         #expect(a.content.contains("Line1<br>Line2"))
         #expect(a.content.contains("Nice video"))
         #expect(a.content.contains("<strong>viewer</strong>"))
-        #expect(a.content.contains("Source:"))
+        #expect(!a.content.contains("Source:"))                         // source link lives in the toolbar now
         #expect(a.author == "@mychan")                                  // customURL preferred over title
         #expect(a.iconURL == "https://img/m.jpg")                       // per-video thumbnail
         #expect(a.content.contains("youtube-comments"))                 // comments wrapper class

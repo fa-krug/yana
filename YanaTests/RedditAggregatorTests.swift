@@ -64,7 +64,7 @@ struct RedditAggregatorTests {
         #expect(a.content.contains("Great post"))                 // comment body
         #expect(a.content.contains("<blockquote"))                // comment markup
         #expect(a.content.contains("<strong>bob</strong>"))       // comment author
-        #expect(a.content.contains("Source:"))                    // formatArticleContent footer
+        #expect(!a.content.contains("Source:"))                   // source link lives in the toolbar now
         #expect(a.identifier == "https://reddit.com/r/swift/comments/p1/hello/")
     }
 

@@ -39,7 +39,7 @@ struct ComicAggregatorTests {
         #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))     // image localized
         #expect(!a.content.contains("static.explosm.net"))             // no remote URL
         #expect(a.content.contains("The joke"))                         // alt caption shown
-        #expect(a.content.contains("Source:"))                          // footer
+        #expect(!a.content.contains("Source:"))                         // source link lives in the toolbar now
     }
 
     final class StubDarkLegacy: DarkLegacyAggregator, @unchecked Sendable {

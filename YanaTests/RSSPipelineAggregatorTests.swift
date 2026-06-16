@@ -38,7 +38,7 @@ struct RSSPipelineAggregatorTests {
         #expect(a.identifier == "https://x.com/1")
         #expect(a.content.contains("Body"))
         #expect(a.content.contains("article-content"))      // wrapped
-        #expect(a.content.contains("Source:"))               // footer
+        #expect(!a.content.contains("Source:"))              // source link lives in the toolbar now
     }
 
     @Test func emptyIdentifierFailsValidation() async {

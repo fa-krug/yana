@@ -1,7 +1,7 @@
 import Foundation
 
-/// Wraps article content in the server's exact shape: optional header, content section,
-/// optional comments section, source footer (content_formatter.py parity).
+/// Wraps article content: optional header, content section, optional comments section.
+/// The source link is exposed via the reader's toolbar rather than appended to the body.
 enum ContentFormatter {
     /// Escape text for safe inclusion in HTML element text and double-quoted attributes.
     /// Order matters: `&` first so later replacements aren't double-escaped.
@@ -19,8 +19,6 @@ enum ContentFormatter {
         if let commentsHTML, !commentsHTML.isEmpty {
             parts.append("<section data-sanitized-class=\"article-comments\">\(commentsHTML)</section>")
         }
-        let escapedURL = escapeHTML(url)
-        parts.append("<footer><p>Source: <a href=\"\(escapedURL)\" target=\"_blank\" rel=\"noopener\">\(escapedURL)</a></p></footer>")
         return parts.joined(separator: "\n\n")
     }
 
