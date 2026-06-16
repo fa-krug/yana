@@ -4,6 +4,7 @@ import SwiftData
 /// Inserts or updates `Article`s from aggregated results, deduping by `(feed, identifier)`.
 /// Tags are snapshotted from the feed at import; the user's Starred tag survives re-imports.
 enum ArticleUpsert {
+    @discardableResult
     @MainActor
     static func apply(
         _ aggregated: [AggregatedArticle],
@@ -11,9 +12,14 @@ enum ArticleUpsert {
         starredTag: Tag?,
         context: ModelContext,
         now: Date
-    ) {
+    ) -> Int {
+        // Build the dedup index once (O(n)) instead of scanning the relationship per item.
+        var byIdentifier: [String: Article] = [:]
+        for article in feed.articles { byIdentifier[article.identifier] = article }
+
+        var inserted = 0
         for item in aggregated {
-            if let existing = feed.articles.first(where: { $0.identifier == item.identifier }) {
+            if let existing = byIdentifier[item.identifier] {
                 // Update: refresh content; re-snapshot feed tags; preserve Starred.
                 let wasStarred = existing.isStarred
                 existing.title = item.title
@@ -44,7 +50,11 @@ enum ArticleUpsert {
                 article.feed = feed
                 context.insert(article)
                 article.tags = feed.tags
+                // Track it so a duplicate identifier later in the same batch updates, not re-inserts.
+                byIdentifier[item.identifier] = article
+                inserted += 1
             }
         }
+        return inserted
     }
 }

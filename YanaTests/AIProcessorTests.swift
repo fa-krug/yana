@@ -180,4 +180,15 @@ struct AIProcessorTests {
 
         #expect(out.map { $0.title } == ["A", "C"])    // middle one dropped
     }
+
+    @Test func truncatesOversizedContent() {
+        let long = String(repeating: "a", count: AIProcessor.maxContentChars + 500)
+        let capped = AIProcessor.cap(long)
+        #expect(capped.count == AIProcessor.maxContentChars)
+    }
+
+    @Test func leavesSmallContentUnchanged() {
+        let short = "short body"
+        #expect(AIProcessor.cap(short) == short)
+    }
 }

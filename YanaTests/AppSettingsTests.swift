@@ -64,4 +64,16 @@ struct AppSettingsTests {
         #expect(reloaded.anthropicModel == "claude-sonnet-4-6")
         #expect(reloaded.redditEnabled == true)
     }
+
+    @Test func notificationsDisabledByDefault() {
+        let s = AppSettings(defaults: freshDefaults())
+        #expect(s.notificationsEnabled == false)
+    }
+
+    @Test func notificationsEnabledPersists() {
+        let defaults = freshDefaults()
+        let s = AppSettings(defaults: defaults)
+        s.notificationsEnabled = true
+        #expect(AppSettings(defaults: defaults).notificationsEnabled == true)
+    }
 }

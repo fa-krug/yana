@@ -35,10 +35,24 @@ final class BackgroundRefreshManager {
     }
 
     /// The work performed for one background run, isolated from `BGTask` so it can be
-    /// unit-tested against an in-memory `AggregationService`. Errors are swallowed by the
-    /// caller (`handle(task:)`) — a failed background run must never crash the app.
-    static func runRefresh(service: AggregationService) async {
-        await service.updateAll()
+    /// unit-tested. Runs the aggregation, then posts a "new articles" notification when the
+    /// user has opted in, the system authorized it, and the run imported at least one article.
+    /// Errors are swallowed by the caller — a failed background run must never crash the app.
+    @MainActor
+    static func runRefresh(
+        service: AggregationService,
+        notifier: Notifying = NotificationService(),
+        settings: AppSettings = AppSettings()
+    ) async {
+        let inserted = await service.updateAll()
+        guard settings.notificationsEnabled, inserted > 0 else { return }
+        let authorized = await notifier.isAuthorized()
+        guard NewArticleNotification.shouldNotify(
+            enabled: settings.notificationsEnabled,
+            authorized: authorized,
+            insertedCount: inserted
+        ) else { return }
+        await notifier.postNewArticles(count: inserted)
     }
 
     /// Register the launch handler. MUST be called before the app finishes launching
@@ -76,7 +90,8 @@ final class BackgroundRefreshManager {
             task.setTaskCompleted(success: true)
         }
 
-        // Honour the system's expiration: cancel the run and mark it incomplete.
+        // Set BEFORE the work can be pre-empted: if the system expires the task immediately,
+        // the handler is already wired to cancel the run.
         task.expirationHandler = {
             work.cancel()
             task.setTaskCompleted(success: false)

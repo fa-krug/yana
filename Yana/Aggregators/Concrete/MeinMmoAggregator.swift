@@ -213,6 +213,10 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     }
 
     private func parse(_ html: String) -> Element {
-        (try? SwiftSoup.parseBodyFragment(html).body()?.child(0)) ?? (try! SwiftSoup.parse("<span></span>").body()!.child(0))
+        if let parsed = try? SwiftSoup.parseBodyFragment(html).body()?.child(0) {
+            return parsed
+        }
+        // Detached empty element — no throwing, no force-unwrap.
+        return Element(SwiftSoup.Tag("span"), "")
     }
 }

@@ -18,6 +18,11 @@ struct ConfigHubView: View {
                     Label("Tags", systemImage: "tag")
                 }
                 NavigationLink {
+                    ArticleListView()
+                } label: {
+                    Label("Articles", systemImage: "magnifyingglass")
+                }
+                NavigationLink {
                     SettingsScreenView()
                 } label: {
                     Label("Settings", systemImage: "gearshape")

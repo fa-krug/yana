@@ -15,4 +15,17 @@ struct ContentFormatterTests {
         #expect(out.contains("<header>H</header>"))
         #expect(out.contains("data-sanitized-class=\"article-comments\""))
     }
+
+    @Test func escapesUnsafeURLCharacters() {
+        let out = ContentFormatter.format(
+            content: "<p>x</p>",
+            title: "t",
+            url: "https://e.com/?a=1&b=<script>",
+            headerHTML: nil,
+            commentsHTML: nil
+        )
+        #expect(!out.contains("<script>"))
+        #expect(out.contains("&amp;"))
+        #expect(out.contains("&lt;script&gt;"))
+    }
 }

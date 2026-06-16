@@ -8,13 +8,16 @@ enum HTMLUtils {
     static func bodyHTML(_ doc: Document) throws -> String { try doc.body()?.html() ?? doc.html() }
 
     static func removeComments(_ doc: Document) throws {
-        // SwiftSoup exposes comments as Comment nodes; walk and remove.
-        let nodes = try doc.getAllElements()
-        for el in nodes {
-            for child in el.getChildNodes() where child is Comment {
-                try child.remove()
+        // Single recursive walk collecting Comment nodes, then remove them — avoids the
+        // O(n^2) getAllElements()-then-children pass.
+        var comments: [Node] = []
+        func walk(_ node: Node) {
+            for child in node.getChildNodes() {
+                if child is Comment { comments.append(child) } else { walk(child) }
             }
         }
+        walk(doc)
+        for c in comments { try c.remove() }
     }
 
     static func sanitizeClassNames(_ doc: Document) throws {
@@ -61,12 +64,21 @@ enum HTMLUtils {
 
     // MARK: - Filename helpers (mirror server _get_base_filename)
 
+    private static let dimensionSuffix = try? NSRegularExpression(pattern: #"(?:-\d+x\d+|-\d+)+$"#)
+    private static let hashSuffix = try? NSRegularExpression(pattern: #"-[a-zA-Z0-9]{3,6}$"#)
+
     private static func baseFilename(_ url: String) -> String {
         var name = (url as NSString).lastPathComponent
         if let dot = name.lastIndex(of: ".") { name = String(name[..<dot]) }
-        name = name.replacingOccurrences(of: #"(?:-\d+x\d+|-\d+)+$"#, with: "", options: .regularExpression)
-        name = name.replacingOccurrences(of: #"-[a-zA-Z0-9]{3,6}$"#, with: "", options: .regularExpression)
+        name = strip(dimensionSuffix, from: name)
+        name = strip(hashSuffix, from: name)
         return name
+    }
+
+    private static func strip(_ regex: NSRegularExpression?, from s: String) -> String {
+        guard let regex else { return s }
+        let range = NSRange(s.startIndex..<s.endIndex, in: s)
+        return regex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
     }
 
     private static func firstNonEmpty(_ el: Element, _ attrs: [String]) throws -> String? {

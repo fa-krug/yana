@@ -54,4 +54,60 @@ struct BackgroundRefreshManagerTests {
         #expect(service.isUpdating == false)
         #expect(feed.articles.count == 1)
     }
+
+    private final class FakeNotifier: Notifying, @unchecked Sendable {
+        var authorized: Bool
+        var postedCounts: [Int] = []
+        init(authorized: Bool) { self.authorized = authorized }
+        func requestAuthorization() async -> Bool { authorized }
+        func isAuthorized() async -> Bool { authorized }
+        func postNewArticles(count: Int) async { postedCounts.append(count) }
+    }
+
+    private func freshSettings(notificationsEnabled: Bool) -> AppSettings {
+        let defaults = UserDefaults(suiteName: "BGRefreshTests.\(UUID().uuidString)")!
+        let s = AppSettings(defaults: defaults)
+        s.notificationsEnabled = notificationsEnabled
+        return s
+    }
+
+    @Test func postsNotificationWhenEnabledAuthorizedAndNewArticles() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = AggregatedArticle(title: "x1", identifier: "x1", url: "x1", rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
+        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: [article]) }
+        let notifier = FakeNotifier(authorized: true)
+
+        await BackgroundRefreshManager.runRefresh(service: service, notifier: notifier, settings: freshSettings(notificationsEnabled: true))
+
+        #expect(notifier.postedCounts == [1])
+    }
+
+    @Test func doesNotNotifyWhenDisabled() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = AggregatedArticle(title: "x1", identifier: "x1", url: "x1", rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
+        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: [article]) }
+        let notifier = FakeNotifier(authorized: true)
+
+        await BackgroundRefreshManager.runRefresh(service: service, notifier: notifier, settings: freshSettings(notificationsEnabled: false))
+
+        #expect(notifier.postedCounts.isEmpty)
+        #expect(feed.articles.count == 1)
+    }
+
+    @Test func doesNotNotifyWhenNotAuthorized() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = AggregatedArticle(title: "x1", identifier: "x1", url: "x1", rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
+        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: [article]) }
+        let notifier = FakeNotifier(authorized: false)
+
+        await BackgroundRefreshManager.runRefresh(service: service, notifier: notifier, settings: freshSettings(notificationsEnabled: true))
+
+        #expect(notifier.postedCounts.isEmpty)
+    }
 }

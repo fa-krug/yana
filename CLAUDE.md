@@ -31,16 +31,25 @@ designed for privacy-conscious users who want their feeds without any backend.
 - **Models** (`Yana/Models/`): SwiftData `@Model` classes — `Feed`, `Tag`, `Article` —
   plus the typed `AggregatorOptions` enum and the `AppSettings` preferences store.
 - **Aggregators** (`Yana/Aggregators/`): the pluggable aggregation system — `AggregatorType`
-  (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO, and
-  `AggregatorRegistry`. Concrete aggregators are added incrementally.
+  (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO,
+  `AggregatorRegistry`, and `ArticleSearch` (pure case/diacritic-insensitive matcher over
+  title/content/author/feed name). Concrete aggregators are added incrementally.
 - **Services** (`Yana/Services/`): `AggregationService` (orchestrates feed updates and
-  upserts into SwiftData), `KeychainService` (stores aggregator API keys), the AI
+  upserts into SwiftData; `updateAll()`/`update(feed:)` return the count of newly inserted
+  articles), `KeychainService` (stores aggregator API keys), the AI
   post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini JSON-mode calls) and
   `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert) —
-  and `BackgroundRefreshManager` (best-effort periodic `BGAppRefreshTask`: registers at launch,
-  reschedules at `AppSettings.backgroundInterval`, runs `updateAll()` in the handler).
+  `BackgroundRefreshManager` (best-effort periodic `BGAppRefreshTask`: registers at launch,
+  reschedules at `AppSettings.backgroundInterval`, runs `updateAll()` in the handler, then posts
+  a new-article notification when enabled), `NotificationService` (`Notifying` protocol +
+  `NewArticleNotification` gating; opt-in, off by default), and the OPML pair — `OPMLCodec`
+  (pure standard-OPML encode/decode with `yana:` extension attributes) and `FeedPortability`
+  (`Feed` ↔ OPML mapping: restores type/options/tags, falls back to `feedContent` for foreign
+  OPML, dedupes by identifier+type).
 - **Views** (`Yana/Views/`): the swipe-through `ArticleReaderView` (the endless-timeline home
-  surface) and the configuration hub (feeds, tags, settings).
+  surface; renders the body via the shared `ArticleContentView`) and the configuration hub
+  (feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`,
+  and settings).
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
@@ -105,11 +114,12 @@ designed for privacy-conscious users who want their feeds without any backend.
 11. **AI post-processing** — optional summarize / improve / translate per feed
 
 ### Enhanced
-- **Search** — search across articles
+- **Search** ✅ — search across articles (title/content/author/feed name) via the config hub's `ArticleListView`
+- **OPML import/export** ✅ — standard OPML with `yana:` extension attributes for full-fidelity round-trip, from the Feeds screen
+- **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background refresh
 - **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
 - **Multiple libraries** — support multiple independent local feed libraries/profiles
 - **Offline reading** — cache articles locally for offline access
 - **Share extension** — share URLs to add as feeds
 - **iPad layout** — multi-column NavigationSplitView for iPad
 - **Widgets** — home screen widgets
-- **Notifications** — local notifications for new articles after a background refresh

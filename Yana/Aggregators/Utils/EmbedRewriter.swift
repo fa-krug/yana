@@ -4,21 +4,23 @@ import SwiftSoup
 /// Rewrites in-content video embeds to the exact markup the server's proxy served
 /// (core/views/default.py), but pointing directly at the provider (no server hop).
 enum EmbedRewriter {
-    static func extractYouTubeID(from url: String) -> String? {
-        let patterns = [
+    // Compiled once and reused instead of recompiling 5 patterns per call.
+    private static let youTubePatterns: [NSRegularExpression] = {
+        [
             #"youtu\.be/([A-Za-z0-9_-]{11,})"#,
             #"youtube\.com/watch\?\S*?[?&]?v=([A-Za-z0-9_-]{11,})"#,
             #"youtube\.com/embed/([A-Za-z0-9_-]{11,})"#,
             #"youtube\.com/v/([A-Za-z0-9_-]{11,})"#,
             #"youtube\.com/shorts/([A-Za-z0-9_-]{11,})"#,
-        ]
-        for p in patterns {
-            if let r = url.range(of: p, options: .regularExpression) {
-                let match = String(url[r])
-                if let idRange = match.range(of: #"[A-Za-z0-9_-]{11,}$"#, options: .regularExpression) {
-                    return String(match[idRange])
-                }
-            }
+        ].compactMap { try? NSRegularExpression(pattern: $0) }
+    }()
+
+    static func extractYouTubeID(from url: String) -> String? {
+        let range = NSRange(url.startIndex..<url.endIndex, in: url)
+        for regex in youTubePatterns {
+            guard let match = regex.firstMatch(in: url, range: range), match.numberOfRanges >= 2,
+                  let captured = Range(match.range(at: 1), in: url) else { continue }
+            return String(url[captured])
         }
         return nil
     }

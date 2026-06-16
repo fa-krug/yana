@@ -5,6 +5,7 @@ import SwiftUI
 /// `AppSettings` (UserDefaults).
 struct SettingsScreenView: View {
     @State private var settings = AppSettings()
+    @State private var showNotificationDeniedAlert = false
 
     // Keychain-backed secrets (loaded onAppear, written on change).
     @State private var redditClientID = ""
@@ -18,12 +19,18 @@ struct SettingsScreenView: View {
         Form {
             redditSection
             youtubeSection
+            notificationsSection
             aiProviderSection
             aiKnobsSection
             librarySection
         }
         .navigationTitle("Settings")
         .onAppear(perform: loadSecrets)
+        .alert("Notifications Disabled", isPresented: $showNotificationDeniedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Enable notifications for Yana in the Settings app to get alerts about new articles.")
+        }
     }
 
     // MARK: Sources
@@ -45,6 +52,27 @@ struct SettingsScreenView: View {
             Toggle("Enabled", isOn: $settings.youtubeEnabled)
             SecureField("API Key", text: $youtubeKey)
                 .onChange(of: youtubeKey) { _, v in KeychainService.saveAPIKey(v, for: .youtubeAPIKey) }
+        }
+    }
+
+    // MARK: Notifications
+
+    private var notificationsSection: some View {
+        Section("Notifications") {
+            Toggle("Notify about new articles", isOn: Binding(
+                get: { settings.notificationsEnabled },
+                set: { newValue in
+                    if newValue {
+                        Task {
+                            let granted = await NotificationService().requestAuthorization()
+                            settings.notificationsEnabled = granted
+                            if !granted { showNotificationDeniedAlert = true }
+                        }
+                    } else {
+                        settings.notificationsEnabled = false
+                    }
+                }
+            ))
         }
     }
 

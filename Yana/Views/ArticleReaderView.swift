@@ -4,7 +4,6 @@ import SwiftUI
 struct ArticleReaderView: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.openURL) private var openURL
 
     @Query(sort: \Article.date, order: .reverse) private var allArticles: [Article]
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
@@ -12,8 +11,7 @@ struct ArticleReaderView: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var viewWidth: CGFloat = 0
-    @State private var shareURL: URL?
-    @State private var isShowingShare = false
+    @State private var didRestoreAnchor = false
 
     /// The timeline after applying the persisted tag filter. Recomputed on demand; the
     /// `body` evaluates it once per render and threads the result through helpers so
@@ -78,19 +76,25 @@ struct ArticleReaderView: View {
             }
             .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
             .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
-            .sheet(isPresented: $isShowingShare) {
-                if let url = shareURL { ShareSheet(activityItems: [url]) }
-            }
             .onAppear { restoreAnchor() }
             .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
-            .onChange(of: allArticles) { _, _ in clampIndex() }
+            .onChange(of: allArticles) { _, _ in
+                if didRestoreAnchor {
+                    clampIndex()
+                } else {
+                    restoreAnchor()
+                }
+            }
         }
     }
 
     // MARK: - Anchor (position memory)
 
     private func restoreAnchor() {
-        appState.currentIndex = TimelineAnchor.index(for: settings.timelineAnchorIdentifier, in: filteredArticles)
+        let articles = filteredArticles
+        guard !articles.isEmpty, !didRestoreAnchor else { return }
+        appState.currentIndex = TimelineAnchor.index(for: settings.timelineAnchorIdentifier, in: articles)
+        didRestoreAnchor = true
     }
 
     private func saveAnchor() {
@@ -119,52 +123,7 @@ struct ArticleReaderView: View {
 
     @ViewBuilder
     private func articleContent(_ article: Article) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(article.title)
-                    .font(.title2.bold())
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 8) {
-                    if let feedTitle = article.feed?.name, !feedTitle.isEmpty {
-                        Text(feedTitle)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    if !article.author.isEmpty {
-                        Text("·").foregroundStyle(.secondary)
-                        Text(article.author).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(article.date, style: .relative).font(.subheadline).foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                ArticleWebView(htmlContent: article.content).frame(minHeight: 400)
-            }
-            .padding()
-        }
-        .safeAreaInset(edge: .bottom) { bottomBar(article) }
-    }
-
-    private func bottomBar(_ article: Article) -> some View {
-        HStack {
-            Spacer()
-            if let url = URL(string: article.url) {
-                Button { openURL(url) } label: {
-                    Label("Open in Browser", systemImage: "safari")
-                }
-                Button { shareURL = url; isShowingShare = true } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-            }
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.bordered)
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.bar)
+        ArticleContentView(article: article)
     }
 
     // MARK: - Swipe Gesture (bidirectional, no read state)

@@ -13,6 +13,15 @@ actor ImageStore {
         self.directory = directory
         self.fetch = fetch
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // Seed the hash -> ext map from existing files so cross-launch lookups are O(1),
+        // not a directory scan per image reference.
+        if let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            for file in files {
+                let stem = file.deletingPathExtension().lastPathComponent
+                let ext = file.pathExtension
+                if !stem.isEmpty, !ext.isEmpty { extensions[stem] = ext }
+            }
+        }
     }
 
     static let shared: ImageStore = {
@@ -37,12 +46,6 @@ actor ImageStore {
     func fileURL(forHash hash: String) -> URL {
         if let ext = extensions[hash] {
             return directory.appendingPathComponent("\(hash).\(ext)")
-        }
-        // Cross-launch fallback: the in-memory map is empty on a fresh launch, so locate the
-        // already-cached file on disk by its hash stem.
-        if let match = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil))?
-            .first(where: { $0.deletingPathExtension().lastPathComponent == hash }) {
-            return match
         }
         return directory.appendingPathComponent("\(hash).img")
     }
