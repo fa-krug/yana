@@ -9,8 +9,6 @@ struct ArticleReaderView: View {
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 
-    @State private var dragOffset: CGFloat = 0
-    @State private var viewWidth: CGFloat = 0
     @State private var didRestoreAnchor = false
 
     /// The timeline after applying the persisted tag filter. Recomputed on demand; the
@@ -36,11 +34,13 @@ struct ArticleReaderView: View {
         let current = currentArticle(in: articles)
         NavigationStack {
             ZStack {
-                if let article = current {
-                    articleContent(article)
-                        .offset(x: dragOffset)
-                        .gesture(swipeGesture(in: articles))
-                        .animation(.interactiveSpring, value: dragOffset)
+                if current != nil {
+                    ArticlePagerView(
+                        articles: articles,
+                        currentIndex: $appState.currentIndex,
+                        onRefresh: { await refresh() }
+                    )
+                    .ignoresSafeArea(.container, edges: .horizontal)
                 } else {
                     ContentUnavailableView {
                         Label("No Articles", systemImage: "tray")
@@ -56,12 +56,6 @@ struct ArticleReaderView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.width
-            } action: { newWidth in
-                viewWidth = newWidth
-            }
-            .refreshable { await refresh() }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
@@ -127,39 +121,6 @@ struct ArticleReaderView: View {
         await service.updateAll()
     }
 
-    // MARK: - Article Content
-
-    @ViewBuilder
-    private func articleContent(_ article: Article) -> some View {
-        ArticleContentView(article: article)
-    }
-
-    // MARK: - Swipe Gesture (bidirectional, no read state)
-
-    private func swipeGesture(in articles: [Article]) -> some Gesture {
-        DragGesture(minimumDistance: 50)
-            .onChanged { value in dragOffset = value.translation.width }
-            .onEnded { value in
-                let threshold: CGFloat = 100
-                if value.translation.width < -threshold, appState.currentIndex < articles.count - 1 {
-                    withAnimation(.easeOut(duration: 0.2)) { dragOffset = -viewWidth }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(200))
-                        appState.currentIndex += 1
-                        dragOffset = 0
-                    }
-                } else if value.translation.width > threshold, appState.currentIndex > 0 {
-                    withAnimation(.easeOut(duration: 0.2)) { dragOffset = viewWidth }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(200))
-                        appState.currentIndex -= 1
-                        dragOffset = 0
-                    }
-                } else {
-                    withAnimation(.interactiveSpring) { dragOffset = 0 }
-                }
-            }
-    }
 }
 
 // MARK: - Share Sheet

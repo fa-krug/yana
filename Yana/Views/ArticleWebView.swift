@@ -1,8 +1,15 @@
 import SwiftUI
+import UIKit
 import WebKit
 
+/// Renders a full article (header + body) as a single web document in a `WKWebView` that
+/// owns its own vertical scrolling and pinch-to-zoom — mirroring NetNewsWire's reader, where
+/// the title/feed/byline/date live in the HTML so the whole article scrolls and zooms as one.
+/// When `onRefresh` is supplied, a `UIRefreshControl` is attached for pull-to-refresh.
 struct ArticleWebView: UIViewRepresentable {
-    let htmlContent: String
+    let article: Article
+    /// Optional pull-to-refresh handler. `nil` (the default) means no refresh control.
+    var onRefresh: (() async -> Void)?
 
     private static let css = """
         <style>
@@ -25,13 +32,32 @@ struct ArticleWebView: UIViewRepresentable {
             .youtube-embed-container iframe, .dailymotion-embed-container iframe {
                 position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;
             }
+            .article-header h1 {
+                font-size: 1.5em; font-weight: 700; line-height: 1.25; margin: 0.5em 0 0.4em;
+            }
+            .article-meta { font-size: 0.95em; margin-bottom: 0.4em; }
+            .article-meta .feed { color: #007AFF; font-weight: 500; }
+            .article-meta .sep { opacity: 0.4; }
+            .article-meta .secondary { opacity: 0.6; }
+            .article-header hr {
+                border: none; border-top: 1px solid rgba(128, 128, 128, 0.3); margin: 0.6em 0 0.2em;
+            }
         </style>
     """
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    final class Coordinator {
+    @MainActor
+    final class Coordinator: NSObject {
         var loadedHTML: String?
+        var onRefresh: (() async -> Void)?
+
+        @objc func handleRefresh(_ control: UIRefreshControl) {
+            Task { @MainActor in
+                await onRefresh?()
+                control.endRefreshing()
+            }
+        }
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -41,25 +67,66 @@ struct ArticleWebView: UIViewRepresentable {
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
-        webView.scrollView.isScrollEnabled = false
+
+        if onRefresh != nil {
+            let refreshControl = UIRefreshControl()
+            refreshControl.addTarget(
+                context.coordinator,
+                action: #selector(Coordinator.handleRefresh(_:)),
+                for: .valueChanged
+            )
+            webView.scrollView.refreshControl = refreshControl
+        }
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        guard context.coordinator.loadedHTML != htmlContent else { return }
-        context.coordinator.loadedHTML = htmlContent
-        let html = """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-                \(Self.css)
-            </head>
-            <body>
-                \(htmlContent)
-            </body>
-            </html>
+        context.coordinator.onRefresh = onRefresh
+
+        let document = fullHTML
+        guard context.coordinator.loadedHTML != document else { return }
+        context.coordinator.loadedHTML = document
+        webView.loadHTMLString(document, baseURL: URL(string: ReaderWeb.baseOrigin))
+    }
+
+    // MARK: - HTML assembly
+
+    /// The complete HTML document: header (title/meta) followed by the article body.
+    private var fullHTML: String {
         """
-        webView.loadHTMLString(html, baseURL: URL(string: ReaderWeb.baseOrigin))
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            \(Self.css)
+        </head>
+        <body>
+            \(headerHTML)
+            \(article.content)
+        </body>
+        </html>
+        """
+    }
+
+    private var headerHTML: String {
+        let esc = ContentFormatter.escapeHTML
+        var meta: [String] = []
+        if let feedName = article.feed?.name, !feedName.isEmpty {
+            meta.append("<span class=\"feed\">\(esc(feedName))</span>")
+        }
+        if !article.author.isEmpty {
+            meta.append("<span class=\"secondary\">\(esc(article.author))</span>")
+        }
+        let dateString = article.date.formatted(date: .abbreviated, time: .shortened)
+        meta.append("<span class=\"secondary\">\(esc(dateString))</span>")
+        let metaHTML = meta.joined(separator: "<span class=\"sep\"> · </span>")
+
+        return """
+        <div class="article-header">
+            <h1>\(esc(article.title))</h1>
+            <div class="article-meta">\(metaHTML)</div>
+            <hr>
+        </div>
+        """
     }
 }
