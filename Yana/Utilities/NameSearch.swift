@@ -12,6 +12,6 @@ enum NameSearch {
     static func filter<T>(_ items: [T], query: String, name: (T) -> String) -> [T] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return items }
-        return items.filter { name($0).localizedStandardContains(q) }
+        return items.filter { matches(name($0), query: q) }
     }
 }
