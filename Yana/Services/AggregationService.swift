@@ -11,7 +11,7 @@ final class AggregationService {
 
     private let context: ModelContext
     private let makeAggregator: AggregatorFactory
-    private let aiProcessor: AIProcessing
+    private let injectedAIProcessor: AIProcessing?
     private let now: () -> Date
 
     init(
@@ -22,13 +22,16 @@ final class AggregationService {
     ) {
         self.context = context
         self.makeAggregator = makeAggregator
-        // Default: snapshot AppSettings + Keychain on the main actor into an AIProcessor.
-        let settings = AppSettings()
-        self.aiProcessor = aiProcessor ?? AIProcessor(
-            config: Self.makeAIConfig(settings: settings),
-            requestDelay: settings.aiRequestDelay
-        )
+        self.injectedAIProcessor = aiProcessor
         self.now = now
+    }
+
+    /// The processor for this run: the injected one (tests) or a fresh snapshot of current
+    /// settings + Keychain so provider/model/key edits take effect on the next update.
+    private func currentAIProcessor() -> AIProcessing {
+        if let injectedAIProcessor { return injectedAIProcessor }
+        let settings = AppSettings()
+        return AIProcessor(config: Self.makeAIConfig(settings: settings), requestDelay: settings.aiRequestDelay)
     }
 
     /// Build the `AIConfig` snapshot from settings + Keychain. Returns a `.none`-provider
@@ -117,7 +120,7 @@ final class AggregationService {
             let fresh = fetched.filter { AggregationLogic.isWithinIntakeWindow($0.date, now: runNow) }
             let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
             let capped = Array(fresh.prefix(cap))
-            let processed = await aiProcessor.process(capped, ai: config.options.ai)
+            let processed = await currentAIProcessor().process(capped, ai: config.options.ai)
             ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: runNow)
             feed.lastFetchedAt = runNow
             feed.lastError = nil
