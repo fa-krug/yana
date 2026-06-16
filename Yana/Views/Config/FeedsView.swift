@@ -13,7 +13,6 @@ struct FeedsView: View {
     @State private var isExporting = false
     @State private var importMessage: String?
     @State private var feedToDelete: Feed?
-    @State private var feedError: String?
 
     var body: some View {
         List {
@@ -101,32 +100,20 @@ struct FeedsView: View {
                 )
             }
         }
-        .alert(
-            String(localized: "Update Error"),
-            isPresented: Binding(get: { feedError != nil }, set: { if !$0 { feedError = nil } })
-        ) {
-            Button(String(localized: "OK"), role: .cancel) {}
-        } message: {
-            Text(feedError ?? "")
-        }
     }
 
     private func row(_ feed: Feed) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let lastError = feed.lastError
+        return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(feed.name).font(.headline)
                 if !feed.enabled {
                     Text("Disabled").font(.caption).foregroundStyle(.secondary)
                 }
-                if let error = feed.lastError {
-                    Button {
-                        feedError = error
-                    } label: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "Update error"))
+                if lastError != nil {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel(String(localized: "Update error"))
                 }
             }
             HStack(spacing: 6) {
@@ -138,11 +125,11 @@ struct FeedsView: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
-            if let error = feed.lastError {
+            if let error = lastError {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .lineLimit(2)
+                    .lineLimit(3)
             }
             if !feed.tags.isEmpty {
                 Text(feed.tags.map(\.name).sorted().joined(separator: ", "))
