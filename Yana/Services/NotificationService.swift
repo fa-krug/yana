@@ -17,7 +17,8 @@ enum NewArticleNotification {
     }
 
     static func body(count: Int) -> String {
-        String(localized: "\(count) new articles")
+        // Automatic grammar agreement: "1 new article" vs "5 new articles".
+        String(localized: "^[\(count) new article](inflect: true)")
     }
 
     static let title = String(localized: "Yana")
