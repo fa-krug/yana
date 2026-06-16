@@ -2,8 +2,8 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Flat list of feeds with tag chips, last-fetched time, error badge, enable state,
-/// per-feed update, and article count. Add / delete; "Update all".
+/// Searchable flat list of feeds with tag chips, last-fetched time, error badge, enable state,
+/// per-feed update, and article count. Add / delete (with confirmation); "Update all".
 struct FeedsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.name) private var feeds: [Feed]
@@ -13,38 +13,42 @@ struct FeedsView: View {
     @State private var isExporting = false
     @State private var importMessage: String?
     @State private var feedToDelete: Feed?
+    @State private var searchText = ""
+
+    private var filteredFeeds: [Feed] {
+        NameSearch.filter(feeds, query: searchText, name: \.name)
+    }
 
     var body: some View {
-        List {
-            ForEach(feeds) { feed in
-                NavigationLink {
-                    FeedEditorView(feed: feed)
+        ManagedList(
+            items: filteredFeeds,
+            searchText: $searchText,
+            searchPrompt: "Search feeds",
+            emptyTitle: "No Feeds",
+            emptyIcon: "list.bullet.rectangle",
+            emptyDescription: "Tap + to add your first feed."
+        ) { feed in
+            NavigationLink {
+                FeedEditorView(feed: feed)
+            } label: {
+                row(feed)
+            }
+            .swipeActions(edge: .trailing) {
+                Button(role: .destructive) {
+                    feedToDelete = feed
                 } label: {
-                    row(feed)
+                    Label("Delete", systemImage: "trash")
                 }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
-                        feedToDelete = feed
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    Button {
-                        Task { await updateOne(feed) }
-                    } label: {
-                        Label("Update", systemImage: "arrow.clockwise")
-                    }
-                    .tint(.blue)
-                    .disabled(isUpdating)
+                Button {
+                    Task { await updateOne(feed) }
+                } label: {
+                    Label("Update", systemImage: "arrow.clockwise")
                 }
+                .tint(.blue)
+                .disabled(isUpdating)
             }
         }
         .navigationTitle("Feeds")
-        .overlay {
-            if feeds.isEmpty {
-                ContentUnavailableView("No Feeds", systemImage: "list.bullet.rectangle",
-                                       description: Text("Tap + to add your first feed."))
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
