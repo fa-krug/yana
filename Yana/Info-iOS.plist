@@ -17,6 +17,11 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>de.fa-krug.Yana.background-refresh</string>
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Yana uses Face ID to protect your reading data.</string>
