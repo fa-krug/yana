@@ -57,7 +57,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         switch self {
         case .reddit: .subreddit
         case .youtube: .youtubeChannel
-        case .explosm, .darkLegacy, .oglaf, .tagesschau: .none
+        case .explosm, .darkLegacy, .oglaf, .tagesschau, .mactechnews: .none
         default: .url
         }
     }

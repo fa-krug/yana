@@ -18,4 +18,9 @@ struct FeedIdentifierChoicesTests {
         #expect(AggregatorType.feedContent.identifierChoices.isEmpty)
         #expect(AggregatorType.reddit.identifierChoices.isEmpty)
     }
+
+    @Test func forcedAndPickerOnlyTypesHaveNoneIdentifierKind() {
+        #expect(AggregatorType.mactechnews.identifierKind == .none)   // forced feed; editor must not require a URL
+        #expect(AggregatorType.tagesschau.identifierKind == .none)    // picker-only
+    }
 }
