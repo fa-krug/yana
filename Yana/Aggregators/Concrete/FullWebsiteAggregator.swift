@@ -48,8 +48,11 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
             return article
         } catch let error as AggregatorError {
             if case .articleSkip = error { throw error }   // propagate 4xx skip to caller
-            return article                                  // other errors: keep RSS content
+            // Other errors: fall back to RSS content, but still localize images (decision 3).
+            article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
+            return article
         } catch {
+            article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
             return article
         }
     }

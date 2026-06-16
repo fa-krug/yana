@@ -55,4 +55,30 @@ struct FullWebsiteAggregatorTests {
         #expect(a.content.contains("just summary"))
         #expect(!a.content.contains("SHOULD NOT FETCH"))
     }
+
+    @Test func fetchFailureFallbackStillLocalizesImages() async throws {
+        final class FailingFetch: FullWebsiteAggregator, @unchecked Sendable {
+            let e: [FeedEntry]
+            init(_ e: [FeedEntry], _ store: ImageStore) {
+                self.e = e
+                super.init(config: FeedConfig(type: .fullWebsite, identifier: "u", dailyLimit: 20,
+                           options: .fullWebsite(WebsiteOptions()), collectedToday: 0),
+                           credentials: .init(), store: store)
+            }
+            override func fetchEntries() async throws -> [FeedEntry] { e }
+            override func fetchArticleHTML(_ url: String) async throws -> String {
+                throw AggregatorError.contentFetch("boom")   // non-skip error → fallback path
+            }
+        }
+        let entry = FeedEntry(title: "T", link: "https://x.com/1",
+                              content: "<p>sum</p><img src=\"https://x.com/p.png\">",
+                              summary: "<p>sum</p><img src=\"https://x.com/p.png\">", entryDescription: nil,
+                              published: .now, author: "", enclosures: [], itunesDuration: nil,
+                              itunesImage: nil, mediaThumbnails: [])
+        let agg = FailingFetch([entry], tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("sum"))                           // RSS content preserved
+        #expect(!a.content.contains("https://x.com/p.png"))           // NO remote image URL leaks
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))    // image localized in fallback
+    }
 }
