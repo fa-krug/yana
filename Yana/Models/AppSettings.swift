@@ -68,6 +68,7 @@ final class AppSettings {
         static let redditEnabled = "settings.redditEnabled"
         static let redditUserAgent = "settings.redditUserAgent"
         static let youtubeEnabled = "settings.youtubeEnabled"
+        static let notificationsEnabled = "settings.notificationsEnabled"
         // Providers
         static let openaiAPIURL = "settings.openaiAPIURL"
         static let openaiModel = "settings.openaiModel"
@@ -121,6 +122,10 @@ final class AppSettings {
     var youtubeEnabled: Bool {
         get { defaults.bool(forKey: Key.youtubeEnabled) }
         set { defaults.set(newValue, forKey: Key.youtubeEnabled) }
+    }
+    var notificationsEnabled: Bool {
+        get { defaults.bool(forKey: Key.notificationsEnabled) }
+        set { defaults.set(newValue, forKey: Key.notificationsEnabled) }
     }
 
     // MARK: Providers
