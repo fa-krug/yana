@@ -46,7 +46,7 @@ struct MactechnewsAggregatorTests {
     }
 
     @Test func extractsMtnArticleAndDedupsNumericImageID() async throws {
-        // header image (og) Cover-X.592736.jpg; content has Bild.592736.jpg (same ID) + Other.111.jpg.
+        // header image (og) Cover-X.592736.jpg; content has Bild.592736.jpg (same ID) + Other.111111.jpg.
         let page = """
         <html><head><meta property="og:image" content="https://www.mactechnews.de/img/Cover-X.592736.jpg"></head>
         <body><div class="MtnArticle"><p>Body</p>\
@@ -77,5 +77,7 @@ struct MactechnewsAggregatorTests {
         #expect(a.content.contains("Body"))
         #expect(!a.content.contains("592736"))           // duplicate numeric-ID image removed
         #expect(a.content.contains("111111") || a.content.contains("\(ReaderWeb.imageScheme)://"))  // other image kept/localized
+        let imgCount = a.content.components(separatedBy: "<img").count - 1
+        #expect(imgCount == 1)   // duplicate-ID image removed; only the distinct-ID image survives
     }
 }
