@@ -15,6 +15,7 @@ final class IdentifierSearchModel {
     let kind: AggregatorIdentifierKind
     var rows: [IdentifierSearchRow] = []
     var isSearching = false
+    var hasSearched = false
 
     private let redditSearch: (String) async -> [RedditSubredditResult]
     private let youtubeSearch: (String) async -> [YouTubeChannelResult]
@@ -36,7 +37,7 @@ final class IdentifierSearchModel {
 
     func search(_ query: String) async {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { rows = []; return }
+        guard !trimmed.isEmpty else { rows = []; hasSearched = false; return }
         isSearching = true
         defer { isSearching = false }
         switch kind {
@@ -53,6 +54,7 @@ final class IdentifierSearchModel {
         default:
             rows = []
         }
+        hasSearched = true
     }
 }
 
@@ -82,8 +84,16 @@ struct IdentifierSearchView: View {
                 }
             }
             .overlay {
-                if model.isSearching { ProgressView() }
-                else if model.rows.isEmpty { ContentUnavailableView("Search", systemImage: "magnifyingglass") }
+                if model.isSearching {
+                    ProgressView()
+                } else if model.rows.isEmpty {
+                    if model.hasSearched {
+                        ContentUnavailableView("No Results", systemImage: "magnifyingglass",
+                                               description: Text("No matches found. Check the search term, and that the required API key is set in Settings."))
+                    } else {
+                        ContentUnavailableView("Search", systemImage: "magnifyingglass")
+                    }
+                }
             }
             .navigationTitle("Search")
             .searchable(text: $query)

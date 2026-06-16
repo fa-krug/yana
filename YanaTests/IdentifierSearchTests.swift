@@ -12,7 +12,7 @@ struct IdentifierSearchTests {
         await model.search("swi")
         #expect(model.rows.count == 1)
         #expect(model.rows.first?.value == "swift")
-        #expect(model.rows.first?.label.contains("Swift") == true)
+        #expect(model.rows.first?.label == "r/swift — Swift (12345 subs)")
     }
 
     @Test func youtubeResultsMapToRows() async {
@@ -23,7 +23,7 @@ struct IdentifierSearchTests {
         }
         await model.search("cool")
         #expect(model.rows.first?.value == "UCabc")
-        #expect(model.rows.first?.label.contains("Cool") == true)
+        #expect(model.rows.first?.label == "Cool (@cool)")
     }
 
     @Test func emptyQueryClearsRows() async {
