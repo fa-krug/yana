@@ -7,11 +7,17 @@ import CoreGraphics
 /// Header images are capped to ~1200px; output is JPEG (or PNG when transparency matters).
 enum ImageCompressor {
     static func compress(_ data: Data, contentType: String?, isHeader: Bool) -> (data: Data, ext: String)? {
-        guard data.count >= 100, let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        guard data.count >= 100, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
 
         let maxDimension = isHeader ? 1200 : 2000
-        let cgImage = downscale(image, maxDimension: maxDimension)
+        // Decode-and-downscale in one step: avoids fully decoding huge source images into memory.
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxDimension,
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary)
+            ?? CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
 
         let hasAlpha = cgImage.alphaInfo != .none && cgImage.alphaInfo != .noneSkipLast && cgImage.alphaInfo != .noneSkipFirst
         let useType: UTType = hasAlpha ? .png : .jpeg
@@ -23,21 +29,5 @@ enum ImageCompressor {
         CGImageDestinationAddImage(dest, cgImage, options as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }
         return (out as Data, ext)
-    }
-
-    private static func downscale(_ image: CGImage, maxDimension: Int) -> CGImage {
-        let w = image.width, h = image.height
-        let longest = max(w, h)
-        guard longest > maxDimension else { return image }
-        let scale = Double(maxDimension) / Double(longest)
-        let nw = max(1, Int(Double(w) * scale)), nh = max(1, Int(Double(h) * scale))
-        // Force device-RGB so the context is valid for any source color space (grayscale/CMYK
-        // would otherwise fail to construct, silently skipping the downscale).
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        guard let ctx = CGContext(data: nil, width: nw, height: nh, bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return image }
-        ctx.interpolationQuality = .high
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: nw, height: nh))
-        return ctx.makeImage() ?? image
     }
 }
