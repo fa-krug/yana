@@ -21,8 +21,9 @@ enum HeaderElementExtractor {
         return HeaderElement(html: html, dedupURL: articleURL)
     }
 
-    private static func looksLikeImage(_ url: String) -> Bool {
-        let lower = url.lowercased()
-        return [".jpg", ".jpeg", ".png", ".webp", ".gif"].contains { lower.contains($0) }
+    static func looksLikeImage(_ url: String) -> Bool {
+        let path = URLComponents(string: url)?.path ?? url
+        let ext = (path as NSString).pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "webp", "gif"].contains(ext)
     }
 }

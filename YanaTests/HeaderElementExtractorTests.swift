@@ -27,4 +27,12 @@ struct HeaderElementExtractorTests {
         #expect(header?.html.contains("\(ReaderWeb.imageScheme)://") == true)
         #expect(header?.dedupURL == "https://x.com/photo.jpg")
     }
+
+    @Test func classifiesByPathExtension() {
+        #expect(HeaderElementExtractor.looksLikeImage("https://x.com/a/photo.jpg") == true)
+        #expect(HeaderElementExtractor.looksLikeImage("https://x.com/a/photo.PNG") == true)
+        #expect(HeaderElementExtractor.looksLikeImage("https://x.com/article?ref=foo.jpg") == false)
+        #expect(HeaderElementExtractor.looksLikeImage("https://x.com/article.png-gallery") == false)
+        #expect(HeaderElementExtractor.looksLikeImage("https://x.com/article") == false)
+    }
 }
