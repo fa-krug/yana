@@ -1,0 +1,97 @@
+import Foundation
+
+/// Subset of a Reddit post (`/r/{sub}/{sort}.json` child `data`) needed for aggregation.
+struct RedditPostData: Decodable, Sendable {
+    var id: String
+    var title: String
+    var selftext: String
+    var url: String
+    var permalink: String
+    var createdUTC: Double
+    var author: String
+    var score: Int
+    var numComments: Int
+    var thumbnail: String?
+    var isSelf: Bool
+    var isGallery: Bool
+    var isVideo: Bool
+    var preview: Preview?
+    var mediaMetadata: [String: MediaMeta]?
+    var galleryData: GalleryData?
+    var crosspostParentList: [RedditPostData]?
+
+    struct Preview: Decodable, Sendable {
+        var images: [PreviewImage]
+        struct PreviewImage: Decodable, Sendable {
+            var source: Source?
+            struct Source: Decodable, Sendable { var url: String? }
+        }
+    }
+    struct MediaMeta: Decodable, Sendable {
+        var e: String?               // "Image" | "AnimatedImage"
+        var s: MediaSource?
+        struct MediaSource: Decodable, Sendable { var u: String?; var gif: String?; var mp4: String? }
+    }
+    struct GalleryData: Decodable, Sendable {
+        var items: [Item]
+        struct Item: Decodable, Sendable { var mediaID: String?; var caption: String? }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, selftext, url, permalink, author, score, thumbnail, preview
+        case createdUTC = "created_utc"
+        case numComments = "num_comments"
+        case isSelf = "is_self"
+        case isGallery = "is_gallery"
+        case isVideo = "is_video"
+        case mediaMetadata = "media_metadata"
+        case galleryData = "gallery_data"
+        case crosspostParentList = "crosspost_parent_list"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(String.self, forKey: .id)) ?? ""
+        title = (try? c.decode(String.self, forKey: .title)) ?? ""
+        selftext = (try? c.decode(String.self, forKey: .selftext)) ?? ""
+        url = (try? c.decode(String.self, forKey: .url)) ?? ""
+        permalink = (try? c.decode(String.self, forKey: .permalink)) ?? ""
+        createdUTC = (try? c.decode(Double.self, forKey: .createdUTC)) ?? 0
+        author = (try? c.decode(String.self, forKey: .author)) ?? ""
+        score = (try? c.decode(Int.self, forKey: .score)) ?? 0
+        numComments = (try? c.decode(Int.self, forKey: .numComments)) ?? 0
+        thumbnail = try? c.decode(String.self, forKey: .thumbnail)
+        isSelf = (try? c.decode(Bool.self, forKey: .isSelf)) ?? false
+        isGallery = (try? c.decode(Bool.self, forKey: .isGallery)) ?? false
+        isVideo = (try? c.decode(Bool.self, forKey: .isVideo)) ?? false
+        preview = try? c.decode(Preview.self, forKey: .preview)
+        mediaMetadata = try? c.decode([String: MediaMeta].self, forKey: .mediaMetadata)
+        galleryData = try? c.decode(GalleryData.self, forKey: .galleryData)
+        crosspostParentList = try? c.decode([RedditPostData].self, forKey: .crosspostParentList)
+    }
+}
+
+struct RedditComment: Decodable, Sendable {
+    var id: String
+    var body: String
+    var author: String
+    var score: Int
+    var permalink: String
+    enum CodingKeys: String, CodingKey { case id, body, author, score, permalink }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(String.self, forKey: .id)) ?? ""
+        body = (try? c.decode(String.self, forKey: .body)) ?? ""
+        author = (try? c.decode(String.self, forKey: .author)) ?? ""
+        score = (try? c.decode(Int.self, forKey: .score)) ?? 0
+        permalink = (try? c.decode(String.self, forKey: .permalink)) ?? ""
+    }
+}
+
+/// Live-search result for the editor picker.
+struct RedditSubredditResult: Sendable, Identifiable {
+    var displayName: String      // value saved as the feed identifier
+    var title: String
+    var subscribers: Int
+    var id: String { displayName }
+}
