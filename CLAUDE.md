@@ -94,9 +94,11 @@ designed for privacy-conscious users who want their feeds without any backend.
 
 ### Translations
 - Source language: English (`en`)
+- Supported languages: English (`en`), German (`de`). Registered in `project.yml` under `options.knownRegions`.
 - String catalog: `Yana/Resources/Localizable.xcstrings` — Xcode string catalog format (JSON)
 - Views use `String(localized:)` for computed property strings and string literals with `LocalizedStringKey` for SwiftUI text
 - All user-facing strings should be localizable
+- **ALWAYS create translations.** Whenever you add or change a user-facing string, you MUST add the corresponding entry to `Localizable.xcstrings` with a translation for **every** supported language (currently `de`), each marked `"state" : "translated"`. Never leave a new string English-only or untranslated. German follows Apple's localization style (infinitive for actions/instructions, e.g. "Im Browser öffnen", "In den Einstellungen hinzufügen"; no "Du"/"Sie"). When adding a new supported language, add it to `options.knownRegions` in `project.yml`, backfill translations for all existing strings, and update this list.
 
 ## Planned Features
 

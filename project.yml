@@ -6,6 +6,11 @@ options:
     iOS: "26.0"
   xcodeVersion: "15.0"
   generateEmptyDirectories: true
+  developmentLanguage: en
+  knownRegions:
+    - en
+    - de
+    - Base
   fileTypes:
     icon:
       file: true
