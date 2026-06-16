@@ -1,17 +1,10 @@
 import Foundation
-import SwiftData
 import Testing
 @testable import Yana
 
 @MainActor
 @Suite("ArticleSearch")
 struct ArticleSearchTests {
-    private func makeContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
-        return ModelContext(container)
-    }
-
     private func article(title: String = "", content: String = "", author: String = "", feedName: String = "") -> Article {
         let a = Article(title: title, identifier: UUID().uuidString, url: "u", content: content, author: author)
         if !feedName.isEmpty { a.feed = Feed(name: feedName, aggregatorType: .feedContent, identifier: "f") }

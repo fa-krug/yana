@@ -4,7 +4,6 @@ import SwiftUI
 struct ArticleReaderView: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.openURL) private var openURL
 
     @Query(sort: \Article.date, order: .reverse) private var allArticles: [Article]
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
