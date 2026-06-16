@@ -59,6 +59,7 @@ struct ArticleReaderView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
+                        .accessibilityLabel(String(localized: "Filter articles"))
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if let article = current, let starredTag {
@@ -68,10 +69,12 @@ struct ArticleReaderView: View {
                         } label: {
                             Image(systemName: article.isStarred ? "star.fill" : "star")
                         }
+                        .accessibilityLabel(article.isStarred ? String(localized: "Unstar article") : String(localized: "Star article"))
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { appState.showSettings = true } label: { Image(systemName: "gear") }
+                        .accessibilityLabel(String(localized: "Settings"))
                 }
             }
             .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
