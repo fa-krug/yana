@@ -47,12 +47,3 @@ Pods/
 
 # Superpowers
 .superpowers
-
-# Ruby / Bundler
-vendor/bundle/
-.bundle/
-
-# Fastlane
-fastlane/screenshots/
-fastlane/test_output/
-fastlane/report.xml
