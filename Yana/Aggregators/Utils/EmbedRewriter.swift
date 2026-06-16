@@ -7,7 +7,7 @@ enum EmbedRewriter {
     static func extractYouTubeID(from url: String) -> String? {
         let patterns = [
             #"youtu\.be/([A-Za-z0-9_-]{11,})"#,
-            #"youtube\.com/watch\?v=([A-Za-z0-9_-]{11,})"#,
+            #"youtube\.com/watch\?\S*?[?&]?v=([A-Za-z0-9_-]{11,})"#,
             #"youtube\.com/embed/([A-Za-z0-9_-]{11,})"#,
             #"youtube\.com/v/([A-Za-z0-9_-]{11,})"#,
             #"youtube\.com/shorts/([A-Za-z0-9_-]{11,})"#,
@@ -58,10 +58,16 @@ enum EmbedRewriter {
         guard let data = try? await HTTPClient.fetchJSON(req),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tweet = json["tweet"] as? [String: Any] else { return nil }
-        let text = (tweet["text"] as? String ?? "").replacingOccurrences(of: "<", with: "&lt;")
-        let author = (tweet["author"] as? [String: Any])?["screen_name"] as? String ?? ""
+        let text = escapeHTML(tweet["text"] as? String ?? "")
+        let author = escapeHTML((tweet["author"] as? [String: Any])?["screen_name"] as? String ?? "")
         return """
         <blockquote style="border-left: 3px solid #1d9bf0; padding: 12px 16px; margin: 1em 0; background: #f7f9fa;"><p><strong>@\(author)</strong> · <a href="\(url)">View on X</a></p><p>\(text)</p></blockquote>
         """
+    }
+
+    private static func escapeHTML(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
     }
 }

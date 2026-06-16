@@ -11,6 +11,11 @@ struct EmbedRewriterTests {
         #expect(EmbedRewriter.extractYouTubeID(from: "https://www.youtube.com/embed/dQw4w9WgXcQ") == "dQw4w9WgXcQ")
     }
 
+    @Test func extractsVideoIDWhenVNotFirstParam() {
+        #expect(EmbedRewriter.extractYouTubeID(from: "https://www.youtube.com/watch?list=PL123&v=dQw4w9WgXcQ") == "dQw4w9WgXcQ")
+        #expect(EmbedRewriter.extractYouTubeID(from: "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=5") == "dQw4w9WgXcQ")
+    }
+
     @Test func youTubeEmbedMatchesProxyShape() {
         let html = EmbedRewriter.youTubeEmbedHTML(videoID: "abc12345678")
         #expect(html.contains("youtube-embed-container"))
