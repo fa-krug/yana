@@ -30,8 +30,10 @@ enum ImageCompressor {
         let longest = max(w, h)
         guard longest > maxDimension else { return image }
         let scale = Double(maxDimension) / Double(longest)
-        let nw = Int(Double(w) * scale), nh = Int(Double(h) * scale)
-        let colorSpace = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        let nw = max(1, Int(Double(w) * scale)), nh = max(1, Int(Double(h) * scale))
+        // Force device-RGB so the context is valid for any source color space (grayscale/CMYK
+        // would otherwise fail to construct, silently skipping the downscale).
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(data: nil, width: nw, height: nh, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return image }
         ctx.interpolationQuality = .high
