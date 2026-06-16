@@ -52,7 +52,7 @@ struct AIProcessor: AIProcessing {
                 continue
             }
 
-            let cleanHTML = (try? Self.stripChrome(article.content)) ?? article.content
+            let cleanHTML = Self.cap((try? Self.stripChrome(article.content)) ?? article.content)
             let prompt = Self.buildPrompt(title: article.title, cleanHTML: cleanHTML, ai: ai)
 
             do {
@@ -67,6 +67,17 @@ struct AIProcessor: AIProcessing {
             }
         }
         return output
+    }
+
+    // MARK: - Content size cap
+
+    /// Upper bound on characters of article HTML sent to the LLM. Keeps the request payload
+    /// bounded regardless of source article size.
+    static let maxContentChars = 50_000
+
+    /// Truncate to the budget (no-op when already within it).
+    static func cap(_ html: String) -> String {
+        html.count <= maxContentChars ? html : String(html.prefix(maxContentChars))
     }
 
     // MARK: - HTML chrome strip (header/footer/nav/script/style)
