@@ -5,12 +5,12 @@ import Testing
 @Suite("AggregatorRegistry")
 struct AggregatorRegistryTests {
     @Test func returnsNilForUnregisteredType() {
-        // No concrete aggregators are registered yet (Phase 4b+ fills the switch).
+        // Reddit is not yet registered (4e social/media fills its case).
         let config = FeedConfig(
-            type: .feedContent,
-            identifier: "https://example.com/feed",
+            type: .reddit,
+            identifier: "swift",
             dailyLimit: 20,
-            options: .feedContent(FeedContentOptions()),
+            options: .reddit(RedditOptions()),
             collectedToday: 0
         )
         #expect(AggregatorRegistry.shared.makeAggregator(config, credentials: .init()) == nil)

@@ -8,7 +8,11 @@ final class AggregatorRegistry: Sendable {
 
     /// Build an aggregator for the given config, or `nil` if none is registered yet.
     func makeAggregator(_ config: FeedConfig, credentials: AggregatorCredentials) -> (any Aggregator)? {
-        // Phase 4b+: switch over `config.type` and return concrete aggregators.
-        nil
+        switch config.type {
+        case .feedContent: return FeedContentAggregator(config: config, credentials: credentials)
+        case .fullWebsite: return FullWebsiteAggregator(config: config, credentials: credentials)
+        // 4d scrapers and 4e social/media add their cases here.
+        default: return nil
+        }
     }
 }
