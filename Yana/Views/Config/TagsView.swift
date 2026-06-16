@@ -7,8 +7,6 @@ import SwiftUI
 struct TagsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]
-    @State private var editingTag: Tag?
-    @State private var isCreating = false
     @State private var tagsToDelete: [Tag]?
     @State private var searchText = ""
 
@@ -32,8 +30,8 @@ struct TagsView: View {
             },
             onMove: move
         ) { tag in
-            Button {
-                editingTag = tag
+            NavigationLink {
+                TagEditorView(tag: tag)
             } label: {
                 HStack {
                     Circle().fill(Color(hex: tag.colorHex) ?? .accentColor).frame(width: 14, height: 14)
@@ -49,12 +47,10 @@ struct TagsView: View {
         .navigationTitle("Tags")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { isCreating = true } label: { Image(systemName: "plus") }
+                NavigationLink { TagEditorView(tag: nil) } label: { Image(systemName: "plus") }
             }
             ToolbarItem(placement: .topBarLeading) { EditButton() }
         }
-        .sheet(item: $editingTag) { tag in TagEditorView(tag: tag) }
-        .sheet(isPresented: $isCreating) { TagEditorView(tag: nil) }
         .confirmationDialog(
             (tagsToDelete?.count ?? 0) == 1
                 ? String(localized: "Delete Tag?")

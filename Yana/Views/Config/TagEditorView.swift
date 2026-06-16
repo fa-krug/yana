@@ -4,7 +4,6 @@ import SwiftUI
 /// Create or rename/recolor a tag. The built-in Starred tag can be recolored but not renamed.
 struct TagEditorView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
 
     let tag: Tag?
     @State private var name: String
@@ -17,23 +16,20 @@ struct TagEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Name", text: $name)
-                    .disabled(tag?.isBuiltIn == true)
-                ColorPicker("Color", selection: $color, supportsOpacity: false)
-            }
-            .navigationTitle(tag == nil ? "New Tag" : "Edit Tag")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    ConfirmCircleButton(isDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty) { save() }
-                }
-            }
+        Form {
+            TextField("Name", text: $name)
+                .disabled(tag?.isBuiltIn == true)
+            ColorPicker("Color", selection: $color, supportsOpacity: false)
         }
+        .navigationTitle(tag == nil ? "New Tag" : "Edit Tag")
+        .onDisappear { save() }
     }
 
+    /// Auto-save on exit. An empty name discards the edit: a new tag is never inserted,
+    /// and an existing tag keeps its current values.
     private func save() {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         if let tag {
             if !tag.isBuiltIn { tag.name = trimmed }
             tag.colorHex = color.toHex()
@@ -42,7 +38,6 @@ struct TagEditorView: View {
             modelContext.insert(Tag(name: trimmed, colorHex: color.toHex(), sortOrder: maxOrder + 1))
         }
         try? modelContext.save()
-        dismiss()
     }
 }
 
