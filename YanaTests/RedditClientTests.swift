@@ -81,4 +81,16 @@ struct RedditClientTests {
         #expect(req.value(forHTTPHeaderField: "User-Agent") == "MyAgent/9")
         #expect(req.httpMethod == "POST")
     }
+
+    @Test func encodesPathComponents() {
+        #expect(RedditClient.encodePath("all") == "all")
+        #expect(RedditClient.encodePath("a b") == "a%20b")
+        #expect(RedditClient.encodePath("a/b") == "a%2Fb")
+    }
+
+    @Test func tokenExpiryGate() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        #expect(RedditClient.isExpired(expiry: now.addingTimeInterval(60), now: now) == false)
+        #expect(RedditClient.isExpired(expiry: now, now: now) == true)
+    }
 }

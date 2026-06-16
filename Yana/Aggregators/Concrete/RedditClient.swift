@@ -12,6 +12,15 @@ final class RedditClient: @unchecked Sendable {
     private let fetch: Fetch
     private let tokenLock = NSLock()
     private var cachedToken: String?
+    private var tokenExpiry: Date?
+
+    /// Percent-encode a single path segment so reserved characters can't break or redirect the URL.
+    static func encodePath(_ s: String) -> String {
+        s.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? s
+    }
+
+    /// Pure expiry gate (testable). True when `now` has reached or passed `expiry`.
+    static func isExpired(expiry: Date, now: Date) -> Bool { now >= expiry }
 
     init(clientID: String, clientSecret: String, userAgent: String,
          fetch: @escaping Fetch = { try await HTTPClient.fetchJSON($0) }) {
@@ -31,31 +40,42 @@ final class RedditClient: @unchecked Sendable {
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         req.httpBody = Data("grant_type=client_credentials".utf8)
         let data = try await fetch(req)
-        let token = (try? JSONDecoder().decode(RedditTokenResponse.self, from: data))?.access_token
-        guard let token, !token.isEmpty else { throw AggregatorError.contentFetch("Reddit auth failed") }
-        setCachedToken(token)
+        let decoded = try? JSONDecoder().decode(RedditTokenResponse.self, from: data)
+        guard let token = decoded?.accessToken, !token.isEmpty else {
+            throw AggregatorError.contentFetch("Reddit auth failed")
+        }
+        // Refresh 60s before the real expiry to avoid using a token mid-flight as it lapses.
+        let ttl = max(0, (decoded?.expiresIn ?? 3600) - 60)
+        setCachedToken(token, expiry: Date().addingTimeInterval(TimeInterval(ttl)))
         return token
     }
 
     private func cachedTokenValue() -> String? {
         tokenLock.lock(); defer { tokenLock.unlock() }
-        return cachedToken
+        guard let token = cachedToken, let expiry = tokenExpiry,
+              !Self.isExpired(expiry: expiry, now: Date()) else { return nil }
+        return token
     }
 
-    private func setCachedToken(_ token: String) {
+    private func setCachedToken(_ token: String, expiry: Date) {
         tokenLock.lock(); defer { tokenLock.unlock() }
         cachedToken = token
+        tokenExpiry = expiry
     }
 
     func fetchListing(subreddit: String, sort: String, limit: Int) async throws -> [RedditPostData] {
-        let url = URL(string: "https://oauth.reddit.com/r/\(subreddit)/\(sort).json?limit=\(limit)&raw_json=1")!
+        guard let url = URL(string:
+            "https://oauth.reddit.com/r/\(Self.encodePath(subreddit))/\(Self.encodePath(sort)).json?limit=\(limit)&raw_json=1")
+        else { throw AggregatorError.contentFetch("invalid subreddit/sort") }
         let data = try await authorizedGET(url)
         let listing = try JSONDecoder().decode(RedditListing.self, from: data)
         return listing.data.children.map(\.data)
     }
 
     func fetchComments(subreddit: String, postID: String) async throws -> [RedditComment] {
-        let url = URL(string: "https://oauth.reddit.com/comments/\(postID).json?sort=best&raw_json=1")!
+        guard let url = URL(string:
+            "https://oauth.reddit.com/comments/\(Self.encodePath(postID)).json?sort=best&raw_json=1")
+        else { throw AggregatorError.contentFetch("invalid post id") }
         let data = try await authorizedGET(url)
         // Response is [postListing, commentListing]; index 1 holds the comments.
         let listings = try JSONDecoder().decode([RedditCommentEnvelope].self, from: data)
@@ -101,7 +121,14 @@ final class RedditClient: @unchecked Sendable {
     }
 }
 
-struct RedditTokenResponse: Decodable { let access_token: String }
+struct RedditTokenResponse: Decodable {
+    let accessToken: String
+    let expiresIn: Int?
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case expiresIn = "expires_in"
+    }
+}
 
 // MARK: - Decoding envelopes
 
