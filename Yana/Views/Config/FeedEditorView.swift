@@ -27,7 +27,7 @@ struct FeedEditorView: View {
                 }
                 if !model.type.identifierChoices.isEmpty {
                     Picker("Feed", selection: $model.identifier) {
-                        ForEach(model.type.identifierChoices, id: \.value) { choice in
+                        ForEach(feedChoices, id: \.value) { choice in
                             Text(choice.label).tag(choice.value)
                         }
                     }
@@ -70,6 +70,18 @@ struct FeedEditorView: View {
                 Button("Save") { save() }.disabled(!model.isValid)
             }
         }
+    }
+
+    /// Predefined choices for the current type, plus the current identifier as a
+    /// "Current" row when it isn't one of them (so editing an off-list/custom feed
+    /// doesn't render a blank Picker or silently drop the saved value).
+    private var feedChoices: [(value: String, label: String)] {
+        let choices = model.type.identifierChoices
+        let trimmed = model.identifier.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty, !choices.contains(where: { $0.value == trimmed }) {
+            return choices + [(trimmed, String(localized: "Current: \(trimmed)"))]
+        }
+        return choices
     }
 
     private var identifierLabel: String {
