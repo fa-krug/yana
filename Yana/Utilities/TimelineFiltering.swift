@@ -6,9 +6,10 @@ import Foundation
 enum TagFilter {
     static func apply(to articles: [Article], disabledTagNames: Set<String>, includeUntagged: Bool) -> [Article] {
         articles.filter { article in
-            let names = Set(article.tags.map(\.name))
-            if names.isEmpty { return includeUntagged }
-            return !names.isSubset(of: disabledTagNames)
+            let tags = article.tags
+            if tags.isEmpty { return includeUntagged }
+            // Shown if it has at least one tag that is NOT disabled (OR semantics).
+            return tags.contains { !disabledTagNames.contains($0.name) }
         }
     }
 }
