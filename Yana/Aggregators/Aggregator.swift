@@ -34,6 +34,9 @@ enum AggregatorError: Error, LocalizedError {
     case missingIdentifier
     case missingAPIKey(AggregatorAPIKey)
     case notImplemented(AggregatorType)
+    case articleSkip(statusCode: Int)
+    case contentFetch(String)
+    case parse(String)
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +46,12 @@ enum AggregatorError: Error, LocalizedError {
             String(localized: "This aggregator requires an API key. Add it in Settings.")
         case .notImplemented(let type):
             String(localized: "The \(type.displayName) aggregator is not available yet.")
+        case .articleSkip(let code):
+            String(localized: "Article skipped (HTTP \(code)).")
+        case .contentFetch(let message):
+            String(localized: "Could not fetch content: \(message)")
+        case .parse(let message):
+            String(localized: "Could not parse content: \(message)")
         }
     }
 }
