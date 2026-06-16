@@ -12,6 +12,7 @@ struct FeedsView: View {
     @State private var exportURL: URL?
     @State private var isExporting = false
     @State private var importMessage: String?
+    @State private var feedToDelete: Feed?
 
     var body: some View {
         List {
@@ -23,8 +24,7 @@ struct FeedsView: View {
                 }
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
-                        modelContext.delete(feed)
-                        try? modelContext.save()
+                        feedToDelete = feed
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
@@ -80,6 +80,28 @@ struct FeedsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importMessage ?? "")
+        }
+        .confirmationDialog(
+            String(localized: "Delete Feed?"),
+            isPresented: Binding(get: { feedToDelete != nil }, set: { if !$0 { feedToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let feed = feedToDelete {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    modelContext.delete(feed)
+                    try? modelContext.save()
+                    feedToDelete = nil
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                feedToDelete = nil
+            }
+        } message: {
+            if let feed = feedToDelete {
+                Text(
+                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \(feed.articles.count) articles will be removed.")
+                )
+            }
         }
     }
 

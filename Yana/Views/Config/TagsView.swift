@@ -8,6 +8,7 @@ struct TagsView: View {
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]
     @State private var editingTag: Tag?
     @State private var isCreating = false
+    @State private var offsetsToDelete: IndexSet?
 
     var body: some View {
         List {
@@ -26,7 +27,12 @@ struct TagsView: View {
                 }
                 .tint(.primary)
             }
-            .onDelete(perform: delete)
+            .onDelete { offsets in
+                // Filter to only deletable (non-built-in) tags before prompting
+                let deletable = offsets.filter { !tags[$0].isBuiltIn }
+                guard !deletable.isEmpty else { return }
+                offsetsToDelete = IndexSet(deletable)
+            }
             .onMove(perform: move)
         }
         .navigationTitle("Tags")
@@ -38,6 +44,26 @@ struct TagsView: View {
         }
         .sheet(item: $editingTag) { tag in TagEditorView(tag: tag) }
         .sheet(isPresented: $isCreating) { TagEditorView(tag: nil) }
+        .confirmationDialog(
+            String(localized: "Delete Tag?"),
+            isPresented: Binding(get: { offsetsToDelete != nil }, set: { if !$0 { offsetsToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Delete"), role: .destructive) {
+                if let offsets = offsetsToDelete {
+                    delete(offsets)
+                }
+                offsetsToDelete = nil
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                offsetsToDelete = nil
+            }
+        } message: {
+            if let offsets = offsetsToDelete {
+                let names = offsets.map { tags[$0].name }.joined(separator: ", ")
+                Text(String(localized: "Delete \(names)? This cannot be undone."))
+            }
+        }
     }
 
     private func delete(_ offsets: IndexSet) {
