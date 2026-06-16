@@ -12,39 +12,41 @@ struct FeedsView: View {
     @State private var exportURL: URL?
     @State private var isExporting = false
     @State private var importMessage: String?
+    @State private var searchText = ""
+
+    private var filteredFeeds: [Feed] {
+        NameSearch.filter(feeds, query: searchText, name: \.name)
+    }
 
     var body: some View {
-        List {
-            ForEach(feeds) { feed in
-                NavigationLink {
-                    FeedEditorView(feed: feed)
+        ManagedList(
+            items: filteredFeeds,
+            searchText: $searchText,
+            searchPrompt: "Search feeds",
+            emptyTitle: "No Feeds",
+            emptyIcon: "list.bullet.rectangle",
+            emptyDescription: "Tap + to add your first feed.",
+            onDelete: { offsets in
+                for index in offsets { modelContext.delete(filteredFeeds[index]) }
+                try? modelContext.save()
+            }
+        ) { feed in
+            NavigationLink {
+                FeedEditorView(feed: feed)
+            } label: {
+                row(feed)
+            }
+            .swipeActions(edge: .trailing) {
+                Button {
+                    Task { await updateOne(feed) }
                 } label: {
-                    row(feed)
+                    Label("Update", systemImage: "arrow.clockwise")
                 }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
-                        modelContext.delete(feed)
-                        try? modelContext.save()
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    Button {
-                        Task { await updateOne(feed) }
-                    } label: {
-                        Label("Update", systemImage: "arrow.clockwise")
-                    }
-                    .tint(.blue)
-                    .disabled(isUpdating)
-                }
+                .tint(.blue)
+                .disabled(isUpdating)
             }
         }
         .navigationTitle("Feeds")
-        .overlay {
-            if feeds.isEmpty {
-                ContentUnavailableView("No Feeds", systemImage: "list.bullet.rectangle",
-                                       description: Text("Tap + to add your first feed."))
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
