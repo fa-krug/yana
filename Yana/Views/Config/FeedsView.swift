@@ -29,6 +29,7 @@ struct FeedsView: View {
                         Label("Update", systemImage: "arrow.clockwise")
                     }
                     .tint(.blue)
+                    .disabled(isUpdating)
                 }
             }
         }
@@ -89,6 +90,9 @@ struct FeedsView: View {
     }
 
     private func updateOne(_ feed: Feed) async {
+        guard !isUpdating else { return }
+        isUpdating = true
+        defer { isUpdating = false }
         await AggregationService(context: modelContext).update(feed: feed)
     }
 }
