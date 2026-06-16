@@ -17,7 +17,10 @@ final class AggregatorRegistry: Sendable {
         case .caschysBlog: return CaschysBlogAggregator(config: config, credentials: credentials)
         case .mactechnews: return MactechnewsAggregator(config: config, credentials: credentials)
         case .meinMmo: return MeinMmoAggregator(config: config, credentials: credentials)
-        // 4e social/media (reddit, youtube, podcast) and the remaining comic scrapers add their cases here.
+        case .explosm: return ExplosmAggregator(config: config, credentials: credentials)
+        case .darkLegacy: return DarkLegacyAggregator(config: config, credentials: credentials)
+        case .oglaf: return OglafAggregator(config: config, credentials: credentials)
+        // 4e social/media (reddit, youtube, podcast) add their cases here.
         default: return nil
         }
     }
