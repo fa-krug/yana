@@ -25,9 +25,8 @@ struct TagEditorView: View {
             }
             .navigationTitle(tag == nil ? "New Tag" : "Edit Tag")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    ConfirmCircleButton(isDisabled: name.trimmingCharacters(in: .whitespaces).isEmpty) { save() }
                 }
             }
         }

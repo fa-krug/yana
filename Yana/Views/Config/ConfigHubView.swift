@@ -30,8 +30,8 @@ struct ConfigHubView: View {
             }
             .navigationTitle("Configuration")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .confirmationAction) {
+                    ConfirmCircleButton { dismiss() }
                 }
             }
         }
