@@ -113,6 +113,16 @@ Public API unchanged: `updateAll()`, `update(feed:)`, `update(article:)`; `isUpd
   reader (current article) alongside `updateAll()`.
 - **`lastFetchedAt` / `lastError`** set per feed.
 
+> **4b follow-ups (from the 4a review).** Two refinements deferred to when a live source exists:
+> (1) **Cap vs. dedup** — 4a applies `runLimit` to the fetched list before upsert, so on a same-day
+> re-run, articles that merely *update* existing rows still consume cap budget. The cap should
+> count **new inserts**, not updates (the server counts inserts). Apply the cap after dedup
+> partitioning in 4b. (2) **`FeedConfig.tags`** — the snapshot does not yet carry the feed's tags
+> as value data; 4a's upsert reads `feed.tags` directly on the main actor (fine), but any off-main
+> aggregator hook needing tag info would require adding `tags` to `FeedConfig`. (3) Retention is
+> not injectable (`AppSettings()` built in `cleanupAndSave()`); inject it when a test needs a custom
+> window, and add a service-level retention test.
+
 ## 3. Shared foundation (the utils layer)
 
 Ports `core/aggregators/utils/` and `services/header_element/`. New `Yana/Aggregators/Utils/`.
