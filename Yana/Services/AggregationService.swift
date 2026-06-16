@@ -130,7 +130,11 @@ final class AggregationService {
 
     private func collectedToday(for feed: Feed, now: Date) -> Int {
         let startOfDay = Calendar.current.startOfDay(for: now)
-        return feed.articles.filter { $0.createdAt >= startOfDay }.count
+        let feedID = feed.persistentModelID
+        let descriptor = FetchDescriptor<Article>(
+            predicate: #Predicate { $0.feed?.persistentModelID == feedID && $0.createdAt >= startOfDay }
+        )
+        return (try? context.fetchCount(descriptor)) ?? 0
     }
 
     private func starredTag() -> Tag? {
