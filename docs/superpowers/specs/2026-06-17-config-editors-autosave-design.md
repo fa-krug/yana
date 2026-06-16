@@ -54,9 +54,10 @@ model-based approach already isolates edits until apply.
   - **New tag (`tag == nil`):** if trimmed name non-empty → insert with next
     `sortOrder` (as today). If empty → discard (no insert).
   - **Existing tag:** if trimmed name non-empty → apply rename (skipped for built-in
-    Starred) + recolor + save. If empty → keep existing values (still allow recolor?
-    No — to keep the rule simple, only persist when valid; an empty-name edit of an
-    existing tag is discarded). Built-in Starred remains recolor-only.
+    Starred) + recolor + save. If the name is empty, persist nothing — the edit
+    (including any color change) is discarded, keeping the rule "only persist when
+    valid" simple and symmetric with Feeds. Built-in Starred remains recolor-only
+    (its name is non-empty and locked, so it always persists).
 
 This makes Tags consistent with Feeds in both navigation and no-save-button behavior.
 
