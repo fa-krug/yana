@@ -18,7 +18,9 @@ struct RedditClientTests {
 
     private let commentsJSON = """
     [
-      {"data":{"children":[{"data":{"id":"px","title":"Hello","selftext":"x","permalink":"/r/swift/comments/p1/hello/","author":"alice","created_utc":1700000000,"num_comments":7}}]}},
+      {"data":{"children":[{"data":{
+        "id":"px","title":"Hello","selftext":"x","permalink":"/r/swift/comments/p1/hello/",
+        "author":"alice","created_utc":1700000000,"num_comments":7}}]}},
       {"data":{"children":[
         {"kind":"t1","data":{"id":"c1","body":"Top comment","author":"bob","score":10,"permalink":"/r/swift/comments/p1/hello/c1/"}},
         {"kind":"t1","data":{"id":"c2","body":"Low comment","author":"carol","score":2,"permalink":"/r/swift/comments/p1/hello/c2/"}},

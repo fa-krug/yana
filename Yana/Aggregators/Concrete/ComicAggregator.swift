@@ -69,7 +69,9 @@ class ExplosmAggregator: ComicAggregator, @unchecked Sendable {
         let img = try doc.select("img").first { try $0.attr("src").contains("static.explosm.net") }
         guard let img, let src = try? img.attr("src") else { return "" }
         let alt = (try? img.attr("alt")) ?? ""
-        return "<div style=\"text-align: center;\"><img src=\"\(src)\" alt=\"\(alt.replacingOccurrences(of: "\"", with: "&quot;"))\">\(captionHTML(alt))</div>"
+        let escapedAlt = alt.replacingOccurrences(of: "\"", with: "&quot;")
+        return "<div style=\"text-align: center;\">"
+            + "<img src=\"\(src)\" alt=\"\(escapedAlt)\">\(captionHTML(alt))</div>"
     }
 }
 
@@ -122,6 +124,8 @@ class OglafAggregator: ComicAggregator, @unchecked Sendable {
             src = "https://media.oglaf.com/comic/" + src
         }
         let joke = (try? img.attr("title")) ?? ""
-        return "<div style=\"text-align: center;\"><img src=\"\(src)\" alt=\"\(((try? img.attr("alt")) ?? "").replacingOccurrences(of: "\"", with: "&quot;"))\" style=\"max-width: 100%; height: auto;\">\(captionHTML(joke))</div>"
+        let alt = ((try? img.attr("alt")) ?? "").replacingOccurrences(of: "\"", with: "&quot;")
+        return "<div style=\"text-align: center;\"><img src=\"\(src)\" alt=\"\(alt)\" "
+            + "style=\"max-width: 100%; height: auto;\">\(captionHTML(joke))</div>"
     }
 }

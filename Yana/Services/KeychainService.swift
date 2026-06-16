@@ -17,6 +17,7 @@ enum KeychainService: Sendable {
             kSecAttrService as String: AppConstants.keychainService,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)

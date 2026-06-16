@@ -28,16 +28,15 @@ enum EmbedRewriter {
     static func youTubeEmbedHTML(videoID: String) -> String {
         let params = "autoplay=0&loop=0&mute=0&controls=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=\(ReaderWeb.baseOrigin)"
         let src = "https://www.youtube-nocookie.com/embed/\(videoID)?\(params)"
-        return """
-        <div class="youtube-embed-container"><iframe src="\(src)" width="560" height="315" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
-        """
+        let allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        return "<div class=\"youtube-embed-container\"><iframe src=\"\(src)\" width=\"560\" height=\"315\" "
+            + "allowfullscreen allow=\"\(allow)\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe></div>"
     }
 
     static func dailymotionEmbedHTML(videoID: String) -> String {
         let src = "https://geo.dailymotion.com/player.html?video=\(videoID)"
-        return """
-        <div class="dailymotion-embed-container"><iframe src="\(src)" width="560" height="315" allowfullscreen allow="autoplay; web-share" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
-        """
+        return "<div class=\"dailymotion-embed-container\"><iframe src=\"\(src)\" width=\"560\" height=\"315\" "
+            + "allowfullscreen allow=\"autoplay; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe></div>"
     }
 
     static func rewriteEmbeds(in doc: Document) throws {
@@ -62,9 +61,9 @@ enum EmbedRewriter {
               let tweet = json["tweet"] as? [String: Any] else { return nil }
         let text = escapeHTML(tweet["text"] as? String ?? "")
         let author = escapeHTML((tweet["author"] as? [String: Any])?["screen_name"] as? String ?? "")
-        return """
-        <blockquote style="border-left: 3px solid #1d9bf0; padding: 12px 16px; margin: 1em 0; background: #f7f9fa;"><p><strong>@\(author)</strong> · <a href="\(url)">View on X</a></p><p>\(text)</p></blockquote>
-        """
+        let style = "border-left: 3px solid #1d9bf0; padding: 12px 16px; margin: 1em 0; background: #f7f9fa;"
+        return "<blockquote style=\"\(style)\"><p><strong>@\(author)</strong> · "
+            + "<a href=\"\(url)\">View on X</a></p><p>\(text)</p></blockquote>"
     }
 
     private static func escapeHTML(_ s: String) -> String {

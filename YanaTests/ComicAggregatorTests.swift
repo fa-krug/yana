@@ -75,7 +75,9 @@ struct ComicAggregatorTests {
     }
 
     @Test func oglafShowsTitleJokeAsCaption() async throws {
-        let page = "<html><body><div class=\"content\"><img id=\"strip\" src=\"https://media.oglaf.com/comic/x.jpg\" alt=\"alt\" title=\"the second joke\"></div></body></html>"
+        let page = "<html><body><div class=\"content\">"
+            + "<img id=\"strip\" src=\"https://media.oglaf.com/comic/x.jpg\" alt=\"alt\" "
+            + "title=\"the second joke\"></div></body></html>"
         let agg = StubOglaf(page: page, store: tempStore())
         let a = try #require(try await agg.aggregate().first)
         #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))

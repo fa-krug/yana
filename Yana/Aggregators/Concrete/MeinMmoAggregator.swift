@@ -76,8 +76,13 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         var pages: Set<Int> = [1]
         guard let doc = try? HTMLUtils.parse(html) else { return pages }
         let contentDiv = try? doc.select("div.gp-entry-content").first()
-        let container = (try? contentDiv?.select("div.gp-pagination-numbers, ul.page-numbers, nav.navigation.pagination, div.gp-pagination").first()) ?? nil
-            ?? (try? doc.select("div.gp-pagination-numbers, nav.navigation.pagination, div.gp-pagination, ul.page-numbers").first()) ?? nil
+        let inContent = (try? contentDiv?.select(
+            "div.gp-pagination-numbers, ul.page-numbers, nav.navigation.pagination, div.gp-pagination"
+        ).first()).flatMap { $0 }
+        let inDoc = (try? doc.select(
+            "div.gp-pagination-numbers, nav.navigation.pagination, div.gp-pagination, ul.page-numbers"
+        ).first()).flatMap { $0 }
+        let container = inContent ?? inDoc
         guard let pagination = container else { return pages }
         for link in (try? pagination.select("a.page-numbers, a.post-page-numbers").array()) ?? [] {
             if let text = try? link.text(), let n = Int(text) { pages.insert(n) }
@@ -122,10 +127,8 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         }
 
         // Remove "Weiter geht es auf Seite" pagination markers.
-        for em in try content.select("em") {
-            if try em.text().contains("Weiter geht es auf Seite") {
-                if let p = em.parent(), p.tagName() == "p" { try p.remove() } else { try em.remove() }
-            }
+        for em in try content.select("em") where try em.text().contains("Weiter geht es auf Seite") {
+            if let p = em.parent(), p.tagName() == "p" { try p.remove() } else { try em.remove() }
         }
 
         // Embed-processor strategies on <figure>.
@@ -144,7 +147,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     private func convertDailymotionBlocks(_ content: Element) throws {
         for block in try content.select("div.wp-block-mmo-video") {
             guard let id = dailymotionVideoID(block) else { continue }
-            let title = (try? block.select("div.title").first()?.text()) ?? nil
+            let title = (try? block.select("div.title").first()?.text()).flatMap { $0 }
             var html = EmbedRewriter.dailymotionEmbedHTML(videoID: id)
             if let title, !title.isEmpty {
                 // Append caption inside the container.
@@ -179,7 +182,9 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
             }
             if let twitter = linkMatching(figure, hosts: ["twitter.com", "x.com"]) {
                 let clean = twitter.split(separator: "?").first.map(String.init) ?? twitter
-                try figure.replaceWith(parse("<p><a href=\"\(clean)\" target=\"_blank\" rel=\"noopener\">View on X/Twitter: \(clean)</a></p>")); continue
+                let link = "<p><a href=\"\(clean)\" target=\"_blank\" rel=\"noopener\">"
+                    + "View on X/Twitter: \(clean)</a></p>"
+                try figure.replaceWith(parse(link)); continue
             }
             if classStr.contains("provider-reddit") || classStr.contains("embed-reddit"),
                let reddit = linkMatching(figure, hosts: ["reddit.com"]) {
@@ -189,7 +194,10 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
             if classStr.contains("tiktok"), let tiktok = linkMatching(figure, hosts: ["tiktok.com"]),
                let r = tiktok.range(of: #"/video/(\d+)"#, options: .regularExpression) {
                 let id = String(tiktok[r]).filter(\.isNumber)
-                try figure.replaceWith(parse("<div data-sanitized-class=\"tiktok-embed\"><iframe src=\"https://www.tiktok.com/embed/v3/\(id)\" width=\"325\" height=\"605\" allowfullscreen allow=\"autoplay; encrypted-media\"></iframe></div>")); continue
+                let tiktokHTML = "<div data-sanitized-class=\"tiktok-embed\"><iframe "
+                    + "src=\"https://www.tiktok.com/embed/v3/\(id)\" width=\"325\" height=\"605\" "
+                    + "allowfullscreen allow=\"autoplay; encrypted-media\"></iframe></div>"
+                try figure.replaceWith(parse(tiktokHTML)); continue
             }
             // Fallback: any YouTube link.
             if let id = youTubeIDInFigure(figure) {

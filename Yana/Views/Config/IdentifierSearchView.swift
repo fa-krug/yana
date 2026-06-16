@@ -88,8 +88,10 @@ struct IdentifierSearchView: View {
                     ProgressView()
                 } else if model.rows.isEmpty {
                     if model.hasSearched {
-                        ContentUnavailableView("No Results", systemImage: "magnifyingglass",
-                                               description: Text("No matches found. Check the search term, and that the required API key is set in Settings."))
+                        ContentUnavailableView(
+                            "No Results", systemImage: "magnifyingglass",
+                            description: Text("No matches found. Check the search term, "
+                                + "and that the required API key is set in Settings."))
                     } else {
                         ContentUnavailableView("Search", systemImage: "magnifyingglass")
                     }

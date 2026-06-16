@@ -53,7 +53,7 @@ struct MactechnewsAggregatorTests {
         <img src="/img/Bild.592736.jpg">\
         <img src="/img/Other.111111.jpg"></div></body></html>
         """
-        final class S: MactechnewsAggregator, @unchecked Sendable {
+        final class StubAggregator: MactechnewsAggregator, @unchecked Sendable {
             let page: String
             init(_ page: String, _ store: ImageStore) {
                 self.page = page
@@ -72,7 +72,7 @@ struct MactechnewsAggregatorTests {
                 "https://www.mactechnews.de/img/Cover-X.592736.jpg"
             }
         }
-        let agg = S(page, tempStore())
+        let agg = StubAggregator(page, tempStore())
         let a = try #require(try await agg.aggregate().first)
         #expect(a.content.contains("Body"))
         #expect(!a.content.contains("592736"))           // duplicate numeric-ID image removed

@@ -101,62 +101,100 @@ struct AggregatorOptionsForm: View {
 
     private func websiteSection(_ o: WebsiteOptions) -> some View {
         Section("Options") {
-            Toggle("Fetch Full Content", isOn: Binding(get: { o.useFullContent }, set: { var n = o; n.useFullContent = $0; options = .fullWebsite(n) }))
-            TextField("Custom Content Selector", text: Binding(get: { o.customContentSelector }, set: { var n = o; n.customContentSelector = $0; options = .fullWebsite(n) }))
+            Toggle("Fetch Full Content", isOn: Binding(
+                get: { o.useFullContent },
+                set: { var n = o; n.useFullContent = $0; options = .fullWebsite(n) }))
+            TextField("Custom Content Selector", text: Binding(
+                get: { o.customContentSelector },
+                set: { var n = o; n.customContentSelector = $0; options = .fullWebsite(n) }))
                 .autocorrectionDisabled()
-            TextField("Selectors to Remove", text: Binding(get: { o.customSelectorsToRemove }, set: { var n = o; n.customSelectorsToRemove = $0; options = .fullWebsite(n) }))
+            TextField("Selectors to Remove", text: Binding(
+                get: { o.customSelectorsToRemove },
+                set: { var n = o; n.customSelectorsToRemove = $0; options = .fullWebsite(n) }))
                 .autocorrectionDisabled()
         }
     }
 
     private func redditSection(_ o: RedditOptions) -> some View {
         Section("Options") {
-            Picker("Sort Order", selection: Binding(get: { o.subredditSort }, set: { var n = o; n.subredditSort = $0; options = .reddit(n) })) {
+            Picker("Sort Order", selection: Binding(
+                get: { o.subredditSort },
+                set: { var n = o; n.subredditSort = $0; options = .reddit(n) })) {
                 Text("Hot").tag("hot")
                 Text("New").tag("new")
                 Text("Top").tag("top")
                 Text("Rising").tag("rising")
             }
-            Stepper("Minimum Comments: \(o.minComments)", value: Binding(get: { o.minComments }, set: { var n = o; n.minComments = $0; options = .reddit(n) }), in: 0...500)
-            Stepper("Comment Limit: \(o.commentLimit)", value: Binding(get: { o.commentLimit }, set: { var n = o; n.commentLimit = $0; options = .reddit(n) }), in: 0...50)
-            Stepper("Minimum Post Age: \(o.minAgeHours)h", value: Binding(get: { o.minAgeHours }, set: { var n = o; n.minAgeHours = $0; options = .reddit(n) }), in: 0...168)
-            Toggle("Include Header Image", isOn: Binding(get: { o.includeHeaderImage }, set: { var n = o; n.includeHeaderImage = $0; options = .reddit(n) }))
+            Stepper("Minimum Comments: \(o.minComments)", value: Binding(
+                get: { o.minComments },
+                set: { var n = o; n.minComments = $0; options = .reddit(n) }), in: 0...500)
+            Stepper("Comment Limit: \(o.commentLimit)", value: Binding(
+                get: { o.commentLimit },
+                set: { var n = o; n.commentLimit = $0; options = .reddit(n) }), in: 0...50)
+            Stepper("Minimum Post Age: \(o.minAgeHours)h", value: Binding(
+                get: { o.minAgeHours },
+                set: { var n = o; n.minAgeHours = $0; options = .reddit(n) }), in: 0...168)
+            Toggle("Include Header Image", isOn: Binding(
+                get: { o.includeHeaderImage },
+                set: { var n = o; n.includeHeaderImage = $0; options = .reddit(n) }))
         }
     }
 
     private func youtubeSection(_ o: YouTubeOptions) -> some View {
         Section("Options") {
-            Stepper("Comment Limit: \(o.commentLimit)", value: Binding(get: { o.commentLimit }, set: { var n = o; n.commentLimit = $0; options = .youtube(n) }), in: 0...50)
+            Stepper("Comment Limit: \(o.commentLimit)", value: Binding(
+                get: { o.commentLimit },
+                set: { var n = o; n.commentLimit = $0; options = .youtube(n) }), in: 0...50)
         }
     }
 
     private func podcastSection(_ o: PodcastOptions) -> some View {
         Section("Options") {
-            Toggle("Include Audio Player", isOn: Binding(get: { o.includePlayer }, set: { var n = o; n.includePlayer = $0; options = .podcast(n) }))
-            Toggle("Include Download Link", isOn: Binding(get: { o.includeDownloadLink }, set: { var n = o; n.includeDownloadLink = $0; options = .podcast(n) }))
-            Stepper("Artwork Max Width: \(o.artworkSize)", value: Binding(get: { o.artworkSize }, set: { var n = o; n.artworkSize = $0; options = .podcast(n) }), in: 100...1200, step: 50)
+            Toggle("Include Audio Player", isOn: Binding(
+                get: { o.includePlayer },
+                set: { var n = o; n.includePlayer = $0; options = .podcast(n) }))
+            Toggle("Include Download Link", isOn: Binding(
+                get: { o.includeDownloadLink },
+                set: { var n = o; n.includeDownloadLink = $0; options = .podcast(n) }))
+            Stepper("Artwork Max Width: \(o.artworkSize)", value: Binding(
+                get: { o.artworkSize },
+                set: { var n = o; n.artworkSize = $0; options = .podcast(n) }), in: 100...1200, step: 50)
         }
     }
 
     private func heiseSection(_ o: HeiseOptions) -> some View {
         Section("Options") {
-            Toggle("Include Forum Comments", isOn: Binding(get: { o.includeComments }, set: { var n = o; n.includeComments = $0; options = .heise(n) }))
-            Stepper("Max Comments: \(o.maxComments)", value: Binding(get: { o.maxComments }, set: { var n = o; n.maxComments = $0; options = .heise(n) }), in: 0...50)
+            Toggle("Include Forum Comments", isOn: Binding(
+                get: { o.includeComments },
+                set: { var n = o; n.includeComments = $0; options = .heise(n) }))
+            Stepper("Max Comments: \(o.maxComments)", value: Binding(
+                get: { o.maxComments },
+                set: { var n = o; n.maxComments = $0; options = .heise(n) }), in: 0...50)
         }
     }
 
     private func mactechnewsSection(_ o: MactechnewsOptions) -> some View {
         Section("Options") {
-            Toggle("Combine Multi-page Articles", isOn: Binding(get: { o.combinePages }, set: { var n = o; n.combinePages = $0; options = .mactechnews(n) }))
-            Toggle("Include Comments", isOn: Binding(get: { o.includeComments }, set: { var n = o; n.includeComments = $0; options = .mactechnews(n) }))
-            Stepper("Max Comments: \(o.maxComments)", value: Binding(get: { o.maxComments }, set: { var n = o; n.maxComments = $0; options = .mactechnews(n) }), in: 0...50)
+            Toggle("Combine Multi-page Articles", isOn: Binding(
+                get: { o.combinePages },
+                set: { var n = o; n.combinePages = $0; options = .mactechnews(n) }))
+            Toggle("Include Comments", isOn: Binding(
+                get: { o.includeComments },
+                set: { var n = o; n.includeComments = $0; options = .mactechnews(n) }))
+            Stepper("Max Comments: \(o.maxComments)", value: Binding(
+                get: { o.maxComments },
+                set: { var n = o; n.maxComments = $0; options = .mactechnews(n) }), in: 0...50)
         }
     }
 
     private func tagesschauSection(_ o: TagesschauOptions) -> some View {
         Section("Options") {
-            Toggle("Skip Livestreams", isOn: Binding(get: { o.skipLivestreams }, set: { var n = o; n.skipLivestreams = $0; options = .tagesschau(n) }))
-            Toggle("Skip Videos", isOn: Binding(get: { o.skipVideos }, set: { var n = o; n.skipVideos = $0; options = .tagesschau(n) }))
+            Toggle("Skip Livestreams", isOn: Binding(
+                get: { o.skipLivestreams },
+                set: { var n = o; n.skipLivestreams = $0; options = .tagesschau(n) }))
+            Toggle("Skip Videos", isOn: Binding(
+                get: { o.skipVideos },
+                set: { var n = o; n.skipVideos = $0; options = .tagesschau(n) }))
         }
     }
 

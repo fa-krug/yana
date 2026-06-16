@@ -19,7 +19,7 @@ struct ImageCompressorTests {
         let out = try? #require(result)
         #expect(out != nil)
         #expect(["jpg", "png", "webp"].contains(out!.ext))
-        #expect(out!.data.count > 0)
+        #expect(!out!.data.isEmpty)
     }
 
     @Test func rejectsTinyImages() {

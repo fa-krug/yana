@@ -10,7 +10,8 @@ struct AggregatorRegistryComicsTests {
 
     @Test func buildsComicAggregators() {
         #expect(AggregatorRegistry.shared.makeAggregator(cfg(.explosm, .explosm(ExplosmOptions())), credentials: .init()) is ExplosmAggregator)
-        #expect(AggregatorRegistry.shared.makeAggregator(cfg(.darkLegacy, .darkLegacy(DarkLegacyOptions())), credentials: .init()) is DarkLegacyAggregator)
+        #expect(AggregatorRegistry.shared.makeAggregator(
+            cfg(.darkLegacy, .darkLegacy(DarkLegacyOptions())), credentials: .init()) is DarkLegacyAggregator)
         #expect(AggregatorRegistry.shared.makeAggregator(cfg(.oglaf, .oglaf(OglafOptions())), credentials: .init()) is OglafAggregator)
     }
 }

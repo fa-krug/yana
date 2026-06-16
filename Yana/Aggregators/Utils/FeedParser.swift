@@ -33,7 +33,7 @@ enum FeedParser {
 
     // RFC 822 (RSS pubDate) — cached, built once instead of per call.
     // Configured once at init then used read-only (`date(from:)`), which is thread-safe.
-    nonisolated(unsafe) private static let rfc822Formatters: [DateFormatter] = {
+    private static let rfc822Formatters: [DateFormatter] = {
         ["EEE, dd MMM yyyy HH:mm:ss Z", "EEE, dd MMM yyyy HH:mm:ss zzz", "dd MMM yyyy HH:mm:ss Z"].map { fmt in
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
@@ -66,7 +66,8 @@ private final class FeedXMLDelegate: NSObject, XMLParserDelegate {
     private var text = ""
     private var inItem = false
 
-    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName qn: String?, attributes attrs: [String: String]) {
+    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
+                qualifiedName qn: String?, attributes attrs: [String: String]) {
         text = ""
         let lower = name.lowercased()
         if lower == "item" || lower == "entry" {
@@ -89,23 +90,49 @@ private final class FeedXMLDelegate: NSObject, XMLParserDelegate {
         if let s = String(data: CDATABlock, encoding: .utf8) { text += s }
     }
 
-    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName qn: String?) {
+    func parser(_ parser: XMLParser, didEndElement name: String,
+                namespaceURI: String?, qualifiedName qn: String?) {
         let lower = name.lowercased()
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         defer { text = "" }
         guard inItem, current != nil else { return }
-        switch lower {
-        case "item", "entry":
+        if lower == "item" || lower == "entry" {
             if let c = current { entries.append(c) }
-            current = nil; inItem = false
+            current = nil
+            inItem = false
+            return
+        }
+        assignField(lower, trimmed: trimmed)
+    }
+
+    /// Assign a parsed element's trimmed text onto the current entry's matching field.
+    private func assignField(_ lower: String, trimmed: String) {
+        if assignDirectField(lower, trimmed: trimmed) { return }
+        assignConditionalField(lower, trimmed: trimmed)
+    }
+
+    /// Fields that always overwrite. Returns `true` when `lower` matched a direct field.
+    private func assignDirectField(_ lower: String, trimmed: String) -> Bool {
+        switch lower {
         case "title": current?.title = trimmed
-        case "link" where !trimmed.isEmpty: if current?.link.isEmpty ?? true { current?.link = trimmed }
-        case "author", "dc:creator", "name": if current?.author.isEmpty ?? true { current?.author = trimmed }
         case "description": current?.entryDescription = trimmed
         case "summary": current?.summary = trimmed
         case "content:encoded", "content": current?.content = trimmed
-        case "pubdate", "published", "updated", "dc:date": if current?.published == nil { current?.published = FeedParser.parseDate(trimmed) }
         case "itunes:duration": current?.itunesDuration = trimmed
+        default: return false
+        }
+        return true
+    }
+
+    /// Fields that only set when not already populated (first-wins).
+    private func assignConditionalField(_ lower: String, trimmed: String) {
+        switch lower {
+        case "link" where !trimmed.isEmpty:
+            if current?.link.isEmpty ?? true { current?.link = trimmed }
+        case "author", "dc:creator", "name":
+            if current?.author.isEmpty ?? true { current?.author = trimmed }
+        case "pubdate", "published", "updated", "dc:date":
+            if current?.published == nil { current?.published = FeedParser.parseDate(trimmed) }
         default: break
         }
     }
