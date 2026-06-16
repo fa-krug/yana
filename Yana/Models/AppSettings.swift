@@ -69,9 +69,6 @@ final class AppSettings {
         static let redditUserAgent = "settings.redditUserAgent"
         static let youtubeEnabled = "settings.youtubeEnabled"
         // Providers
-        static let openaiEnabled = "settings.openaiEnabled"
-        static let anthropicEnabled = "settings.anthropicEnabled"
-        static let geminiEnabled = "settings.geminiEnabled"
         static let openaiAPIURL = "settings.openaiAPIURL"
         static let openaiModel = "settings.openaiModel"
         static let anthropicModel = "settings.anthropicModel"
@@ -127,18 +124,6 @@ final class AppSettings {
     }
 
     // MARK: Providers
-    var openaiEnabled: Bool {
-        get { defaults.bool(forKey: Key.openaiEnabled) }
-        set { defaults.set(newValue, forKey: Key.openaiEnabled) }
-    }
-    var anthropicEnabled: Bool {
-        get { defaults.bool(forKey: Key.anthropicEnabled) }
-        set { defaults.set(newValue, forKey: Key.anthropicEnabled) }
-    }
-    var geminiEnabled: Bool {
-        get { defaults.bool(forKey: Key.geminiEnabled) }
-        set { defaults.set(newValue, forKey: Key.geminiEnabled) }
-    }
     var openaiAPIURL: String {
         get { defaults.string(forKey: Key.openaiAPIURL) ?? "https://api.openai.com/v1" }
         set { defaults.set(newValue, forKey: Key.openaiAPIURL) }

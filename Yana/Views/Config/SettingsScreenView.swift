@@ -57,7 +57,6 @@ struct SettingsScreenView: View {
             }
 
             DisclosureGroup("OpenAI") {
-                Toggle("Enabled", isOn: $settings.openaiEnabled)
                 SecureField("API Key", text: $openaiKey)
                     .onChange(of: openaiKey) { _, v in KeychainService.saveAPIKey(v, for: .openaiAPIKey) }
                 TextField("API URL", text: $settings.openaiAPIURL).autocorrectionDisabled()
@@ -66,7 +65,6 @@ struct SettingsScreenView: View {
                 }
             }
             DisclosureGroup("Anthropic") {
-                Toggle("Enabled", isOn: $settings.anthropicEnabled)
                 SecureField("API Key", text: $anthropicKey)
                     .onChange(of: anthropicKey) { _, v in KeychainService.saveAPIKey(v, for: .anthropicAPIKey) }
                 Picker("Model", selection: $settings.anthropicModel) {
@@ -74,7 +72,6 @@ struct SettingsScreenView: View {
                 }
             }
             DisclosureGroup("Gemini") {
-                Toggle("Enabled", isOn: $settings.geminiEnabled)
                 SecureField("API Key", text: $geminiKey)
                     .onChange(of: geminiKey) { _, v in KeychainService.saveAPIKey(v, for: .geminiAPIKey) }
                 Picker("Model", selection: $settings.geminiModel) {
