@@ -79,7 +79,7 @@ struct FeedEditorView: View {
         }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }.disabled(!model.isValid)
+                ConfirmCircleButton(isDisabled: !model.isValid) { save() }
             }
         }
     }

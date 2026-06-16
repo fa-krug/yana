@@ -26,7 +26,7 @@ struct ArticleTagFilterView: View {
             }
             .navigationTitle("Filter")
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) { ConfirmCircleButton { dismiss() } }
             }
         }
     }
