@@ -81,6 +81,14 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
         return article
     }
 
+    /// The page is fetched against the `seite=all` URL (carried on `article.url` from
+    /// `makeArticle`), but the persisted/user-visible URL is restored to canonical afterward.
+    override func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle {
+        var enriched = try await super.enrich(article, entry: entry)
+        enriched.url = Self.canonicalURL(enriched.url)
+        return enriched
+    }
+
     /// Overridable for tests: fetches the forum page HTML.
     func fetchCommentsHTML(_ url: String) async throws -> String {
         guard let u = URL(string: url) else { throw AggregatorError.contentFetch("bad forum url") }
