@@ -93,7 +93,8 @@ struct AIClientTests {
         #expect(result == "gem")
         let req = try #require(rec.requests.first)
         #expect(req.url?.absoluteString ==
-            "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent?key=k")
+            "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent")
+        #expect(req.value(forHTTPHeaderField: "x-goog-api-key") == "k")
         let json = try bodyJSON(req)
         let contents = try #require(json["contents"] as? [[String: Any]])
         let parts = try #require(contents.first?["parts"] as? [[String: Any]])

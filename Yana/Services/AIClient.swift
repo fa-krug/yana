@@ -111,9 +111,8 @@ struct AIClient: Sendable {
 
     private func geminiRequest(prompt: String, jsonMode: Bool) throws -> URLRequest {
         let model = config.model
-        let key = config.apiKey
         guard let url = URL(string:
-            "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(key)")
+            "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")
         else { throw AIClientError.invalidResponseShape }
 
         var generationConfig: [String: Any] = [
@@ -135,7 +134,7 @@ struct AIClient: Sendable {
             "contents": [["parts": [["text": prompt]]]],
             "generationConfig": generationConfig,
         ]
-        return try jsonRequest(url: url, headers: [:], body: body)
+        return try jsonRequest(url: url, headers: ["x-goog-api-key": config.apiKey], body: body)
     }
 
     // MARK: - Response parsing (per provider)
