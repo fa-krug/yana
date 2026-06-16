@@ -40,4 +40,46 @@ final class BackgroundRefreshManager {
     static func runRefresh(service: AggregationService) async {
         await service.updateAll()
     }
+
+    /// Register the launch handler. MUST be called before the app finishes launching
+    /// (from the app delegate), exactly once per process.
+    func register() {
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: Self.taskIdentifier,
+            using: nil
+        ) { [weak self] task in
+            guard let self, let refreshTask = task as? BGAppRefreshTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.handle(task: refreshTask)
+        }
+    }
+
+    /// Submit the next refresh request. Best-effort: submission failures are ignored
+    /// (e.g. when running in the simulator or when the system declines).
+    func schedule() {
+        let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
+        request.earliestBeginDate = Self.nextBeginDate(from: now(), interval: intervalProvider())
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    /// Run one background refresh, then reschedule. Always completes the task and never
+    /// throws out — a background failure must be silent (spec §6).
+    func handle(task: BGAppRefreshTask) {
+        // Re-arm immediately so the chain continues even if this run is cut short.
+        schedule()
+
+        let work = Task { @MainActor in
+            let service = AggregationService(context: container.mainContext)
+            await Self.runRefresh(service: service)
+            task.setTaskCompleted(success: true)
+        }
+
+        // Honour the system's expiration: cancel the run and mark it incomplete.
+        task.expirationHandler = {
+            work.cancel()
+            task.setTaskCompleted(success: false)
+        }
+    }
 }
