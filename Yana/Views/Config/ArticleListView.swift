@@ -39,8 +39,9 @@ struct ArticleListView: View {
             HStack(spacing: 6) {
                 if let name = article.feed?.name, !name.isEmpty {
                     Text(name).foregroundStyle(Color.accentColor)
+                    Text("·")
                 }
-                Text("· \(article.date, style: .date)")
+                Text(article.date, style: .date)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
