@@ -31,20 +31,32 @@ enum FeedParser {
         return ParsedFeed(entries: delegate.entries)
     }
 
+    // RFC 822 (RSS pubDate) — cached, built once instead of per call.
+    // Configured once at init then used read-only (`date(from:)`), which is thread-safe.
+    nonisolated(unsafe) private static let rfc822Formatters: [DateFormatter] = {
+        ["EEE, dd MMM yyyy HH:mm:ss Z", "EEE, dd MMM yyyy HH:mm:ss zzz", "dd MMM yyyy HH:mm:ss Z"].map { fmt in
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = fmt
+            return f
+        }
+    }()
+
+    // ISO 8601 (Atom updated/published) — cached, used read-only.
+    nonisolated(unsafe) private static let isoPlain: ISO8601DateFormatter = ISO8601DateFormatter()
+    nonisolated(unsafe) private static let isoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     static func parseDate(_ s: String?) -> Date? {
         guard let s, !s.isEmpty else { return nil }
-        // RFC 822 (RSS pubDate)
-        let rfc822 = DateFormatter()
-        rfc822.locale = Locale(identifier: "en_US_POSIX")
-        for fmt in ["EEE, dd MMM yyyy HH:mm:ss Z", "EEE, dd MMM yyyy HH:mm:ss zzz", "dd MMM yyyy HH:mm:ss Z"] {
-            rfc822.dateFormat = fmt
-            if let d = rfc822.date(from: s) { return d }
+        for f in rfc822Formatters {
+            if let d = f.date(from: s) { return d }
         }
-        // ISO 8601 (Atom updated/published)
-        let iso = ISO8601DateFormatter()
-        if let d = iso.date(from: s) { return d }
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return iso.date(from: s)
+        if let d = isoPlain.date(from: s) { return d }
+        return isoFractional.date(from: s)
     }
 }
 
