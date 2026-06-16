@@ -11,16 +11,60 @@ final class AggregationService {
 
     private let context: ModelContext
     private let makeAggregator: AggregatorFactory
+    private let aiProcessor: AIProcessing
     private let now: () -> Date
 
     init(
         context: ModelContext,
         makeAggregator: @escaping AggregatorFactory = { AggregatorRegistry.shared.makeAggregator($0, credentials: $1) },
+        aiProcessor: AIProcessing? = nil,
         now: @escaping () -> Date = { .now }
     ) {
         self.context = context
         self.makeAggregator = makeAggregator
+        // Default: snapshot AppSettings + Keychain on the main actor into an AIProcessor.
+        let settings = AppSettings()
+        self.aiProcessor = aiProcessor ?? AIProcessor(
+            config: Self.makeAIConfig(settings: settings),
+            requestDelay: settings.aiRequestDelay
+        )
         self.now = now
+    }
+
+    /// Build the `AIConfig` snapshot from settings + Keychain. Returns a `.none`-provider
+    /// config when AI is off; the processor then no-ops. Per-provider model + key are read
+    /// from the dedicated AppSettings properties and the matching Keychain item.
+    static func makeAIConfig(settings: AppSettings) -> AIConfig {
+        let provider = settings.activeAIProvider
+        let model: String
+        let keyItem: KeychainService.APIKeyItem?
+        switch provider {
+        case .none:
+            model = ""
+            keyItem = nil
+        case .openai:
+            model = settings.openaiModel
+            keyItem = .openaiAPIKey
+        case .anthropic:
+            model = settings.anthropicModel
+            keyItem = .anthropicAPIKey
+        case .gemini:
+            model = settings.geminiModel
+            keyItem = .geminiAPIKey
+        }
+        let key = keyItem.flatMap { KeychainService.loadAPIKey(for: $0) } ?? ""
+        return AIConfig(
+            provider: provider,
+            model: model,
+            apiKey: key,
+            openaiAPIURL: settings.openaiAPIURL,
+            temperature: settings.aiTemperature,
+            maxTokens: settings.aiMaxTokens,
+            requestTimeout: settings.aiRequestTimeout,
+            maxRetries: settings.aiMaxRetries,
+            retryDelay: settings.aiRetryDelay,
+            maxRetryTime: 60
+        )
     }
 
     /// Update all enabled feeds. One feed's failure never aborts the run.
@@ -69,7 +113,8 @@ final class AggregationService {
             let fresh = fetched.filter { AggregationLogic.isWithinIntakeWindow($0.date, now: runNow) }
             let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
             let capped = Array(fresh.prefix(cap))
-            ArticleUpsert.apply(capped, to: feed, starredTag: starredTag(), context: context, now: runNow)
+            let processed = await aiProcessor.process(capped, ai: config.options.ai)
+            ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: runNow)
             feed.lastFetchedAt = runNow
             feed.lastError = nil
         } catch {

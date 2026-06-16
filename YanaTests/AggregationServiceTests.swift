@@ -102,4 +102,90 @@ struct AggregationServiceTests {
         #expect(feed.lastError != nil)
         #expect(feed.articles.isEmpty)
     }
+
+    // MARK: - AI wiring (Phase 4f)
+
+    /// Fake processor: records what it received and returns a scripted transform.
+    private final class FakeAIProcessor: AIProcessing, @unchecked Sendable {
+        var received: [AggregatedArticle] = []
+        var receivedAI: AIOptions?
+        let transform: @Sendable ([AggregatedArticle]) -> [AggregatedArticle]
+        init(transform: @escaping @Sendable ([AggregatedArticle]) -> [AggregatedArticle] = { $0 }) {
+            self.transform = transform
+        }
+        func process(_ input: [AggregatedArticle], ai: AIOptions) async -> [AggregatedArticle] {
+            received = input
+            receivedAI = ai
+            return transform(input)
+        }
+    }
+
+    @Test func aiProcessorRunsAfterCapAndBeforeUpsert() async throws {
+        let context = try makeContext()
+        // dailyLimit 2 so the cap trims the 3 fetched down to 2 BEFORE the processor sees them.
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
+        context.insert(feed)
+
+        let fake = FakeAIProcessor()    // identity transform
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in
+                FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3")])
+            },
+            aiProcessor: fake
+        )
+        await service.update(feed: feed)
+
+        #expect(fake.received.count == 2)                       // saw the capped list, not 3
+        #expect(fake.received.map { $0.identifier } == ["1", "2"])
+        #expect(feed.articles.count == 2)
+    }
+
+    @Test func aiProcessorOutputIsWhatGetsUpserted() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+
+        // Processor drops "drop" and rewrites "keep"'s title.
+        let fake = FakeAIProcessor { input in
+            input.compactMap { a in
+                guard a.identifier != "drop" else { return nil }
+                var copy = a
+                copy.title = "AI:\(a.title)"
+                return copy
+            }
+        }
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in
+                FakeAggregator(articles: [self.aggregated("keep"), self.aggregated("drop")])
+            },
+            aiProcessor: fake
+        )
+        await service.update(feed: feed)
+
+        #expect(feed.articles.map { $0.identifier } == ["keep"])    // dropped article never upserted
+        #expect(feed.articles.first?.title == "AI:keep")        // AI transform persisted
+    }
+
+    @Test func aiProcessorReceivesFeedsAIOptions() async throws {
+        let context = try makeContext()
+        var options = FeedContentOptions()
+        options.ai = AIOptions(summarize: true, improveWriting: false, translate: true, translateLanguage: "German")
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        feed.options = .feedContent(options)
+        context.insert(feed)
+
+        let fake = FakeAIProcessor()
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x")]) },
+            aiProcessor: fake
+        )
+        await service.update(feed: feed)
+
+        #expect(fake.receivedAI?.summarize == true)
+        #expect(fake.receivedAI?.translate == true)
+        #expect(fake.receivedAI?.translateLanguage == "German")
+    }
 }
