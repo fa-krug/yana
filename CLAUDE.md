@@ -34,16 +34,20 @@ designed for privacy-conscious users who want their feeds without any backend.
   (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO, and
   `AggregatorRegistry`. Concrete aggregators are added incrementally.
 - **Services** (`Yana/Services/`): `AggregationService` (orchestrates feed updates and
-  upserts into SwiftData), `KeychainService` (stores aggregator API keys), and the AI
+  upserts into SwiftData), `KeychainService` (stores aggregator API keys), the AI
   post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini JSON-mode calls) and
-  `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert).
+  `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert) —
+  and `BackgroundRefreshManager` (best-effort periodic `BGAppRefreshTask`: registers at launch,
+  reschedules at `AppSettings.backgroundInterval`, runs `updateAll()` in the handler).
 - **Views** (`Yana/Views/`): the swipe-through `ArticleReaderView` (the endless-timeline home
   surface) and the configuration hub (feeds, tags, settings).
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
 
-- `Yana/YanaApp.swift` — app entry point; creates the SwiftData `ModelContainer`
+- `Yana/YanaApp.swift` — app entry point; owns the shared `AppContainer.shared` `ModelContainer`
+  and an `AppDelegate` (`UIApplicationDelegateAdaptor`) that bootstraps built-in tags and
+  registers/schedules background refresh on launch
 - `Yana/ContentView.swift` — root view (opens directly into the reader; no auth gate)
 - `Yana/Models/AppState.swift` — thin observable UI state (timeline anchor, tag filter, errors)
 - `Yana/Utilities/Constants.swift` — app constants
