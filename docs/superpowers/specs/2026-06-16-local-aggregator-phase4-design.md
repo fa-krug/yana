@@ -178,6 +178,10 @@ Header variants: image (above), YouTube embed (§3.5), or Twitter/X blockquote
   - `rewriteImages(in:)` walks all `<img>` (incl. `data-src`/lazy), downloads via `ImageStore`,
     rewrites `src` → `yana-img://<hash>`, drops unresolved images.
   - `ImageSchemeHandler: WKURLSchemeHandler` resolves `yana-img://<hash>` to the cached file.
+    > **Reader-integration follow-up (from 4b review):** the handler serves bytes from a detached
+    > `Task` after an `await`; before shipping in the scroll-heavy reader it must track in-flight
+    > tasks and bail in `webView(_:stop:)` so it never calls `didFinish`/`didReceive` on a stopped
+    > `WKURLSchemeTask` (which raises). Latent now (correct under test); fix during reader integration.
   - Retention cleanup removes orphaned cache files (no referencing live article).
 - **Header element extraction** (`services/header_element` parity): strategy chain — Reddit
   embed → Reddit post icon → YouTube thumbnail → generic lead image. Result references a
