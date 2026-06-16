@@ -76,7 +76,8 @@ final class BackgroundRefreshManager {
             task.setTaskCompleted(success: true)
         }
 
-        // Honour the system's expiration: cancel the run and mark it incomplete.
+        // Set BEFORE the work can be pre-empted: if the system expires the task immediately,
+        // the handler is already wired to cancel the run.
         task.expirationHandler = {
             work.cancel()
             task.setTaskCompleted(success: false)
