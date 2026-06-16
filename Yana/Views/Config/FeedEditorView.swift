@@ -10,6 +10,7 @@ struct FeedEditorView: View {
     /// nil = create a new feed.
     let feed: Feed?
     @State private var model: FeedEditorModel
+    @State private var showingSearch = false
 
     init(feed: Feed?) {
         self.feed = feed
@@ -32,9 +33,15 @@ struct FeedEditorView: View {
                         }
                     }
                 } else if model.type.identifierKind != .none {
-                    TextField(identifierLabel, text: $model.identifier)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
+                    HStack {
+                        TextField(identifierLabel, text: $model.identifier)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                        if model.type.identifierKind == .subreddit || model.type.identifierKind == .youtubeChannel {
+                            Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
+                                .buttonStyle(.borderless)
+                        }
+                    }
                 }
                 Stepper("Daily Limit: \(model.dailyLimit)", value: $model.dailyLimit, in: 1...200)
                 Toggle("Enabled", isOn: $model.enabled)
@@ -65,6 +72,11 @@ struct FeedEditorView: View {
             AggregatorOptionsForm(options: $model.options)
         }
         .navigationTitle(model.isEditingExisting ? "Edit Feed" : "New Feed")
+        .sheet(isPresented: $showingSearch) {
+            IdentifierSearchView(kind: model.type.identifierKind) { picked in
+                model.identifier = picked
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }.disabled(!model.isValid)
