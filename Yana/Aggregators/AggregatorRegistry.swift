@@ -6,7 +6,8 @@ final class AggregatorRegistry: Sendable {
 
     private init() {}
 
-    /// Build an aggregator for the given config, or `nil` if none is registered yet.
+    /// Build the concrete aggregator for the given config. Every `AggregatorType` resolves to
+    /// an aggregator (the switch is exhaustive, so a future new type forces a compile error).
     func makeAggregator(_ config: FeedConfig, credentials: AggregatorCredentials) -> (any Aggregator)? {
         switch config.type {
         case .feedContent: return FeedContentAggregator(config: config, credentials: credentials)
@@ -20,8 +21,9 @@ final class AggregatorRegistry: Sendable {
         case .explosm: return ExplosmAggregator(config: config, credentials: credentials)
         case .darkLegacy: return DarkLegacyAggregator(config: config, credentials: credentials)
         case .oglaf: return OglafAggregator(config: config, credentials: credentials)
-        // 4e social/media (reddit, youtube, podcast) add their cases here.
-        default: return nil
+        case .reddit: return RedditAggregator(config: config, credentials: credentials)
+        case .youtube: return YouTubeAggregator(config: config, credentials: credentials)
+        case .podcast: return PodcastAggregator(config: config, credentials: credentials)
         }
     }
 }

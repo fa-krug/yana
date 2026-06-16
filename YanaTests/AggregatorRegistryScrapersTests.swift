@@ -17,9 +17,4 @@ struct AggregatorRegistryScrapersTests {
         #expect(r.makeAggregator(cfg(.mactechnews, .mactechnews(MactechnewsOptions())), credentials: .init()) is MactechnewsAggregator)
         #expect(r.makeAggregator(cfg(.meinMmo, .meinMmo(MeinMmoOptions())), credentials: .init()) is MeinMmoAggregator)
     }
-
-    @Test func unregisteredStillNil() {
-        #expect(AggregatorRegistry.shared.makeAggregator(
-            cfg(.reddit, .reddit(RedditOptions())), credentials: .init()) == nil)
-    }
 }

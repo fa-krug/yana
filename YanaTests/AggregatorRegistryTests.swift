@@ -4,18 +4,6 @@ import Testing
 
 @Suite("AggregatorRegistry")
 struct AggregatorRegistryTests {
-    @Test func returnsNilForUnregisteredType() {
-        // Reddit is not yet registered (4e social/media fills its case).
-        let config = FeedConfig(
-            type: .reddit,
-            identifier: "swift",
-            dailyLimit: 20,
-            options: .reddit(RedditOptions()),
-            collectedToday: 0
-        )
-        #expect(AggregatorRegistry.shared.makeAggregator(config, credentials: .init()) == nil)
-    }
-
     @Test func aggregatedArticleStoresAllFields() {
         let date = Date(timeIntervalSince1970: 1000)
         let a = AggregatedArticle(
