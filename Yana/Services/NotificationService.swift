@@ -1,5 +1,5 @@
 import Foundation
-import UserNotifications
+@preconcurrency import UserNotifications
 
 /// Abstraction over the system notification center so the aggregation path can be tested
 /// with a fake (no real authorization prompts or scheduled notifications).

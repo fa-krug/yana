@@ -18,6 +18,7 @@ struct SettingsScreenView: View {
         Form {
             redditSection
             youtubeSection
+            notificationsSection
             aiProviderSection
             aiKnobsSection
             librarySection
@@ -45,6 +46,26 @@ struct SettingsScreenView: View {
             Toggle("Enabled", isOn: $settings.youtubeEnabled)
             SecureField("API Key", text: $youtubeKey)
                 .onChange(of: youtubeKey) { _, v in KeychainService.saveAPIKey(v, for: .youtubeAPIKey) }
+        }
+    }
+
+    // MARK: Notifications
+
+    private var notificationsSection: some View {
+        Section("Notifications") {
+            Toggle("Notify about new articles", isOn: Binding(
+                get: { settings.notificationsEnabled },
+                set: { newValue in
+                    if newValue {
+                        Task {
+                            let granted = await NotificationService().requestAuthorization()
+                            settings.notificationsEnabled = granted
+                        }
+                    } else {
+                        settings.notificationsEnabled = false
+                    }
+                }
+            ))
         }
     }
 
