@@ -79,7 +79,8 @@ enum FeedPortability {
     private static func resolveTags(_ names: [String], context: ModelContext) -> [Tag] {
         guard !names.isEmpty else { return [] }
         let all = (try? context.fetch(FetchDescriptor<Tag>())) ?? []
-        var byName = Dictionary(uniqueKeysWithValues: all.filter { !$0.isBuiltIn }.map { ($0.name.lowercased(), $0) })
+        var byName = Dictionary(all.filter { !$0.isBuiltIn }.map { ($0.name.lowercased(), $0) },
+                                uniquingKeysWith: { first, _ in first })
         var result: [Tag] = []
         for name in names {
             let key = name.lowercased()

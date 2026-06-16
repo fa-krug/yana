@@ -75,7 +75,7 @@ struct FeedsView: View {
         .sheet(isPresented: $isExporting) {
             if let url = exportURL { ShareSheet(activityItems: [url]) }
         }
-        .alert("Import", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
+        .alert("Feeds", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importMessage ?? "")
