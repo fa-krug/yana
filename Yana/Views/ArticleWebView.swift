@@ -6,6 +6,7 @@ struct ArticleWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ReaderWeb.imageScheme)
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque = false
         webView.backgroundColor = .clear
@@ -53,6 +54,18 @@ struct ArticleWebView: UIViewRepresentable {
                     padding-left: 16px;
                     opacity: 0.85;
                 }
+                .youtube-embed-container, .dailymotion-embed-container {
+                    position: relative;
+                    width: 100%;
+                    padding-bottom: 56.25%;
+                    margin: 1em 0;
+                }
+                .youtube-embed-container iframe, .dailymotion-embed-container iframe {
+                    position: absolute;
+                    top: 0; left: 0;
+                    width: 100%; height: 100%;
+                    border: 0;
+                }
             </style>
         """
 
@@ -69,6 +82,6 @@ struct ArticleWebView: UIViewRepresentable {
             </html>
         """
 
-        webView.loadHTMLString(html, baseURL: nil)
+        webView.loadHTMLString(html, baseURL: URL(string: ReaderWeb.baseOrigin))
     }
 }
