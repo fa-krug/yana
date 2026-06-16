@@ -34,7 +34,9 @@ designed for privacy-conscious users who want their feeds without any backend.
   (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO, and
   `AggregatorRegistry`. Concrete aggregators are added incrementally.
 - **Services** (`Yana/Services/`): `AggregationService` (orchestrates feed updates and
-  upserts into SwiftData) and `KeychainService` (stores aggregator API keys).
+  upserts into SwiftData), `KeychainService` (stores aggregator API keys), and the AI
+  post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini JSON-mode calls) and
+  `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert).
 - **Views** (`Yana/Views/`): the swipe-through `ArticleReaderView` (the endless-timeline home
   surface) and the configuration hub (feeds, tags, settings).
 - **Utilities** (`Yana/Utilities/`): constants and extensions.

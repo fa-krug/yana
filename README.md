@@ -84,7 +84,7 @@ Yana/
   ContentView.swift         # Root view; opens directly into the timeline reader
   Models/                   # SwiftData @Model types (Feed, Tag, Article), options, settings
   Aggregators/              # AggregatorType, Aggregator protocol, registry, DTOs
-  Services/                 # AggregationService, KeychainService
+  Services/                 # AggregationService, KeychainService, AIClient, AIProcessor
   Views/                    # SwiftUI views (reader + config hub)
   Utilities/                # Constants and extensions
   Resources/                # Asset catalogs, string catalog
