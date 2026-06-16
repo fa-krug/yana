@@ -10,7 +10,9 @@ enum HeaderElementExtractor {
     static func extract(articleURL: String, title: String, store: ImageStore, credentials: AggregatorCredentials) async -> HeaderElement? {
         // 1. YouTube → embed header (no image download needed).
         if let id = EmbedRewriter.extractYouTubeID(from: articleURL) {
-            return HeaderElement(html: "<header style=\"margin-bottom: 1.5em;\">\(EmbedRewriter.youTubeEmbedHTML(videoID: id))</header>", dedupURL: nil)
+            let embed = EmbedRewriter.youTubeEmbedHTML(videoID: id)
+            let html = "<header style=\"margin-bottom: 1.5em;\">\(embed)</header>"
+            return HeaderElement(html: html, dedupURL: nil)
         }
         // 2. Generic lead image: only when the URL looks like an image.
         guard looksLikeImage(articleURL), let url = URL(string: articleURL),

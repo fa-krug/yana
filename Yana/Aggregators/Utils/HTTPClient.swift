@@ -34,36 +34,12 @@ enum HTTPClient {
         return try await send(request).data
     }
 
-    private static func send(_ request: URLRequest, maxAttempts: Int = 3) async throws -> (data: Data, contentType: String?) {
+    private static func send(_ request: URLRequest, maxAttempts: Int = 3) async throws
+    -> (data: Data, contentType: String?) {
         var lastError: Error = AggregatorError.contentFetch("unknown")
         for attempt in 0..<maxAttempts {
             do {
-                let (bytes, response) = try await URLSession.shared.bytes(for: request)
-                // Cheap early-reject: if the server declares a body larger than the cap, fail before
-                // streaming a single byte. (A server that lies/omits Content-Length is still bounded by
-                // the streaming guard below — at the cost of per-byte iteration for in-cap bodies.)
-                if response.expectedContentLength != NSURLSessionTransferSizeUnknown,
-                   exceedsCap(received: Int(response.expectedContentLength), cap: maxResponseBytes) {
-                    throw AggregatorError.contentFetch("declared response size exceeded \(maxResponseBytes) bytes")
-                }
-                var data = Data()
-                for try await byte in bytes {
-                    data.append(byte)
-                    if exceedsCap(received: data.count, cap: maxResponseBytes) {
-                        throw AggregatorError.contentFetch("response exceeded \(maxResponseBytes) bytes")
-                    }
-                }
-                if let http = response as? HTTPURLResponse {
-                    if (400..<500).contains(http.statusCode) {
-                        throw AggregatorError.articleSkip(statusCode: http.statusCode)
-                    }
-                    if http.statusCode >= 500 {
-                        throw AggregatorError.contentFetch("HTTP \(http.statusCode)")
-                    }
-                    let contentType = http.value(forHTTPHeaderField: "Content-Type")
-                    return (data, contentType)
-                }
-                return (data, nil)
+                return try await performRequest(request)
             } catch let error as AggregatorError {
                 if case .articleSkip = error { throw error }   // 4xx: do not retry
                 lastError = error
@@ -75,5 +51,33 @@ enum HTTPClient {
             }
         }
         throw lastError
+    }
+
+    /// Perform a single request: stream the body under the size cap and map the HTTP status.
+    private static func performRequest(_ request: URLRequest) async throws
+    -> (data: Data, contentType: String?) {
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        // Cheap early-reject: if the server declares a body larger than the cap, fail before
+        // streaming a single byte. (A server that lies/omits Content-Length is still bounded by
+        // the streaming guard below — at the cost of per-byte iteration for in-cap bodies.)
+        if response.expectedContentLength != NSURLSessionTransferSizeUnknown,
+           exceedsCap(received: Int(response.expectedContentLength), cap: maxResponseBytes) {
+            throw AggregatorError.contentFetch("declared response size exceeded \(maxResponseBytes) bytes")
+        }
+        var data = Data()
+        for try await byte in bytes {
+            data.append(byte)
+            if exceedsCap(received: data.count, cap: maxResponseBytes) {
+                throw AggregatorError.contentFetch("response exceeded \(maxResponseBytes) bytes")
+            }
+        }
+        guard let http = response as? HTTPURLResponse else { return (data, nil) }
+        if (400..<500).contains(http.statusCode) {
+            throw AggregatorError.articleSkip(statusCode: http.statusCode)
+        }
+        if http.statusCode >= 500 {
+            throw AggregatorError.contentFetch("HTTP \(http.statusCode)")
+        }
+        return (data, http.value(forHTTPHeaderField: "Content-Type"))
     }
 }

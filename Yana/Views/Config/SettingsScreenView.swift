@@ -103,7 +103,8 @@ struct SettingsScreenView: View {
     private var librarySection: some View {
         Section("Library") {
             Stepper("Keep Articles: \(settings.retentionDays) days", value: $settings.retentionDays, in: 1...365)
-            Stepper("Background Refresh: \(Int(settings.backgroundInterval / 60)) min", value: $settings.backgroundInterval, in: 300...21600, step: 300)
+            Stepper("Background Refresh: \(Int(settings.backgroundInterval / 60)) min",
+                    value: $settings.backgroundInterval, in: 300...21600, step: 300)
         }
     }
 

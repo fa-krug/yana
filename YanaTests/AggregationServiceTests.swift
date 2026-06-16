@@ -22,7 +22,7 @@ struct AggregationServiceTests {
         func aggregate() async throws -> [AggregatedArticle] { articles }
     }
 
-    private nonisolated func aggregated(_ id: String, date: Date = .now) -> AggregatedArticle {
+    nonisolated private func aggregated(_ id: String, date: Date = .now) -> AggregatedArticle {
         AggregatedArticle(title: id, identifier: id, url: id, rawContent: "", content: "c", date: date, author: "", iconURL: nil)
     }
 

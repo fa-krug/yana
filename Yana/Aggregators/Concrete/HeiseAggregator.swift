@@ -110,7 +110,7 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
         let canonicalURL = Self.canonicalURL(article.url)
 
         // Forum comments from the raw page HTML (rawContent set by FullWebsiteAggregator.enrich).
-        var commentsHTML: String? = nil
+        var commentsHTML: String?
         if heiseOptions.includeComments {
             commentsHTML = try? await extractComments(articleURL: canonicalURL, pageHTML: article.rawContent,
                                                       maxComments: heiseOptions.maxComments)

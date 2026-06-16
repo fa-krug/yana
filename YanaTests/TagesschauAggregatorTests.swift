@@ -49,7 +49,8 @@ struct TagesschauAggregatorTests {
 
     @Test func buildsVideoMediaHeaderFromMediaPlayer() async throws {
         // data-v JSON uses &quot; entities, like the real page.
-        let json = "{&quot;mc&quot;:{&quot;streams&quot;:[{&quot;media&quot;:[{&quot;url&quot;:&quot;https://t.de/v.mp4&quot;,&quot;mimeType&quot;:&quot;video/mp4&quot;}]}]}}"
+        let json = "{&quot;mc&quot;:{&quot;streams&quot;:[{&quot;media&quot;:[{&quot;url&quot;:"
+            + "&quot;https://t.de/v.mp4&quot;,&quot;mimeType&quot;:&quot;video/mp4&quot;}]}]}}"
         let page = """
         <html><body>
         <div data-v-type="MediaPlayer" class="mediaplayer teaser-top" data-v="\(json)"></div>

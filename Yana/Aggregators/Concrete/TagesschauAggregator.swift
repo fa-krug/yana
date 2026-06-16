@@ -184,7 +184,10 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
     private static func buildHeaderFromStreams(streams: [[String: Any]], isAudioOnly: Bool, imageURL: String?) -> String? {
         if isAudioOnly {
             guard let media = findMedia(streams, type: "audio") else { return nil }
-            let img = imageURL.map { "<div class=\"media-image\"><img src=\"\($0)\" alt=\"Article image\" style=\"max-width: 100%; height: auto; border-radius: 8px;\"></div>" } ?? ""
+            let img = imageURL.map {
+                "<div class=\"media-image\"><img src=\"\($0)\" alt=\"Article image\" "
+                    + "style=\"max-width: 100%; height: auto; border-radius: 8px;\"></div>"
+            } ?? ""
             return "<header class=\"media-header\">\(img)<div class=\"media-player\" style=\"width: 100%;\">"
                 + "<audio controls preload=\"auto\" style=\"width: 100%;\"><source src=\"\(media.url)\" type=\"\(media.mime)\">"
                 + "Your browser does not support the audio element.</audio></div></header>"
