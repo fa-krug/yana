@@ -47,7 +47,11 @@ final class BackgroundRefreshManager {
         let inserted = await service.updateAll()
         guard settings.notificationsEnabled, inserted > 0 else { return }
         let authorized = await notifier.isAuthorized()
-        guard NewArticleNotification.shouldNotify(enabled: true, authorized: authorized, insertedCount: inserted) else { return }
+        guard NewArticleNotification.shouldNotify(
+            enabled: settings.notificationsEnabled,
+            authorized: authorized,
+            insertedCount: inserted
+        ) else { return }
         await notifier.postNewArticles(count: inserted)
     }
 

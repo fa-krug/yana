@@ -5,6 +5,7 @@ import SwiftUI
 /// `AppSettings` (UserDefaults).
 struct SettingsScreenView: View {
     @State private var settings = AppSettings()
+    @State private var showNotificationDeniedAlert = false
 
     // Keychain-backed secrets (loaded onAppear, written on change).
     @State private var redditClientID = ""
@@ -25,6 +26,11 @@ struct SettingsScreenView: View {
         }
         .navigationTitle("Settings")
         .onAppear(perform: loadSecrets)
+        .alert("Notifications Disabled", isPresented: $showNotificationDeniedAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Enable notifications for Yana in the Settings app to get alerts about new articles.")
+        }
     }
 
     // MARK: Sources
@@ -60,6 +66,7 @@ struct SettingsScreenView: View {
                         Task {
                             let granted = await NotificationService().requestAuthorization()
                             settings.notificationsEnabled = granted
+                            if !granted { showNotificationDeniedAlert = true }
                         }
                     } else {
                         settings.notificationsEnabled = false
