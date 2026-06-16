@@ -5,6 +5,12 @@ import Foundation
 enum HTTPClient {
     static let userAgent = "Mozilla/5.0 (compatible; YanaBot/1.0; +https://github.com/fa-krug/Yana)"
 
+    /// Hard ceiling on a single response body. Untrusted feeds/images must not exhaust memory.
+    static let maxResponseBytes = 25 * 1024 * 1024   // 25 MB
+
+    /// Pure helper (unit-testable): true when the accumulated byte count exceeds the cap.
+    static func exceedsCap(received: Int, cap: Int) -> Bool { received > cap }
+
     static func fetchHTML(_ url: URL, timeout: TimeInterval = 30) async throws -> String {
         let (data, _) = try await fetchData(url, timeout: timeout)
         guard let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
@@ -32,7 +38,14 @@ enum HTTPClient {
         var lastError: Error = AggregatorError.contentFetch("unknown")
         for attempt in 0..<maxAttempts {
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                var data = Data()
+                for try await byte in bytes {
+                    data.append(byte)
+                    if exceedsCap(received: data.count, cap: maxResponseBytes) {
+                        throw AggregatorError.contentFetch("response exceeded \(maxResponseBytes) bytes")
+                    }
+                }
                 if let http = response as? HTTPURLResponse {
                     if (400..<500).contains(http.statusCode) {
                         throw AggregatorError.articleSkip(statusCode: http.statusCode)
