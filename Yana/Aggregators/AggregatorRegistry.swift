@@ -11,7 +11,13 @@ final class AggregatorRegistry: Sendable {
         switch config.type {
         case .feedContent: return FeedContentAggregator(config: config, credentials: credentials)
         case .fullWebsite: return FullWebsiteAggregator(config: config, credentials: credentials)
-        // 4d scrapers and 4e social/media add their cases here.
+        case .heise: return HeiseAggregator(config: config, credentials: credentials)
+        case .merkur: return MerkurAggregator(config: config, credentials: credentials)
+        case .tagesschau: return TagesschauAggregator(config: config, credentials: credentials)
+        case .caschysBlog: return CaschysBlogAggregator(config: config, credentials: credentials)
+        case .mactechnews: return MactechnewsAggregator(config: config, credentials: credentials)
+        case .meinMmo: return MeinMmoAggregator(config: config, credentials: credentials)
+        // 4e social/media (reddit, youtube, podcast) and the remaining comic scrapers add their cases here.
         default: return nil
         }
     }
