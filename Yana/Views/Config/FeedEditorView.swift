@@ -25,7 +25,13 @@ struct FeedEditorView: View {
                         Text(type.displayName).tag(type)
                     }
                 }
-                if model.type.identifierKind != .none {
+                if !model.type.identifierChoices.isEmpty {
+                    Picker("Feed", selection: $model.identifier) {
+                        ForEach(model.type.identifierChoices, id: \.value) { choice in
+                            Text(choice.label).tag(choice.value)
+                        }
+                    }
+                } else if model.type.identifierKind != .none {
                     TextField(identifierLabel, text: $model.identifier)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)

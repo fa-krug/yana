@@ -50,6 +50,10 @@ final class FeedEditorModel {
     func changeType(_ newType: AggregatorType) {
         type = newType
         options = newType.defaultOptions
+        if let first = newType.identifierChoices.first,
+           !newType.identifierChoices.contains(where: { $0.value == identifier }) {
+            identifier = first.value
+        }
     }
 
     func apply(to feed: Feed, availableTags: [Tag]) {

@@ -62,6 +62,18 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         }
     }
 
+    /// Predefined RSS-feed choices for the feed editor's identifier Picker (empty = free-form URL or forced feed).
+    var identifierChoices: [(value: String, label: String)] {
+        switch self {
+        case .heise: HeiseAggregator.identifierChoices
+        case .merkur: MerkurAggregator.identifierChoices
+        case .tagesschau: TagesschauAggregator.identifierChoices
+        case .caschysBlog: CaschysBlogAggregator.identifierChoices
+        case .meinMmo: MeinMmoAggregator.identifierChoices
+        default: []
+        }
+    }
+
     var requiredAPIKey: AggregatorAPIKey {
         switch self {
         case .reddit: .reddit
