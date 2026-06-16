@@ -22,16 +22,23 @@ class ComicAggregator: FullWebsiteAggregator, @unchecked Sendable {
     /// Comics ignore the generic header element; they build content from the comic image.
     override func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle {
         var article = article
-        let raw = try await fetchArticleHTML(article.url)
-        article.rawContent = raw
-        let comicHTML = try buildComicHTML(pageHTML: raw, article: article)
-        // Localize images + wrap. (rewriteImages downloads the comic image → yana-img://.)
-        let doc = try HTMLUtils.parse(comicHTML)
-        try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))
-        let body = try HTMLUtils.bodyHTML(doc)
-        article.content = ContentFormatter.format(content: body, title: article.title, url: article.url,
-                                                  headerHTML: nil, commentsHTML: nil)
-        return article
+        do {
+            let raw = try await fetchArticleHTML(article.url)
+            article.rawContent = raw
+            let comicHTML = try buildComicHTML(pageHTML: raw, article: article)
+            // Localize images + wrap. (rewriteImages downloads the comic image → yana-img://.)
+            let doc = try HTMLUtils.parse(comicHTML)
+            try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))
+            let body = try HTMLUtils.bodyHTML(doc)
+            article.content = ContentFormatter.format(content: body, title: article.title, url: article.url,
+                                                      headerHTML: nil, commentsHTML: nil)
+            return article
+        } catch let error as AggregatorError {
+            if case .articleSkip = error { throw error }
+            throw AggregatorError.articleSkip(statusCode: 0)   // omit this comic, keep the rest of the batch
+        } catch {
+            throw AggregatorError.articleSkip(statusCode: 0)
+        }
     }
 
     /// Subclasses override to locate the comic image(s) and produce the inner HTML.

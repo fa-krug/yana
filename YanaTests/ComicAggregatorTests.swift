@@ -81,4 +81,22 @@ struct ComicAggregatorTests {
         #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))
         #expect(a.content.contains("the second joke"))
     }
+
+    final class StubFailingExplosm: ExplosmAggregator, @unchecked Sendable {
+        init(store: ImageStore) {
+            super.init(config: FeedConfig(type: .explosm, identifier: "", dailyLimit: 20,
+                                          options: .explosm(ExplosmOptions()), collectedToday: 0),
+                       credentials: .init(), store: store)
+        }
+        override func fetchEntries() async throws -> [FeedEntry] { [ComicAggregatorTests().entry("https://explosm.net/comics/1")] }
+        override func fetchArticleHTML(_ url: String) async throws -> String {
+            throw AggregatorError.contentFetch("simulated network failure")
+        }
+    }
+
+    @Test func failedComicFetchSkipsArticleWithoutAbortingRun() async throws {
+        let agg = StubFailingExplosm(store: tempStore())
+        let articles = try await agg.aggregate()
+        #expect(articles.isEmpty)   // the failed comic is omitted; aggregate() does not throw
+    }
 }
