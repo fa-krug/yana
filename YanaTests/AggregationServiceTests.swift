@@ -188,4 +188,29 @@ struct AggregationServiceTests {
         #expect(fake.receivedAI?.translate == true)
         #expect(fake.receivedAI?.translateLanguage == "German")
     }
+
+    @Test func updateAllReturnsTotalInsertedCount() async throws {
+        let context = try makeContext()
+        let a = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        let b = Feed(name: "B", aggregatorType: .feedContent, identifier: "b")
+        context.insert(a); context.insert(b)
+
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("x1"), self.aggregated("x2")])
+        }
+        let inserted = await service.updateAll()
+        #expect(inserted == 4)
+    }
+
+    @Test func updateAllReturnsZeroWhenNothingNew() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("x1")])
+        }
+        _ = await service.updateAll()
+        let second = await service.updateAll()
+        #expect(second == 0)
+    }
 }

@@ -72,35 +72,42 @@ final class AggregationService {
     }
 
     /// Update all enabled feeds. One feed's failure never aborts the run.
-    func updateAll() async {
+    @discardableResult
+    func updateAll() async -> Int {
         isUpdating = true
         defer { isUpdating = false }
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
         let feeds = (try? context.fetch(descriptor)) ?? []
+        var inserted = 0
         for feed in feeds {
-            await aggregate(feed: feed)
+            inserted += await aggregate(feed: feed)
         }
         cleanupAndSave()
+        return inserted
     }
 
     /// Update a single feed.
-    func update(feed: Feed) async {
+    @discardableResult
+    func update(feed: Feed) async -> Int {
         isUpdating = true
         defer { isUpdating = false }
-        await aggregate(feed: feed)
+        let inserted = await aggregate(feed: feed)
         cleanupAndSave()
+        return inserted
     }
 
     /// Re-fetch and re-process a single article by re-running its owning feed.
     /// (Phase 4b refines this to a true single-article re-fetch.)
-    func update(article: Article) async {
-        guard let feed = article.feed else { return }
-        await update(feed: feed)
+    @discardableResult
+    func update(article: Article) async -> Int {
+        guard let feed = article.feed else { return 0 }
+        return await update(feed: feed)
     }
 
     // MARK: - Core per-feed run
 
-    private func aggregate(feed: Feed) async {
+    @discardableResult
+    private func aggregate(feed: Feed) async -> Int {
         let runNow = now()
         let collected = collectedToday(for: feed, now: runNow)
         let config = FeedConfig(feed: feed, collectedToday: collected)
@@ -108,7 +115,7 @@ final class AggregationService {
 
         guard let aggregator = makeAggregator(config, credentials) else {
             feed.lastError = AggregatorError.notImplemented(feed.type).errorDescription
-            return
+            return 0
         }
 
         do {
@@ -118,11 +125,13 @@ final class AggregationService {
             let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
             let capped = Array(fresh.prefix(cap))
             let processed = await aiProcessor.process(capped, ai: config.options.ai)
-            ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: runNow)
+            let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: runNow)
             feed.lastFetchedAt = runNow
             feed.lastError = nil
+            return inserted
         } catch {
             feed.lastError = error.localizedDescription
+            return 0
         }
     }
 
