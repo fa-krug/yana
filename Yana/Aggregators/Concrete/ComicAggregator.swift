@@ -65,3 +65,56 @@ class ExplosmAggregator: ComicAggregator, @unchecked Sendable {
         return "<div style=\"text-align: center;\"><img src=\"\(src)\" alt=\"\(alt.replacingOccurrences(of: "\"", with: "&quot;"))\">\(captionHTML(alt))</div>"
     }
 }
+
+/// Dark Legacy Comics. Feed https://darklegacycomics.com/feed.xml; container #gallery;
+/// images may be relative → resolved against the article URL by rewriteImages.
+class DarkLegacyAggregator: ComicAggregator, @unchecked Sendable {
+    override var feedURL: String { "https://darklegacycomics.com/feed.xml" }
+    override var contentSelector: String { "#gallery" }
+    override var showAltText: Bool {
+        if case .darkLegacy(let o) = config.options { return o.showAltText }
+        return true
+    }
+
+    override func buildComicHTML(pageHTML: String, article: AggregatedArticle) throws -> String {
+        let doc = try HTMLUtils.parse(pageHTML)
+        let gallery = try doc.select(contentSelector).first() ?? doc.body() ?? doc
+        var html = "<div style=\"text-align: center;\">"
+        for img in try gallery.select("img") {
+            let src = try img.attr("src")
+            guard !src.isEmpty else { continue }
+            let alt = (try? img.attr("alt")) ?? ""
+            // Leave src as-is (may be relative); rewriteImages resolves against baseURL.
+            html += "<img src=\"\(src)\" alt=\"\(alt.replacingOccurrences(of: "\"", with: "&quot;"))\">\(captionHTML(alt))"
+        }
+        html += "</div>"
+        return html
+    }
+}
+
+/// Oglaf (adult). Feed https://www.oglaf.com/feeds/rss/; image #strip (fallback .content img);
+/// the <img title> holds a second joke shown as caption. Images localized regardless of
+/// convertToBase64 (decision 3).
+class OglafAggregator: ComicAggregator, @unchecked Sendable {
+    override var feedURL: String { "https://www.oglaf.com/feeds/rss/" }
+    override var contentSelector: String { "div.content" }
+    override var showAltText: Bool {
+        if case .oglaf(let o) = config.options { return o.showAltText }
+        return true
+    }
+
+    override func buildComicHTML(pageHTML: String, article: AggregatedArticle) throws -> String {
+        let doc = try HTMLUtils.parse(pageHTML)
+        let img = try doc.select("#strip").first()
+            ?? doc.select(".content img, #content img, .comic img").first()
+        guard let img else { return "" }
+        var src = try img.attr("src")
+        if src.hasPrefix("/") {
+            src = "https://www.oglaf.com" + src
+        } else if !src.hasPrefix("http") && !src.contains("media.oglaf.com") {
+            src = "https://media.oglaf.com/comic/" + src
+        }
+        let joke = (try? img.attr("title")) ?? ""
+        return "<div style=\"text-align: center;\"><img src=\"\(src)\" alt=\"\(((try? img.attr("alt")) ?? "").replacingOccurrences(of: "\"", with: "&quot;"))\" style=\"max-width: 100%; height: auto;\">\(captionHTML(joke))</div>"
+    }
+}

@@ -41,4 +41,44 @@ struct ComicAggregatorTests {
         #expect(a.content.contains("The joke"))                         // alt caption shown
         #expect(a.content.contains("Source:"))                          // footer
     }
+
+    final class StubDarkLegacy: DarkLegacyAggregator, @unchecked Sendable {
+        let page: String
+        init(page: String, store: ImageStore) {
+            self.page = page
+            super.init(config: FeedConfig(type: .darkLegacy, identifier: "", dailyLimit: 20,
+                                          options: .darkLegacy(DarkLegacyOptions()), collectedToday: 0),
+                       credentials: .init(), store: store)
+        }
+        override func fetchEntries() async throws -> [FeedEntry] { [ComicAggregatorTests().entry("https://darklegacycomics.com/172")] }
+        override func fetchArticleHTML(_ url: String) async throws -> String { page }
+    }
+
+    @Test func darkLegacyResolvesRelativeImageURLs() async throws {
+        let page = "<html><body><div id=\"gallery\"><img src=\"/images/172.png\" alt=\"DL\"></div></body></html>"
+        let agg = StubDarkLegacy(page: page, store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))
+        #expect(a.content.contains("DL"))
+    }
+
+    final class StubOglaf: OglafAggregator, @unchecked Sendable {
+        let page: String
+        init(page: String, store: ImageStore) {
+            self.page = page
+            super.init(config: FeedConfig(type: .oglaf, identifier: "", dailyLimit: 20,
+                                          options: .oglaf(OglafOptions()), collectedToday: 0),
+                       credentials: .init(), store: store)
+        }
+        override func fetchEntries() async throws -> [FeedEntry] { [ComicAggregatorTests().entry("https://www.oglaf.com/2025/")] }
+        override func fetchArticleHTML(_ url: String) async throws -> String { page }
+    }
+
+    @Test func oglafShowsTitleJokeAsCaption() async throws {
+        let page = "<html><body><div class=\"content\"><img id=\"strip\" src=\"https://media.oglaf.com/comic/x.jpg\" alt=\"alt\" title=\"the second joke\"></div></body></html>"
+        let agg = StubOglaf(page: page, store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))
+        #expect(a.content.contains("the second joke"))
+    }
 }
