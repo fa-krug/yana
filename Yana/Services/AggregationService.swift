@@ -9,6 +9,10 @@ import SwiftData
 final class AggregationService {
     var isUpdating = false
 
+    /// Upper bound on simultaneous in-flight feed fetches in `updateAll()`. Caps the number of
+    /// concurrent network/AI awaits so a large feed list does not spawn unbounded requests.
+    private static let maxConcurrentFeedUpdates = 5
+
     private let context: ModelContext
     private let makeAggregator: AggregatorFactory
     private let injectedAIProcessor: AIProcessing?
@@ -81,10 +85,32 @@ final class AggregationService {
         defer { isUpdating = false }
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
         let feeds = (try? context.fetch(descriptor)) ?? []
+
+        // Run per-feed work concurrently with a bounded sliding window. Each `aggregate(feed:)`
+        // stays on the main actor, so its synchronous SwiftData reads/writes remain serialized
+        // and race-free; only the network/AI `await` suspension points interleave. We carry the
+        // `Sendable` PersistentIdentifier across the task boundary (not the non-Sendable `Feed`)
+        // and re-resolve it on the main actor inside `aggregate(feedID:)`.
+        let ids = feeds.map(\.persistentModelID)
         var inserted = 0
-        for feed in feeds {
-            inserted += await aggregate(feed: feed)
+        await withTaskGroup(of: Int.self) { group in
+            var nextIndex = 0
+            let window = min(Self.maxConcurrentFeedUpdates, ids.count)
+            while nextIndex < window {
+                let id = ids[nextIndex]
+                group.addTask { await self.aggregate(feedID: id) }
+                nextIndex += 1
+            }
+            while let result = await group.next() {
+                inserted += result
+                if nextIndex < ids.count {
+                    let id = ids[nextIndex]
+                    group.addTask { await self.aggregate(feedID: id) }
+                    nextIndex += 1
+                }
+            }
         }
+
         cleanupAndSave()
         return inserted
     }
@@ -108,6 +134,20 @@ final class AggregationService {
     }
 
     // MARK: - Core per-feed run
+
+    /// Resolve a feed from its `Sendable` identifier on the main actor, then run the per-feed
+    /// work. Used by `updateAll()`'s task group so the non-Sendable `Feed` never crosses an
+    /// isolation boundary.
+    @discardableResult
+    private func aggregate(feedID: PersistentIdentifier) async -> Int {
+        guard let feed = self[feedID, as: Feed.self] else { return 0 }
+        return await aggregate(feed: feed)
+    }
+
+    /// Look up a model by identifier in this service's context.
+    private subscript<T: PersistentModel>(id: PersistentIdentifier, as type: T.Type) -> T? {
+        context.model(for: id) as? T
+    }
 
     @discardableResult
     private func aggregate(feed: Feed) async -> Int {

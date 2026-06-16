@@ -202,6 +202,45 @@ struct AggregationServiceTests {
         #expect(inserted == 4)
     }
 
+    /// Fake aggregator that yields/sleeps before returning, so multiple invocations
+    /// interleave their suspension points under the concurrent `updateAll` path.
+    private struct SlowFakeAggregator: Aggregator {
+        let articles: [AggregatedArticle]
+        func validate() throws {}
+        func aggregate() async throws -> [AggregatedArticle] {
+            try? await Task.sleep(nanoseconds: 5_000_000) // 5ms
+            return articles
+        }
+    }
+
+    @Test func updateAllAggregatesFeedsConcurrentlyWithCorrectCounts() async throws {
+        let context = try makeContext()
+        // More feeds than the bounded-concurrency window to exercise the sliding window.
+        let feeds = (0..<12).map { i -> Feed in
+            let feed = Feed(name: "F\(i)", aggregatorType: .feedContent, identifier: "f\(i)")
+            context.insert(feed)
+            return feed
+        }
+
+        // Each feed gets a distinct number of articles: feed i -> i+1 articles.
+        let service = AggregationService(context: context) { config, _ in
+            let count = (Int(config.identifier.dropFirst()) ?? 0) + 1
+            let articles = (0..<count).map { self.aggregated("\(config.identifier)-\($0)") }
+            return SlowFakeAggregator(articles: articles)
+        }
+
+        let inserted = await service.updateAll()
+
+        #expect(service.isUpdating == false)
+        let expectedTotal = (1...12).reduce(0, +) // 78
+        #expect(inserted == expectedTotal)
+        for (i, feed) in feeds.enumerated() {
+            #expect(feed.articles.count == i + 1)
+            #expect(feed.lastError == nil)
+            #expect(feed.lastFetchedAt != nil)
+        }
+    }
+
     @Test func updateAllReturnsZeroWhenNothingNew() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")

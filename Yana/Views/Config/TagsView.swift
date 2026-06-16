@@ -8,6 +8,7 @@ struct TagsView: View {
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]
     @State private var editingTag: Tag?
     @State private var isCreating = false
+    @State private var tagsToDelete: [Tag]?
 
     var body: some View {
         List {
@@ -26,7 +27,12 @@ struct TagsView: View {
                 }
                 .tint(.primary)
             }
-            .onDelete(perform: delete)
+            .onDelete { offsets in
+                // Resolve Tag objects immediately so stale indices can't cause wrong-delete or crash
+                let deletable = offsets.compactMap { tags[$0].isBuiltIn ? nil : tags[$0] }
+                guard !deletable.isEmpty else { return }
+                tagsToDelete = deletable
+            }
             .onMove(perform: move)
         }
         .navigationTitle("Tags")
@@ -38,11 +44,29 @@ struct TagsView: View {
         }
         .sheet(item: $editingTag) { tag in TagEditorView(tag: tag) }
         .sheet(isPresented: $isCreating) { TagEditorView(tag: nil) }
+        .confirmationDialog(
+            (tagsToDelete?.count ?? 0) == 1
+                ? String(localized: "Delete Tag?")
+                : String(localized: "Delete Tags?"),
+            isPresented: Binding(get: { tagsToDelete != nil }, set: { if !$0 { tagsToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Delete"), role: .destructive) {
+                if let resolved = tagsToDelete {
+                    delete(resolved)
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            if let resolved = tagsToDelete {
+                let names = resolved.map(\.name).joined(separator: ", ")
+                Text(String(localized: "Delete \(names)? This cannot be undone."))
+            }
+        }
     }
 
-    private func delete(_ offsets: IndexSet) {
-        for index in offsets {
-            let tag = tags[index]
+    private func delete(_ resolved: [Tag]) {
+        for tag in resolved {
             guard !tag.isBuiltIn else { continue } // Starred is locked
             modelContext.delete(tag)
         }

@@ -12,6 +12,7 @@ struct FeedsView: View {
     @State private var exportURL: URL?
     @State private var isExporting = false
     @State private var importMessage: String?
+    @State private var feedToDelete: Feed?
 
     var body: some View {
         List {
@@ -23,8 +24,7 @@ struct FeedsView: View {
                 }
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
-                        modelContext.delete(feed)
-                        try? modelContext.save()
+                        feedToDelete = feed
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
@@ -54,8 +54,12 @@ struct FeedsView: View {
                 }
             }
             ToolbarItem(placement: .topBarLeading) {
-                Button("Update All") { Task { await updateAll() } }
-                    .disabled(isUpdating || feeds.isEmpty)
+                if isUpdating {
+                    ProgressView()
+                } else {
+                    Button("Update All") { Task { await updateAll() } }
+                        .disabled(feeds.isEmpty)
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -81,17 +85,39 @@ struct FeedsView: View {
         } message: {
             Text(importMessage ?? "")
         }
+        .confirmationDialog(
+            String(localized: "Delete Feed?"),
+            isPresented: Binding(get: { feedToDelete != nil }, set: { if !$0 { feedToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let feed = feedToDelete {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    modelContext.delete(feed)
+                    try? modelContext.save()
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            if let feed = feedToDelete {
+                Text(
+                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \(feed.articles.count) articles will be removed.")
+                )
+            }
+        }
     }
 
     private func row(_ feed: Feed) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let lastError = feed.lastError
+        return VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(feed.name).font(.headline)
                 if !feed.enabled {
                     Text("Disabled").font(.caption).foregroundStyle(.secondary)
                 }
-                if feed.lastError != nil {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                if lastError != nil {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel(String(localized: "Update error"))
                 }
             }
             HStack(spacing: 6) {
@@ -103,6 +129,12 @@ struct FeedsView: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+            if let error = lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .lineLimit(3)
+            }
             if !feed.tags.isEmpty {
                 Text(feed.tags.map(\.name).sorted().joined(separator: ", "))
                     .font(.caption2)
@@ -114,14 +146,24 @@ struct FeedsView: View {
     private func updateAll() async {
         isUpdating = true
         defer { isUpdating = false }
-        await AggregationService(context: modelContext).updateAll()
+        let count = await AggregationService(context: modelContext).updateAll()
+        if count == 0 {
+            importMessage = String(localized: "No new articles.")
+        } else {
+            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles").")
+        }
     }
 
     private func updateOne(_ feed: Feed) async {
         guard !isUpdating else { return }
         isUpdating = true
         defer { isUpdating = false }
-        await AggregationService(context: modelContext).update(feed: feed)
+        let count = await AggregationService(context: modelContext).update(feed: feed)
+        if count == 0 {
+            importMessage = String(localized: "No new articles.")
+        } else {
+            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+        }
     }
 
     private func exportOPML() {
