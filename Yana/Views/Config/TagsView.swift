@@ -1,6 +1,9 @@
 import SwiftData
 import SwiftUI
 
+/// Searchable tag CRUD: create / rename / recolor / delete / reorder, built on `ManagedList`.
+/// The built-in Starred tag is locked (recolor only; no delete or rename). Reorder is
+/// suppressed while a search is active.
 struct TagsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]
