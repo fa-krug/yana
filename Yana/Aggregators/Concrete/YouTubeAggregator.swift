@@ -41,25 +41,26 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
         }
 
         let videos = try await client.fetchVideos(playlistID: uploads, max: limit)
+        let author = channel.customURL ?? channel.title
         var result: [AggregatedArticle] = []
         for video in videos {
             let url = "https://www.youtube.com/watch?v=\(video.id)"
             let comments = (try? await client.fetchVideoComments(videoID: video.id, max: options.commentLimit)) ?? []
-            let body = buildContentHTML(video: video, comments: comments)
+            let body = buildContentHTML(video: video, videoID: video.id, comments: comments)
             let embed = EmbedRewriter.youTubeEmbedHTML(videoID: video.id)
             let content = ContentFormatter.format(content: embed + body, title: video.title, url: url,
                                                   headerHTML: nil, commentsHTML: nil)
             result.append(AggregatedArticle(
                 title: video.title, identifier: url, url: url,
                 rawContent: body, content: content,
-                date: video.publishedAt ?? Date(), author: channel.title, iconURL: channel.iconURL))
+                date: video.publishedAt ?? Date(), author: author, iconURL: video.thumbnailURL))
         }
         return result
     }
 
     // MARK: - Content building
 
-    private func buildContentHTML(video: YouTubeVideo, comments: [YouTubeComment]) -> String {
+    private func buildContentHTML(video: YouTubeVideo, videoID: String, comments: [YouTubeComment]) -> String {
         var parts: [String] = []
 
         // Video description is PLAIN TEXT from the API and channel-owner-controlled. Escape it
@@ -71,23 +72,26 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
             parts.append("<div class=\"youtube-description\">\(formatted)</div>")
         }
 
+        var html = parts.joined()
+
         if !comments.isEmpty {
-            var section = ["<h3>Comments</h3>"]
-            for comment in comments {
-                // comment.textHTML comes from the API with textFormat=html and is server-side
+            html += "<div class=\"youtube-comments\"><h3>Comments</h3>"
+            for c in comments {
+                // c.textHTML comes from the API with textFormat=html and is server-side
                 // sanitized by YouTube (safe tags only: <br>, <a>, <b>). Insert as trusted raw
                 // HTML to preserve formatting. The author is user-controlled → escape it.
-                section.append("""
+                let url = "https://www.youtube.com/watch?v=\(videoID)&lc=\(c.id)"
+                html += """
                 <blockquote>
-                <p><strong>\(escape(comment.author))</strong></p>
-                <div>\(comment.textHTML)</div>
+                <p><strong>\(escape(c.author))</strong> | <a href="\(url)" target="_blank" rel="noopener">source</a></p>
+                <div>\(c.textHTML)</div>
                 </blockquote>
-                """)
+                """
             }
-            parts.append("<section>\(section.joined())</section>")
+            html += "</div>"
         }
 
-        return parts.joined()
+        return html
     }
 
     private func escape(_ text: String) -> String {

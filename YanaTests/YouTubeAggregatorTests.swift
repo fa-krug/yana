@@ -6,7 +6,7 @@ import Testing
 struct YouTubeAggregatorTests {
     let channelsJSON = """
     {"items":[{"id":"UC123456789012345678901234",
-       "snippet":{"title":"Cool Channel","customUrl":"@cool",
+       "snippet":{"title":"Cool Channel","customUrl":"@mychan",
          "thumbnails":{"high":{"url":"https://img/c.jpg"}}},
        "contentDetails":{"relatedPlaylists":{"uploads":"UU123456789012345678901234"}}}]}
     """
@@ -23,7 +23,7 @@ struct YouTubeAggregatorTests {
     """
 
     let commentsJSON = """
-    {"items":[{"id":"ct1",
+    {"items":[{"id":"cm1",
        "snippet":{"topLevelComment":{"snippet":{"authorDisplayName":"viewer","textDisplay":"Nice video"}}}}]}
     """
 
@@ -43,16 +43,20 @@ struct YouTubeAggregatorTests {
     }
 
     @Test func buildsArticleWithEmbedDescriptionAndComments() async throws {
-        let article = try #require(try await makeAggregator(key: "K").aggregate().first)
-        #expect(article.title == "Cool Video")
-        #expect(article.identifier == "https://www.youtube.com/watch?v=vid111aaaaa")
-        #expect(article.content.contains("youtube-embed-container"))
-        #expect(article.content.contains("youtube-nocookie.com/embed/vid111aaaaa"))
-        #expect(article.content.contains("youtube-description"))
-        #expect(article.content.contains("Line1<br>Line2"))
-        #expect(article.content.contains("Nice video"))
-        #expect(article.content.contains("<strong>viewer</strong>"))
-        #expect(article.content.contains("Source:"))
+        let a = try #require(try await makeAggregator(key: "K").aggregate().first)
+        #expect(a.title == "Cool Video")
+        #expect(a.identifier == "https://www.youtube.com/watch?v=vid111aaaaa")
+        #expect(a.content.contains("youtube-embed-container"))
+        #expect(a.content.contains("youtube-nocookie.com/embed/vid111aaaaa"))
+        #expect(a.content.contains("youtube-description"))
+        #expect(a.content.contains("Line1<br>Line2"))
+        #expect(a.content.contains("Nice video"))
+        #expect(a.content.contains("<strong>viewer</strong>"))
+        #expect(a.content.contains("Source:"))
+        #expect(a.author == "@mychan")                                  // customURL preferred over title
+        #expect(a.iconURL == "https://img/m.jpg")                       // per-video thumbnail
+        #expect(a.content.contains("youtube-comments"))                 // comments wrapper class
+        #expect(a.content.contains("watch?v=vid111aaaaa&lc=cm1"))      // comment source link (URL not entity-encoded)
     }
 
     @Test func missingKeyThrows() async throws {
