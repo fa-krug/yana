@@ -52,7 +52,7 @@ struct RedditClientTests {
         #expect(posts.first?.numComments == 7)
     }
 
-    @Test func commentsFilteredSortedAndCapped() async throws {
+    @Test func commentsFilteredAndSorted() async throws {
         let comments = try await client().fetchComments(subreddit: "swift", postID: "p1")
         // deleted + bot removed; sorted by score desc.
         #expect(comments.map(\.author) == ["bob", "carol"])

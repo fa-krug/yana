@@ -1,8 +1,8 @@
 import Foundation
 
 /// Raw Reddit application-only OAuth client (replaces PRAW). Injectable fetch closure
-/// keeps tests hermetic. `@unchecked Sendable`: created per run, the cached token is the
-/// only mutable state and it is set once before concurrent reads.
+/// keeps tests hermetic. `@unchecked Sendable`: the cached token is the only mutable
+/// state and its read/write are guarded by `tokenLock`.
 final class RedditClient: @unchecked Sendable {
     typealias Fetch = @Sendable (URLRequest) async throws -> Data
 
@@ -10,6 +10,7 @@ final class RedditClient: @unchecked Sendable {
     private let clientSecret: String
     private let userAgent: String
     private let fetch: Fetch
+    private let tokenLock = NSLock()
     private var cachedToken: String?
 
     init(clientID: String, clientSecret: String, userAgent: String,
@@ -21,7 +22,7 @@ final class RedditClient: @unchecked Sendable {
     }
 
     func authToken() async throws -> String {
-        if let cachedToken { return cachedToken }
+        if let cached = cachedTokenValue() { return cached }
         var req = URLRequest(url: URL(string: "https://www.reddit.com/api/v1/access_token")!)
         req.httpMethod = "POST"
         let basic = Data("\(clientID):\(clientSecret)".utf8).base64EncodedString()
@@ -32,8 +33,18 @@ final class RedditClient: @unchecked Sendable {
         let data = try await fetch(req)
         let token = (try? JSONDecoder().decode(RedditTokenResponse.self, from: data))?.access_token
         guard let token, !token.isEmpty else { throw AggregatorError.contentFetch("Reddit auth failed") }
-        cachedToken = token
+        setCachedToken(token)
         return token
+    }
+
+    private func cachedTokenValue() -> String? {
+        tokenLock.lock(); defer { tokenLock.unlock() }
+        return cachedToken
+    }
+
+    private func setCachedToken(_ token: String) {
+        tokenLock.lock(); defer { tokenLock.unlock() }
+        cachedToken = token
     }
 
     func fetchListing(subreddit: String, sort: String, limit: Int) async throws -> [RedditPostData] {
@@ -49,7 +60,9 @@ final class RedditClient: @unchecked Sendable {
         // Response is [postListing, commentListing]; index 1 holds the comments.
         let listings = try JSONDecoder().decode([RedditCommentEnvelope].self, from: data)
         guard listings.count >= 2 else { return [] }
-        let raw = listings[1].data.children.compactMap(\.data)        // skips "more" kind (no data fields)
+        // A "more" kind child still decodes (its {"id":"more"} yields a comment with empty
+        // body/author via RedditComment's defensive init); it is dropped by isValidComment below.
+        let raw = listings[1].data.children.compactMap(\.data)
         let valid = raw.filter { isValidComment($0) }
         return valid.sorted { $0.score > $1.score }
     }
