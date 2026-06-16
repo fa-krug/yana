@@ -189,7 +189,10 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
             if classStr.contains("tiktok"), let tiktok = linkMatching(figure, hosts: ["tiktok.com"]),
                let r = tiktok.range(of: #"/video/(\d+)"#, options: .regularExpression) {
                 let id = String(tiktok[r]).filter(\.isNumber)
-                try figure.replaceWith(parse("<div data-sanitized-class=\"tiktok-embed\"><iframe src=\"https://www.tiktok.com/embed/v3/\(id)\" width=\"325\" height=\"605\" allowfullscreen allow=\"autoplay; encrypted-media\"></iframe></div>")); continue
+                let tiktokHTML = "<div data-sanitized-class=\"tiktok-embed\"><iframe "
+                    + "src=\"https://www.tiktok.com/embed/v3/\(id)\" width=\"325\" height=\"605\" "
+                    + "allowfullscreen allow=\"autoplay; encrypted-media\"></iframe></div>"
+                try figure.replaceWith(parse(tiktokHTML)); continue
             }
             // Fallback: any YouTube link.
             if let id = youTubeIDInFigure(figure) {
