@@ -8,7 +8,7 @@ struct TagsView: View {
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]
     @State private var editingTag: Tag?
     @State private var isCreating = false
-    @State private var offsetsToDelete: IndexSet?
+    @State private var tagsToDelete: [Tag]?
 
     var body: some View {
         List {
@@ -28,10 +28,10 @@ struct TagsView: View {
                 .tint(.primary)
             }
             .onDelete { offsets in
-                // Filter to only deletable (non-built-in) tags before prompting
-                let deletable = offsets.filter { !tags[$0].isBuiltIn }
+                // Resolve Tag objects immediately so stale indices can't cause wrong-delete or crash
+                let deletable = offsets.compactMap { tags[$0].isBuiltIn ? nil : tags[$0] }
                 guard !deletable.isEmpty else { return }
-                offsetsToDelete = IndexSet(deletable)
+                tagsToDelete = deletable
             }
             .onMove(perform: move)
         }
@@ -45,30 +45,28 @@ struct TagsView: View {
         .sheet(item: $editingTag) { tag in TagEditorView(tag: tag) }
         .sheet(isPresented: $isCreating) { TagEditorView(tag: nil) }
         .confirmationDialog(
-            String(localized: "Delete Tag?"),
-            isPresented: Binding(get: { offsetsToDelete != nil }, set: { if !$0 { offsetsToDelete = nil } }),
+            (tagsToDelete?.count ?? 0) == 1
+                ? String(localized: "Delete Tag?")
+                : String(localized: "Delete Tags?"),
+            isPresented: Binding(get: { tagsToDelete != nil }, set: { if !$0 { tagsToDelete = nil } }),
             titleVisibility: .visible
         ) {
             Button(String(localized: "Delete"), role: .destructive) {
-                if let offsets = offsetsToDelete {
-                    delete(offsets)
+                if let resolved = tagsToDelete {
+                    delete(resolved)
                 }
-                offsetsToDelete = nil
             }
-            Button(String(localized: "Cancel"), role: .cancel) {
-                offsetsToDelete = nil
-            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            if let offsets = offsetsToDelete {
-                let names = offsets.map { tags[$0].name }.joined(separator: ", ")
+            if let resolved = tagsToDelete {
+                let names = resolved.map(\.name).joined(separator: ", ")
                 Text(String(localized: "Delete \(names)? This cannot be undone."))
             }
         }
     }
 
-    private func delete(_ offsets: IndexSet) {
-        for index in offsets {
-            let tag = tags[index]
+    private func delete(_ resolved: [Tag]) {
+        for tag in resolved {
             guard !tag.isBuiltIn else { continue } // Starred is locked
             modelContext.delete(tag)
         }

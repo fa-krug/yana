@@ -90,12 +90,9 @@ struct FeedsView: View {
                 Button(String(localized: "Delete"), role: .destructive) {
                     modelContext.delete(feed)
                     try? modelContext.save()
-                    feedToDelete = nil
                 }
             }
-            Button(String(localized: "Cancel"), role: .cancel) {
-                feedToDelete = nil
-            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
             if let feed = feedToDelete {
                 Text(
