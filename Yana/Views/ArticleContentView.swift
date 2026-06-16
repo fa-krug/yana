@@ -1,44 +1,23 @@
 import SwiftUI
 
-/// The scrollable article body (title, meta line, rendered HTML) plus a bottom bar with
-/// open-in-browser and share. Shared by the swipe reader and the search detail screen.
+/// The full-page article web view (title, meta line, rendered HTML — all one scrolling,
+/// zoomable web document) plus a bottom bar with open-in-browser and share. Shared by the
+/// swipe reader (with pull-to-refresh) and the search detail screen (without).
 struct ArticleContentView: View {
     let article: Article
+    /// Optional pull-to-refresh handler, forwarded to the web view. `nil` disables it.
+    var onRefresh: (() async -> Void)?
+
     @Environment(\.openURL) private var openURL
     @State private var shareURL: URL?
     @State private var isShowingShare = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(article.title)
-                    .font(.title2.bold())
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 8) {
-                    if let feedTitle = article.feed?.name, !feedTitle.isEmpty {
-                        Text(feedTitle)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
-                    }
-                    if !article.author.isEmpty {
-                        Text("·").foregroundStyle(.secondary)
-                        Text(article.author).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(article.date, style: .relative).font(.subheadline).foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                ArticleWebView(htmlContent: article.content).frame(minHeight: 400)
+        ArticleWebView(article: article, onRefresh: onRefresh)
+            .safeAreaInset(edge: .bottom) { bottomBar }
+            .sheet(isPresented: $isShowingShare) {
+                if let url = shareURL { ShareSheet(activityItems: [url]) }
             }
-            .padding()
-        }
-        .safeAreaInset(edge: .bottom) { bottomBar }
-        .sheet(isPresented: $isShowingShare) {
-            if let url = shareURL { ShareSheet(activityItems: [url]) }
-        }
     }
 
     private var bottomBar: some View {
