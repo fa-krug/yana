@@ -54,8 +54,12 @@ struct FeedsView: View {
                 }
             }
             ToolbarItem(placement: .topBarLeading) {
-                Button("Update All") { Task { await updateAll() } }
-                    .disabled(isUpdating || feeds.isEmpty)
+                if isUpdating {
+                    ProgressView()
+                } else {
+                    Button("Update All") { Task { await updateAll() } }
+                        .disabled(feeds.isEmpty)
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -142,14 +146,24 @@ struct FeedsView: View {
     private func updateAll() async {
         isUpdating = true
         defer { isUpdating = false }
-        await AggregationService(context: modelContext).updateAll()
+        let count = await AggregationService(context: modelContext).updateAll()
+        if count == 0 {
+            importMessage = String(localized: "No new articles.")
+        } else {
+            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles").")
+        }
     }
 
     private func updateOne(_ feed: Feed) async {
         guard !isUpdating else { return }
         isUpdating = true
         defer { isUpdating = false }
-        await AggregationService(context: modelContext).update(feed: feed)
+        let count = await AggregationService(context: modelContext).update(feed: feed)
+        if count == 0 {
+            importMessage = String(localized: "No new articles.")
+        } else {
+            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+        }
     }
 
     private func exportOPML() {
