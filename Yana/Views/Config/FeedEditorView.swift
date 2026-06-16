@@ -4,7 +4,6 @@ import SwiftUI
 /// Create or edit a `Feed`. New feeds are inserted on save; existing feeds are updated.
 struct FeedEditorView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Tag.sortOrder) private var allTags: [Tag]
 
     /// nil = create a new feed.
@@ -77,11 +76,7 @@ struct FeedEditorView: View {
                 model.identifier = picked
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { save() }.disabled(!model.isValid)
-            }
-        }
+        .onDisappear { save() }
     }
 
     /// Predefined choices for the current type, plus the current identifier as a
@@ -113,11 +108,13 @@ struct FeedEditorView: View {
         }
     }
 
+    /// Auto-save on exit. Invalid entries are discarded: a new feed is never inserted,
+    /// and an existing feed keeps its last valid state.
     private func save() {
+        guard model.isValid else { return }
         let target = feed ?? Feed(name: "", aggregatorType: .feedContent, identifier: "")
         model.apply(to: target, availableTags: allTags)
         if feed == nil { modelContext.insert(target) }
         try? modelContext.save()
-        dismiss()
     }
 }
