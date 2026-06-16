@@ -17,13 +17,26 @@ struct ImageStoreTests {
         return dir
     }
 
-    @Test func storeDownloadsCompressesAndReturnsHash() async {
+    @Test func storeDownloadsCompressesAndReturnsHash() async throws {
         let data = pngData()
         let store = ImageStore(directory: tempDir(), fetch: { _ in (data, "image/png") })
         let hash = await store.store(remoteURL: URL(string: "https://x.com/a.png")!, isHeader: false)
-        let h = try? #require(hash)
-        #expect(h != nil)
-        #expect(FileManager.default.fileExists(atPath: await store.fileURL(forHash: h!).path))
+        let h = try #require(hash)
+        #expect(FileManager.default.fileExists(atPath: await store.fileURL(forHash: h).path))
+    }
+
+    @Test func fileURLResolvesAcrossLaunches() async {
+        let dir = tempDir()
+        let data = pngData()
+        let store1 = ImageStore(directory: dir, fetch: { _ in (data, "image/png") })
+        let hash = await store1.store(remoteURL: URL(string: "https://x.com/a.png")!, isHeader: false)
+        let h = hash ?? ""
+        #expect(!h.isEmpty)
+
+        // Simulate a fresh launch: a new store over the same dir has an empty extensions map.
+        let store2 = ImageStore(directory: dir, fetch: { _ in (data, "image/png") })
+        let resolved = await store2.fileURL(forHash: h)
+        #expect(FileManager.default.fileExists(atPath: resolved.path))   // must find the existing file on disk
     }
 
     @Test func rewriteImagesReplacesSrcWithScheme() async throws {

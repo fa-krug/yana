@@ -29,14 +29,22 @@ actor ImageStore {
         extensions[hash] = compressed.ext
         let url = fileURL(forHash: hash)
         if !FileManager.default.fileExists(atPath: url.path) {
-            try? compressed.data.write(to: url)
+            do { try compressed.data.write(to: url) } catch { return nil }
         }
         return hash
     }
 
     func fileURL(forHash hash: String) -> URL {
-        let ext = extensions[hash] ?? "img"
-        return directory.appendingPathComponent("\(hash).\(ext)")
+        if let ext = extensions[hash] {
+            return directory.appendingPathComponent("\(hash).\(ext)")
+        }
+        // Cross-launch fallback: the in-memory map is empty on a fresh launch, so locate the
+        // already-cached file on disk by its hash stem.
+        if let match = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil))?
+            .first(where: { $0.deletingPathExtension().lastPathComponent == hash }) {
+            return match
+        }
+        return directory.appendingPathComponent("\(hash).img")
     }
 
     func purgeOrphans(keepingHashes: Set<String>) {
