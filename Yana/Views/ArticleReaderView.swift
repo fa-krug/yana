@@ -55,7 +55,7 @@ struct ArticleReaderView: View {
             } action: { newWidth in
                 viewWidth = newWidth
             }
-            .refreshable { await refresh(current: current) }
+            .refreshable { await refresh() }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
@@ -111,11 +111,10 @@ struct ArticleReaderView: View {
         appState.currentIndex = min(appState.currentIndex, max(0, filteredArticles.count - 1))
     }
 
-    // MARK: - Refresh (current article + whole timeline)
+    // MARK: - Refresh (whole timeline)
 
-    private func refresh(current: Article?) async {
+    private func refresh() async {
         let service = AggregationService(context: modelContext)
-        if let current { await service.update(article: current) }
         await service.updateAll()
     }
 
