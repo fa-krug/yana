@@ -39,6 +39,13 @@ enum HTTPClient {
         for attempt in 0..<maxAttempts {
             do {
                 let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                // Cheap early-reject: if the server declares a body larger than the cap, fail before
+                // streaming a single byte. (A server that lies/omits Content-Length is still bounded by
+                // the streaming guard below — at the cost of per-byte iteration for in-cap bodies.)
+                if response.expectedContentLength != NSURLSessionTransferSizeUnknown,
+                   exceedsCap(received: Int(response.expectedContentLength), cap: maxResponseBytes) {
+                    throw AggregatorError.contentFetch("declared response size exceeded \(maxResponseBytes) bytes")
+                }
                 var data = Data()
                 for try await byte in bytes {
                     data.append(byte)
