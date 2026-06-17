@@ -80,4 +80,110 @@ struct RedditAggregatorTests {
         let agg = RedditAggregator(config: config, credentials: .init(), store: tempStore(), client: nil)
         await #expect(throws: AggregatorError.self) { try await agg.aggregate() }
     }
+
+    // MARK: - Twitter/X selftext header tests
+
+    /// A self-post whose selftext contains a Twitter/X status URL should use that URL
+    /// as the header (Priority 0.6), bypassing the thumbnail fallback.
+    @Test func selftextTwitterURLUsedAsHeader() async throws {
+        let twitterURL = "https://x.com/u/status/123"
+        let twitterListingJSON = """
+        {"data":{"children":[
+          {"data":{"id":"tx1","title":"Tweet post","selftext":"REASON: \(twitterURL)",
+                   "url":"https://www.reddit.com/r/swift/comments/tx1/tweet_post/",
+                   "permalink":"/r/swift/comments/tx1/tweet_post/",
+                   "created_utc":\(recentUTC),"author":"alice","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,
+                   "thumbnail":"https://example.com/thumb.jpg"}}
+        ]}}
+        """
+        var opts = RedditOptions()
+        opts.minComments = 5
+        opts.minAgeHours = 0
+        // includeHeaderImage = true so makeHeaderHTML is called; the Twitter embed path
+        // calls EmbedRewriter.tweetEmbedHTML which hits the network and returns nil in tests
+        // (no real fxtwitter server), so makeHeaderHTML returns "".  What matters is that
+        // the thumbnail URL is NOT selected as the header instead.
+        opts.includeHeaderImage = true
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(self.commentsJSON.utf8) }
+            return Data(twitterListingJSON.utf8)
+        }
+        let agg = RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+        let articles = try await agg.aggregate()
+        let a = try #require(articles.first)
+        // The thumbnail URL must NOT be selected as the header (Twitter URL takes priority)
+        #expect(!a.content.contains("example.com/thumb.jpg"))
+        // The article should aggregate successfully
+        #expect(a.title == "Tweet post")
+    }
+
+    /// mobile.twitter.com status URLs must be recognised as Twitter URLs (server parity).
+    @Test func mobileTwitterURLRecognised() async throws {
+        let mobileURL = "https://mobile.twitter.com/user/status/9876543210"
+        let listingJSON = """
+        {"data":{"children":[
+          {"data":{"id":"mt1","title":"Mobile tweet","selftext":"See \(mobileURL)",
+                   "url":"https://www.reddit.com/r/swift/comments/mt1/mobile_tweet/",
+                   "permalink":"/r/swift/comments/mt1/mobile_tweet/",
+                   "created_utc":\(recentUTC),"author":"carol","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,
+                   "thumbnail":"https://example.com/thumb2.jpg"}}
+        ]}}
+        """
+        var opts = RedditOptions(); opts.minComments = 5; opts.minAgeHours = 0; opts.includeHeaderImage = true
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(self.commentsJSON.utf8) }
+            return Data(listingJSON.utf8)
+        }
+        let agg = RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+        let articles = try await agg.aggregate()
+        let a = try #require(articles.first)
+        #expect(!a.content.contains("example.com/thumb2.jpg"), "mobile.twitter.com URL should take header priority over thumbnail")
+    }
+
+    /// A self-post with a plain image URL in selftext (no Twitter/X URL) should not be
+    /// affected by the new Priority 0.6 check — preview/thumbnail still applies as before.
+    @Test func selftextPlainImageLinkUnaffected() async throws {
+        let imageListingJSON = """
+        {"data":{"children":[
+          {"data":{"id":"img1","title":"Image post","selftext":"Check this out https://i.redd.it/cool.png",
+                   "url":"https://www.reddit.com/r/swift/comments/img1/image_post/",
+                   "permalink":"/r/swift/comments/img1/image_post/",
+                   "created_utc":\(recentUTC),"author":"bob","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,
+                   "preview":{"images":[{"source":{"url":"https://preview.redd.it/cool.png?width=640"}}]}}}
+        ]}}
+        """
+        var opts = RedditOptions()
+        opts.minComments = 5
+        opts.minAgeHours = 0
+        opts.includeHeaderImage = true
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(self.commentsJSON.utf8) }
+            return Data(imageListingJSON.utf8)
+        }
+        let agg = RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+        let articles = try await agg.aggregate()
+        // Should aggregate without error; preview image used as header (cached via ImageStore)
+        #expect(articles.count == 1)
+        #expect(articles.first?.title == "Image post")
+        // Header image should be cached (yana-image:// scheme in content)
+        #expect(articles.first?.content.contains("\(ReaderWeb.imageScheme)://") == true)
+    }
 }

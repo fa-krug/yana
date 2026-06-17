@@ -8,6 +8,13 @@ struct HeaderElement: Sendable { var html: String; var dedupURL: String? }
 /// (Reddit-specific strategies live in the Reddit aggregator, Phase 4e.)
 enum HeaderElementExtractor {
     static func extract(articleURL: String, title: String, store: ImageStore, credentials: AggregatorCredentials) async -> HeaderElement? {
+        // 0. Domain override: use the configured image URL instead of any extraction strategy.
+        if let overrideURL = DomainImageOverrides.overrideImageURL(for: articleURL),
+           let url = URL(string: overrideURL),
+           let hash = await store.store(remoteURL: url, isHeader: true) {
+            let html = ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
+            return HeaderElement(html: html, dedupURL: overrideURL)
+        }
         // 1. YouTube → embed header (no image download needed).
         if let id = EmbedRewriter.extractYouTubeID(from: articleURL) {
             let embed = EmbedRewriter.youTubeEmbedHTML(videoID: id)

@@ -37,12 +37,13 @@ struct MeinMmoAggregatorTests {
     }
 
     @Test func combinesPagesAndMergesContent() async throws {
+        // New layout: div.page-links with a.post-page-numbers
         let first = """
-        <html><body><div class="gp-entry-content"><p>Page one body</p>\
-        <div class="gp-pagination-numbers"><a class="page-numbers" href="https://mein-mmo.de/post-1/2/">2</a></div>\
+        <html><body><div class="entry-content"><p>Page one body</p>\
+        <div class="page-links"><a class="post-page-numbers" href="https://mein-mmo.de/post-1/2/">2</a></div>\
         </div></body></html>
         """
-        let page2 = "<html><body><div class=\"gp-entry-content\"><p>Page two body</p></div></body></html>"
+        let page2 = "<html><body><div class=\"entry-content\"><p>Page two body</p></div></body></html>"
         let agg = StubMmo(first: first, extraPages: ["https://mein-mmo.de/post-1/2/": page2],
                           options: MeinMmoOptions(), store: tempStore())
         let a = try await enrichOne(agg)
@@ -51,19 +52,24 @@ struct MeinMmoAggregatorTests {
     }
 
     @Test func disablingCombineKeepsFirstPageOnly() async throws {
+        // New layout: div.page-links with a.post-page-numbers
         let first = """
-        <html><body><div class="gp-entry-content"><p>Only page one</p>\
-        <div class="gp-pagination-numbers"><a class="page-numbers" href="https://mein-mmo.de/post-1/2/">2</a></div>\
+        <html><body><div class="entry-content"><p>Only page one</p>\
+        <div class="page-links"><a class="post-page-numbers" href="https://mein-mmo.de/post-1/2/">2</a></div>\
         </div></body></html>
         """
-        let agg = StubMmo(first: first, extraPages: ["https://mein-mmo.de/post-1/2/": "<div class=\"gp-entry-content\"><p>Page two</p></div>"],
+        let agg = StubMmo(first: first, extraPages: ["https://mein-mmo.de/post-1/2/": "<div class=\"entry-content\"><p>Page two</p></div>"],
                           options: { var o = MeinMmoOptions(); o.combinePages = false; return o }(), store: tempStore())
         let a = try await enrichOne(agg)
         #expect(a.content.contains("Only page one"))
         #expect(!a.content.contains("Page two"))
     }
 
-    @Test func convertsDailymotionBlockAndRemovesPaginationMarkers() async throws {
+    // Server commit 1e3afd3 excludes dailymotion embeds from MeinMMO output entirely:
+    // process_dailymotion_blocks() builds div.dailymotion-embed-container but
+    // selectors_to_remove immediately decomposes it. iOS mirrors this: the conversion step
+    // runs first, then .dailymotion-embed-container is stripped by selectorsToRemove.
+    @Test func excludesDailymotionAndRemovesPaginationMarkers() async throws {
         let first = """
         <html><body><div class="gp-entry-content"><p>Intro</p>\
         <div class="wp-block-mmo-video"><script>var x = { dmVideoId: 'x9yt07o' };</script></div>\
@@ -73,8 +79,12 @@ struct MeinMmoAggregatorTests {
         """
         let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
         let a = try await enrichOne(agg)
-        #expect(a.content.contains("dailymotion-embed-container"))
-        #expect(a.content.contains("geo.dailymotion.com/player.html?video=x9yt07o"))
+        // Dailymotion content must NOT appear in final output (server commit 1e3afd3)
+        #expect(!a.content.contains("dailymotion-embed-container"))
+        #expect(!a.content.contains("dailymotion.com"))
+        #expect(!a.content.contains("x9yt07o"))
+        // Other content and removals still work
+        #expect(a.content.contains("Intro"))
         #expect(!a.content.contains("Weiter geht es auf Seite"))
         #expect(!a.content.contains("related junk"))
     }
@@ -103,5 +113,104 @@ struct MeinMmoAggregatorTests {
 
     @Test func identifierChoicesHasSingleFeed() {
         #expect(MeinMmoAggregator.identifierChoices.count == 1)
+    }
+
+    // MARK: - New-layout selector tests (server commits 818952b, cbc0ad1)
+
+    @Test func detectsPaginationOnNewLayout() {
+        // New layout uses div.page-links > a.post-page-numbers / span.post-page-numbers
+        let html = """
+        <html><body><div class="entry-content">
+          <p>Body text</p>
+          <div class="page-links">
+            <span class="post-page-numbers current">1</span>
+            <a class="post-page-numbers" href="https://mein-mmo.de/post-1/2/">2</a>
+            <a class="post-page-numbers" href="https://mein-mmo.de/post-1/3/">3</a>
+          </div>
+        </div></body></html>
+        """
+        let agg = StubMmo(first: html, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let pages = agg.detectPagination(html: html)
+        #expect(pages == [1, 2, 3])
+    }
+
+    @Test func detectsPaginationFromURLPatternOnNewLayout() {
+        // Verify URL-based page detection also works with a.post-page-numbers
+        let html = """
+        <html><body><div class="entry-content">
+          <div class="page-links">
+            // Link text "Seite 2" is intentionally non-numeric so detection relies solely
+            // on the ?page=N / trailing-path URL regex, not on Int(text) parsing.
+            <a class="post-page-numbers" href="https://mein-mmo.de/artikel/2/">Seite 2</a>
+          </div>
+        </div></body></html>
+        """
+        let agg = StubMmo(first: html, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let pages = agg.detectPagination(html: html)
+        #expect(pages.contains(1))   // always seeded
+        #expect(pages.contains(2))   // extracted from URL pattern
+    }
+
+    @Test func noPaginationWhenNoPageLinksContainer() {
+        // div.page-links absent → single-page article
+        let html = """
+        <html><body><div class="entry-content"><p>Single page</p></div></body></html>
+        """
+        let agg = StubMmo(first: html, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let pages = agg.detectPagination(html: html)
+        #expect(pages == [1])
+    }
+
+    @Test func combinesNewLayoutPagesAndStripsPageLinks() async throws {
+        // Verify full enrich() path: new-layout pagination is detected and page-links div removed
+        let first = """
+        <html><body><div class="entry-content"><p>Page one body</p>\
+        <div class="page-links">\
+        <span class="post-page-numbers current">1</span>\
+        <a class="post-page-numbers" href="https://mein-mmo.de/post-1/2/">2</a>\
+        </div></div></body></html>
+        """
+        let page2 = """
+        <html><body><div class="entry-content"><p>Page two body</p></div></body></html>
+        """
+        let agg = StubMmo(first: first,
+                          extraPages: ["https://mein-mmo.de/post-1/2/": page2],
+                          options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(a.content.contains("Page one body"))
+        #expect(a.content.contains("Page two body"))
+        // page-links div must be stripped from output
+        #expect(!a.content.contains("page-links"))
+    }
+
+    @Test func removesSourcesWrapperAndFeedbackBox() async throws {
+        let first = """
+        <html><body><div class="entry-content">
+          <p>Article text</p>
+          <div class="sources-wrapper"><a href="#">Source</a></div>
+          <div class="feedback-box">Was this helpful?</div>
+        </div></body></html>
+        """
+        let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(!a.content.contains("sources-wrapper"))
+        #expect(!a.content.contains("feedback-box"))
+        #expect(!a.content.contains("Was this helpful?"))
+        #expect(a.content.contains("Article text"))
+    }
+
+    @Test func removesHubBox() async throws {
+        // server commit cbc0ad1: div.wp-block-mmo-hub-box must be stripped
+        let first = """
+        <html><body><div class="entry-content">
+          <p>Main content</p>
+          <div class="wp-block-mmo-hub-box"><p>Hub box junk</p></div>
+        </div></body></html>
+        """
+        let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(!a.content.contains("wp-block-mmo-hub-box"))
+        #expect(!a.content.contains("Hub box junk"))
+        #expect(a.content.contains("Main content"))
     }
 }

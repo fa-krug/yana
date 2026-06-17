@@ -2,7 +2,7 @@ import Foundation
 import SwiftSoup
 
 /// Mein-MMO.de gaming news. Ports core/aggregators/mein_mmo/: page-combining, embed strategies
-/// (YouTube/Twitter/Reddit/TikTok), Dailymotion conversion, pagination-marker + recirculation removal.
+/// (YouTube/Twitter/Reddit/Bluesky/TikTok), Dailymotion conversion, pagination-marker + recirculation removal.
 class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     static let defaultFeed = "https://mein-mmo.de/feed/"
 
@@ -22,10 +22,25 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     override var contentSelector: String { Self.contentDivSelector }
 
     override var selectorsToRemove: [String] {
-        ["div.wp-block-mmo-recirculation-box", "div.reading-position-indicator-end",
-         "label.toggle", "a.wp-block-mmo-content-box", "ul.page-numbers", ".post-page-numbers",
-         "#ftwp-container-outer", "div.wp-block-wbd-affiliate-widget", "script", "style",
-         "iframe:not([src*='youtube.com']):not([src*='youtu.be']):not([src*='dailymotion.com'])", "noscript"]
+        // .dailymotion-embed-container is included here to mirror server commit 1e3afd3:
+        // the server's extract_mein_mmo_content() calls process_dailymotion_blocks() first
+        // (which builds div.dailymotion-embed-container from div.wp-block-mmo-video), then
+        // immediately decomposes that class in the selectors_to_remove pass. Net effect:
+        // dailymotion embeds are excluded from MeinMMO output entirely. The conversion step
+        // (convertDailymotionBlocks) is intentionally left in place as dead code to mirror
+        // the server; the removal here ensures the final output contains no dailymotion content.
+        // The iframe whitelist drops :not([src*='dailymotion.com']) since no dailymotion iframes
+        // should survive to that point, but YouTube iframes are still preserved.
+        ["div.wp-block-mmo-recirculation-box", "div.wp-block-mmo-hub-box",
+         "div.reading-position-indicator-end",
+         "label.toggle", "a.wp-block-mmo-content-box",
+         // div.page-links is also the pagination container read by detectPagination().
+         // This is safe only because detectPagination() is called inside enrich() BEFORE
+         // processMeinMmoContent() (which runs selectorsToRemove). Do not reorder these calls.
+         "div.page-links", "div.sources-wrapper", "div.feedback-box",
+         "div.wp-block-wbd-affiliate-widget", "script", "style",
+         ".dailymotion-embed-container",
+         "iframe:not([src*='youtube.com']):not([src*='youtu.be'])", "noscript"]
     }
 
     override func fetchEntries() async throws -> [FeedEntry] {
@@ -33,6 +48,11 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         guard let u = URL(string: url) else { throw AggregatorError.missingIdentifier }
         let (data, _) = try await HTTPClient.fetchData(u)
         return try FeedParser.parse(data).entries
+    }
+
+    /// Overridable seam: JSON fetcher for Bluesky API calls (injectable for tests).
+    func fetchJSONForBluesky(_ request: URLRequest) async throws -> Data {
+        try await HTTPClient.fetchJSON(request)
     }
 
     /// Overridable seam: fetch an additional page of a multi-page article.
@@ -80,21 +100,17 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         var pages: Set<Int> = [1]
         guard let doc = try? HTMLUtils.parse(html) else { return pages }
         let contentDiv = try? doc.select(Self.contentDivSelector).first()
-        let inContent = (try? contentDiv?.select(
-            "div.gp-pagination-numbers, ul.page-numbers, nav.navigation.pagination, div.gp-pagination"
-        ).first()).flatMap { $0 }
-        let inDoc = (try? doc.select(
-            "div.gp-pagination-numbers, nav.navigation.pagination, div.gp-pagination, ul.page-numbers"
-        ).first()).flatMap { $0 }
+        let inContent = (try? contentDiv?.select("div.page-links").first()).flatMap { $0 }
+        let inDoc = (try? doc.select("div.page-links").first()).flatMap { $0 }
         let container = inContent ?? inDoc
         guard let pagination = container else { return pages }
-        for link in (try? pagination.select("a.page-numbers, a.post-page-numbers").array()) ?? [] {
+        for link in (try? pagination.select("a.post-page-numbers").array()) ?? [] {
             if let text = try? link.text(), let n = Int(text) { pages.insert(n) }
             if let href = try? link.attr("href"),
                let r = href.range(of: #"/(\d+)/?$"#, options: .regularExpression),
                let n = Int(href[r].filter(\.isNumber)) { pages.insert(n) }
         }
-        for span in (try? pagination.select("span.page-numbers, span.post-page-numbers, span.current").array()) ?? [] {
+        for span in (try? pagination.select("span.post-page-numbers").array()) ?? [] {
             if let text = try? span.text(), let n = Int(text) { pages.insert(n) }
         }
         return pages
@@ -136,7 +152,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         }
 
         // Embed-processor strategies on <figure>.
-        try processEmbedFigures(content)
+        try await processEmbedFigures(content)
 
         try HTMLUtils.removeEmptyElements(doc, tags: ["p", "div"])
         try EmbedRewriter.rewriteEmbeds(in: doc)   // normalize any remaining YouTube iframes
@@ -148,6 +164,8 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
                                        headerHTML: nil, commentsHTML: nil)
     }
 
+    // Dead code: converted nodes are immediately removed by selectorsToRemove (.dailymotion-embed-container)
+    // — kept to mirror the server pipeline order (server commit 1e3afd3).
     private func convertDailymotionBlocks(_ content: Element) throws {
         for block in try content.select("div.wp-block-mmo-video") {
             guard let id = dailymotionVideoID(block) else { continue }
@@ -175,8 +193,8 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         return nil
     }
 
-    /// Strategy chain over <figure>: YouTube (class/link) → Twitter → Reddit → TikTok → YouTube-link fallback.
-    private func processEmbedFigures(_ content: Element) throws {
+    /// Strategy chain over <figure>: YouTube (class/link) → Twitter → Reddit → Bluesky → TikTok → YouTube-link fallback.
+    private func processEmbedFigures(_ content: Element) async throws {
         for figure in try content.select("figure").array() {
             let classStr = ((try? figure.classNames()) ?? []).joined(separator: " ")
             if classStr.contains("youtube") || classStr.contains("is-provider-youtube") {
@@ -194,6 +212,13 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
                let reddit = linkMatching(figure, hosts: ["reddit.com"]) {
                 let clean = reddit.split(separator: "?").first.map(String.init) ?? reddit
                 try figure.replaceWith(parse("<p><a href=\"\(clean)\" target=\"_blank\" rel=\"noopener\">View on Reddit</a></p>")); continue
+            }
+            if let bsky = linkMatching(figure, hosts: ["bsky.app"]) {
+                if let html = await BlueskyEmbed.buildEmbedHTML(for: bsky, fetchJSON: fetchJSONForBluesky) {
+                    try figure.replaceWith(parse("<div data-sanitized-class=\"bluesky-embed\">\(html)</div>"))
+                }
+                // On failure, leave figure unchanged (graceful fallback).
+                continue
             }
             if classStr.contains("tiktok"), let tiktok = linkMatching(figure, hosts: ["tiktok.com"]),
                let r = tiktok.range(of: #"/video/(\d+)"#, options: .regularExpression) {

@@ -52,7 +52,8 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
     // MARK: - Filters
 
     override func shouldInclude(_ article: AggregatedArticle) -> Bool {
-        !Self.titleSkipList.contains { article.title.contains($0) }
+        let titleLower = article.title.lowercased()
+        return !Self.titleSkipList.contains { titleLower.contains($0.lowercased()) }
     }
 
     override func postFilter(_ article: AggregatedArticle) -> Bool {

@@ -88,6 +88,27 @@ struct HeiseAggregatorTests {
         #expect(a.content.contains("<blockquote"))
     }
 
+    @Test func skipsTitleCaseInsensitive() async throws {
+        // "die Bilder der Woche" is in the skip list but real titles start with uppercase "Die".
+        let agg = StubHeise(
+            entries: [entry("Die Bilder der Woche 1234"), entry("Normal Article")],
+            page: "<article class=\"StoryContent\"><p>x</p></article>", forum: "",
+            options: { var o = HeiseOptions(); o.includeComments = false; return o }(),
+            store: tempStore())
+        let titles = try await agg.aggregate().map(\.title)
+        #expect(titles == ["Normal Article"])
+    }
+
+    @Test func includesNormalTitleNotInSkipList() async throws {
+        let agg = StubHeise(
+            entries: [entry("Apple kündigt neues iPad an")],
+            page: "<article class=\"StoryContent\"><p>Details</p></article>", forum: "",
+            options: { var o = HeiseOptions(); o.includeComments = false; return o }(),
+            store: tempStore())
+        let titles = try await agg.aggregate().map(\.title)
+        #expect(titles == ["Apple kündigt neues iPad an"])
+    }
+
     @Test func identifierChoicesHasFourHeiseFeeds() {
         #expect(HeiseAggregator.identifierChoices.count == 4)
         #expect(HeiseAggregator.identifierChoices.first?.value == "https://www.heise.de/rss/heise.rdf")
