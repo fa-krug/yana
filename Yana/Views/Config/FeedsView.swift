@@ -182,7 +182,7 @@ struct FeedsView: View {
         defer { isUpdating = false }
         let count = await AggregationService(context: modelContext).forceReload(feed: feed)
         if count == 0 {
-            importMessage = String(localized: "No new articles.")
+            importMessage = String(localized: "Reloaded \u{201C}\(feed.name)\u{201D}.")
         } else {
             importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
         }

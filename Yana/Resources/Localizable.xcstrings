@@ -1173,6 +1173,16 @@
         }
       }
     },
+    "Reloaded \"%@\"." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ neu geladen."
+          }
+        }
+      }
+    },
     "Refreshing feeds" : {
       "comment" : "Accessibility label for the loading indicator shown while feeds update.",
       "localizations" : {

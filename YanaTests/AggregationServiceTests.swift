@@ -433,6 +433,26 @@ struct AggregationServiceTests {
         #expect(feed.articles.count == 1)
     }
 
+    @Test func forceReloadDoesNotRetentionCleanupRefreshedArticles() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        // Un-starred article discovered far beyond the default 30-day retention window.
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        article.createdAt = Date.now.addingTimeInterval(-40 * 24 * 3600)
+        context.insert(article)
+
+        let service = AggregationService(context: context, makeAggregator: { _, _ in
+            FakeAggregator(articles: [self.aggregated("id1")])   // same identifier → in-place refresh
+        }, aiProcessor: FakeAIProcessor())
+        await service.forceReload(feed: feed)
+
+        #expect(feed.articles.map(\.identifier) == ["id1"])   // survived retention cleanup
+        #expect(feed.articles.first?.content == "c")          // and was refreshed
+    }
+
     @Test func forceReloadArticleReturnsZeroWithoutFeed() async throws {
         let context = try makeContext()
         let article = Article(title: "Orphan", identifier: "id1", url: "u",

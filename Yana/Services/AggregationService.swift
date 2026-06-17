@@ -173,7 +173,7 @@ final class AggregationService {
         isUpdating = true
         defer { isUpdating = false }
         let inserted = await aggregate(feed: feed, force: true)
-        cleanupAndSave()
+        try? context.save()
         return inserted
     }
 
@@ -218,7 +218,7 @@ final class AggregationService {
         let processed = await currentAIProcessor().process([refreshed], ai: config.options.ai)
         let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(),
                                            context: context, now: now())
-        cleanupAndSave()
+        try? context.save()
         return inserted
     }
 
