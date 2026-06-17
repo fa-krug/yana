@@ -15,7 +15,11 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         return MeinMmoOptions()
     }
 
-    override var contentSelector: String { "div.gp-entry-content" }
+    /// Matches both the current theme (`div.entry-content`) and the legacy GeneratePress
+    /// theme (`div.gp-entry-content`) Mein-MMO used before its redesign.
+    static let contentDivSelector = "div.entry-content, div.gp-entry-content"
+
+    override var contentSelector: String { Self.contentDivSelector }
 
     override var selectorsToRemove: [String] {
         ["div.wp-block-mmo-recirculation-box", "div.reading-position-indicator-end",
@@ -75,7 +79,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     func detectPagination(html: String) -> Set<Int> {
         var pages: Set<Int> = [1]
         guard let doc = try? HTMLUtils.parse(html) else { return pages }
-        let contentDiv = try? doc.select("div.gp-entry-content").first()
+        let contentDiv = try? doc.select(Self.contentDivSelector).first()
         let inContent = (try? contentDiv?.select(
             "div.gp-pagination-numbers, ul.page-numbers, nav.navigation.pagination, div.gp-pagination"
         ).first()).flatMap { $0 }
@@ -102,7 +106,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     private func extractContentDivHTML(from html: String) -> String? {
         guard let doc = try? HTMLUtils.parse(html),
-              let div = try? doc.select("div.gp-entry-content").first() else { return nil }
+              let div = try? doc.select(Self.contentDivSelector).first() else { return nil }
         return try? div.html()
     }
 
@@ -114,7 +118,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     func processMeinMmoContent(_ html: String, article: AggregatedArticle) async throws -> String {
         let doc = try HTMLUtils.parse(html)
-        guard let content = try doc.select("div.gp-entry-content").first() ?? doc.body() else {
+        guard let content = try doc.select(Self.contentDivSelector).first() ?? doc.body() else {
             return ""
         }
 
