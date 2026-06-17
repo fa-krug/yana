@@ -2,11 +2,10 @@ import SwiftUI
 import UIKit
 
 /// Horizontal pager over the timeline. Each page is an `ArticleContentView` whose web view
-/// owns vertical scrolling and pinch-to-zoom; a horizontal pan drives an interactive
-/// navigation-style push/pop (the next article slides in over the current with parallax and
-/// a leading shadow; the previous one is revealed underneath) so moving through the timeline
-/// feels like standard iOS navigation. Only the visible page and the transient neighbour are
-/// kept alive, so an endless timeline never instantiates a web view per article.
+/// owns vertical scrolling and pinch-to-zoom; articles slide edge-to-edge via a native
+/// `UIPageViewController` (scroll transition style), mirroring NetNewsWire's reader. Only the
+/// visible page and the transient neighbour are kept alive, so an endless timeline never
+/// instantiates a web view per article.
 struct ArticlePagerView: UIViewControllerRepresentable {
     let articles: [Article]
     @Binding var currentIndex: Int
