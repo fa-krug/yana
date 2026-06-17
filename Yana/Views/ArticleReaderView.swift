@@ -33,80 +33,85 @@ struct ArticleReaderView: View {
     var body: some View {
         let articles = filteredArticles
         let current = currentArticle(in: articles)
-        NavigationStack {
-            ZStack {
-                if current != nil {
-                    // Capture the real safe-area insets (incl. the navigation bar) before the
-                    // pager draws full-bleed, so each article clears the floating bars.
-                    GeometryReader { proxy in
+        // Capture the *device* safe area (status bar / home indicator) outside the
+        // NavigationStack, before the nav bar reserves space. NetNewsWire pins its web view to
+        // the full screen under the bars (WebViewController.swift) so content scrolls beneath the
+        // floating glass capsules; forwarding the device inset (not the nav-bar-inclusive one)
+        // reproduces that — the article flows under the toolbar instead of sitting below a black
+        // band.
+        GeometryReader { proxy in
+            let deviceInsets = proxy.safeAreaInsets
+            NavigationStack {
+                ZStack {
+                    if current != nil {
                         ArticlePagerView(
                             articles: articles,
                             currentIndex: $appState.currentIndex,
                             onRefresh: triggerRefresh,
-                            safeAreaInsets: proxy.safeAreaInsets
+                            safeAreaInsets: deviceInsets
                         )
                         .ignoresSafeArea()
-                    }
-                } else {
-                    ContentUnavailableView {
-                        Label("No Articles", systemImage: "tray")
-                            .accessibilityIdentifier("emptyArticlesTitle")
-                    } description: {
-                        Text("Add feeds in Configuration, then pull down to refresh.")
-                    } actions: {
-                        Button(String(localized: "Add Your First Feed")) {
-                            appState.showSettings = true
+                    } else {
+                        ContentUnavailableView {
+                            Label("No Articles", systemImage: "tray")
+                                .accessibilityIdentifier("emptyArticlesTitle")
+                        } description: {
+                            Text("Add feeds in Configuration, then pull down to refresh.")
+                        } actions: {
+                            Button(String(localized: "Add Your First Feed")) {
+                                appState.showSettings = true
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
-                        .accessibilityLabel(String(localized: "Filter articles"))
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if isRefreshing {
-                        ProgressView()
-                            .accessibilityLabel(String(localized: "Refreshing feeds"))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
+                            .accessibilityLabel(String(localized: "Filter articles"))
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if let article = current, let starredTag {
-                        Button {
-                            article.setStarred(!article.isStarred, using: starredTag)
-                            try? modelContext.save()
-                        } label: {
-                            Image(systemName: article.isStarred ? "star.fill" : "star")
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if isRefreshing {
+                            ProgressView()
+                                .accessibilityLabel(String(localized: "Refreshing feeds"))
                         }
-                        .accessibilityLabel(article.isStarred ? String(localized: "Unstar article") : String(localized: "Star article"))
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if let article = current, let starredTag {
+                            Button {
+                                article.setStarred(!article.isStarred, using: starredTag)
+                                try? modelContext.save()
+                            } label: {
+                                Image(systemName: article.isStarred ? "star.fill" : "star")
+                            }
+                            .accessibilityLabel(article.isStarred ? String(localized: "Unstar article") : String(localized: "Star article"))
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { appState.showSettings = true } label: { Image(systemName: "gear") }
+                            .accessibilityLabel(String(localized: "Settings"))
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { appState.showSettings = true } label: { Image(systemName: "gear") }
-                        .accessibilityLabel(String(localized: "Settings"))
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
+                .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
+                .alert("Update Failed", isPresented: Binding(
+                    get: { appState.errorMessage != nil },
+                    set: { if !$0 { appState.errorMessage = nil } }
+                )) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(appState.errorMessage ?? "")
                 }
-            }
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
-            .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
-            .alert("Update Failed", isPresented: Binding(
-                get: { appState.errorMessage != nil },
-                set: { if !$0 { appState.errorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(appState.errorMessage ?? "")
-            }
-            .onAppear { restoreAnchor() }
-            .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
-            .onChange(of: allArticles) { _, _ in
-                if didRestoreAnchor {
-                    clampIndex()
-                } else {
-                    restoreAnchor()
+                .onAppear { restoreAnchor() }
+                .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
+                .onChange(of: allArticles) { _, _ in
+                    if didRestoreAnchor {
+                        clampIndex()
+                    } else {
+                        restoreAnchor()
+                    }
                 }
             }
         }

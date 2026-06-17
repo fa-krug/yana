@@ -19,7 +19,8 @@ struct ArticleContentView: View {
     @State private var isShowingShare = false
 
     /// Height reserved for the floating bottom action bar so the last line clears it.
-    private let actionBarHeight: CGFloat = 60
+    /// Sized for the enlarged (NetNewsWire-scale) glass icons below.
+    private let actionBarHeight: CGFloat = 76
 
     var body: some View {
         ArticleWebView(article: article, onRefresh: onRefresh, readerContentInset: readerContentInset)
@@ -58,6 +59,7 @@ struct ArticleContentView: View {
                 }
             }
             .labelStyle(.iconOnly)
+            .font(.title2)
             .buttonStyle(.glass)
             .padding(.horizontal)
             .padding(.vertical, 8)
