@@ -69,21 +69,18 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
             let first = try await fetchArticleHTML(article.url)
             article.rawContent = first
 
-            // Build content div(s): multi-page if enabled.
-            var contentDivs: [String] = []
+            // Combine pages if enabled and pagination detected.
+            var contentDivs: [String] = extractContentDivHTML(from: first).map { [$0] } ?? []
             if mactechnewsOptions.combinePages {
                 let pages = detectPagination(html: first)
                 if pages.count > 1 {
+                    contentDivs = []
                     for page in pages.sorted() {
                         let pageURL = page == 1 ? article.url : pageURLFor(base: article.url, page: page)
                         let html = page == 1 ? first : ((try? await fetchAdditionalPage(pageURL)) ?? "")
                         if let div = extractContentDivHTML(from: html) { contentDivs.append(div) }
                     }
                 }
-            }
-            if contentDivs.isEmpty {
-                // Single-page or combinePages disabled: extract from first page only.
-                if let div = extractContentDivHTML(from: first) { contentDivs.append(div) }
             }
 
             let merged = mergeContentDivs(contentDivs)
@@ -134,7 +131,7 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
     private func extractContentDivHTML(from html: String) -> String? {
         guard let doc = try? HTMLUtils.parse(html),
               let div = try? doc.select(contentSelector).first() else { return nil }
-        return try? div.outerHtml()
+        return try? div.html()
     }
 
     private func mergeContentDivs(_ divs: [String]) -> String {
