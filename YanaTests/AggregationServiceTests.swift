@@ -462,4 +462,35 @@ struct AggregationServiceTests {
         let inserted = await service.forceReload(article: article)
         #expect(inserted == 0)
     }
+
+    // MARK: - Logo resolution (Task 10)
+
+    @Test func setsLogoHashWhenMissing() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "https://e.com/f.xml")
+        context.insert(feed)
+
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            logoResolver: { _, _ in "cafef00d" })
+        await service.update(feed: feed)
+
+        #expect(feed.logoHash == "cafef00d")
+    }
+
+    @Test func doesNotReResolveLogoWhenAlreadySet() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "https://e.com/f.xml")
+        feed.logoHash = "existing"
+        context.insert(feed)
+
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            logoResolver: { _, _ in "newvalue" })
+        await service.update(feed: feed)
+
+        #expect(feed.logoHash == "existing")
+    }
 }

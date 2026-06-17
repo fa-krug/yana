@@ -22,21 +22,35 @@ final class AggregationService {
     /// concurrent network/AI awaits so a large feed list does not spawn unbounded requests.
     private static let maxConcurrentFeedUpdates = 5
 
+    /// Resolves and caches a feed's logo, returning its content hash. Injectable for tests.
+    typealias LogoResolver = @Sendable (_ config: FeedConfig, _ aggregator: any Aggregator) async -> String?
+
+    /// Default logo resolver: pick a source URL (API image / brand favicon / identifier favicon)
+    /// then download + compress + cache via the shared image store.
+    static let defaultLogoResolver: LogoResolver = { config, aggregator in
+        guard let urlString = await FeedLogoResolver.logoImageURL(for: config, aggregator: aggregator),
+              let url = URL(string: urlString) else { return nil }
+        return await ImageStore.shared.store(remoteURL: url, isHeader: false)
+    }
+
     private let context: ModelContext
     private let makeAggregator: AggregatorFactory
     private let injectedAIProcessor: AIProcessing?
     private let now: () -> Date
+    private let logoResolver: LogoResolver
 
     init(
         context: ModelContext,
         makeAggregator: @escaping AggregatorFactory = { AggregatorRegistry.shared.makeAggregator($0, credentials: $1) },
         aiProcessor: AIProcessing? = nil,
-        now: @escaping () -> Date = { .now }
+        now: @escaping () -> Date = { .now },
+        logoResolver: @escaping LogoResolver = AggregationService.defaultLogoResolver
     ) {
         self.context = context
         self.makeAggregator = makeAggregator
         self.injectedAIProcessor = aiProcessor
         self.now = now
+        self.logoResolver = logoResolver
     }
 
     /// Map an arbitrary error to a clear, non-empty user-facing string.
@@ -262,6 +276,9 @@ final class AggregationService {
             let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: runNow)
             feed.lastFetchedAt = runNow
             feed.lastError = nil
+            if feed.logoHash == nil, let hash = await logoResolver(config, aggregator) {
+                feed.logoHash = hash
+            }
             return inserted
         } catch {
             let message = Self.userFacingMessage(for: error)
