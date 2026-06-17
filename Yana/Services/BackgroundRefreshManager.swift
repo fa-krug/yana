@@ -57,16 +57,27 @@ final class BackgroundRefreshManager {
 
     /// Register the launch handler. MUST be called before the app finishes launching
     /// (from the app delegate), exactly once per process.
+    ///
+    /// `BGTaskScheduler` invokes the launch handler on a background queue, so the closure
+    /// must stay non-isolated and only hop onto the main actor to touch this `@MainActor`
+    /// type — touching `self` synchronously here would trip a main-queue executor
+    /// precondition and trap (EXC_BREAKPOINT).
     func register() {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: Self.taskIdentifier,
             using: nil
-        ) { [weak self] task in
-            guard let self, let refreshTask = task as? BGAppRefreshTask else {
+        ) { task in
+            guard let refreshTask = task as? BGAppRefreshTask else {
                 task.setTaskCompleted(success: false)
                 return
             }
-            self.handle(task: refreshTask)
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    refreshTask.setTaskCompleted(success: false)
+                    return
+                }
+                self.handle(task: refreshTask)
+            }
         }
     }
 
