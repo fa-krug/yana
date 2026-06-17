@@ -127,6 +127,18 @@ final class AppSettings {
         get { access(keyPath: \.youtubeEnabled); return defaults.bool(forKey: Key.youtubeEnabled) }
         set { withMutation(keyPath: \.youtubeEnabled) { defaults.set(newValue, forKey: Key.youtubeEnabled) } }
     }
+
+    /// Whether the given aggregator type's content source is currently active.
+    /// Reddit / YouTube are gated by their per-source Enabled toggle; every other
+    /// type is always active.
+    func isSourceEnabled(_ type: AggregatorType) -> Bool {
+        switch type {
+        case .reddit: return redditEnabled
+        case .youtube: return youtubeEnabled
+        default: return true
+        }
+    }
+
     var notificationsEnabled: Bool {
         get { access(keyPath: \.notificationsEnabled); return defaults.bool(forKey: Key.notificationsEnabled) }
         set { withMutation(keyPath: \.notificationsEnabled) { defaults.set(newValue, forKey: Key.notificationsEnabled) } }
