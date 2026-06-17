@@ -90,6 +90,17 @@ struct MeinMmoAggregatorTests {
         #expect(a.content.contains("youtube-nocookie.com/embed/abc12345678"))
     }
 
+    @Test func extractsContentFromRedesignedEntryContentClass() async throws {
+        // Mein-MMO migrated off the GeneratePress theme: the content container is now
+        // `div.entry-content`, not `div.gp-entry-content`. The body must still be extracted.
+        let first = """
+        <html><body><div class="entry-content"><p>Redesigned body text</p></div></body></html>
+        """
+        let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(a.content.contains("Redesigned body text"))
+    }
+
     @Test func identifierChoicesHasSingleFeed() {
         #expect(MeinMmoAggregator.identifierChoices.count == 1)
     }
