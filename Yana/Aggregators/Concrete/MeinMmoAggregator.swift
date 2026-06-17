@@ -34,6 +34,9 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         ["div.wp-block-mmo-recirculation-box", "div.wp-block-mmo-hub-box",
          "div.reading-position-indicator-end",
          "label.toggle", "a.wp-block-mmo-content-box",
+         // div.page-links is also the pagination container read by detectPagination().
+         // This is safe only because detectPagination() is called inside enrich() BEFORE
+         // processMeinMmoContent() (which runs selectorsToRemove). Do not reorder these calls.
          "div.page-links", "div.sources-wrapper", "div.feedback-box",
          "div.wp-block-wbd-affiliate-widget", "script", "style",
          ".dailymotion-embed-container",
@@ -156,6 +159,8 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
                                        headerHTML: nil, commentsHTML: nil)
     }
 
+    // Dead code: converted nodes are immediately removed by selectorsToRemove (.dailymotion-embed-container)
+    // — kept to mirror the server pipeline order (server commit 1e3afd3).
     private func convertDailymotionBlocks(_ content: Element) throws {
         for block in try content.select("div.wp-block-mmo-video") {
             guard let id = dailymotionVideoID(block) else { continue }

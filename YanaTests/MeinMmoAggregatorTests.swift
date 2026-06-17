@@ -139,6 +139,8 @@ struct MeinMmoAggregatorTests {
         let html = """
         <html><body><div class="entry-content">
           <div class="page-links">
+            // Link text "Seite 2" is intentionally non-numeric so detection relies solely
+            // on the ?page=N / trailing-path URL regex, not on Int(text) parsing.
             <a class="post-page-numbers" href="https://mein-mmo.de/artikel/2/">Seite 2</a>
           </div>
         </div></body></html>
