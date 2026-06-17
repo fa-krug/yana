@@ -2,7 +2,7 @@ import Foundation
 import SwiftSoup
 
 /// Mein-MMO.de gaming news. Ports core/aggregators/mein_mmo/: page-combining, embed strategies
-/// (YouTube/Twitter/Reddit/TikTok), Dailymotion conversion, pagination-marker + recirculation removal.
+/// (YouTube/Twitter/Reddit/Bluesky/TikTok), Dailymotion conversion, pagination-marker + recirculation removal.
 class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     static let defaultFeed = "https://mein-mmo.de/feed/"
 
@@ -48,6 +48,11 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         guard let u = URL(string: url) else { throw AggregatorError.missingIdentifier }
         let (data, _) = try await HTTPClient.fetchData(u)
         return try FeedParser.parse(data).entries
+    }
+
+    /// Overridable seam: JSON fetcher for Bluesky API calls (injectable for tests).
+    func fetchJSONForBluesky(_ request: URLRequest) async throws -> Data {
+        try await HTTPClient.fetchJSON(request)
     }
 
     /// Overridable seam: fetch an additional page of a multi-page article.
@@ -147,7 +152,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         }
 
         // Embed-processor strategies on <figure>.
-        try processEmbedFigures(content)
+        try await processEmbedFigures(content)
 
         try HTMLUtils.removeEmptyElements(doc, tags: ["p", "div"])
         try EmbedRewriter.rewriteEmbeds(in: doc)   // normalize any remaining YouTube iframes
@@ -188,8 +193,8 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         return nil
     }
 
-    /// Strategy chain over <figure>: YouTube (class/link) → Twitter → Reddit → TikTok → YouTube-link fallback.
-    private func processEmbedFigures(_ content: Element) throws {
+    /// Strategy chain over <figure>: YouTube (class/link) → Twitter → Reddit → Bluesky → TikTok → YouTube-link fallback.
+    private func processEmbedFigures(_ content: Element) async throws {
         for figure in try content.select("figure").array() {
             let classStr = ((try? figure.classNames()) ?? []).joined(separator: " ")
             if classStr.contains("youtube") || classStr.contains("is-provider-youtube") {
@@ -207,6 +212,13 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
                let reddit = linkMatching(figure, hosts: ["reddit.com"]) {
                 let clean = reddit.split(separator: "?").first.map(String.init) ?? reddit
                 try figure.replaceWith(parse("<p><a href=\"\(clean)\" target=\"_blank\" rel=\"noopener\">View on Reddit</a></p>")); continue
+            }
+            if let bsky = linkMatching(figure, hosts: ["bsky.app"]) {
+                if let html = await BlueskyEmbed.buildEmbedHTML(for: bsky, fetchJSON: fetchJSONForBluesky) {
+                    try figure.replaceWith(parse("<div data-sanitized-class=\"bluesky-embed\">\(html)</div>"))
+                }
+                // On failure, leave figure unchanged (graceful fallback).
+                continue
             }
             if classStr.contains("tiktok"), let tiktok = linkMatching(figure, hosts: ["tiktok.com"]),
                let r = tiktok.range(of: #"/video/(\d+)"#, options: .regularExpression) {
