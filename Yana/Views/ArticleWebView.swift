@@ -8,8 +8,10 @@ import WebKit
 /// When `onRefresh` is supplied, a `UIRefreshControl` is attached for pull-to-refresh.
 struct ArticleWebView: UIViewRepresentable {
     let article: Article
-    /// Optional pull-to-refresh handler. `nil` (the default) means no refresh control.
-    var onRefresh: (() async -> Void)?
+    /// Optional pull-to-refresh trigger. `nil` (the default) means no refresh control.
+    /// Fire-and-forget: the control retracts immediately instead of spinning until the
+    /// refresh completes, so the work runs in the background while a separate indicator shows.
+    var onRefresh: (() -> Void)?
 
     private static let css = """
         <style>
@@ -50,13 +52,13 @@ struct ArticleWebView: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject {
         var loadedHTML: String?
-        var onRefresh: (() async -> Void)?
+        var onRefresh: (() -> Void)?
 
         @objc func handleRefresh(_ control: UIRefreshControl) {
-            Task { @MainActor in
-                await onRefresh?()
-                control.endRefreshing()
-            }
+            // Kick off the refresh and retract the control right away — the actual update runs
+            // in the background and reports progress through the reader's own indicator.
+            onRefresh?()
+            control.endRefreshing()
         }
     }
 

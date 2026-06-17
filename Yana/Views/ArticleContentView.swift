@@ -5,8 +5,8 @@ import SwiftUI
 /// swipe reader (with pull-to-refresh) and the search detail screen (without).
 struct ArticleContentView: View {
     let article: Article
-    /// Optional pull-to-refresh handler, forwarded to the web view. `nil` disables it.
-    var onRefresh: (() async -> Void)?
+    /// Optional pull-to-refresh trigger, forwarded to the web view. `nil` disables it.
+    var onRefresh: (() -> Void)?
 
     @Environment(\.openURL) private var openURL
     @State private var shareURL: URL?

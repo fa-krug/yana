@@ -12,7 +12,7 @@ struct ArticlePagerView: UIViewControllerRepresentable {
     let articles: [Article]
     @Binding var currentIndex: Int
     /// Forwarded to each page's web view for pull-to-refresh.
-    var onRefresh: (() async -> Void)?
+    var onRefresh: (() -> Void)?
 
     private var clampedIndex: Int {
         min(max(currentIndex, 0), max(0, articles.count - 1))
@@ -42,7 +42,7 @@ final class ArticlePagerController: UIViewController, UIGestureRecognizerDelegat
 
     private var articles: [Article] = []
     private var index = 0
-    private var onRefresh: (() async -> Void)?
+    private var onRefresh: (() -> Void)?
 
     private var current: ArticlePage?
     private var incoming: ArticlePage?
@@ -79,7 +79,7 @@ final class ArticlePagerController: UIViewController, UIGestureRecognizerDelegat
         return nil
     }
 
-    func configure(articles: [Article], index: Int, onRefresh: (() async -> Void)?) {
+    func configure(articles: [Article], index: Int, onRefresh: (() -> Void)?) {
         self.articles = articles
         self.index = index
         self.onRefresh = onRefresh
@@ -90,7 +90,7 @@ final class ArticlePagerController: UIViewController, UIGestureRecognizerDelegat
         }
     }
 
-    func update(articles: [Article], index: Int, onRefresh: (() async -> Void)?) {
+    func update(articles: [Article], index: Int, onRefresh: (() -> Void)?) {
         self.onRefresh = onRefresh
         self.articles = articles
         // Never reshuffle pages mid-gesture.
@@ -275,7 +275,7 @@ final class HorizontalPanGestureRecognizer: UIPanGestureRecognizer {
 final class ArticlePage: UIHostingController<ArticleContentView> {
     let article: Article
 
-    init(article: Article, onRefresh: (() async -> Void)?) {
+    init(article: Article, onRefresh: (() -> Void)?) {
         self.article = article
         super.init(rootView: ArticleContentView(article: article, onRefresh: onRefresh))
         view.backgroundColor = .systemBackground
