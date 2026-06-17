@@ -8,10 +8,14 @@ import SwiftUI
 struct ArticleListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Article.date, order: .reverse) private var allArticles: [Article]
+    @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var searchText = ""
     @State private var disabledTagNames: Set<String> = []
     @State private var includeUntagged = true
     @State private var showFilter = false
+    @State private var articleToDelete: Article?
+
+    private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
 
     private var results: [Article] {
         let searched = ArticleSearch.filter(allArticles, query: searchText)
@@ -31,8 +35,26 @@ struct ArticleListView: View {
             emptyIcon: "tray",
             emptyDescription: "Add feeds and refresh to see articles here.",
             onDelete: { offsets in
-                for index in offsets { modelContext.delete(results[index]) }
-                try? modelContext.save()
+                // Resolve immediately so stale indices can't delete the wrong article
+                guard let article = offsets.map({ results[$0] }).first else { return }
+                articleToDelete = article
+            },
+            leadingActions: { article in
+                Button {
+                    guard let starredTag else { return }
+                    article.setStarred(!article.isStarred, using: starredTag)
+                    try? modelContext.save()
+                } label: {
+                    Label(article.isStarred ? "Unstar" : "Star",
+                          systemImage: article.isStarred ? "star.slash" : "star")
+                }
+                .tint(.yellow)
+                Button {
+                    Task { await AggregationService(context: modelContext).update(article: article) }
+                } label: {
+                    Label("Update", systemImage: "arrow.clockwise")
+                }
+                .tint(.blue)
             }
         ) { article in
             NavigationLink {
@@ -55,6 +77,23 @@ struct ArticleListView: View {
         }
         .sheet(isPresented: $showFilter) {
             ArticleTagFilterView(disabledTagNames: $disabledTagNames, includeUntagged: $includeUntagged)
+        }
+        .confirmationDialog(
+            String(localized: "Delete Article?"),
+            isPresented: Binding(get: { articleToDelete != nil }, set: { if !$0 { articleToDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let article = articleToDelete {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    modelContext.delete(article)
+                    try? modelContext.save()
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            if let article = articleToDelete {
+                Text(String(localized: "Delete \u{201C}\(article.title)\u{201D}? This cannot be undone."))
+            }
         }
     }
 
