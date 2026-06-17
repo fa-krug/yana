@@ -34,6 +34,20 @@ enum FaviconResolver {
         return best?.href
     }
 
+    /// Resolve the best icon URL for a site: fetch its HTML, parse icon links, else fall back to
+    /// `<origin>/favicon.ico`. Returns nil only when the site URL is unusable or the fetch fails.
+    static func bestIconURL(
+        forSite siteURL: String,
+        fetch: @Sendable (URL) async throws -> (Data, String?) = { try await HTTPClient.fetchData($0) }
+    ) async -> String? {
+        guard let url = URL(string: siteURL),
+              let scheme = url.scheme, let host = url.host else { return nil }
+        guard let (data, _) = try? await fetch(url),
+              let html = String(data: data, encoding: .utf8) else { return nil }
+        if let parsed = bestIconURL(fromHTML: html, baseURL: url) { return parsed }
+        return "\(scheme)://\(host)/favicon.ico"
+    }
+
     /// Parses the first WxH from a `sizes` attribute (e.g. "180x180" -> 32400). 0 when absent.
     private static func sizeArea(_ sizes: String) -> Int {
         let parts = sizes.lowercased().split(separator: "x")
