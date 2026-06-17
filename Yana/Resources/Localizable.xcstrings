@@ -1173,7 +1173,7 @@
         }
       }
     },
-    "Reloaded \"%@\"." : {
+    "Reloaded “%@”." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
