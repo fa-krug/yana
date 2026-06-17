@@ -58,6 +58,14 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
         return result
     }
 
+    func logoImageURL() async -> String? {
+        guard credentials.youtubeAPIKey != nil else { return nil }
+        guard let client = try? makeClient() else { return nil }
+        guard let channelID = try? await client.resolveChannelID(config.identifier),
+              let channel = try? await client.fetchChannelData(channelID) else { return nil }
+        return channel.iconURL
+    }
+
     // MARK: - Content building
 
     private func buildContentHTML(video: YouTubeVideo, videoID: String, comments: [YouTubeComment]) -> String {
