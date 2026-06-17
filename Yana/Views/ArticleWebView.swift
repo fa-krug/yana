@@ -12,6 +12,11 @@ struct ArticleWebView: UIViewRepresentable {
     /// Fire-and-forget: the control retracts immediately instead of spinning until the
     /// refresh completes, so the work runs in the background while a separate indicator shows.
     var onRefresh: (() -> Void)?
+    /// When the reader shows the article full-bleed (drawing under the floating bars), this
+    /// insets the scrollable content so the article clears those bars while still scrolling
+    /// beneath them. `nil` (the default) keeps the system's automatic inset adjustment, used
+    /// by the search detail screen.
+    var readerContentInset: UIEdgeInsets?
 
     private static let css = """
         <style>
@@ -79,11 +84,25 @@ struct ArticleWebView: UIViewRepresentable {
             )
             webView.scrollView.refreshControl = refreshControl
         }
+        applyReaderInset(to: webView)
         return webView
+    }
+
+    /// Applies (or clears) the reader's explicit content inset. With a full-bleed reader the
+    /// web view ignores the safe area, so the system's automatic adjustment reports nothing —
+    /// we set the inset ourselves to keep the article clear of the floating bars.
+    private func applyReaderInset(to webView: WKWebView) {
+        guard let inset = readerContentInset else { return }
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        if webView.scrollView.contentInset != inset {
+            webView.scrollView.contentInset = inset
+            webView.scrollView.verticalScrollIndicatorInsets = inset
+        }
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.onRefresh = onRefresh
+        applyReaderInset(to: webView)
 
         let document = fullHTML
         guard context.coordinator.loadedHTML != document else { return }

@@ -7,17 +7,41 @@ struct ArticleContentView: View {
     let article: Article
     /// Optional pull-to-refresh trigger, forwarded to the web view. `nil` disables it.
     var onRefresh: (() -> Void)?
+    /// Real safe-area insets from the reader (including the navigation bar). Used only when
+    /// `fullBleed` is true, to inset the article clear of the floating bars.
+    var safeAreaInsets: EdgeInsets = EdgeInsets()
+    /// When true (the swipe reader), the article draws edge-to-edge under the floating bars
+    /// and is content-inset to clear them. False (the search detail) keeps standard insets.
+    var fullBleed: Bool = false
 
     @Environment(\.openURL) private var openURL
     @State private var shareURL: URL?
     @State private var isShowingShare = false
 
+    /// Height reserved for the floating bottom action bar so the last line clears it.
+    private let actionBarHeight: CGFloat = 60
+
     var body: some View {
-        ArticleWebView(article: article, onRefresh: onRefresh)
-            .overlay(alignment: .bottom) { bottomBar }
+        ArticleWebView(article: article, onRefresh: onRefresh, readerContentInset: readerContentInset)
+            .overlay(alignment: .bottom) {
+                bottomBar.padding(.bottom, fullBleed ? safeAreaInsets.bottom : 0)
+            }
             .sheet(isPresented: $isShowingShare) {
                 if let url = shareURL { ShareSheet(activityItems: [url]) }
             }
+    }
+
+    /// Explicit content inset for the full-bleed reader: clears the navigation bar at the top
+    /// and the home indicator plus the floating action bar at the bottom. `nil` outside the
+    /// reader so the web view keeps its automatic inset adjustment.
+    private var readerContentInset: UIEdgeInsets? {
+        guard fullBleed else { return nil }
+        return UIEdgeInsets(
+            top: safeAreaInsets.top,
+            left: 0,
+            bottom: safeAreaInsets.bottom + actionBarHeight,
+            right: 0
+        )
     }
 
     private var bottomBar: some View {

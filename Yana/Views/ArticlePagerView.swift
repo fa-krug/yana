@@ -12,6 +12,9 @@ struct ArticlePagerView: UIViewControllerRepresentable {
     @Binding var currentIndex: Int
     /// Forwarded to each page's web view for pull-to-refresh.
     var onRefresh: (() -> Void)?
+    /// Real safe-area insets (including the navigation bar) captured by the reader before it
+    /// draws the pager full-bleed, so each page can inset the article clear of the floating bars.
+    var safeAreaInsets: EdgeInsets = EdgeInsets()
 
     private var clampedIndex: Int {
         min(max(currentIndex, 0), max(0, articles.count - 1))
@@ -20,13 +23,13 @@ struct ArticlePagerView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> ArticlePagerController {
         let controller = ArticlePagerController()
         controller.onIndexChange = { currentIndex = $0 }
-        controller.configure(articles: articles, index: clampedIndex, onRefresh: onRefresh)
+        controller.configure(articles: articles, index: clampedIndex, onRefresh: onRefresh, safeAreaInsets: safeAreaInsets)
         return controller
     }
 
     func updateUIViewController(_ controller: ArticlePagerController, context: Context) {
         controller.onIndexChange = { currentIndex = $0 }
-        controller.update(articles: articles, index: clampedIndex, onRefresh: onRefresh)
+        controller.update(articles: articles, index: clampedIndex, onRefresh: onRefresh, safeAreaInsets: safeAreaInsets)
     }
 }
 
@@ -48,6 +51,7 @@ final class ArticlePagerController: UIViewController,
     private var articles: [Article] = []
     private var index = 0
     private var onRefresh: (() -> Void)?
+    private var safeAreaInsets = EdgeInsets()
     /// True between `willTransitionTo` and `didFinishAnimating`, so SwiftUI-driven
     /// `update(...)` never reshuffles pages mid-swipe.
     private var isTransitioning = false
@@ -66,10 +70,11 @@ final class ArticlePagerController: UIViewController,
         pageController.didMove(toParent: self)
     }
 
-    func configure(articles: [Article], index: Int, onRefresh: (() -> Void)?) {
+    func configure(articles: [Article], index: Int, onRefresh: (() -> Void)?, safeAreaInsets: EdgeInsets) {
         self.articles = articles
         self.index = index
         self.onRefresh = onRefresh
+        self.safeAreaInsets = safeAreaInsets
         loadViewIfNeeded()
         if let page = makePage(for: index) {
             pageController.setViewControllers([page], direction: .forward, animated: false)
@@ -78,11 +83,19 @@ final class ArticlePagerController: UIViewController,
         }
     }
 
-    func update(articles: [Article], index: Int, onRefresh: (() -> Void)?) {
+    func update(articles: [Article], index: Int, onRefresh: (() -> Void)?, safeAreaInsets: EdgeInsets) {
         self.onRefresh = onRefresh
         self.articles = articles
+        let insetsChanged = safeAreaInsets != self.safeAreaInsets
+        self.safeAreaInsets = safeAreaInsets
         // Never reshuffle pages mid-swipe.
         guard !isTransitioning else { return }
+
+        // Re-apply insets to the visible page on rotation / safe-area change (same article,
+        // so this re-renders the inset without reloading the web document).
+        if insetsChanged, let page = displayedPage {
+            page.rootView = makeContentView(for: page.article)
+        }
 
         let displayedID = displayedPage?.article.identifier
         let targetID = articles.indices.contains(index) ? articles[index].identifier : nil
@@ -102,7 +115,12 @@ final class ArticlePagerController: UIViewController,
 
     private func makePage(for index: Int) -> ArticlePage? {
         guard articles.indices.contains(index) else { return nil }
-        return ArticlePage(article: articles[index], onRefresh: onRefresh)
+        let article = articles[index]
+        return ArticlePage(article: article, contentView: makeContentView(for: article))
+    }
+
+    private func makeContentView(for article: Article) -> ArticleContentView {
+        ArticleContentView(article: article, onRefresh: onRefresh, safeAreaInsets: safeAreaInsets, fullBleed: true)
     }
 
     private func displayedIndex(of page: ArticlePage) -> Int? {
@@ -217,9 +235,9 @@ final class ArticlePagerController: UIViewController,
 final class ArticlePage: UIHostingController<ArticleContentView> {
     let article: Article
 
-    init(article: Article, onRefresh: (() -> Void)?) {
+    init(article: Article, contentView: ArticleContentView) {
         self.article = article
-        super.init(rootView: ArticleContentView(article: article, onRefresh: onRefresh))
+        super.init(rootView: contentView)
         view.backgroundColor = .systemBackground
     }
 

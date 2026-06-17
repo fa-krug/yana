@@ -36,12 +36,17 @@ struct ArticleReaderView: View {
         NavigationStack {
             ZStack {
                 if current != nil {
-                    ArticlePagerView(
-                        articles: articles,
-                        currentIndex: $appState.currentIndex,
-                        onRefresh: triggerRefresh
-                    )
-                    .ignoresSafeArea()
+                    // Capture the real safe-area insets (incl. the navigation bar) before the
+                    // pager draws full-bleed, so each article clears the floating bars.
+                    GeometryReader { proxy in
+                        ArticlePagerView(
+                            articles: articles,
+                            currentIndex: $appState.currentIndex,
+                            onRefresh: triggerRefresh,
+                            safeAreaInsets: proxy.safeAreaInsets
+                        )
+                        .ignoresSafeArea()
+                    }
                 } else {
                     ContentUnavailableView {
                         Label("No Articles", systemImage: "tray")
