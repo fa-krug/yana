@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WebKit
 
 /// Horizontal pager over the timeline. Each page is an `ArticleContentView` whose web view
 /// owns vertical scrolling and pinch-to-zoom; articles slide edge-to-edge via a native
@@ -72,6 +73,8 @@ final class ArticlePagerController: UIViewController,
         loadViewIfNeeded()
         if let page = makePage(for: index) {
             pageController.setViewControllers([page], direction: .forward, animated: false)
+            observeCurrentWebView()
+            updatePagingForZoom()
         }
     }
 
@@ -87,6 +90,8 @@ final class ArticlePagerController: UIViewController,
         guard displayedID != targetID, let page = makePage(for: index) else { return }
         // Programmatic move (restore anchor / clamp after a filter change): no animation.
         pageController.setViewControllers([page], direction: .forward, animated: false)
+        observeCurrentWebView()
+        updatePagingForZoom()
     }
 
     // MARK: - Pages
@@ -102,6 +107,65 @@ final class ArticlePagerController: UIViewController,
 
     private func displayedIndex(of page: ArticlePage) -> Int? {
         TimelinePageIndex.index(of: page.article.identifier, in: articles)
+    }
+
+    // MARK: - Zoom / wide-content paging lock
+
+    /// The web scroll view currently observed for content-size (zoom) changes.
+    private weak var observedScrollView: UIScrollView?
+
+    /// Disables the pager's scroll while the current article's web view can scroll
+    /// horizontally (zoomed in or content wider than the screen), so a horizontal drag
+    /// scrolls the article instead of flipping the page. Re-enabled once it fits.
+    private func updatePagingForZoom() {
+        guard let scrollView = pagerScrollView else { return }
+        scrollView.isScrollEnabled = !currentWebViewScrollsHorizontally
+    }
+
+    private var currentWebViewScrollsHorizontally: Bool {
+        guard let root = displayedPage?.view,
+              let scrollView = Self.webScrollView(in: root) else { return false }
+        return scrollView.contentSize.width > scrollView.bounds.width + 1
+    }
+
+    /// The page controller's internal scroll view (scroll transition style). Found
+    /// defensively so a future iOS change degrades to "always pages" rather than crashing.
+    private var pagerScrollView: UIScrollView? {
+        pageController.view.subviews.compactMap { $0 as? UIScrollView }.first
+    }
+
+    /// Observe the current page's web scroll view so we re-evaluate when it loads or zooms.
+    private func observeCurrentWebView() {
+        if let old = observedScrollView {
+            old.removeObserver(self, forKeyPath: "contentSize")
+            observedScrollView = nil
+        }
+        guard let root = displayedPage?.view,
+              let scrollView = Self.webScrollView(in: root) else { return }
+        scrollView.addObserver(self, forKeyPath: "contentSize", options: [.new], context: nil)
+        observedScrollView = scrollView
+    }
+
+    override nonisolated func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        // KVO for a UIScrollView's contentSize is delivered on the main thread.
+        MainActor.assumeIsolated { updatePagingForZoom() }
+    }
+
+    deinit {
+        observedScrollView?.removeObserver(self, forKeyPath: "contentSize")
+    }
+
+    private static func webScrollView(in view: UIView) -> UIScrollView? {
+        if let webView = view as? WKWebView { return webView.scrollView }
+        for subview in view.subviews {
+            if let found = webScrollView(in: subview) { return found }
+        }
+        return nil
     }
 
     // MARK: - UIPageViewControllerDataSource
@@ -143,6 +207,8 @@ final class ArticlePagerController: UIViewController,
         guard completed, let page = displayedPage, let i = displayedIndex(of: page) else { return }
         index = i
         onIndexChange?(i)
+        observeCurrentWebView()
+        updatePagingForZoom()
     }
 }
 
