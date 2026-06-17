@@ -62,22 +62,16 @@ struct ArticleReaderView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .top) {
-                if isRefreshing {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .padding(12)
-                        .background(.regularMaterial, in: Circle())
-                        .padding(.top, 8)
-                        .accessibilityLabel(String(localized: "Refreshing feeds"))
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .animation(.default, value: isRefreshing)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
                         .accessibilityLabel(String(localized: "Filter articles"))
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if isRefreshing {
+                        ProgressView()
+                            .accessibilityLabel(String(localized: "Refreshing feeds"))
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if let article = current, let starredTag {
