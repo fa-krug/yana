@@ -374,4 +374,72 @@ struct AggregationServiceTests {
         #expect(feed.articles.count == 2)                       // cap still applies
         #expect(!feed.articles.map(\.identifier).contains("old"))  // window still applies
     }
+
+    // MARK: - Force reload article
+
+    /// Fake whose `refetch` returns a scripted article (or nil to force the fallback path).
+    private struct RefetchFakeAggregator: Aggregator {
+        let articles: [AggregatedArticle]
+        let refetchResult: AggregatedArticle?
+        func validate() throws {}
+        func aggregate() async throws -> [AggregatedArticle] { articles }
+        func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { refetchResult }
+    }
+
+    @Test func forceReloadArticleRefreshesContentPreservingIdentity() async throws {
+        let context = try makeContext()
+        let starred = try #require((try? context.fetch(FetchDescriptor<Yana.Tag>()))?.first { $0.isBuiltIn })
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        let pinnedCreatedAt = Date.now.addingTimeInterval(-90 * 24 * 3600)
+        article.createdAt = pinnedCreatedAt
+        article.setStarred(true, using: starred)
+        context.insert(article)
+
+        let refreshed = self.aggregated("id1")          // same identifier, content "c"
+        let service = AggregationService(context: context, makeAggregator: { _, _ in
+            RefetchFakeAggregator(articles: [], refetchResult: refreshed)
+        }, aiProcessor: FakeAIProcessor())
+        await service.forceReload(article: article)
+
+        #expect(article.content == "c")                 // content refreshed
+        #expect(article.createdAt == pinnedCreatedAt)    // timeline position preserved
+        #expect(article.isStarred)                       // Starred preserved
+        #expect(feed.articles.count == 1)                // updated, not duplicated
+    }
+
+    @Test func forceReloadArticleFallsBackToFeedWhenRefetchUnsupported() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        context.insert(article)
+
+        // refetch returns nil → fallback re-runs the feed, which re-imports id1 with new content.
+        var updatedArticle = self.aggregated("id1")
+        updatedArticle.content = "FROM_FEED"
+        let feedArticle = updatedArticle
+        let service = AggregationService(context: context, makeAggregator: { _, _ in
+            RefetchFakeAggregator(articles: [feedArticle], refetchResult: nil)
+        }, aiProcessor: FakeAIProcessor())
+        await service.forceReload(article: article)
+
+        #expect(article.content == "FROM_FEED")          // refreshed via the forced feed reload
+        #expect(feed.articles.count == 1)
+    }
+
+    @Test func forceReloadArticleReturnsZeroWithoutFeed() async throws {
+        let context = try makeContext()
+        let article = Article(title: "Orphan", identifier: "id1", url: "u",
+                              rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
+        context.insert(article)
+        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: []) }
+        let inserted = await service.forceReload(article: article)
+        #expect(inserted == 0)
+    }
 }

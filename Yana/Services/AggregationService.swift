@@ -185,6 +185,43 @@ final class AggregationService {
         return await update(feed: feed)
     }
 
+    /// Force reload a single article: re-fetch its content directly from the source when the
+    /// aggregator supports it (`refetch`), upserting in place (content refreshed; createdAt +
+    /// Starred preserved). Falls back to a forced reload of the parent feed when the aggregator
+    /// cannot re-fetch a lone item (e.g. RSS / social sources) or the re-fetch fails.
+    @discardableResult
+    func forceReload(article: Article) async -> Int {
+        guard let feed = article.feed else { return 0 }
+        lastRunFailures = []
+        isUpdating = true
+        defer { isUpdating = false }
+
+        let config = FeedConfig(feed: feed, collectedToday: 0)
+        let credentials = AggregatorCredentials.resolved()
+        guard let aggregator = makeAggregator(config, credentials) else {
+            return await forceReload(feed: feed)
+        }
+        let seed = AggregatedArticle(
+            title: article.title, identifier: article.identifier, url: article.url,
+            rawContent: article.rawContent, content: article.content, date: article.date,
+            author: article.author, iconURL: article.iconURL
+        )
+        let refreshed: AggregatedArticle?
+        do {
+            refreshed = try await aggregator.refetch(seed)
+        } catch {
+            refreshed = nil
+        }
+        guard let refreshed else {
+            return await forceReload(feed: feed)
+        }
+        let processed = await currentAIProcessor().process([refreshed], ai: config.options.ai)
+        let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(),
+                                           context: context, now: now())
+        cleanupAndSave()
+        return inserted
+    }
+
     // MARK: - Core per-feed run
 
     /// Resolve a feed from its `Sendable` identifier on the main actor, then run the per-feed
