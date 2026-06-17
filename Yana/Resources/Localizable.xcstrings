@@ -1434,6 +1434,16 @@
           }
         }
       }
+    },
+    "Update Failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisierung fehlgeschlagen"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

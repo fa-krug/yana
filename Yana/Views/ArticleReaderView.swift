@@ -79,6 +79,14 @@ struct ArticleReaderView: View {
             }
             .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
             .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
+            .alert("Update Failed", isPresented: Binding(
+                get: { appState.errorMessage != nil },
+                set: { if !$0 { appState.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(appState.errorMessage ?? "")
+            }
             .onAppear { restoreAnchor() }
             .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
             .onChange(of: allArticles) { _, _ in
@@ -119,6 +127,7 @@ struct ArticleReaderView: View {
     private func refresh() async {
         let service = AggregationService(context: modelContext)
         await service.updateAll()
+        appState.errorMessage = SyncFailureSummary.message(for: service.lastRunFailures)
     }
 
 }
