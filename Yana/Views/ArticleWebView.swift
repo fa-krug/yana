@@ -12,6 +12,11 @@ struct ArticleWebView: UIViewRepresentable {
     /// Fire-and-forget: the control retracts immediately instead of spinning until the
     /// refresh completes, so the work runs in the background while a separate indicator shows.
     var onRefresh: (() -> Void)?
+    /// Called when the reader taps a link inside the article body. The link is *not* followed
+    /// in this web view; the caller presents it in a separate webview sheet instead. Catches
+    /// both ordinary links and the `target="_blank"` anchors the aggregators emit (which would
+    /// otherwise do nothing, since a `WKWebView` needs a UI delegate to open new windows).
+    var onOpenLink: ((URL) -> Void)?
     /// When the reader shows the article full-bleed (drawing under the floating bars), this
     /// insets the scrollable content so the article clears those bars while still scrolling
     /// beneath them. `nil` (the default) keeps the system's automatic inset adjustment, used
@@ -139,9 +144,10 @@ struct ArticleWebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     @MainActor
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var loadedHTML: String?
         var onRefresh: (() -> Void)?
+        var onOpenLink: ((URL) -> Void)?
 
         @objc func handleRefresh(_ control: UIRefreshControl) {
             // Kick off the refresh and retract the control right away — the actual update runs
@@ -149,12 +155,44 @@ struct ArticleWebView: UIViewRepresentable {
             onRefresh?()
             control.endRefreshing()
         }
+
+        // A tapped link: hand the URL to the caller's sheet and cancel the navigation so the
+        // article web view stays on the article. Everything else (the initial HTML load,
+        // `yana-img://` image requests) is allowed through.
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            if navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
+                onOpenLink?(url)
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+
+        // `target="_blank"` anchors ask WebKit for a new window. Route them to the same sheet
+        // and return nil so no inner web view is created.
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            if let url = navigationAction.request.url {
+                onOpenLink?(url)
+            }
+            return nil
+        }
     }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ReaderWeb.imageScheme)
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
@@ -193,6 +231,7 @@ struct ArticleWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.onRefresh = onRefresh
+        context.coordinator.onOpenLink = onOpenLink
         applyReaderInset(to: webView)
 
         let document = fullHTML

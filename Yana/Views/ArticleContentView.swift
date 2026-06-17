@@ -14,16 +14,26 @@ struct ArticleContentView: View {
     /// and is content-inset to clear them. False (the search detail) keeps standard insets.
     var fullBleed: Bool = false
 
-    @Environment(\.openURL) private var openURL
     @State private var shareURL: URL?
     @State private var isShowingShare = false
+    /// A link tapped inside the article body, presented in its own webview sheet.
+    @State private var linkURL: IdentifiedURL?
 
     /// Height reserved for the floating bottom action bar so the last line clears it.
     /// Sized for the enlarged (NetNewsWire-scale) glass icons below.
     private let actionBarHeight: CGFloat = 76
 
+    /// Gap between the floating bar and the screen's bottom edge. Small enough that the bar
+    /// rests just over the home indicator margin instead of a full safe-area inset above it.
+    private let bottomBarGap: CGFloat = 8
+
     var body: some View {
-        ArticleWebView(article: article, onRefresh: onRefresh, readerContentInset: readerContentInset)
+        ArticleWebView(
+            article: article,
+            onRefresh: onRefresh,
+            onOpenLink: { linkURL = IdentifiedURL(url: $0) },
+            readerContentInset: readerContentInset
+        )
             // Full-bleed: pin the web view to the screen edges (like NetNewsWire, which
             // constrains its web view to the view's own anchors). Without this the hosting
             // controller insets the view by the safe area, and the bottom bar's
@@ -31,11 +41,14 @@ struct ArticleContentView: View {
             // lifting the floating bar far too high above the home indicator.
             .ignoresSafeArea(edges: fullBleed ? .all : [])
             .overlay(alignment: .bottom) {
-                bottomBar.padding(.bottom, fullBleed ? safeAreaInsets.bottom : 0)
+                // Sit just above the home indicator rather than a full inset above it: the glass
+                // capsule may overlap the indicator margin, so only a small gap is reserved.
+                bottomBar.padding(.bottom, fullBleed ? bottomBarGap : 0)
             }
             .sheet(isPresented: $isShowingShare) {
                 if let url = shareURL { ShareSheet(activityItems: [url]) }
             }
+            .sheet(item: $linkURL) { LinkSheet(url: $0.url) }
     }
 
     /// Explicit content inset for the full-bleed reader: clears the navigation bar at the top
@@ -56,8 +69,8 @@ struct ArticleContentView: View {
             HStack(spacing: 8) {
                 Spacer()
                 if let url = URL(string: article.url) {
-                    Button { openURL(url) } label: {
-                        Label("Open in Browser", systemImage: "safari")
+                    Button { linkURL = IdentifiedURL(url: url) } label: {
+                        Label("Open Page", systemImage: "globe")
                     }
                     Button { shareURL = url; isShowingShare = true } label: {
                         Label("Share", systemImage: "square.and.arrow.up")
