@@ -38,19 +38,22 @@ final class AggregationService {
     private let injectedAIProcessor: AIProcessing?
     private let now: () -> Date
     private let logoResolver: LogoResolver
+    private let settings: AppSettings
 
     init(
         context: ModelContext,
         makeAggregator: @escaping AggregatorFactory = { AggregatorRegistry.shared.makeAggregator($0, credentials: $1) },
         aiProcessor: AIProcessing? = nil,
         now: @escaping () -> Date = { .now },
-        logoResolver: @escaping LogoResolver = AggregationService.defaultLogoResolver
+        logoResolver: @escaping LogoResolver = AggregationService.defaultLogoResolver,
+        settings: AppSettings = AppSettings()
     ) {
         self.context = context
         self.makeAggregator = makeAggregator
         self.injectedAIProcessor = aiProcessor
         self.now = now
         self.logoResolver = logoResolver
+        self.settings = settings
     }
 
     /// Map an arbitrary error to a clear, non-empty user-facing string.
@@ -136,7 +139,8 @@ final class AggregationService {
         isUpdating = true
         defer { isUpdating = false }
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
-        let feeds = (try? context.fetch(descriptor)) ?? []
+        let feeds = ((try? context.fetch(descriptor)) ?? [])
+            .filter { settings.isSourceEnabled($0.type) }
 
         // Run per-feed work concurrently with a bounded sliding window. Each `aggregate(feed:)`
         // stays on the main actor, so its synchronous SwiftData reads/writes remain serialized
@@ -170,6 +174,7 @@ final class AggregationService {
     /// Update a single feed.
     @discardableResult
     func update(feed: Feed) async -> Int {
+        guard settings.isSourceEnabled(feed.type) else { return 0 }
         lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }
@@ -183,6 +188,7 @@ final class AggregationService {
     /// (content refreshed; createdAt + Starred preserved); older/over-cap items are imported too.
     @discardableResult
     func forceReload(feed: Feed) async -> Int {
+        guard settings.isSourceEnabled(feed.type) else { return 0 }
         lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }

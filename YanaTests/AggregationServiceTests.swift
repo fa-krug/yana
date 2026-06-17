@@ -463,6 +463,69 @@ struct AggregationServiceTests {
         #expect(inserted == 0)
     }
 
+    // MARK: - Source toggle (Task 2)
+
+    private func freshDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "AggregationServiceTests.\(UUID().uuidString)")!
+    }
+
+    @Test func updateAllSkipsFeedsOfDisabledSource() async throws {
+        let context = try makeContext()
+        let rss = Feed(name: "rss", aggregatorType: .feedContent, identifier: "a")
+        let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
+        context.insert(rss); context.insert(reddit)
+
+        // Reddit toggle off (default) -> reddit feed skipped.
+        let settings = AppSettings(defaults: freshDefaults())
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            settings: settings
+        )
+        await service.updateAll()
+
+        #expect(rss.articles.count == 1)
+        #expect(reddit.articles.isEmpty)
+        #expect(reddit.lastError == nil)
+    }
+
+    @Test func updateFeedSkipsDisabledSourceWithoutError() async throws {
+        let context = try makeContext()
+        let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
+        context.insert(reddit)
+
+        let settings = AppSettings(defaults: freshDefaults()) // reddit off
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            settings: settings
+        )
+        let inserted = await service.update(feed: reddit)
+
+        #expect(inserted == 0)
+        #expect(reddit.articles.isEmpty)
+        #expect(reddit.lastError == nil)
+        #expect(reddit.lastFetchedAt == nil)
+    }
+
+    @Test func updateFeedRunsWhenSourceEnabled() async throws {
+        let context = try makeContext()
+        let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
+        context.insert(reddit)
+
+        let settings = AppSettings(defaults: freshDefaults())
+        settings.redditEnabled = true
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            settings: settings
+        )
+        let inserted = await service.update(feed: reddit)
+
+        #expect(inserted == 1)
+        #expect(reddit.articles.count == 1)
+    }
+
     // MARK: - Logo resolution (Task 10)
 
     @Test func setsLogoHashWhenMissing() async throws {
