@@ -33,10 +33,15 @@ protocol Aggregator: Sendable {
     /// the aggregator cannot meaningfully re-fetch one item in isolation (the caller then falls
     /// back to a forced full-feed reload).
     func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle?
+
+    /// Remote URL of this feed's logo image when the aggregator can source one directly (e.g.
+    /// from its API). `nil` means "derive the logo from the site favicon instead".
+    func logoImageURL() async -> String?
 }
 
 extension Aggregator {
     func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { nil }
+    func logoImageURL() async -> String? { nil }
 }
 
 enum AggregatorError: Error, LocalizedError {
