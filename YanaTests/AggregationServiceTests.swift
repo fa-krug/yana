@@ -96,7 +96,11 @@ struct AggregationServiceTests {
         context.insert(feed)
 
         // Default factory (registry) returns nil until Phase 4b.
-        let service = AggregationService(context: context)
+        // Reddit is OFF by default; enable it so the source gate is passed and
+        // the missing-aggregator path is exercised instead of the early-return.
+        let settings = AppSettings(defaults: freshDefaults())
+        settings.redditEnabled = true
+        let service = AggregationService(context: context, settings: settings)
         await service.update(feed: feed)
 
         #expect(feed.lastError != nil)
