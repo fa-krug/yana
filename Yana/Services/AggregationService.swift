@@ -35,7 +35,15 @@ final class AggregationService {
     private func currentAIProcessor() -> AIProcessing {
         if let injectedAIProcessor { return injectedAIProcessor }
         let settings = AppSettings()
-        return AIProcessor(config: Self.makeAIConfig(settings: settings), requestDelay: settings.aiRequestDelay)
+        let config = Self.makeAIConfig(settings: settings)
+        if config.provider == .appleIntelligence {
+            return AppleIntelligenceProcessor(
+                generator: AppleIntelligenceClient(),
+                temperature: config.temperature,
+                maxTokens: config.maxTokens
+            )
+        }
+        return AIProcessor(config: config, requestDelay: settings.aiRequestDelay)
     }
 
     /// Build the `AIConfig` snapshot from settings + Keychain. Returns a `.none`-provider
@@ -62,6 +70,9 @@ final class AggregationService {
         case .gemini:
             model = settings.geminiModel
             keyItem = .geminiAPIKey
+        case .appleIntelligence:
+            model = ""
+            keyItem = nil
         }
         let key = keyItem.flatMap(loadKey) ?? ""
         return AIConfig(

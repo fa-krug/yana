@@ -182,13 +182,13 @@ struct AIProcessorTests {
     }
 
     @Test func truncatesOversizedContent() {
-        let long = String(repeating: "a", count: AIProcessor.maxContentChars + 500)
-        let capped = AIProcessor.cap(long)
-        #expect(capped.count == AIProcessor.maxContentChars)
+        let long = String(repeating: "a", count: ArticleAIText.maxContentChars + 500)
+        let capped = ArticleAIText.cap(long)
+        #expect(capped.count == ArticleAIText.maxContentChars)
     }
 
     @Test func leavesSmallContentUnchanged() {
         let short = "short body"
-        #expect(AIProcessor.cap(short) == short)
+        #expect(ArticleAIText.cap(short) == short)
     }
 }

@@ -1,5 +1,4 @@
 import Foundation
-import SwiftSoup
 
 /// Applies optional AI post-processing to a batch of aggregated articles. Off-main,
 /// `Sendable`, no SwiftData. Ported from the server's `_apply_ai_processing`.
@@ -53,7 +52,7 @@ struct AIProcessor: AIProcessing {
                 continue
             }
 
-            let cleanHTML = Self.cap((try? Self.stripChrome(article.content)) ?? article.content)
+            let cleanHTML = ArticleAIText.cap((try? ArticleAIText.stripChrome(article.content)) ?? article.content)
             let prompt = Self.buildPrompt(title: article.title, cleanHTML: cleanHTML, ai: ai)
 
             do {
@@ -70,28 +69,6 @@ struct AIProcessor: AIProcessing {
         return output
     }
 
-    // MARK: - Content size cap
-
-    /// Upper bound on characters of article HTML sent to the LLM. Keeps the request payload
-    /// bounded regardless of source article size.
-    static let maxContentChars = 50_000
-
-    /// Truncate to the budget (no-op when already within it).
-    static func cap(_ html: String) -> String {
-        html.count <= maxContentChars ? html : String(html.prefix(maxContentChars))
-    }
-
-    // MARK: - HTML chrome strip (header/footer/nav/script/style)
-
-    static func stripChrome(_ html: String) throws -> String {
-        let doc = try SwiftSoup.parse(html)
-        for tag in ["header", "footer", "nav", "script", "style"] {
-            try doc.select(tag).remove()
-        }
-        // Match the server's `str(soup)`: the full (sanitized) document HTML.
-        return try doc.html()
-    }
-
     // MARK: - Prompt assembly (exact server instruction strings)
 
     static func buildPrompt(title: String, cleanHTML: String, ai: AIOptions) -> String {
@@ -105,25 +82,15 @@ struct AIProcessor: AIProcessing {
         )
 
         if ai.summarize {
-            parts.append("Summarize the article content concisely.")
+            parts.append(ArticleAIText.summarizeInstruction)
         }
 
         if ai.improveWriting {
-            parts.append(
-                "Rewrite the content to improve clarity, flow, and style. "
-                + "IMPORTANT: Preserve the complete HTML structure including all tags. "
-                + "Keep all links (<a> tags) exactly as they are - do not modify href attributes or remove any links. "
-                + "Only improve the text content itself."
-            )
+            parts.append(ArticleAIText.improveWritingInstruction)
         }
 
         if ai.translate {
-            let targetLang = ai.translateLanguage.isEmpty ? "English" : ai.translateLanguage
-            parts.append(
-                "Translate the title and content to \(targetLang). "
-                + "IMPORTANT: Do NOT translate link labels (the text inside <a> tags). "
-                + "Keep link text in the original language. Only translate regular text content."
-            )
+            parts.append(ArticleAIText.translateInstruction(language: ai.translateLanguage))
         }
 
         parts.append(

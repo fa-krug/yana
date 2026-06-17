@@ -65,7 +65,7 @@ struct AIClient: Sendable {
         case .openai: return (try openaiRequest(prompt: prompt, jsonMode: jsonMode), Self.parseOpenAI)
         case .anthropic: return (try anthropicRequest(prompt: prompt), Self.parseAnthropic)
         case .gemini: return (try geminiRequest(prompt: prompt, jsonMode: jsonMode), Self.parseGemini)
-        case .none: throw AIClientError.unsupportedProvider
+        case .none, .appleIntelligence: throw AIClientError.unsupportedProvider
         }
     }
 

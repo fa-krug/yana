@@ -1,0 +1,40 @@
+import Foundation
+import SwiftSoup
+
+/// Pure, `Sendable` text helpers shared by the HTTP `AIProcessor` and the on-device
+/// `AppleIntelligenceProcessor`: HTML chrome stripping, the content-size cap, and the
+/// server-parity per-task instruction strings. Single source of truth for both paths.
+enum ArticleAIText {
+    /// Upper bound on characters of article HTML sent to any model.
+    static let maxContentChars = 50_000
+
+    /// Truncate to the character budget (no-op when already within it).
+    static func cap(_ html: String) -> String {
+        html.count <= maxContentChars ? html : String(html.prefix(maxContentChars))
+    }
+
+    /// Remove header/footer/nav/script/style; return the sanitized document HTML.
+    static func stripChrome(_ html: String) throws -> String {
+        let doc = try SwiftSoup.parse(html)
+        for tag in ["header", "footer", "nav", "script", "style"] {
+            try doc.select(tag).remove()
+        }
+        return try doc.html()
+    }
+
+    static let summarizeInstruction =
+        "Summarize the article content concisely."
+
+    static let improveWritingInstruction =
+        "Rewrite the content to improve clarity, flow, and style. "
+        + "IMPORTANT: Preserve the complete HTML structure including all tags. "
+        + "Keep all links (<a> tags) exactly as they are - do not modify href attributes or remove any links. "
+        + "Only improve the text content itself."
+
+    static func translateInstruction(language: String) -> String {
+        let targetLang = language.isEmpty ? "English" : language
+        return "Translate the title and content to \(targetLang). "
+            + "IMPORTANT: Do NOT translate link labels (the text inside <a> tags). "
+            + "Keep link text in the original language. Only translate regular text content."
+    }
+}
