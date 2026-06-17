@@ -123,6 +123,35 @@ struct RedditAggregatorTests {
         #expect(a.title == "Tweet post")
     }
 
+    /// mobile.twitter.com status URLs must be recognised as Twitter URLs (server parity).
+    @Test func mobileTwitterURLRecognised() async throws {
+        let mobileURL = "https://mobile.twitter.com/user/status/9876543210"
+        let listingJSON = """
+        {"data":{"children":[
+          {"data":{"id":"mt1","title":"Mobile tweet","selftext":"See \(mobileURL)",
+                   "url":"https://www.reddit.com/r/swift/comments/mt1/mobile_tweet/",
+                   "permalink":"/r/swift/comments/mt1/mobile_tweet/",
+                   "created_utc":\(recentUTC),"author":"carol","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,
+                   "thumbnail":"https://example.com/thumb2.jpg"}}
+        ]}}
+        """
+        var opts = RedditOptions(); opts.minComments = 5; opts.minAgeHours = 0; opts.includeHeaderImage = true
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(self.commentsJSON.utf8) }
+            return Data(listingJSON.utf8)
+        }
+        let agg = RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+        let articles = try await agg.aggregate()
+        let a = try #require(articles.first)
+        #expect(!a.content.contains("example.com/thumb2.jpg"), "mobile.twitter.com URL should take header priority over thumbnail")
+    }
+
     /// A self-post with a plain image URL in selftext (no Twitter/X URL) should not be
     /// affected by the new Priority 0.6 check — preview/thumbnail still applies as before.
     @Test func selftextPlainImageLinkUnaffected() async throws {

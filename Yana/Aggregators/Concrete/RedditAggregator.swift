@@ -156,6 +156,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         guard let components = URLComponents(string: url),
               let host = components.host?.lowercased() else { return false }
         let isTwitterHost = host == "twitter.com" || host == "www.twitter.com"
+            || host == "mobile.twitter.com"
             || host == "x.com" || host == "www.x.com"
         return isTwitterHost && components.path.contains("/status/")
     }
