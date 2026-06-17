@@ -26,19 +26,13 @@ struct FeedsView: View {
             searchPrompt: "Search feeds",
             emptyTitle: "No Feeds",
             emptyIcon: "list.bullet.rectangle",
-            emptyDescription: "Tap + to add your first feed."
-        ) { feed in
-            NavigationLink {
-                FeedEditorView(feed: feed)
-            } label: {
-                row(feed)
-            }
-            .swipeActions(edge: .trailing) {
-                Button(role: .destructive) {
-                    feedToDelete = feed
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
+            emptyDescription: "Tap + to add your first feed.",
+            onDelete: { offsets in
+                // Resolve immediately so stale indices can't delete the wrong feed
+                guard let feed = offsets.map({ filteredFeeds[$0] }).first else { return }
+                feedToDelete = feed
+            },
+            leadingActions: { feed in
                 Button {
                     Task { await updateOne(feed) }
                 } label: {
@@ -46,6 +40,12 @@ struct FeedsView: View {
                 }
                 .tint(.blue)
                 .disabled(isUpdating)
+            }
+        ) { feed in
+            NavigationLink {
+                FeedEditorView(feed: feed)
+            } label: {
+                row(feed)
             }
         }
         .navigationTitle("Feeds")
