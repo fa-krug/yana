@@ -22,17 +22,22 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     override var contentSelector: String { Self.contentDivSelector }
 
     override var selectorsToRemove: [String] {
-        // Note: .dailymotion-embed-container is intentionally omitted here — the iOS conversion
-        // pipeline (convertDailymotionBlocks) rewrites div.wp-block-mmo-video into
-        // div.dailymotion-embed-container iframes before this removal step runs, so adding that
-        // selector would strip the freshly-converted embeds. The iframe exclusion already guards
-        // raw Dailymotion iframes; the div wrapper is retained intentionally.
+        // .dailymotion-embed-container is included here to mirror server commit 1e3afd3:
+        // the server's extract_mein_mmo_content() calls process_dailymotion_blocks() first
+        // (which builds div.dailymotion-embed-container from div.wp-block-mmo-video), then
+        // immediately decomposes that class in the selectors_to_remove pass. Net effect:
+        // dailymotion embeds are excluded from MeinMMO output entirely. The conversion step
+        // (convertDailymotionBlocks) is intentionally left in place as dead code to mirror
+        // the server; the removal here ensures the final output contains no dailymotion content.
+        // The iframe whitelist drops :not([src*='dailymotion.com']) since no dailymotion iframes
+        // should survive to that point, but YouTube iframes are still preserved.
         ["div.wp-block-mmo-recirculation-box", "div.wp-block-mmo-hub-box",
          "div.reading-position-indicator-end",
          "label.toggle", "a.wp-block-mmo-content-box",
          "div.page-links", "div.sources-wrapper", "div.feedback-box",
          "div.wp-block-wbd-affiliate-widget", "script", "style",
-         "iframe:not([src*='youtube.com']):not([src*='youtu.be']):not([src*='dailymotion.com'])", "noscript"]
+         ".dailymotion-embed-container",
+         "iframe:not([src*='youtube.com']):not([src*='youtu.be'])", "noscript"]
     }
 
     override func fetchEntries() async throws -> [FeedEntry] {

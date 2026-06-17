@@ -65,7 +65,11 @@ struct MeinMmoAggregatorTests {
         #expect(!a.content.contains("Page two"))
     }
 
-    @Test func convertsDailymotionBlockAndRemovesPaginationMarkers() async throws {
+    // Server commit 1e3afd3 excludes dailymotion embeds from MeinMMO output entirely:
+    // process_dailymotion_blocks() builds div.dailymotion-embed-container but
+    // selectors_to_remove immediately decomposes it. iOS mirrors this: the conversion step
+    // runs first, then .dailymotion-embed-container is stripped by selectorsToRemove.
+    @Test func excludesDailymotionAndRemovesPaginationMarkers() async throws {
         let first = """
         <html><body><div class="gp-entry-content"><p>Intro</p>\
         <div class="wp-block-mmo-video"><script>var x = { dmVideoId: 'x9yt07o' };</script></div>\
@@ -75,8 +79,12 @@ struct MeinMmoAggregatorTests {
         """
         let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
         let a = try await enrichOne(agg)
-        #expect(a.content.contains("dailymotion-embed-container"))
-        #expect(a.content.contains("geo.dailymotion.com/player.html?video=x9yt07o"))
+        // Dailymotion content must NOT appear in final output (server commit 1e3afd3)
+        #expect(!a.content.contains("dailymotion-embed-container"))
+        #expect(!a.content.contains("dailymotion.com"))
+        #expect(!a.content.contains("x9yt07o"))
+        // Other content and removals still work
+        #expect(a.content.contains("Intro"))
         #expect(!a.content.contains("Weiter geht es auf Seite"))
         #expect(!a.content.contains("related junk"))
     }
