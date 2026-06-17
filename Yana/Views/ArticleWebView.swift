@@ -96,6 +96,10 @@ struct ArticleWebView: UIViewRepresentable {
             .article-header h1 {
                 font-size: 1.5rem; font-weight: bold; line-height: 1.15; margin: 0 0 5px;
             }
+            .feed-logo {
+                float: right; width: 32px; height: 32px; margin: 2px 0 6px 12px;
+                border-radius: 6px; object-fit: cover;
+            }
             .article-meta {
                 margin-bottom: 5px;
                 font-weight: bold;
@@ -214,6 +218,7 @@ struct ArticleWebView: UIViewRepresentable {
 
         return """
         <div class="article-header">
+            \(ArticleHeaderLogo.imgTag(logoHash: article.feed?.logoHash))
             <h1>\(esc(article.title))</h1>
             <div class="article-meta">\(metaHTML)</div>
             <hr>
