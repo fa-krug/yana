@@ -9,6 +9,15 @@ import SwiftData
 final class AggregationService {
     var isUpdating = false
 
+    /// A feed that failed during the most recent run.
+    struct FeedFailure: Sendable, Equatable {
+        let feedName: String
+        let message: String
+    }
+
+    /// Failures recorded during the most recent `updateAll()` / `update(feed:)`.
+    private(set) var lastRunFailures: [FeedFailure] = []
+
     /// Upper bound on simultaneous in-flight feed fetches in `updateAll()`. Caps the number of
     /// concurrent network/AI awaits so a large feed list does not spawn unbounded requests.
     private static let maxConcurrentFeedUpdates = 5
@@ -98,6 +107,7 @@ final class AggregationService {
     /// Update all enabled feeds. One feed's failure never aborts the run.
     @discardableResult
     func updateAll() async -> Int {
+        lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
@@ -135,6 +145,7 @@ final class AggregationService {
     /// Update a single feed.
     @discardableResult
     func update(feed: Feed) async -> Int {
+        lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }
         let inserted = await aggregate(feed: feed)
@@ -174,7 +185,9 @@ final class AggregationService {
         let credentials = AggregatorCredentials.resolved()
 
         guard let aggregator = makeAggregator(config, credentials) else {
-            feed.lastError = AggregatorError.notImplemented(feed.type).errorDescription
+            let message = AggregatorError.notImplemented(feed.type).errorDescription ?? ""
+            feed.lastError = message
+            lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
             return 0
         }
 
@@ -190,7 +203,9 @@ final class AggregationService {
             feed.lastError = nil
             return inserted
         } catch {
-            feed.lastError = Self.userFacingMessage(for: error)
+            let message = Self.userFacingMessage(for: error)
+            feed.lastError = message
+            lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
             return 0
         }
     }

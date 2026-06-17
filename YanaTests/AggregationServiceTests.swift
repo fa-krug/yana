@@ -270,4 +270,49 @@ struct AggregationServiceTests {
         #expect(AggregationService.userFacingMessage(for: Bare())
                 == String(localized: "An unexpected error occurred."))
     }
+
+    // MARK: - Per-run failure tracking
+
+    @Test func updateAllRecordsFailureWithFeedNameAndMessage() async throws {
+        let context = try makeContext()
+        let bad = Feed(name: "Bad Feed", aggregatorType: .feedContent, identifier: "bad")
+        context.insert(bad)
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [], validateError: AggregatorError.missingIdentifier)
+        }
+        await service.updateAll()
+
+        #expect(service.lastRunFailures.count == 1)
+        #expect(service.lastRunFailures.first?.feedName == "Bad Feed")
+        #expect(service.lastRunFailures.first?.message == AggregatorError.missingIdentifier.errorDescription)
+    }
+
+    @Test func successfulRunLeavesNoFailures() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("x")])
+        }
+        await service.updateAll()
+        #expect(service.lastRunFailures.isEmpty)
+    }
+
+    @Test func laterSuccessfulRunClearsPriorFailures() async throws {
+        final class Toggle: @unchecked Sendable { var fail = true }
+        let toggle = Toggle()
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let service = AggregationService(context: context) { _, _ in
+            toggle.fail
+                ? FakeAggregator(articles: [], validateError: AggregatorError.missingIdentifier)
+                : FakeAggregator(articles: [self.aggregated("x")])
+        }
+        await service.update(feed: feed)
+        #expect(service.lastRunFailures.count == 1)
+        toggle.fail = false
+        await service.update(feed: feed)
+        #expect(service.lastRunFailures.isEmpty)
+    }
 }
