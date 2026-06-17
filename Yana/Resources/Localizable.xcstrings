@@ -209,6 +209,16 @@
         }
       }
     },
+    "Available" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbar"
+          }
+        }
+      }
+    },
     "Background Refresh: %lld min" : {
       "localizations" : {
         "de" : {
@@ -753,6 +763,16 @@
         }
       }
     },
+    "Model downloading…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell wird geladen …"
+          }
+        }
+      }
+    },
     "Monthly Limit: %lld" : {
       "localizations" : {
         "de" : {
@@ -867,6 +887,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Noch keine Tags. Tags im Tags-Bereich erstellen."
+          }
+        }
+      }
+    },
+    "Not available on this device" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Gerät nicht verfügbar"
           }
         }
       }
@@ -1169,6 +1199,16 @@
         }
       }
     },
+    "Status" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Status"
+          }
+        }
+      }
+    },
     "Subreddit (e.g. swift)" : {
       "localizations" : {
         "de" : {
@@ -1281,6 +1321,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Top"
+          }
+        }
+      }
+    },
+    "Turn on Apple Intelligence in Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence in den Einstellungen aktivieren"
           }
         }
       }

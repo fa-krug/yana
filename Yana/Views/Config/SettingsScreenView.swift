@@ -106,6 +106,22 @@ struct SettingsScreenView: View {
                     ForEach(AIProvider.gemini.models, id: \.self) { Text($0).tag($0) }
                 }
             }
+            if settings.activeAIProvider == .appleIntelligence {
+                LabeledContent("Status", value: appleIntelligenceStatus)
+            }
+        }
+    }
+
+    private var appleIntelligenceStatus: String {
+        switch AppleIntelligenceClient().availability {
+        case .available:
+            return String(localized: "Available")
+        case .deviceNotEligible:
+            return String(localized: "Not available on this device")
+        case .notEnabled:
+            return String(localized: "Turn on Apple Intelligence in Settings")
+        case .modelNotReady:
+            return String(localized: "Model downloading…")
         }
     }
 
