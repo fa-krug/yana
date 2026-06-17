@@ -9,6 +9,15 @@ import SwiftData
 final class AggregationService {
     var isUpdating = false
 
+    /// A feed that failed during the most recent run.
+    struct FeedFailure: Sendable, Equatable {
+        let feedName: String
+        let message: String
+    }
+
+    /// Failures recorded during the most recent `updateAll()` / `update(feed:)`.
+    private(set) var lastRunFailures: [FeedFailure] = []
+
     /// Upper bound on simultaneous in-flight feed fetches in `updateAll()`. Caps the number of
     /// concurrent network/AI awaits so a large feed list does not spawn unbounded requests.
     private static let maxConcurrentFeedUpdates = 5
@@ -28,6 +37,23 @@ final class AggregationService {
         self.makeAggregator = makeAggregator
         self.injectedAIProcessor = aiProcessor
         self.now = now
+    }
+
+    /// Map an arbitrary error to a clear, non-empty user-facing string.
+    /// `LocalizedError` (e.g. `AggregatorError`) and Cocoa/URL errors already carry good
+    /// messages; bare Swift errors otherwise render Foundation's useless synthesized
+    /// "The operation couldn't be completed. (… error 1.)", so they get a localized fallback.
+    static func userFacingMessage(for error: Error) -> String {
+        if let localized = error as? LocalizedError,
+           let description = localized.errorDescription,
+           !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return description
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain || nsError.domain == NSCocoaErrorDomain {
+            return error.localizedDescription
+        }
+        return String(localized: "An unexpected error occurred.")
     }
 
     /// The processor for this run: the injected one (tests) or a fresh snapshot of current
@@ -92,6 +118,7 @@ final class AggregationService {
     /// Update all enabled feeds. One feed's failure never aborts the run.
     @discardableResult
     func updateAll() async -> Int {
+        lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
@@ -129,6 +156,7 @@ final class AggregationService {
     /// Update a single feed.
     @discardableResult
     func update(feed: Feed) async -> Int {
+        lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }
         let inserted = await aggregate(feed: feed)
@@ -168,7 +196,9 @@ final class AggregationService {
         let credentials = AggregatorCredentials.resolved()
 
         guard let aggregator = makeAggregator(config, credentials) else {
-            feed.lastError = AggregatorError.notImplemented(feed.type).errorDescription
+            let message = AggregatorError.notImplemented(feed.type).errorDescription ?? ""
+            feed.lastError = message
+            lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
             return 0
         }
 
@@ -184,7 +214,9 @@ final class AggregationService {
             feed.lastError = nil
             return inserted
         } catch {
-            feed.lastError = error.localizedDescription
+            let message = Self.userFacingMessage(for: error)
+            feed.lastError = message
+            lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
             return 0
         }
     }

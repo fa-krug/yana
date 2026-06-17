@@ -1505,6 +1505,46 @@
           }
         }
       }
+    },
+    "An unexpected error occurred." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein unerwarteter Fehler ist aufgetreten."
+          }
+        }
+      }
+    },
+    "Couldn't update “%@”: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ konnte nicht aktualisiert werden: %@"
+          }
+        }
+      }
+    },
+    "%lld feeds couldn't be updated. Check Feeds in Configuration." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Feeds konnten nicht aktualisiert werden. Details unter „Feeds“ in der Konfiguration."
+          }
+        }
+      }
+    },
+    "Update Failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisierung fehlgeschlagen"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

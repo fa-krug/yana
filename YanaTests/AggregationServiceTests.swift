@@ -252,4 +252,80 @@ struct AggregationServiceTests {
         let second = await service.updateAll()
         #expect(second == 0)
     }
+
+    // MARK: - User-facing error messages
+
+    @Test func userFacingMessageUsesLocalizedErrorDescription() {
+        let error = AggregatorError.missingIdentifier
+        #expect(AggregationService.userFacingMessage(for: error) == error.errorDescription)
+    }
+
+    @Test func userFacingMessageUsesURLErrorLocalizedDescription() {
+        let error = URLError(.notConnectedToInternet)
+        #expect(AggregationService.userFacingMessage(for: error) == error.localizedDescription)
+    }
+
+    @Test func userFacingMessageFallsBackForBareError() {
+        struct Bare: Error {}
+        #expect(AggregationService.userFacingMessage(for: Bare())
+                == String(localized: "An unexpected error occurred."))
+    }
+
+    // MARK: - Per-run failure tracking
+
+    @Test func updateAllRecordsFailureWithFeedNameAndMessage() async throws {
+        let context = try makeContext()
+        let bad = Feed(name: "Bad Feed", aggregatorType: .feedContent, identifier: "bad")
+        context.insert(bad)
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [], validateError: AggregatorError.missingIdentifier)
+        }
+        await service.updateAll()
+
+        #expect(service.lastRunFailures.count == 1)
+        #expect(service.lastRunFailures.first?.feedName == "Bad Feed")
+        #expect(service.lastRunFailures.first?.message == AggregatorError.missingIdentifier.errorDescription)
+    }
+
+    @Test func successfulRunLeavesNoFailures() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("x")])
+        }
+        await service.updateAll()
+        #expect(service.lastRunFailures.isEmpty)
+    }
+
+    @Test func laterSuccessfulRunClearsPriorFailures() async throws {
+        final class Toggle: @unchecked Sendable { var fail = true }
+        let toggle = Toggle()
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let service = AggregationService(context: context) { _, _ in
+            toggle.fail
+                ? FakeAggregator(articles: [], validateError: AggregatorError.missingIdentifier)
+                : FakeAggregator(articles: [self.aggregated("x")])
+        }
+        await service.update(feed: feed)
+        #expect(service.lastRunFailures.count == 1)
+        toggle.fail = false
+        await service.update(feed: feed)
+        #expect(service.lastRunFailures.isEmpty)
+    }
+
+    @Test func missingAggregatorRecordsFailure() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "No Aggregator", aggregatorType: .feedContent, identifier: "x")
+        context.insert(feed)
+        // Factory returns nil → exercises the `notImplemented` guard's failure-recording path.
+        let service = AggregationService(context: context) { _, _ in nil }
+        await service.update(feed: feed)
+
+        #expect(service.lastRunFailures.count == 1)
+        #expect(service.lastRunFailures.first?.feedName == "No Aggregator")
+        #expect(feed.lastError != nil)
+    }
 }
