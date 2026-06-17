@@ -22,9 +22,16 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     override var contentSelector: String { Self.contentDivSelector }
 
     override var selectorsToRemove: [String] {
-        ["div.wp-block-mmo-recirculation-box", "div.reading-position-indicator-end",
-         "label.toggle", "a.wp-block-mmo-content-box", "ul.page-numbers", ".post-page-numbers",
-         "#ftwp-container-outer", "div.wp-block-wbd-affiliate-widget", "script", "style",
+        // Note: .dailymotion-embed-container is intentionally omitted here — the iOS conversion
+        // pipeline (convertDailymotionBlocks) rewrites div.wp-block-mmo-video into
+        // div.dailymotion-embed-container iframes before this removal step runs, so adding that
+        // selector would strip the freshly-converted embeds. The iframe exclusion already guards
+        // raw Dailymotion iframes; the div wrapper is retained intentionally.
+        ["div.wp-block-mmo-recirculation-box", "div.wp-block-mmo-hub-box",
+         "div.reading-position-indicator-end",
+         "label.toggle", "a.wp-block-mmo-content-box",
+         "div.page-links", "div.sources-wrapper", "div.feedback-box",
+         "div.wp-block-wbd-affiliate-widget", "script", "style",
          "iframe:not([src*='youtube.com']):not([src*='youtu.be']):not([src*='dailymotion.com'])", "noscript"]
     }
 
@@ -80,21 +87,17 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         var pages: Set<Int> = [1]
         guard let doc = try? HTMLUtils.parse(html) else { return pages }
         let contentDiv = try? doc.select(Self.contentDivSelector).first()
-        let inContent = (try? contentDiv?.select(
-            "div.gp-pagination-numbers, ul.page-numbers, nav.navigation.pagination, div.gp-pagination"
-        ).first()).flatMap { $0 }
-        let inDoc = (try? doc.select(
-            "div.gp-pagination-numbers, nav.navigation.pagination, div.gp-pagination, ul.page-numbers"
-        ).first()).flatMap { $0 }
+        let inContent = (try? contentDiv?.select("div.page-links").first()).flatMap { $0 }
+        let inDoc = (try? doc.select("div.page-links").first()).flatMap { $0 }
         let container = inContent ?? inDoc
         guard let pagination = container else { return pages }
-        for link in (try? pagination.select("a.page-numbers, a.post-page-numbers").array()) ?? [] {
+        for link in (try? pagination.select("a.post-page-numbers").array()) ?? [] {
             if let text = try? link.text(), let n = Int(text) { pages.insert(n) }
             if let href = try? link.attr("href"),
                let r = href.range(of: #"/(\d+)/?$"#, options: .regularExpression),
                let n = Int(href[r].filter(\.isNumber)) { pages.insert(n) }
         }
-        for span in (try? pagination.select("span.page-numbers, span.post-page-numbers, span.current").array()) ?? [] {
+        for span in (try? pagination.select("span.post-page-numbers").array()) ?? [] {
             if let text = try? span.text(), let n = Int(text) { pages.insert(n) }
         }
         return pages
