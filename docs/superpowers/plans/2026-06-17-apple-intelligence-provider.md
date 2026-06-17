@@ -562,8 +562,8 @@ struct AppleIntelligenceProcessorTests {
     }
 
     func article(_ content: String, title: String = "orig") -> AggregatedArticle {
-        AggregatedArticle(title: title, link: "https://e.com", author: nil,
-                          publishedAt: .now, content: content, feedName: "F", identifier: "id")
+        AggregatedArticle(title: title, identifier: "id", url: "https://e.com",
+                          rawContent: content, content: content, date: .now, author: "", iconURL: nil)
     }
 
     let opts = AIOptions(summarize: false, improveWriting: true, translate: false, translateLanguage: "English")
@@ -611,7 +611,7 @@ struct AppleIntelligenceProcessorTests {
 }
 ```
 
-> Note: confirm the `AggregatedArticle` initializer argument labels against `Yana/Aggregators/AggregatedArticle.swift` and adjust the `article(_:title:)` helper if they differ.
+> Note: `AggregatedArticle`'s memberwise init is `(title:identifier:url:rawContent:content:date:author:iconURL:)` — `author` is a non-optional `String`, `iconURL` is `String?`. The helper above uses these exact labels.
 
 - [ ] **Step 2: Run test to verify it fails**
 
