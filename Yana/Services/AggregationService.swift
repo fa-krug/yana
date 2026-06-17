@@ -30,6 +30,23 @@ final class AggregationService {
         self.now = now
     }
 
+    /// Map an arbitrary error to a clear, non-empty user-facing string.
+    /// `LocalizedError` (e.g. `AggregatorError`) and Cocoa/URL errors already carry good
+    /// messages; bare Swift errors otherwise render Foundation's useless synthesized
+    /// "The operation couldn't be completed. (… error 1.)", so they get a localized fallback.
+    static func userFacingMessage(for error: Error) -> String {
+        if let localized = error as? LocalizedError,
+           let description = localized.errorDescription,
+           !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return description
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain || nsError.domain == NSCocoaErrorDomain {
+            return error.localizedDescription
+        }
+        return String(localized: "An unexpected error occurred.")
+    }
+
     /// The processor for this run: the injected one (tests) or a fresh snapshot of current
     /// settings + Keychain so provider/model/key edits take effect on the next update.
     private func currentAIProcessor() -> AIProcessing {
@@ -173,7 +190,7 @@ final class AggregationService {
             feed.lastError = nil
             return inserted
         } catch {
-            feed.lastError = error.localizedDescription
+            feed.lastError = Self.userFacingMessage(for: error)
             return 0
         }
     }

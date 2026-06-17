@@ -252,4 +252,22 @@ struct AggregationServiceTests {
         let second = await service.updateAll()
         #expect(second == 0)
     }
+
+    // MARK: - User-facing error messages
+
+    @Test func userFacingMessageUsesLocalizedErrorDescription() {
+        let error = AggregatorError.missingIdentifier
+        #expect(AggregationService.userFacingMessage(for: error) == error.errorDescription)
+    }
+
+    @Test func userFacingMessageUsesURLErrorLocalizedDescription() {
+        let error = URLError(.notConnectedToInternet)
+        #expect(AggregationService.userFacingMessage(for: error) == error.localizedDescription)
+    }
+
+    @Test func userFacingMessageFallsBackForBareError() {
+        struct Bare: Error {}
+        #expect(AggregationService.userFacingMessage(for: Bare())
+                == String(localized: "An unexpected error occurred."))
+    }
 }
