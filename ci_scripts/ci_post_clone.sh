@@ -19,12 +19,19 @@ echo "Generating Xcode project..."
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 xcodegen generate
 
-# Resolve Swift Package Manager dependencies and write Package.resolved.
+# Put Package.resolved in place for Swift Package Manager.
 # Xcode Cloud builds with automatic dependency resolution disabled, so the
-# resolved file must exist before the build step runs. The generated
-# .xcodeproj is gitignored, so we cannot commit it — resolve it here instead.
-echo "Resolving Swift package dependencies..."
-xcodebuild -resolvePackageDependencies -project Yana.xcodeproj -scheme Yana
+# resolved file must already exist before the build step runs. The generated
+# .xcodeproj is gitignored, and `xcodebuild -resolvePackageDependencies` also
+# honors the disabled-resolution setting (so it fails with no resolved file
+# yet). Instead we keep a committed copy at ci_scripts/Package.resolved and
+# copy it into the generated workspace here.
+# NOTE: regenerate ci_scripts/Package.resolved whenever package dependencies
+# change (cp from Yana.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/).
+echo "Installing committed Package.resolved..."
+RESOLVED_DIR="Yana.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+mkdir -p "$RESOLVED_DIR"
+cp ci_scripts/Package.resolved "$RESOLVED_DIR/Package.resolved"
 
 # Set build number to Xcode Cloud build number for unique TestFlight builds
 if [ -n "$CI_BUILD_NUMBER" ]; then
