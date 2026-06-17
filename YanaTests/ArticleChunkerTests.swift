@@ -19,6 +19,7 @@ struct ArticleChunkerTests {
         #expect(chunks.count >= 2)
         let joined = chunks.joined()
         #expect(joined.contains("aaaaaaaaaa"))
+        #expect(joined.contains("bbbbbbbbbb"))
         #expect(joined.contains("cccccccccc"))
     }
 

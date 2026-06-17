@@ -29,7 +29,7 @@ enum ArticleChunker {
             if tokenCount(block) > budget {
                 // Block alone exceeds budget: flush, then hard-split this block by characters.
                 flush()
-                chunks.append(contentsOf: hardSplit(block, budgetTokens: budget, tokenCount: tokenCount))
+                chunks.append(contentsOf: hardSplit(block, budgetTokens: budget))
                 continue
             }
             let candidate = current.isEmpty ? block : current + "\n" + block
@@ -46,7 +46,7 @@ enum ArticleChunker {
 
     /// Character-based fallback split for an oversized single block. Conservative char bound
     /// (budget * 3) keeps each piece within the token budget under the ~3.5 chars/token estimate.
-    private static func hardSplit(_ s: String, budgetTokens: Int, tokenCount: (String) -> Int) -> [String] {
+    private static func hardSplit(_ s: String, budgetTokens: Int) -> [String] {
         let charBudget = max(1, budgetTokens * 3)
         var pieces: [String] = []
         var index = s.startIndex
