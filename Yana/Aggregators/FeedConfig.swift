@@ -12,10 +12,10 @@ struct FeedConfig: Sendable {
     var collectedToday: Int
 
     @MainActor
-    init(feed: Feed, collectedToday: Int) {
+    init(feed: Feed, collectedToday: Int, force: Bool = false) {
         self.type = feed.type
         self.identifier = feed.identifier
-        self.dailyLimit = feed.dailyLimit
+        self.dailyLimit = force ? Int.max : feed.dailyLimit
         self.options = feed.options
         self.collectedToday = collectedToday
     }

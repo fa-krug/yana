@@ -28,6 +28,15 @@ protocol Aggregator: Sendable {
 
     /// Fetch and return articles for the feed.
     func aggregate() async throws -> [AggregatedArticle]
+
+    /// Re-fetch a single, already-known article's content from its source. Returns `nil` when
+    /// the aggregator cannot meaningfully re-fetch one item in isolation (the caller then falls
+    /// back to a forced full-feed reload).
+    func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle?
+}
+
+extension Aggregator {
+    func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { nil }
 }
 
 enum AggregatorError: Error, LocalizedError {

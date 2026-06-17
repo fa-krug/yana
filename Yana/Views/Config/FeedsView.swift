@@ -40,6 +40,13 @@ struct FeedsView: View {
                 }
                 .tint(.blue)
                 .disabled(isUpdating)
+                Button {
+                    Task { await forceReloadOne(feed) }
+                } label: {
+                    Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
+                }
+                .tint(.orange)
+                .disabled(isUpdating)
             }
         ) { feed in
             NavigationLink {
@@ -164,6 +171,18 @@ struct FeedsView: View {
         let count = await AggregationService(context: modelContext).update(feed: feed)
         if count == 0 {
             importMessage = String(localized: "No new articles.")
+        } else {
+            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+        }
+    }
+
+    private func forceReloadOne(_ feed: Feed) async {
+        guard !isUpdating else { return }
+        isUpdating = true
+        defer { isUpdating = false }
+        let count = await AggregationService(context: modelContext).forceReload(feed: feed)
+        if count == 0 {
+            importMessage = String(localized: "Reloaded \u{201C}\(feed.name)\u{201D}.")
         } else {
             importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
         }

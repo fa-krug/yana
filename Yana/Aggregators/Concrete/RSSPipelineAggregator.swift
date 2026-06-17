@@ -39,6 +39,10 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
         return try await finalize(result)
     }
 
+    /// Default: cannot re-fetch a single item in isolation (RSS content lives in the feed payload).
+    /// `FullWebsiteAggregator` overrides this with a real per-URL re-fetch.
+    func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { nil }
+
     // MARK: - Hooks
 
     func shouldInclude(_ article: AggregatedArticle) -> Bool { true }

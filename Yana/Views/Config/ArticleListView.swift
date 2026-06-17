@@ -55,6 +55,12 @@ struct ArticleListView: View {
                     Label("Update", systemImage: "arrow.clockwise")
                 }
                 .tint(.blue)
+                Button {
+                    Task { await AggregationService(context: modelContext).forceReload(article: article) }
+                } label: {
+                    Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
+                }
+                .tint(.orange)
             }
         ) { article in
             NavigationLink {

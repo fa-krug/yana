@@ -56,6 +56,17 @@ struct FullWebsiteAggregatorTests {
         #expect(!a.content.contains("SHOULD NOT FETCH"))
     }
 
+    @Test func refetchReExtractsContentFromArticleURL() async throws {
+        let page = "<html><body><article><p>Refetched body</p></article><div class=\"ad\">AD</div></body></html>"
+        let agg = StubWebsite(entries: [], page: page, store: tempStore())
+        let seed = AggregatedArticle(title: "T", identifier: "https://x.com/1", url: "https://x.com/1",
+                                     rawContent: "", content: "stale", date: .now, author: "", iconURL: nil)
+        let refreshed = try #require(try await agg.refetch(seed))
+        #expect(refreshed.content.contains("Refetched body"))
+        #expect(!refreshed.content.contains("AD"))
+        #expect(refreshed.identifier == "https://x.com/1")   // identity preserved for upsert
+    }
+
     @Test func fetchFailureFallbackStillLocalizesImages() async throws {
         final class FailingFetch: FullWebsiteAggregator, @unchecked Sendable {
             let e: [FeedEntry]

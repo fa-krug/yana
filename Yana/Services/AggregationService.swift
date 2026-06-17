@@ -164,12 +164,62 @@ final class AggregationService {
         return inserted
     }
 
+    /// Force reload a single feed: re-import every article the source currently offers,
+    /// bypassing the intake-window filter and the daily cap. Existing articles upsert
+    /// (content refreshed; createdAt + Starred preserved); older/over-cap items are imported too.
+    @discardableResult
+    func forceReload(feed: Feed) async -> Int {
+        lastRunFailures = []
+        isUpdating = true
+        defer { isUpdating = false }
+        let inserted = await aggregate(feed: feed, force: true)
+        try? context.save()
+        return inserted
+    }
+
     /// Re-fetch and re-process a single article by re-running its owning feed.
     /// (Phase 4b refines this to a true single-article re-fetch.)
     @discardableResult
     func update(article: Article) async -> Int {
         guard let feed = article.feed else { return 0 }
         return await update(feed: feed)
+    }
+
+    /// Force reload a single article: re-fetch its content directly from the source when the
+    /// aggregator supports it (`refetch`), upserting in place (content refreshed; createdAt +
+    /// Starred preserved). Falls back to a forced reload of the parent feed when the aggregator
+    /// cannot re-fetch a lone item (e.g. RSS / social sources) or the re-fetch fails.
+    @discardableResult
+    func forceReload(article: Article) async -> Int {
+        guard let feed = article.feed else { return 0 }
+        lastRunFailures = []
+        isUpdating = true
+        defer { isUpdating = false }
+
+        let config = FeedConfig(feed: feed, collectedToday: 0)
+        let credentials = AggregatorCredentials.resolved()
+        guard let aggregator = makeAggregator(config, credentials) else {
+            return await forceReload(feed: feed)
+        }
+        let seed = AggregatedArticle(
+            title: article.title, identifier: article.identifier, url: article.url,
+            rawContent: article.rawContent, content: article.content, date: article.date,
+            author: article.author, iconURL: article.iconURL
+        )
+        let refreshed: AggregatedArticle?
+        do {
+            refreshed = try await aggregator.refetch(seed)
+        } catch {
+            refreshed = nil
+        }
+        guard let refreshed else {
+            return await forceReload(feed: feed)
+        }
+        let processed = await currentAIProcessor().process([refreshed], ai: config.options.ai)
+        let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(),
+                                           context: context, now: now())
+        try? context.save()
+        return inserted
     }
 
     // MARK: - Core per-feed run
@@ -189,10 +239,10 @@ final class AggregationService {
     }
 
     @discardableResult
-    private func aggregate(feed: Feed) async -> Int {
+    private func aggregate(feed: Feed, force: Bool = false) async -> Int {
         let runNow = now()
         let collected = collectedToday(for: feed, now: runNow)
-        let config = FeedConfig(feed: feed, collectedToday: collected)
+        let config = FeedConfig(feed: feed, collectedToday: collected, force: force)
         let credentials = AggregatorCredentials.resolved()
 
         guard let aggregator = makeAggregator(config, credentials) else {
@@ -205,7 +255,7 @@ final class AggregationService {
         do {
             try aggregator.validate()
             let fetched = try await aggregator.aggregate()
-            let fresh = fetched.filter { AggregationLogic.isWithinIntakeWindow($0.date, now: runNow) }
+            let fresh = force ? fetched : fetched.filter { AggregationLogic.isWithinIntakeWindow($0.date, now: runNow) }
             let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
             let capped = Array(fresh.prefix(cap))
             let processed = await currentAIProcessor().process(capped, ai: config.options.ai)

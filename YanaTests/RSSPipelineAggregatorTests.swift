@@ -41,6 +41,18 @@ struct RSSPipelineAggregatorTests {
         #expect(!a.content.contains("Source:"))              // source link lives in the toolbar now
     }
 
+    @Test func refetchDefaultsToNilForRSSPipeline() async throws {
+        final class Stub: RSSPipelineAggregator, @unchecked Sendable {
+            init() { super.init(config: FeedConfig(type: .feedContent, identifier: "u", dailyLimit: 10,
+                                options: .feedContent(FeedContentOptions()), collectedToday: 0),
+                                credentials: .init()) }
+        }
+        let seed = AggregatedArticle(title: "T", identifier: "id", url: "u", rawContent: "",
+                                     content: "c", date: .now, author: "", iconURL: nil)
+        let result = try await Stub().refetch(seed)
+        #expect(result == nil)
+    }
+
     @Test func emptyIdentifierFailsValidation() async {
         var cfg = config(); cfg.identifier = ""
         let agg = StubFeed(entries: [], config: cfg, store: tempStore())

@@ -57,6 +57,12 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
         }
     }
 
+    /// Re-fetch one known article by re-running the per-article enrich path on its URL.
+    /// `enrich` is fully URL-driven here, so the (unused) `entry` is a throwaway.
+    override func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? {
+        try await enrich(seed, entry: FeedEntry())
+    }
+
     /// Like base processContent but de-dups the header image from the body and prepends the header.
     func processFullContent(_ html: String, article: AggregatedArticle, header: HeaderElement?) async throws -> String {
         let doc = try HTMLUtils.parse(html)
