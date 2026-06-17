@@ -14,6 +14,7 @@ struct FeedsView: View {
     @State private var importMessage: String?
     @State private var feedToDelete: Feed?
     @State private var searchText = ""
+    @State private var settings = AppSettings()
 
     private var filteredFeeds: [Feed] {
         NameSearch.filter(feeds, query: searchText, name: \.name)
@@ -39,14 +40,14 @@ struct FeedsView: View {
                     Label("Update", systemImage: "arrow.clockwise")
                 }
                 .tint(.blue)
-                .disabled(isUpdating)
+                .disabled(isUpdating || !settings.isSourceEnabled(feed.type))
                 Button {
                     Task { await forceReloadOne(feed) }
                 } label: {
                     Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
                 }
                 .tint(.orange)
-                .disabled(isUpdating)
+                .disabled(isUpdating || !settings.isSourceEnabled(feed.type))
             }
         ) { feed in
             NavigationLink {
@@ -126,6 +127,11 @@ struct FeedsView: View {
                 Text(feed.name).font(.headline)
                 if !feed.enabled {
                     Text("Disabled").font(.caption).foregroundStyle(.secondary)
+                }
+                if !settings.isSourceEnabled(feed.type) {
+                    Text("\(feed.type.displayName) off")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if lastError != nil {
                     Image(systemName: "exclamationmark.triangle.fill")

@@ -47,6 +47,16 @@
         }
       }
     },
+    "%@ off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ aus"
+          }
+        }
+      }
+    },
     "%lld feeds couldn't be updated. Check Feeds in Configuration." : {
       "localizations" : {
         "de" : {
