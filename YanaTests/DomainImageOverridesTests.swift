@@ -24,16 +24,23 @@ struct DomainImageOverridesTests {
     }
 
     @Test func longestPrefixWins() {
-        // Inject a more-specific prefix by testing the logic directly with two prefixes.
-        // We verify the real map: the Nintendo prefix is the only entry, so we test
-        // via a URL that matches it and confirm we get the right image.
-        let rootURL = "https://en-americas-support.nintendo.com/"
-        let deepURL = "https://en-americas-support.nintendo.com/app/answers/detail/a_id/999"
-        let rootResult = DomainImageOverrides.overrideImageURL(for: rootURL)
-        let deepResult = DomainImageOverrides.overrideImageURL(for: deepURL)
-        // Both must match the same override (only one prefix registered).
-        #expect(rootResult == deepResult)
-        #expect(rootResult != nil)
+        // Use two overlapping prefixes so the tie-breaking path is actually exercised.
+        let localMap: [String: String] = [
+            "https://example.com/": "https://img.example.com/root.png",
+            "https://example.com/games/": "https://img.example.com/games.png",
+        ]
+        // Deep URL under /games/ — must match the longer prefix.
+        let deepURL = "https://example.com/games/item/42"
+        #expect(
+            DomainImageOverrides.overrideImageURL(for: deepURL, in: localMap)
+                == "https://img.example.com/games.png"
+        )
+        // Shallow URL not under /games/ — must match only the shorter prefix.
+        let shallowURL = "https://example.com/news/article"
+        #expect(
+            DomainImageOverrides.overrideImageURL(for: shallowURL, in: localMap)
+                == "https://img.example.com/root.png"
+        )
     }
 
     @Test func partialPrefixDoesNotMatch() {

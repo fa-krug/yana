@@ -20,8 +20,18 @@ enum DomainImageOverrides {
     ///   registered prefixes, otherwise `nil`. When several prefixes match,
     ///   the longest prefix wins.
     static func overrideImageURL(for url: String) -> String? {
+        overrideImageURL(for: url, in: overrides)
+    }
+
+    /// Testability seam: look up `url` in a caller-supplied prefix map.
+    ///
+    /// - Parameters:
+    ///   - url: The article URL to look up.
+    ///   - overrides: The prefix → image-URL map to search.
+    /// - Returns: The image URL for the longest matching prefix, or `nil`.
+    static func overrideImageURL(for url: String, in overrides: [String: String]) -> String? {
         guard !url.isEmpty else { return nil }
-        var longestMatch: String? = nil
+        var longestMatch: String?
         var longestLength = 0
         for (prefix, imageURL) in overrides {
             if url.hasPrefix(prefix) && prefix.count > longestLength {
