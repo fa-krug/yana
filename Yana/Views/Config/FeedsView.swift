@@ -137,7 +137,6 @@ struct FeedsView: View {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .lineLimit(3)
             }
             if !feed.tags.isEmpty {
                 Text(feed.tags.map(\.name).sorted().joined(separator: ", "))
