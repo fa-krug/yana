@@ -119,8 +119,9 @@ d["strings"]["An unexpected error occurred."] = {
     "localizations": {"de": {"stringUnit": {
         "state": "translated", "value": "Ein unerwarteter Fehler ist aufgetreten."}}}
 }
-json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
-open(p, "a").write("\n")
+with open(p, "w") as f:
+    json.dump(d, f, ensure_ascii=False, indent=2, separators=(",", " : "))
+    f.write("\n")
 PY
 ```
 
@@ -359,8 +360,9 @@ d["strings"]["%lld feeds couldn't be updated. Check Feeds in Configuration."] = 
         "state": "translated",
         "value": "%lld Feeds konnten nicht aktualisiert werden. Details unter „Feeds“ in der Konfiguration."}}}
 }
-json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
-open(p, "a").write("\n")
+with open(p, "w") as f:
+    json.dump(d, f, ensure_ascii=False, indent=2, separators=(",", " : "))
+    f.write("\n")
 PY
 ```
 
@@ -427,8 +429,9 @@ d["strings"]["Update Failed"] = {
     "localizations": {"de": {"stringUnit": {
         "state": "translated", "value": "Aktualisierung fehlgeschlagen"}}}
 }
-json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
-open(p, "a").write("\n")
+with open(p, "w") as f:
+    json.dump(d, f, ensure_ascii=False, indent=2, separators=(",", " : "))
+    f.write("\n")
 PY
 ```
 
