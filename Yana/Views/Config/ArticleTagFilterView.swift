@@ -14,13 +14,15 @@ struct ArticleTagFilterView: View {
         NavigationStack {
             List {
                 ForEach(tags) { tag in
-                    Toggle(tag.name, isOn: Binding(
+                    Toggle(isOn: Binding(
                         get: { !disabledTagNames.contains(tag.name) },
                         set: { active in
                             if active { disabledTagNames.remove(tag.name) }
                             else { disabledTagNames.insert(tag.name) }
                         }
-                    ))
+                    )) {
+                        Label { Text(tag.name) } icon: { TagColorDot(colorHex: tag.colorHex) }
+                    }
                 }
                 Toggle(String(localized: "Untagged"), isOn: $includeUntagged)
             }

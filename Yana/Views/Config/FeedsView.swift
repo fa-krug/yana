@@ -140,10 +140,10 @@ struct FeedsView: View {
                 }
             }
             HStack(spacing: 6) {
-                Text(feed.type.displayName)
-                Text("· \(feed.articles.count) articles")
+                Text("\(feed.articles.count) articles")
                 if let fetched = feed.lastFetchedAt {
-                    Text("· \(fetched, style: .relative) ago")
+                    Text(verbatim: "· \(RelativeTime.compact(since: fetched))")
+                        .monospacedDigit()
                 }
             }
             .font(.caption)
@@ -154,9 +154,11 @@ struct FeedsView: View {
                     .foregroundStyle(.orange)
             }
             if !feed.tags.isEmpty {
-                Text(feed.tags.map(\.name).sorted().joined(separator: ", "))
-                    .font(.caption2)
-                    .foregroundStyle(Color.accentColor)
+                HStack(spacing: 4) {
+                    ForEach(feed.tags.sorted { $0.name < $1.name }, id: \.name) { tag in
+                        TagChip(name: tag.name, colorHex: tag.colorHex)
+                    }
+                }
             }
             }
         }

@@ -63,6 +63,7 @@ struct FeedEditorView: View {
                             toggleTag(tag.name)
                         } label: {
                             HStack {
+                                TagColorDot(colorHex: tag.colorHex)
                                 Text(tag.name)
                                 Spacer()
                                 if model.selectedTagNames.contains(tag.name) {

@@ -15,9 +15,14 @@ struct TagFilterView: View {
         NavigationStack {
             List {
                 ForEach(tags) { tag in
-                    toggleRow(tag.name, isActive: !disabled.contains(tag.name)) { active in
-                        if active { disabled.remove(tag.name) } else { disabled.insert(tag.name) }
-                        settings.disabledTagNames = disabled
+                    Toggle(isOn: Binding(
+                        get: { !disabled.contains(tag.name) },
+                        set: { active in
+                            if active { disabled.remove(tag.name) } else { disabled.insert(tag.name) }
+                            settings.disabledTagNames = disabled
+                        }
+                    )) {
+                        Label { Text(tag.name) } icon: { TagColorDot(colorHex: tag.colorHex) }
                     }
                 }
                 toggleRow(String(localized: "Untagged"), isActive: includeUntagged) { active in
