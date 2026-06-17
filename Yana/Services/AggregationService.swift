@@ -62,6 +62,9 @@ final class AggregationService {
         case .gemini:
             model = settings.geminiModel
             keyItem = .geminiAPIKey
+        case .appleIntelligence:
+            model = ""
+            keyItem = nil
         }
         let key = keyItem.flatMap(loadKey) ?? ""
         return AIConfig(
