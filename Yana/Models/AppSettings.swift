@@ -38,7 +38,7 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
 @MainActor
 @Observable
 final class AppSettings {
-    private let defaults: UserDefaults
+    @ObservationIgnored private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -96,111 +96,112 @@ final class AppSettings {
 
     var activeAIProvider: AIProvider {
         get {
+            access(keyPath: \.activeAIProvider)
             guard let raw = defaults.string(forKey: Key.activeAIProvider),
                   let provider = AIProvider(rawValue: raw) else { return .none }
             return provider
         }
-        set { defaults.set(newValue.rawValue, forKey: Key.activeAIProvider) }
+        set { withMutation(keyPath: \.activeAIProvider) { defaults.set(newValue.rawValue, forKey: Key.activeAIProvider) } }
     }
 
     var retentionDays: Int {
-        get { defaults.integer(forKey: Key.retentionDays) }
-        set { defaults.set(newValue, forKey: Key.retentionDays) }
+        get { access(keyPath: \.retentionDays); return defaults.integer(forKey: Key.retentionDays) }
+        set { withMutation(keyPath: \.retentionDays) { defaults.set(newValue, forKey: Key.retentionDays) } }
     }
 
     var backgroundInterval: TimeInterval {
-        get { defaults.double(forKey: Key.backgroundInterval) }
-        set { defaults.set(newValue, forKey: Key.backgroundInterval) }
+        get { access(keyPath: \.backgroundInterval); return defaults.double(forKey: Key.backgroundInterval) }
+        set { withMutation(keyPath: \.backgroundInterval) { defaults.set(newValue, forKey: Key.backgroundInterval) } }
     }
 
     // MARK: Sources
     var redditEnabled: Bool {
-        get { defaults.bool(forKey: Key.redditEnabled) }
-        set { defaults.set(newValue, forKey: Key.redditEnabled) }
+        get { access(keyPath: \.redditEnabled); return defaults.bool(forKey: Key.redditEnabled) }
+        set { withMutation(keyPath: \.redditEnabled) { defaults.set(newValue, forKey: Key.redditEnabled) } }
     }
     var redditUserAgent: String {
-        get { defaults.string(forKey: Key.redditUserAgent) ?? "Yana/1.0" }
-        set { defaults.set(newValue, forKey: Key.redditUserAgent) }
+        get { access(keyPath: \.redditUserAgent); return defaults.string(forKey: Key.redditUserAgent) ?? "Yana/1.0" }
+        set { withMutation(keyPath: \.redditUserAgent) { defaults.set(newValue, forKey: Key.redditUserAgent) } }
     }
     var youtubeEnabled: Bool {
-        get { defaults.bool(forKey: Key.youtubeEnabled) }
-        set { defaults.set(newValue, forKey: Key.youtubeEnabled) }
+        get { access(keyPath: \.youtubeEnabled); return defaults.bool(forKey: Key.youtubeEnabled) }
+        set { withMutation(keyPath: \.youtubeEnabled) { defaults.set(newValue, forKey: Key.youtubeEnabled) } }
     }
     var notificationsEnabled: Bool {
-        get { defaults.bool(forKey: Key.notificationsEnabled) }
-        set { defaults.set(newValue, forKey: Key.notificationsEnabled) }
+        get { access(keyPath: \.notificationsEnabled); return defaults.bool(forKey: Key.notificationsEnabled) }
+        set { withMutation(keyPath: \.notificationsEnabled) { defaults.set(newValue, forKey: Key.notificationsEnabled) } }
     }
 
     // MARK: Providers
     var openaiAPIURL: String {
-        get { defaults.string(forKey: Key.openaiAPIURL) ?? "https://api.openai.com/v1" }
-        set { defaults.set(newValue, forKey: Key.openaiAPIURL) }
+        get { access(keyPath: \.openaiAPIURL); return defaults.string(forKey: Key.openaiAPIURL) ?? "https://api.openai.com/v1" }
+        set { withMutation(keyPath: \.openaiAPIURL) { defaults.set(newValue, forKey: Key.openaiAPIURL) } }
     }
     var openaiModel: String {
-        get { defaults.string(forKey: Key.openaiModel) ?? "gpt-4o-mini" }
-        set { defaults.set(newValue, forKey: Key.openaiModel) }
+        get { access(keyPath: \.openaiModel); return defaults.string(forKey: Key.openaiModel) ?? "gpt-4o-mini" }
+        set { withMutation(keyPath: \.openaiModel) { defaults.set(newValue, forKey: Key.openaiModel) } }
     }
     var anthropicModel: String {
-        get { defaults.string(forKey: Key.anthropicModel) ?? "claude-haiku-4-5-20251001" }
-        set { defaults.set(newValue, forKey: Key.anthropicModel) }
+        get { access(keyPath: \.anthropicModel); return defaults.string(forKey: Key.anthropicModel) ?? "claude-haiku-4-5-20251001" }
+        set { withMutation(keyPath: \.anthropicModel) { defaults.set(newValue, forKey: Key.anthropicModel) } }
     }
     var geminiModel: String {
-        get { defaults.string(forKey: Key.geminiModel) ?? "gemini-2.5-flash" }
-        set { defaults.set(newValue, forKey: Key.geminiModel) }
+        get { access(keyPath: \.geminiModel); return defaults.string(forKey: Key.geminiModel) ?? "gemini-2.5-flash" }
+        set { withMutation(keyPath: \.geminiModel) { defaults.set(newValue, forKey: Key.geminiModel) } }
     }
 
     // MARK: AI knobs
     var aiTemperature: Double {
-        get { defaults.double(forKey: Key.aiTemperature) }
-        set { defaults.set(newValue, forKey: Key.aiTemperature) }
+        get { access(keyPath: \.aiTemperature); return defaults.double(forKey: Key.aiTemperature) }
+        set { withMutation(keyPath: \.aiTemperature) { defaults.set(newValue, forKey: Key.aiTemperature) } }
     }
     var aiMaxTokens: Int {
-        get { defaults.integer(forKey: Key.aiMaxTokens) }
-        set { defaults.set(newValue, forKey: Key.aiMaxTokens) }
+        get { access(keyPath: \.aiMaxTokens); return defaults.integer(forKey: Key.aiMaxTokens) }
+        set { withMutation(keyPath: \.aiMaxTokens) { defaults.set(newValue, forKey: Key.aiMaxTokens) } }
     }
     var aiMaxPromptLength: Int {
-        get { defaults.integer(forKey: Key.aiMaxPromptLength) }
-        set { defaults.set(newValue, forKey: Key.aiMaxPromptLength) }
+        get { access(keyPath: \.aiMaxPromptLength); return defaults.integer(forKey: Key.aiMaxPromptLength) }
+        set { withMutation(keyPath: \.aiMaxPromptLength) { defaults.set(newValue, forKey: Key.aiMaxPromptLength) } }
     }
     var aiDefaultDailyLimit: Int {
-        get { defaults.integer(forKey: Key.aiDefaultDailyLimit) }
-        set { defaults.set(newValue, forKey: Key.aiDefaultDailyLimit) }
+        get { access(keyPath: \.aiDefaultDailyLimit); return defaults.integer(forKey: Key.aiDefaultDailyLimit) }
+        set { withMutation(keyPath: \.aiDefaultDailyLimit) { defaults.set(newValue, forKey: Key.aiDefaultDailyLimit) } }
     }
     var aiDefaultMonthlyLimit: Int {
-        get { defaults.integer(forKey: Key.aiDefaultMonthlyLimit) }
-        set { defaults.set(newValue, forKey: Key.aiDefaultMonthlyLimit) }
+        get { access(keyPath: \.aiDefaultMonthlyLimit); return defaults.integer(forKey: Key.aiDefaultMonthlyLimit) }
+        set { withMutation(keyPath: \.aiDefaultMonthlyLimit) { defaults.set(newValue, forKey: Key.aiDefaultMonthlyLimit) } }
     }
     var aiRequestTimeout: Int {
-        get { defaults.integer(forKey: Key.aiRequestTimeout) }
-        set { defaults.set(newValue, forKey: Key.aiRequestTimeout) }
+        get { access(keyPath: \.aiRequestTimeout); return defaults.integer(forKey: Key.aiRequestTimeout) }
+        set { withMutation(keyPath: \.aiRequestTimeout) { defaults.set(newValue, forKey: Key.aiRequestTimeout) } }
     }
     var aiMaxRetries: Int {
-        get { defaults.integer(forKey: Key.aiMaxRetries) }
-        set { defaults.set(newValue, forKey: Key.aiMaxRetries) }
+        get { access(keyPath: \.aiMaxRetries); return defaults.integer(forKey: Key.aiMaxRetries) }
+        set { withMutation(keyPath: \.aiMaxRetries) { defaults.set(newValue, forKey: Key.aiMaxRetries) } }
     }
     var aiRetryDelay: Int {
-        get { defaults.integer(forKey: Key.aiRetryDelay) }
-        set { defaults.set(newValue, forKey: Key.aiRetryDelay) }
+        get { access(keyPath: \.aiRetryDelay); return defaults.integer(forKey: Key.aiRetryDelay) }
+        set { withMutation(keyPath: \.aiRetryDelay) { defaults.set(newValue, forKey: Key.aiRetryDelay) } }
     }
     var aiRequestDelay: Int {
-        get { defaults.integer(forKey: Key.aiRequestDelay) }
-        set { defaults.set(newValue, forKey: Key.aiRequestDelay) }
+        get { access(keyPath: \.aiRequestDelay); return defaults.integer(forKey: Key.aiRequestDelay) }
+        set { withMutation(keyPath: \.aiRequestDelay) { defaults.set(newValue, forKey: Key.aiRequestDelay) } }
     }
 
     // MARK: Timeline filter
     /// Names of tags currently toggled OFF in the filter. Empty = all active.
     var disabledTagNames: Set<String> {
-        get { Set(defaults.stringArray(forKey: Key.disabledTagNames) ?? []) }
-        set { defaults.set(Array(newValue), forKey: Key.disabledTagNames) }
+        get { access(keyPath: \.disabledTagNames); return Set(defaults.stringArray(forKey: Key.disabledTagNames) ?? []) }
+        set { withMutation(keyPath: \.disabledTagNames) { defaults.set(Array(newValue), forKey: Key.disabledTagNames) } }
     }
     var includeUntagged: Bool {
-        get { defaults.bool(forKey: Key.includeUntagged) }
-        set { defaults.set(newValue, forKey: Key.includeUntagged) }
+        get { access(keyPath: \.includeUntagged); return defaults.bool(forKey: Key.includeUntagged) }
+        set { withMutation(keyPath: \.includeUntagged) { defaults.set(newValue, forKey: Key.includeUntagged) } }
     }
 
     // MARK: Timeline position
     var timelineAnchorIdentifier: String? {
-        get { defaults.string(forKey: Key.timelineAnchorIdentifier) }
-        set { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) }
+        get { access(keyPath: \.timelineAnchorIdentifier); return defaults.string(forKey: Key.timelineAnchorIdentifier) }
+        set { withMutation(keyPath: \.timelineAnchorIdentifier) { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) } }
     }
 }
