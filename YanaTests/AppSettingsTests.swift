@@ -76,4 +76,16 @@ struct AppSettingsTests {
         s.notificationsEnabled = true
         #expect(AppSettings(defaults: defaults).notificationsEnabled == true)
     }
+
+    @Test func activeAIProviderChangeIsObserved() {
+        let s = AppSettings(defaults: freshDefaults())
+        nonisolated(unsafe) var fired = false
+        withObservationTracking {
+            _ = s.activeAIProvider
+        } onChange: {
+            fired = true
+        }
+        s.activeAIProvider = .anthropic
+        #expect(fired)
+    }
 }
