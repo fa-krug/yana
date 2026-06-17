@@ -161,6 +161,10 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
     }
 
     private func headerImageURL(for post: RedditPostData) -> String? {
+        // Priority 0 (highest): domain image override wins over all other strategies.
+        if !post.url.isEmpty, let overrideURL = DomainImageOverrides.overrideImageURL(for: post.url) {
+            return overrideURL
+        }
         // YouTube videos embed via header strategy elsewhere; here we surface direct images.
         if !post.url.isEmpty, EmbedRewriter.extractYouTubeID(from: post.url) != nil {
             return RedditMarkdown.decodeEntities(post.url)
