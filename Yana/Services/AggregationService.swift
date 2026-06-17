@@ -164,6 +164,19 @@ final class AggregationService {
         return inserted
     }
 
+    /// Force reload a single feed: re-import every article the source currently offers,
+    /// bypassing the intake-window filter and the daily cap. Existing articles upsert
+    /// (content refreshed; createdAt + Starred preserved); older/over-cap items are imported too.
+    @discardableResult
+    func forceReload(feed: Feed) async -> Int {
+        lastRunFailures = []
+        isUpdating = true
+        defer { isUpdating = false }
+        let inserted = await aggregate(feed: feed, force: true)
+        cleanupAndSave()
+        return inserted
+    }
+
     /// Re-fetch and re-process a single article by re-running its owning feed.
     /// (Phase 4b refines this to a true single-article re-fetch.)
     @discardableResult
@@ -189,10 +202,10 @@ final class AggregationService {
     }
 
     @discardableResult
-    private func aggregate(feed: Feed) async -> Int {
+    private func aggregate(feed: Feed, force: Bool = false) async -> Int {
         let runNow = now()
         let collected = collectedToday(for: feed, now: runNow)
-        let config = FeedConfig(feed: feed, collectedToday: collected)
+        let config = FeedConfig(feed: feed, collectedToday: collected, force: force)
         let credentials = AggregatorCredentials.resolved()
 
         guard let aggregator = makeAggregator(config, credentials) else {
@@ -205,7 +218,7 @@ final class AggregationService {
         do {
             try aggregator.validate()
             let fetched = try await aggregator.aggregate()
-            let fresh = fetched.filter { AggregationLogic.isWithinIntakeWindow($0.date, now: runNow) }
+            let fresh = force ? fetched : fetched.filter { AggregationLogic.isWithinIntakeWindow($0.date, now: runNow) }
             let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
             let capped = Array(fresh.prefix(cap))
             let processed = await currentAIProcessor().process(capped, ai: config.options.ai)

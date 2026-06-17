@@ -328,4 +328,50 @@ struct AggregationServiceTests {
         #expect(service.lastRunFailures.first?.feedName == "No Aggregator")
         #expect(feed.lastError != nil)
     }
+
+    // MARK: - Force reload
+
+    @Test func forceReloadBypassesIntakeWindow() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
+
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("fresh"), old])
+        }
+        let inserted = await service.forceReload(feed: feed)
+
+        #expect(inserted == 2)
+        #expect(Set(feed.articles.map(\.identifier)) == ["fresh", "old"])  // old NOT dropped
+        #expect(service.isUpdating == false)
+    }
+
+    @Test func forceReloadBypassesDailyCap() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
+        context.insert(feed)
+
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3")])
+        }
+        await service.forceReload(feed: feed)
+
+        #expect(feed.articles.count == 3)  // cap of 2 ignored under force
+    }
+
+    @Test func normalUpdateStillAppliesWindowAndCap() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
+        context.insert(feed)
+        let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
+
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3"), old])
+        }
+        await service.update(feed: feed)
+
+        #expect(feed.articles.count == 2)                       // cap still applies
+        #expect(!feed.articles.map(\.identifier).contains("old"))  // window still applies
+    }
 }
