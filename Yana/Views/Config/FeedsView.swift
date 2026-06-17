@@ -119,7 +119,9 @@ struct FeedsView: View {
 
     private func row(_ feed: Feed) -> some View {
         let lastError = feed.lastError
-        return VStack(alignment: .leading, spacing: 4) {
+        return HStack(spacing: 12) {
+            FeedLogoView(hash: feed.logoHash)
+            VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(feed.name).font(.headline)
                 if !feed.enabled {
@@ -149,6 +151,7 @@ struct FeedsView: View {
                 Text(feed.tags.map(\.name).sorted().joined(separator: ", "))
                     .font(.caption2)
                     .foregroundStyle(Color.accentColor)
+            }
             }
         }
     }
