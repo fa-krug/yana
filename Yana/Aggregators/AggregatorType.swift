@@ -53,6 +53,24 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         }
     }
 
+    /// Hardcoded brand home page whose favicon is used as the feed logo, for fixed-brand
+    /// scrapers. `nil` for URL-based types (favicon comes from the feed identifier) and for
+    /// reddit/youtube (logo comes from their API).
+    var brandSiteURL: String? {
+        switch self {
+        case .heise: "https://www.heise.de/"
+        case .merkur: "https://www.merkur.de/"
+        case .tagesschau: "https://www.tagesschau.de/"
+        case .explosm: "https://explosm.net/"
+        case .darkLegacy: "https://darklegacycomics.com/"
+        case .caschysBlog: "https://stadt-bremerhaven.de/"
+        case .mactechnews: "https://www.mactechnews.de/"
+        case .oglaf: "https://www.oglaf.com/"
+        case .meinMmo: "https://mein-mmo.de/"
+        case .fullWebsite, .feedContent, .youtube, .reddit, .podcast: nil
+        }
+    }
+
     var identifierKind: AggregatorIdentifierKind {
         switch self {
         case .reddit: .subreddit
