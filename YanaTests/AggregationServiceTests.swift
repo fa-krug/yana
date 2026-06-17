@@ -315,4 +315,17 @@ struct AggregationServiceTests {
         await service.update(feed: feed)
         #expect(service.lastRunFailures.isEmpty)
     }
+
+    @Test func missingAggregatorRecordsFailure() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "No Aggregator", aggregatorType: .feedContent, identifier: "x")
+        context.insert(feed)
+        // Factory returns nil → exercises the `notImplemented` guard's failure-recording path.
+        let service = AggregationService(context: context) { _, _ in nil }
+        await service.update(feed: feed)
+
+        #expect(service.lastRunFailures.count == 1)
+        #expect(service.lastRunFailures.first?.feedName == "No Aggregator")
+        #expect(feed.lastError != nil)
+    }
 }
