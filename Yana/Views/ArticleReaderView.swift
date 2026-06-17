@@ -41,7 +41,7 @@ struct ArticleReaderView: View {
                         currentIndex: $appState.currentIndex,
                         onRefresh: triggerRefresh
                     )
-                    .ignoresSafeArea(.container, edges: .horizontal)
+                    .ignoresSafeArea()
                 } else {
                     ContentUnavailableView {
                         Label("No Articles", systemImage: "tray")

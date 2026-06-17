@@ -14,7 +14,7 @@ struct ArticleContentView: View {
 
     var body: some View {
         ArticleWebView(article: article, onRefresh: onRefresh)
-            .safeAreaInset(edge: .bottom) { bottomBar }
+            .overlay(alignment: .bottom) { bottomBar }
             .sheet(isPresented: $isShowingShare) {
                 if let url = shareURL { ShareSheet(activityItems: [url]) }
             }
