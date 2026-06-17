@@ -14,12 +14,20 @@ enum TagFilter {
     }
 }
 
+/// Resolves an article `identifier` to its index in the currently displayed list.
+/// Returns `nil` when the identifier is missing — used by the pager's data source to
+/// decide whether a neighbouring page exists.
+enum TimelinePageIndex {
+    static func index(of identifier: String?, in articles: [Article]) -> Int? {
+        guard let identifier else { return nil }
+        return articles.firstIndex { $0.identifier == identifier }
+    }
+}
+
 /// Resolves the persisted timeline anchor (an article `identifier`) to an index in the
 /// currently displayed list, falling back to 0 (newest) when it is missing.
 enum TimelineAnchor {
     static func index(for identifier: String?, in articles: [Article]) -> Int {
-        guard let identifier,
-              let idx = articles.firstIndex(where: { $0.identifier == identifier }) else { return 0 }
-        return idx
+        TimelinePageIndex.index(of: identifier, in: articles) ?? 0
     }
 }
