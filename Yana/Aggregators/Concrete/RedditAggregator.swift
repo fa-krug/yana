@@ -151,10 +151,29 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
 
     // MARK: - Header image (ports reddit/images.py priority chain, minus link-page scraping)
 
+    /// Returns true if `url` is a Twitter/X status URL (mirrors server's `is_twitter_url`).
+    private func isTwitterURL(_ url: String) -> Bool {
+        guard let components = URLComponents(string: url),
+              let host = components.host?.lowercased() else { return false }
+        let isTwitterHost = host == "twitter.com" || host == "www.twitter.com"
+            || host == "x.com" || host == "www.x.com"
+        return isTwitterHost && components.path.contains("/status/")
+    }
+
     private func headerImageURL(for post: RedditPostData) -> String? {
         // YouTube videos embed via header strategy elsewhere; here we surface direct images.
         if !post.url.isEmpty, EmbedRewriter.extractYouTubeID(from: post.url) != nil {
             return RedditMarkdown.decodeEntities(post.url)
+        }
+        // Priority 0.6: Twitter/X URL in selftext (return URL for header embed)
+        if post.isSelf, !post.selftext.isEmpty {
+            let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+            let range = NSRange(post.selftext.startIndex..<post.selftext.endIndex, in: post.selftext)
+            let matches = detector?.matches(in: post.selftext, range: range) ?? []
+            for match in matches {
+                guard let url = match.url?.absoluteString else { continue }
+                if isTwitterURL(url) { return url }
+            }
         }
         // Gallery first image
         if post.isGallery, let meta = post.mediaMetadata, let first = post.galleryData?.items.first,
@@ -183,9 +202,12 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
     }
 
     private func makeHeaderHTML(_ url: String, title: String) async throws -> String {
-        // YouTube / Twitter headers would embed; here we localize a direct image.
+        // YouTube / Twitter headers embed; here we localize a direct image.
         if let id = EmbedRewriter.extractYouTubeID(from: url) {
             return "<header style=\"margin-bottom: 1.5em;\">\(EmbedRewriter.youTubeEmbedHTML(videoID: id))</header>"
+        }
+        if isTwitterURL(url), let html = await EmbedRewriter.tweetEmbedHTML(for: url) {
+            return "<header style=\"margin-bottom: 1.5em;\">\(html)</header>"
         }
         guard let remote = URL(string: url), let hash = await store.store(remoteURL: remote, isHeader: true) else {
             return ""
