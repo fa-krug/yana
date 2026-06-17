@@ -63,10 +63,22 @@ struct ArticleWebView: UIViewRepresentable {
                 word-break: break-word;
                 -webkit-hyphens: auto;
                 -webkit-text-size-adjust: none;
+                /* Clip anything that still escapes the column so a single wide child can't push
+                   the whole document wider than the viewport (which scales every sibling down
+                   and makes images look mis-sized against the text). */
+                overflow-x: hidden;
             }
             a { color: var(--secondary-accent-color); text-decoration: none; }
             a:hover { text-decoration: underline; }
-            img, figure, video { max-width: 100%; height: auto; margin: 0 auto; }
+            /* Cap every wide/embeddable element to the text column. A plain max-width on
+               <img>/<figure>/<video> alone didn't catch raw feed <iframe>/<table>/<svg>/<embed>
+               (e.g. WordPress sources like Mein-MMO), which could overflow the column.
+               box-sizing keeps elements that carry their own width + padding inside the column. */
+            img, figure, video, iframe, table, svg, embed, object {
+                max-width: 100%;
+                box-sizing: border-box;
+            }
+            img, figure, video { height: auto; margin: 0 auto; }
             img { border-radius: 8px; }
             figure { margin: 1em auto; }
             figcaption { margin-top: 0.5em; font-size: 0.85em; line-height: 1.3em; opacity: 0.7; }
@@ -166,6 +178,13 @@ struct ArticleWebView: UIViewRepresentable {
     private func applyReaderInset(to webView: WKWebView) {
         guard let inset = readerContentInset else { return }
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        // Hide iOS 26's scroll-edge effects — the progressive blur the scroll view paints
+        // where content meets the screen edge. That blur is what reads as a non-transparent
+        // band behind the floating top toolbar; NetNewsWire hides it the same way
+        // (`scrollView.topEdgeEffect.isHidden` / `bottomEdgeEffect.isHidden`) so the article
+        // scrolls cleanly under the glass chrome.
+        webView.scrollView.topEdgeEffect.isHidden = true
+        webView.scrollView.bottomEdgeEffect.isHidden = true
         if webView.scrollView.contentInset != inset {
             webView.scrollView.contentInset = inset
             webView.scrollView.verticalScrollIndicatorInsets = inset

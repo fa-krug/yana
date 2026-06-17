@@ -24,6 +24,12 @@ struct ArticleContentView: View {
 
     var body: some View {
         ArticleWebView(article: article, onRefresh: onRefresh, readerContentInset: readerContentInset)
+            // Full-bleed: pin the web view to the screen edges (like NetNewsWire, which
+            // constrains its web view to the view's own anchors). Without this the hosting
+            // controller insets the view by the safe area, and the bottom bar's
+            // `safeAreaInsets.bottom` padding below would then double-count that inset —
+            // lifting the floating bar far too high above the home indicator.
+            .ignoresSafeArea(edges: fullBleed ? .all : [])
             .overlay(alignment: .bottom) {
                 bottomBar.padding(.bottom, fullBleed ? safeAreaInsets.bottom : 0)
             }
