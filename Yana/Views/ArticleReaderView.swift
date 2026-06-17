@@ -90,6 +90,7 @@ struct ArticleReaderView: View {
                         .accessibilityLabel(String(localized: "Settings"))
                 }
             }
+            .toolbarBackground(.hidden, for: .navigationBar)
             .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
             .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
             .alert("Update Failed", isPresented: Binding(
