@@ -152,6 +152,26 @@ struct RedditAggregatorTests {
         #expect(!a.content.contains("example.com/thumb2.jpg"), "mobile.twitter.com URL should take header priority over thumbnail")
     }
 
+    @Test func logoImageURLReturnsSubredditIcon() async {
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(RedditOptions()), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { req in
+            let url = req.url!.absoluteString
+            if url.contains("access_token") { return Data(#"{"access_token":"T"}"#.utf8) }
+            return Data(#"{"data":{"community_icon":"https://r/icon.png"}}"#.utf8)
+        }
+        let agg = RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+        #expect(await agg.logoImageURL() == "https://r/icon.png")
+    }
+
+    @Test func logoImageURLNilWithoutCredentials() async {
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(RedditOptions()), collectedToday: 0)
+        let agg = RedditAggregator(config: config, credentials: .init(), store: tempStore(), client: nil)
+        #expect(await agg.logoImageURL() == nil)
+    }
+
     /// A self-post with a plain image URL in selftext (no Twitter/X URL) should not be
     /// affected by the new Priority 0.6 check — preview/thumbnail still applies as before.
     @Test func selftextPlainImageLinkUnaffected() async throws {

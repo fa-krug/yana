@@ -12,6 +12,8 @@ final class Feed {
     var options: AggregatorOptions = AggregatorOptions.feedContent(FeedContentOptions())
     var lastFetchedAt: Date?
     var lastError: String?
+    /// Content hash of the feed's cached logo image (served via `yana-img://`), or nil until resolved.
+    var logoHash: String?
     var createdAt: Date = Date.now
     var updatedAt: Date = Date.now
 

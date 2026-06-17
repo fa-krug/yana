@@ -14,6 +14,7 @@ struct FeedsView: View {
     @State private var importMessage: String?
     @State private var feedToDelete: Feed?
     @State private var searchText = ""
+    @State private var settings = AppSettings()
 
     private var filteredFeeds: [Feed] {
         NameSearch.filter(feeds, query: searchText, name: \.name)
@@ -39,7 +40,14 @@ struct FeedsView: View {
                     Label("Update", systemImage: "arrow.clockwise")
                 }
                 .tint(.blue)
-                .disabled(isUpdating)
+                .disabled(isUpdating || !settings.isSourceEnabled(feed.type))
+                Button {
+                    Task { await forceReloadOne(feed) }
+                } label: {
+                    Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
+                }
+                .tint(.orange)
+                .disabled(isUpdating || !settings.isSourceEnabled(feed.type))
             }
         ) { feed in
             NavigationLink {
@@ -112,11 +120,18 @@ struct FeedsView: View {
 
     private func row(_ feed: Feed) -> some View {
         let lastError = feed.lastError
-        return VStack(alignment: .leading, spacing: 4) {
+        return HStack(spacing: 12) {
+            FeedLogoView(hash: feed.logoHash)
+            VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(feed.name).font(.headline)
                 if !feed.enabled {
                     Text("Disabled").font(.caption).foregroundStyle(.secondary)
+                }
+                if !settings.isSourceEnabled(feed.type) {
+                    Text("\(feed.type.displayName) off")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if lastError != nil {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -143,6 +158,7 @@ struct FeedsView: View {
                     .font(.caption2)
                     .foregroundStyle(Color.accentColor)
             }
+            }
         }
     }
 
@@ -164,6 +180,18 @@ struct FeedsView: View {
         let count = await AggregationService(context: modelContext).update(feed: feed)
         if count == 0 {
             importMessage = String(localized: "No new articles.")
+        } else {
+            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+        }
+    }
+
+    private func forceReloadOne(_ feed: Feed) async {
+        guard !isUpdating else { return }
+        isUpdating = true
+        defer { isUpdating = false }
+        let count = await AggregationService(context: modelContext).forceReload(feed: feed)
+        if count == 0 {
+            importMessage = String(localized: "Reloaded \u{201C}\(feed.name)\u{201D}.")
         } else {
             importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
         }

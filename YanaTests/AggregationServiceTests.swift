@@ -96,7 +96,11 @@ struct AggregationServiceTests {
         context.insert(feed)
 
         // Default factory (registry) returns nil until Phase 4b.
-        let service = AggregationService(context: context)
+        // Reddit is OFF by default; enable it so the source gate is passed and
+        // the missing-aggregator path is exercised instead of the early-return.
+        let settings = AppSettings(defaults: freshDefaults())
+        settings.redditEnabled = true
+        let service = AggregationService(context: context, settings: settings)
         await service.update(feed: feed)
 
         #expect(feed.lastError != nil)
@@ -327,5 +331,233 @@ struct AggregationServiceTests {
         #expect(service.lastRunFailures.count == 1)
         #expect(service.lastRunFailures.first?.feedName == "No Aggregator")
         #expect(feed.lastError != nil)
+    }
+
+    // MARK: - Force reload
+
+    @Test func forceReloadBypassesIntakeWindow() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
+
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("fresh"), old])
+        }
+        let inserted = await service.forceReload(feed: feed)
+
+        #expect(inserted == 2)
+        #expect(Set(feed.articles.map(\.identifier)) == ["fresh", "old"])  // old NOT dropped
+        #expect(service.isUpdating == false)
+    }
+
+    @Test func forceReloadBypassesDailyCap() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
+        context.insert(feed)
+
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3")])
+        }
+        await service.forceReload(feed: feed)
+
+        #expect(feed.articles.count == 3)  // cap of 2 ignored under force
+    }
+
+    @Test func normalUpdateStillAppliesWindowAndCap() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
+        context.insert(feed)
+        let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
+
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3"), old])
+        }
+        await service.update(feed: feed)
+
+        #expect(feed.articles.count == 2)                       // cap still applies
+        #expect(!feed.articles.map(\.identifier).contains("old"))  // window still applies
+    }
+
+    // MARK: - Force reload article
+
+    /// Fake whose `refetch` returns a scripted article (or nil to force the fallback path).
+    private struct RefetchFakeAggregator: Aggregator {
+        let articles: [AggregatedArticle]
+        let refetchResult: AggregatedArticle?
+        func validate() throws {}
+        func aggregate() async throws -> [AggregatedArticle] { articles }
+        func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { refetchResult }
+    }
+
+    @Test func forceReloadArticleRefreshesContentPreservingIdentity() async throws {
+        let context = try makeContext()
+        let starred = try #require((try? context.fetch(FetchDescriptor<Yana.Tag>()))?.first { $0.isBuiltIn })
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        let pinnedCreatedAt = Date.now.addingTimeInterval(-90 * 24 * 3600)
+        article.createdAt = pinnedCreatedAt
+        article.setStarred(true, using: starred)
+        context.insert(article)
+
+        let refreshed = self.aggregated("id1")          // same identifier, content "c"
+        let service = AggregationService(context: context, makeAggregator: { _, _ in
+            RefetchFakeAggregator(articles: [], refetchResult: refreshed)
+        }, aiProcessor: FakeAIProcessor())
+        await service.forceReload(article: article)
+
+        #expect(article.content == "c")                 // content refreshed
+        #expect(article.createdAt == pinnedCreatedAt)    // timeline position preserved
+        #expect(article.isStarred)                       // Starred preserved
+        #expect(feed.articles.count == 1)                // updated, not duplicated
+    }
+
+    @Test func forceReloadArticleFallsBackToFeedWhenRefetchUnsupported() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        context.insert(article)
+
+        // refetch returns nil → fallback re-runs the feed, which re-imports id1 with new content.
+        var updatedArticle = self.aggregated("id1")
+        updatedArticle.content = "FROM_FEED"
+        let feedArticle = updatedArticle
+        let service = AggregationService(context: context, makeAggregator: { _, _ in
+            RefetchFakeAggregator(articles: [feedArticle], refetchResult: nil)
+        }, aiProcessor: FakeAIProcessor())
+        await service.forceReload(article: article)
+
+        #expect(article.content == "FROM_FEED")          // refreshed via the forced feed reload
+        #expect(feed.articles.count == 1)
+    }
+
+    @Test func forceReloadDoesNotRetentionCleanupRefreshedArticles() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        // Un-starred article discovered far beyond the default 30-day retention window.
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        article.createdAt = Date.now.addingTimeInterval(-40 * 24 * 3600)
+        context.insert(article)
+
+        let service = AggregationService(context: context, makeAggregator: { _, _ in
+            FakeAggregator(articles: [self.aggregated("id1")])   // same identifier → in-place refresh
+        }, aiProcessor: FakeAIProcessor())
+        await service.forceReload(feed: feed)
+
+        #expect(feed.articles.map(\.identifier) == ["id1"])   // survived retention cleanup
+        #expect(feed.articles.first?.content == "c")          // and was refreshed
+    }
+
+    @Test func forceReloadArticleReturnsZeroWithoutFeed() async throws {
+        let context = try makeContext()
+        let article = Article(title: "Orphan", identifier: "id1", url: "u",
+                              rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
+        context.insert(article)
+        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: []) }
+        let inserted = await service.forceReload(article: article)
+        #expect(inserted == 0)
+    }
+
+    // MARK: - Source toggle (Task 2)
+
+    private func freshDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "AggregationServiceTests.\(UUID().uuidString)")!
+    }
+
+    @Test func updateAllSkipsFeedsOfDisabledSource() async throws {
+        let context = try makeContext()
+        let rss = Feed(name: "rss", aggregatorType: .feedContent, identifier: "a")
+        let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
+        context.insert(rss); context.insert(reddit)
+
+        // Reddit toggle off (default) -> reddit feed skipped.
+        let settings = AppSettings(defaults: freshDefaults())
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            settings: settings
+        )
+        await service.updateAll()
+
+        #expect(rss.articles.count == 1)
+        #expect(reddit.articles.isEmpty)
+        #expect(reddit.lastError == nil)
+    }
+
+    @Test func updateFeedSkipsDisabledSourceWithoutError() async throws {
+        let context = try makeContext()
+        let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
+        context.insert(reddit)
+
+        let settings = AppSettings(defaults: freshDefaults()) // reddit off
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            settings: settings
+        )
+        let inserted = await service.update(feed: reddit)
+
+        #expect(inserted == 0)
+        #expect(reddit.articles.isEmpty)
+        #expect(reddit.lastError == nil)
+        #expect(reddit.lastFetchedAt == nil)
+    }
+
+    @Test func updateFeedRunsWhenSourceEnabled() async throws {
+        let context = try makeContext()
+        let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
+        context.insert(reddit)
+
+        let settings = AppSettings(defaults: freshDefaults())
+        settings.redditEnabled = true
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            settings: settings
+        )
+        let inserted = await service.update(feed: reddit)
+
+        #expect(inserted == 1)
+        #expect(reddit.articles.count == 1)
+    }
+
+    // MARK: - Logo resolution (Task 10)
+
+    @Test func setsLogoHashWhenMissing() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "https://e.com/f.xml")
+        context.insert(feed)
+
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            logoResolver: { _, _ in "cafef00d" })
+        await service.update(feed: feed)
+
+        #expect(feed.logoHash == "cafef00d")
+    }
+
+    @Test func doesNotReResolveLogoWhenAlreadySet() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "https://e.com/f.xml")
+        feed.logoHash = "existing"
+        context.insert(feed)
+
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
+            logoResolver: { _, _ in "newvalue" })
+        await service.update(feed: feed)
+
+        #expect(feed.logoHash == "existing")
     }
 }

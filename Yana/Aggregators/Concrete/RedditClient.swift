@@ -87,6 +87,22 @@ final class RedditClient: @unchecked Sendable {
         return valid.sorted { $0.score > $1.score }
     }
 
+    /// Subreddit icon for the feed logo. Prefers `community_icon`, falls back to `icon_img`.
+    /// Returns the entity-decoded, trimmed URL, or nil when unavailable.
+    func fetchSubredditAbout(_ subreddit: String) async -> String? {
+        guard let url = URL(string:
+            "https://oauth.reddit.com/r/\(Self.encodePath(subreddit))/about.json?raw_json=1")
+        else { return nil }
+        guard let data = try? await authorizedGET(url),
+              let about = try? JSONDecoder().decode(RedditAboutResponse.self, from: data) else { return nil }
+        for raw in [about.data.communityIcon, about.data.iconImg] {
+            guard let raw, !raw.isEmpty else { continue }
+            let decoded = RedditMarkdown.decodeEntities(raw).trimmingCharacters(in: .whitespaces)
+            if !decoded.isEmpty { return decoded }
+        }
+        return nil
+    }
+
     static func searchSubreddits(query: String, credentials: AggregatorCredentials,
                                  userAgent: String,
                                  fetch: @escaping Fetch = { try await HTTPClient.fetchJSON($0) }) async -> [RedditSubredditResult] {
@@ -154,6 +170,16 @@ private struct RedditSubredditListing: Decodable {
         let subscribers: Int?
         enum CodingKeys: String, CodingKey {
             case displayName = "display_name", title, subscribers
+        }
+    }
+}
+private struct RedditAboutResponse: Decodable {
+    let data: AboutData
+    struct AboutData: Decodable {
+        let communityIcon: String?
+        let iconImg: String?
+        enum CodingKeys: String, CodingKey {
+            case communityIcon = "community_icon", iconImg = "icon_img"
         }
     }
 }

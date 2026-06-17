@@ -70,6 +70,11 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         return result
     }
 
+    func logoImageURL() async -> String? {
+        guard let client = try? await makeClient() else { return nil }
+        return await client.fetchSubredditAbout(normalizedSubreddit)
+    }
+
     // MARK: - Content building (ports reddit/content.py)
 
     private func buildContent(post: RedditPostData, isCrossPost: Bool, client: RedditClient) async throws -> String {

@@ -60,18 +60,24 @@ final class BackgroundRefreshManager {
     ///
     /// `BGTaskScheduler` invokes the launch handler on a background queue, so the closure
     /// must stay non-isolated and only hop onto the main actor to touch this `@MainActor`
-    /// type — touching `self` synchronously here would trip a main-queue executor
-    /// precondition and trap (EXC_BREAKPOINT).
+    /// type. The `@Sendable` annotation is load-bearing: without it, the closure inherits
+    /// this method's `@MainActor` isolation (the `launchHandler` parameter is not `@Sendable`,
+    /// so isolation is inferred from the enclosing context), and the synthesized main-actor
+    /// precondition traps (EXC_BREAKPOINT) the moment iOS runs the task off the main thread.
     func register() {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: Self.taskIdentifier,
             using: nil
-        ) { task in
-            guard let refreshTask = task as? BGAppRefreshTask else {
-                task.setTaskCompleted(success: false)
-                return
-            }
+        ) { @Sendable task in
+            // `BGTask` is non-Sendable, but iOS hands it to this handler exactly once and we
+            // only ever touch it on the main actor below — so the hop is safe. The compiler
+            // can't prove that across an escaping closure, hence `nonisolated(unsafe)`.
+            nonisolated(unsafe) let task = task
             Task { @MainActor [weak self] in
+                guard let refreshTask = task as? BGAppRefreshTask else {
+                    task.setTaskCompleted(success: false)
+                    return
+                }
                 guard let self else {
                     refreshTask.setTaskCompleted(success: false)
                     return

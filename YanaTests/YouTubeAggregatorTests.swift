@@ -87,4 +87,13 @@ struct YouTubeAggregatorTests {
         #expect(a.content.contains("&lt;script&gt;"))
         #expect(!a.content.contains("<script>alert"))
     }
+
+    @Test func logoImageURLReturnsChannelIcon() async {
+        // makeAggregator's fixture returns channelsJSON with snippet.thumbnails.high = https://img/c.jpg
+        #expect(await makeAggregator(key: "K").logoImageURL() == "https://img/c.jpg")
+    }
+
+    @Test func logoImageURLNilWithoutKey() async {
+        #expect(await makeAggregator(key: nil).logoImageURL() == nil)
+    }
 }

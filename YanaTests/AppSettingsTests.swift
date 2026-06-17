@@ -88,4 +88,21 @@ struct AppSettingsTests {
         s.activeAIProvider = .anthropic
         #expect(fired)
     }
+
+    @Test func isSourceEnabledGatesRedditAndYouTube() {
+        let defaults = freshDefaults()
+        let settings = AppSettings(defaults: defaults)
+
+        // Off by default.
+        #expect(settings.isSourceEnabled(.reddit) == false)
+        #expect(settings.isSourceEnabled(.youtube) == false)
+        // Non-gated types are always active.
+        #expect(settings.isSourceEnabled(.feedContent) == true)
+        #expect(settings.isSourceEnabled(.heise) == true)
+
+        settings.redditEnabled = true
+        settings.youtubeEnabled = true
+        #expect(settings.isSourceEnabled(.reddit) == true)
+        #expect(settings.isSourceEnabled(.youtube) == true)
+    }
 }

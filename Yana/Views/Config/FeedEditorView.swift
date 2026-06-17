@@ -10,10 +10,17 @@ struct FeedEditorView: View {
     let feed: Feed?
     @State private var model: FeedEditorModel
     @State private var showingSearch = false
+    @State private var settings = AppSettings()
 
     init(feed: Feed?) {
         self.feed = feed
         _model = State(initialValue: FeedEditorModel(feed: feed))
+    }
+
+    /// Source-enabled types, always including the feed's current type so an existing
+    /// feed of a now-inactive source still shows a valid selection while editing.
+    private var availableTypes: [AggregatorType] {
+        AggregatorType.allCases.filter { settings.isSourceEnabled($0) || $0 == model.type }
     }
 
     var body: some View {
@@ -21,7 +28,7 @@ struct FeedEditorView: View {
             Section("Feed") {
                 TextField("Name", text: $model.name)
                 Picker("Type", selection: Binding(get: { model.type }, set: { model.changeType($0) })) {
-                    ForEach(AggregatorType.allCases) { type in
+                    ForEach(availableTypes) { type in
                         Text(type.displayName).tag(type)
                     }
                 }
