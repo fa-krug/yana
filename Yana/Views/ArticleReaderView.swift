@@ -10,6 +10,7 @@ struct ArticleReaderView: View {
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
+    @State private var isRefreshing = false
 
     /// The timeline after applying the persisted tag filter. Recomputed on demand; the
     /// `body` evaluates it once per render and threads the result through helpers so
@@ -38,7 +39,7 @@ struct ArticleReaderView: View {
                     ArticlePagerView(
                         articles: articles,
                         currentIndex: $appState.currentIndex,
-                        onRefresh: { await refresh() }
+                        onRefresh: triggerRefresh
                     )
                     .ignoresSafeArea(.container, edges: .horizontal)
                 } else {
@@ -56,6 +57,18 @@ struct ArticleReaderView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .top) {
+                if isRefreshing {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .padding(12)
+                        .background(.regularMaterial, in: Circle())
+                        .padding(.top, 8)
+                        .accessibilityLabel(String(localized: "Refreshing feeds"))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.default, value: isRefreshing)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { appState.showFilter = true } label: { Image(systemName: "line.3.horizontal.decrease.circle") }
@@ -116,9 +129,17 @@ struct ArticleReaderView: View {
 
     // MARK: - Refresh (whole timeline)
 
-    private func refresh() async {
-        let service = AggregationService(context: modelContext)
-        await service.updateAll()
+    /// Kicks off an all-feeds update without blocking the pull gesture. The refresh control
+    /// retracts immediately; progress is shown through the reader's loading indicator instead.
+    /// Ignores re-triggers while an update is already running.
+    private func triggerRefresh() {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        Task {
+            let service = AggregationService(context: modelContext)
+            await service.updateAll()
+            isRefreshing = false
+        }
     }
 
 }
