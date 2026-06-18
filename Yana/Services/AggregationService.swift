@@ -239,7 +239,7 @@ final class AggregationService {
         let seed = AggregatedArticle(
             title: article.title, identifier: article.identifier, url: article.url,
             rawContent: article.rawContent, content: article.content, date: article.date,
-            author: article.author, iconURL: article.iconURL
+            author: article.author, iconURL: article.iconURL, summary: article.summary
         )
         let refreshed: AggregatedArticle?
         do {

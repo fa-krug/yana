@@ -11,4 +11,7 @@ struct AggregatedArticle: Sendable, Equatable {
     var date: Date
     var author: String
     var iconURL: String?
+    /// AI-generated summary, rendered as a block between the article header and body.
+    /// Empty when summarization is off or unavailable.
+    var summary: String = ""
 }
