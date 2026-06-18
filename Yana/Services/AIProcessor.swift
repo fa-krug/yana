@@ -13,6 +13,10 @@ protocol AIProcessing: Sendable {
 struct AIProcessor: AIProcessing {
     typealias Generate = @Sendable (_ prompt: String, _ jsonMode: Bool) async throws -> String
 
+    /// Upper bound on simultaneous in-flight AI requests. Caps overlap so a large batch does
+    /// not fan out to unbounded concurrent provider calls.
+    static let maxConcurrentAIRequests = 3
+
     let config: AIConfig
     let requestDelay: Int
     let generate: Generate
@@ -39,35 +43,58 @@ struct AIProcessor: AIProcessing {
             return input
         }
 
-        var output: [AggregatedArticle] = []
-        for (i, article) in input.enumerated() {
-            if Task.isCancelled { break }   // background run expired — stop making network calls
-            if i > 0, requestDelay > 0 {
-                try? await Task.sleep(nanoseconds: UInt64(requestDelay) * 1_000_000_000)
+        // Results indexed by input position so order is preserved regardless of completion order.
+        var results = [AggregatedArticle?](repeating: nil, count: input.count)
+        let cap = min(Self.maxConcurrentAIRequests, input.count)
+
+        await withTaskGroup(of: (Int, AggregatedArticle?).self) { group in
+            var launched = 0
+
+            // Launch one article's request, spacing launches by `requestDelay` to respect
+            // provider rate limits (the responses still overlap).
+            func launch(_ i: Int) async {
+                if i > 0, requestDelay > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(requestDelay) * 1_000_000_000)
+                }
+                let article = input[i]
+                group.addTask { (i, await self.processOne(article, ai: ai)) }
             }
 
-            // Empty content: keep unchanged, do not call AI (server parity).
-            guard !article.content.isEmpty else {
-                output.append(article)
-                continue
+            while launched < cap, !Task.isCancelled {
+                await launch(launched)
+                launched += 1
             }
 
-            let cleanHTML = ArticleAIText.cap((try? ArticleAIText.stripChrome(article.content)) ?? article.content)
-            let prompt = Self.buildPrompt(title: article.title, cleanHTML: cleanHTML, ai: ai)
-
-            do {
-                let raw = try await generate(prompt, true)
-                guard let parsed = Self.extractJSON(raw) else { continue }   // drop on invalid JSON
-                var updated = article
-                if let title = parsed["title"] as? String { updated.title = title }
-                if let content = parsed["content"] as? String { updated.content = content }
-                if let summary = parsed["summary"] as? String { updated.summary = summary }
-                output.append(updated)
-            } catch {
-                continue        // drop on AI failure
+            while let (index, value) = await group.next() {
+                results[index] = value
+                if Task.isCancelled { break }   // a newer run cancelled this one — stop launching
+                if launched < input.count {
+                    await launch(launched)
+                    launched += 1
+                }
             }
         }
-        return output
+
+        return results.compactMap { $0 }
+    }
+
+    /// Process a single article. Returns it unchanged when content is empty (server parity),
+    /// the AI-updated article on success, or `nil` to DROP it (invalid JSON or AI failure).
+    private func processOne(_ article: AggregatedArticle, ai: AIOptions) async -> AggregatedArticle? {
+        guard !article.content.isEmpty else { return article }
+        let cleanHTML = ArticleAIText.cap((try? ArticleAIText.stripChrome(article.content)) ?? article.content)
+        let prompt = Self.buildPrompt(title: article.title, cleanHTML: cleanHTML, ai: ai)
+        do {
+            let raw = try await generate(prompt, true)
+            guard let parsed = Self.extractJSON(raw) else { return nil }
+            var updated = article
+            if let title = parsed["title"] as? String { updated.title = title }
+            if let content = parsed["content"] as? String { updated.content = content }
+            if let summary = parsed["summary"] as? String { updated.summary = summary }
+            return updated
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Prompt assembly (exact server instruction strings)
