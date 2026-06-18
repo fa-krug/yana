@@ -39,6 +39,10 @@ designed for privacy-conscious users who want their feeds without any backend.
   articles), `KeychainService` (stores aggregator API keys), the AI
   post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini JSON-mode calls) and
   `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert) —
+  `CredentialTester` (validates entered Reddit/YouTube/AI keys via a minimal auth probe on each
+  client — `RedditClient.verifyCredentials`, `YouTubeClient.verifyKey`, `AIClient.verify` — mapping
+  outcomes to a shared `CredentialTestError`: invalid-credentials / network / unexpected-response;
+  surfaced by per-section **Test** buttons in Settings) —
   `BackgroundRefreshManager` (best-effort periodic `BGAppRefreshTask`: registers at launch,
   reschedules at `AppSettings.backgroundInterval`, runs `updateAll()` in the handler, then posts
   a new-article notification when enabled), `NotificationService` (`Notifying` protocol +
@@ -80,7 +84,9 @@ designed for privacy-conscious users who want their feeds without any backend.
 `AggregatorType` mirrors the Yana server's aggregators: `fullWebsite`, `feedContent`
 (RSS/Atom), the managed scrapers (`heise`, `merkur`, `tagesschau`, `explosm`, `darkLegacy`,
 `caschysBlog`, `mactechnews`, `oglaf`, `meinMmo`), and the social/media sources (`youtube`,
-`reddit`, `podcast`). Reddit and YouTube require user-supplied API keys (stored in Keychain).
+`reddit`, `podcast`). Reddit and YouTube require user-supplied API keys (stored in Keychain);
+a **Test** button in Settings validates these (and each AI provider key) via a minimal auth probe
+before use, with Apple Intelligence checked for on-device availability instead.
 
 ### Tests
 - `YanaTests/` — unit tests using Swift Testing framework (`import Testing`)
@@ -116,6 +122,7 @@ designed for privacy-conscious users who want their feeds without any backend.
 - **Search** ✅ — search across articles (title/content/author/feed name) via the config hub's `ArticleListView`
 - **OPML import/export** ✅ — standard OPML with `yana:` extension attributes for full-fidelity round-trip, from the Feeds screen
 - **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background refresh
+- **Credential validation** ✅ — per-section **Test** buttons in Settings that verify Reddit, YouTube, and AI-provider keys (and Apple Intelligence availability) via a minimal auth probe, classifying failures as invalid credentials / network / unexpected response
 - **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
 - **Multiple libraries** — support multiple independent local feed libraries/profiles
 - **Offline reading** — cache articles locally for offline access

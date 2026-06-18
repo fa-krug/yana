@@ -50,7 +50,8 @@ privacy-conscious users who want their feeds without any backend.
   timeline. Per-feed and all-feeds updates are available in the config hub.
 - **Keys.** Reddit and YouTube require user-supplied API keys; AI post-processing
   (summarize / improve / translate) uses your own OpenAI / Anthropic / Gemini key. Secrets
-  are stored in the Keychain.
+  are stored in the Keychain. A **Test** button in Settings checks each key with a minimal
+  auth call and tells you whether it's valid before you rely on it.
 
 ## Features
 
@@ -84,7 +85,7 @@ Yana/
   ContentView.swift         # Root view; opens directly into the timeline reader
   Models/                   # SwiftData @Model types (Feed, Tag, Article), options, settings
   Aggregators/              # AggregatorType, Aggregator protocol, registry, DTOs
-  Services/                 # AggregationService, KeychainService, AIClient, AIProcessor
+  Services/                 # AggregationService, KeychainService, AIClient, AIProcessor, CredentialTester
   Views/                    # SwiftUI views (reader + config hub)
   Utilities/                # Constants and extensions
   Resources/                # Asset catalogs, string catalog
