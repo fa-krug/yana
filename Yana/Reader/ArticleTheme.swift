@@ -31,8 +31,8 @@ struct ArticleTheme: Equatable, Sendable {
         self.url = url
         self.name = Self.themeNameForPath(url.path)
 
-        let coreURL = Bundle.main.url(forResource: "core", withExtension: "css")!
-        let core = Self.stringAtPath(coreURL.path) ?? ""
+        let core = Bundle.main.url(forResource: "core", withExtension: "css")
+            .flatMap { Self.stringAtPath($0.path) } ?? ""
         if let sheet = Self.stringAtPath(url.appendingPathComponent("stylesheet.css").path) {
             self.css = core + "\n" + sheet
         } else {
@@ -41,6 +41,7 @@ struct ArticleTheme: Equatable, Sendable {
         self.template = Self.stringAtPath(url.appendingPathComponent("template.html").path)
 
         let data = try Data(contentsOf: url.appendingPathComponent("Info.plist"))
+        // Decode to validate the bundle is a well-formed theme; the display name comes from the folder name.
         _ = try PropertyListDecoder().decode(ArticleThemePlist.self, from: data)
     }
 
