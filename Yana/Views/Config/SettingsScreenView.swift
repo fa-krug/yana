@@ -285,6 +285,8 @@ struct SettingsScreenView: View {
                 Text("Test")
                 if status == .testing {
                     Spacer()
+                    Text("Testing…")
+                        .foregroundStyle(.secondary)
                     ProgressView()
                 }
             }

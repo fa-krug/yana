@@ -110,4 +110,10 @@ struct YouTubeClientTests {
         let result = await client.verifyKey()
         #expect(result == .network)
     }
+
+    @Test func verifyKeyReportsUnexpectedOnUnparseableBody() async {
+        let client = YouTubeClient(apiKey: "K") { _ in Data("not json".utf8) }
+        let result = await client.verifyKey()
+        #expect(result == .unexpectedResponse)
+    }
 }
