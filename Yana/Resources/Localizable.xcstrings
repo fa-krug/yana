@@ -1885,6 +1885,26 @@
           }
         }
       }
+    },
+    "Test": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testen"
+          }
+        }
+      }
+    },
+    "Credentials valid": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zugangsdaten gültig"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

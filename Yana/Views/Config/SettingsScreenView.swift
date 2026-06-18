@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// Per-section credential-test state shown in Settings.
+enum TestStatus: Equatable {
+    case idle
+    case testing
+    case valid
+    case invalid(String)   // localized message
+}
+
 /// Full-parity settings: sources (Reddit/YouTube), AI providers + knobs, library prefs.
 /// Secrets are read from / written to the Keychain via local @State; non-secret prefs go to
 /// `AppSettings` (UserDefaults).
@@ -14,6 +22,13 @@ struct SettingsScreenView: View {
     @State private var openaiKey = ""
     @State private var anthropicKey = ""
     @State private var geminiKey = ""
+
+    @State private var redditStatus: TestStatus = .idle
+    @State private var youtubeStatus: TestStatus = .idle
+    @State private var openaiStatus: TestStatus = .idle
+    @State private var anthropicStatus: TestStatus = .idle
+    @State private var geminiStatus: TestStatus = .idle
+    @State private var appleStatus: TestStatus = .idle
 
     var body: some View {
         Form {
@@ -84,11 +99,23 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.orange))
             }
             SecureField("Client ID", text: $redditClientID)
-                .onChange(of: redditClientID) { _, v in KeychainService.saveAPIKey(v, for: .redditClientID) }
+                .onChange(of: redditClientID) { _, v in
+                    KeychainService.saveAPIKey(v, for: .redditClientID); redditStatus = .idle
+                }
             SecureField("Client Secret", text: $redditClientSecret)
-                .onChange(of: redditClientSecret) { _, v in KeychainService.saveAPIKey(v, for: .redditClientSecret) }
+                .onChange(of: redditClientSecret) { _, v in
+                    KeychainService.saveAPIKey(v, for: .redditClientSecret); redditStatus = .idle
+                }
             TextField("User Agent", text: $settings.redditUserAgent)
                 .autocorrectionDisabled()
+            testControls(status: redditStatus,
+                         disabled: redditClientID.isEmpty || redditClientSecret.isEmpty) {
+                runTest({ redditStatus = $0 }) {
+                    await CredentialTester.reddit(clientID: redditClientID,
+                                                  clientSecret: redditClientSecret,
+                                                  userAgent: settings.redditUserAgent)
+                }
+            }
         }
     }
 
@@ -99,7 +126,14 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.red))
             }
             SecureField("API Key", text: $youtubeKey)
-                .onChange(of: youtubeKey) { _, v in KeychainService.saveAPIKey(v, for: .youtubeAPIKey) }
+                .onChange(of: youtubeKey) { _, v in
+                    KeychainService.saveAPIKey(v, for: .youtubeAPIKey); youtubeStatus = .idle
+                }
+            testControls(status: youtubeStatus, disabled: youtubeKey.isEmpty) {
+                runTest({ youtubeStatus = $0 }) {
+                    await CredentialTester.youtube(apiKey: youtubeKey)
+                }
+            }
         }
     }
 
@@ -140,28 +174,59 @@ struct SettingsScreenView: View {
 
             DisclosureGroup("OpenAI") {
                 SecureField("API Key", text: $openaiKey)
-                    .onChange(of: openaiKey) { _, v in KeychainService.saveAPIKey(v, for: .openaiAPIKey) }
+                    .onChange(of: openaiKey) { _, v in
+                        KeychainService.saveAPIKey(v, for: .openaiAPIKey); openaiStatus = .idle
+                    }
                 TextField("API URL", text: $settings.openaiAPIURL).autocorrectionDisabled()
                 Picker("Model", selection: $settings.openaiModel) {
                     ForEach(AIProvider.openai.models, id: \.self) { Text($0).tag($0) }
                 }
+                testControls(status: openaiStatus, disabled: openaiKey.isEmpty) {
+                    runTest({ openaiStatus = $0 }) {
+                        await CredentialTester.ai(provider: .openai, apiKey: openaiKey,
+                                                  model: settings.openaiModel,
+                                                  openaiAPIURL: settings.openaiAPIURL)
+                    }
+                }
             }
             DisclosureGroup("Anthropic") {
                 SecureField("API Key", text: $anthropicKey)
-                    .onChange(of: anthropicKey) { _, v in KeychainService.saveAPIKey(v, for: .anthropicAPIKey) }
+                    .onChange(of: anthropicKey) { _, v in
+                        KeychainService.saveAPIKey(v, for: .anthropicAPIKey); anthropicStatus = .idle
+                    }
                 Picker("Model", selection: $settings.anthropicModel) {
                     ForEach(AIProvider.anthropic.models, id: \.self) { Text($0).tag($0) }
+                }
+                testControls(status: anthropicStatus, disabled: anthropicKey.isEmpty) {
+                    runTest({ anthropicStatus = $0 }) {
+                        await CredentialTester.ai(provider: .anthropic, apiKey: anthropicKey,
+                                                  model: settings.anthropicModel,
+                                                  openaiAPIURL: settings.openaiAPIURL)
+                    }
                 }
             }
             DisclosureGroup("Gemini") {
                 SecureField("API Key", text: $geminiKey)
-                    .onChange(of: geminiKey) { _, v in KeychainService.saveAPIKey(v, for: .geminiAPIKey) }
+                    .onChange(of: geminiKey) { _, v in
+                        KeychainService.saveAPIKey(v, for: .geminiAPIKey); geminiStatus = .idle
+                    }
                 Picker("Model", selection: $settings.geminiModel) {
                     ForEach(AIProvider.gemini.models, id: \.self) { Text($0).tag($0) }
+                }
+                testControls(status: geminiStatus, disabled: geminiKey.isEmpty) {
+                    runTest({ geminiStatus = $0 }) {
+                        await CredentialTester.ai(provider: .gemini, apiKey: geminiKey,
+                                                  model: settings.geminiModel,
+                                                  openaiAPIURL: settings.openaiAPIURL)
+                    }
                 }
             }
             if settings.activeAIProvider == .appleIntelligence {
                 LabeledContent("Status", value: appleIntelligenceStatus)
+                testControls(status: appleStatus, disabled: false) {
+                    let available = AppleIntelligenceClient().availability == .available
+                    appleStatus = available ? .valid : .invalid(appleIntelligenceStatus)
+                }
             }
         }
     }
@@ -209,6 +274,42 @@ struct SettingsScreenView: View {
                       systemImage: "arrow.clockwise")
                     .labelStyle(.tintedIcon(.blue))
             }
+        }
+    }
+
+    /// A "Test" button plus an inline status row, reused by every credential section.
+    @ViewBuilder
+    private func testControls(status: TestStatus, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text("Test")
+                if status == .testing {
+                    Spacer()
+                    ProgressView()
+                }
+            }
+        }
+        .disabled(disabled || status == .testing)
+
+        switch status {
+        case .idle, .testing:
+            EmptyView()
+        case .valid:
+            Label("Credentials valid", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .invalid(let message):
+            Label(message, systemImage: "xmark.circle.fill")
+                .foregroundStyle(.red)
+        }
+    }
+
+    /// Run an async credential test, threading its status through `setter`.
+    private func runTest(_ setter: @escaping (TestStatus) -> Void,
+                         _ op: @escaping () async -> CredentialTestError?) {
+        setter(.testing)
+        Task {
+            let error = await op()
+            setter(error.map { .invalid($0.localizedMessage) } ?? .valid)
         }
     }
 

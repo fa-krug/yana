@@ -18,3 +18,32 @@ enum CredentialTestError: Error, Equatable {
         }
     }
 }
+
+/// Builds a client from raw field values (live-network default fetch) and runs its verify
+/// method. Pure composition over the per-client `verify*` methods, which carry the logic.
+enum CredentialTester {
+    static func reddit(clientID: String, clientSecret: String, userAgent: String) async -> CredentialTestError? {
+        await RedditClient(clientID: clientID, clientSecret: clientSecret, userAgent: userAgent)
+            .verifyCredentials()
+    }
+
+    static func youtube(apiKey: String) async -> CredentialTestError? {
+        await YouTubeClient(apiKey: apiKey).verifyKey()
+    }
+
+    static func ai(provider: AIProvider, apiKey: String, model: String, openaiAPIURL: String) async -> CredentialTestError? {
+        let config = AIConfig(
+            provider: provider,
+            model: model,
+            apiKey: apiKey,
+            openaiAPIURL: openaiAPIURL,
+            temperature: 0.0,
+            maxTokens: 16,       // tiny probe — keep the test cheap
+            requestTimeout: 30,
+            maxRetries: 0,
+            retryDelay: 0,
+            maxRetryTime: 10
+        )
+        return await AIClient(config: config).verify()
+    }
+}
