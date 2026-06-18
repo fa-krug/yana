@@ -129,13 +129,12 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
-        // Our own rendered article (loaded under the base origin) and `yana-img://` image
-        // requests load in place. Every other http(s) navigation — any tapped link whatever its
-        // navigation type, redirect, or `target="_blank"` — is cancelled and opened in the same
-        // browser as the Open-in-Browser button.
-        let isOwnDocument = url.absoluteString.hasPrefix(ReaderWeb.baseOrigin)
-        let isWebLink = url.scheme == "http" || url.scheme == "https"
-        if isWebLink && !isOwnDocument {
+        // Our own rendered article and `yana-img://` image requests load in place; any followed
+        // link is cancelled and opened in the same browser as the Open-in-Browser button. See
+        // ReaderLinkPolicy for why this keys off the navigation kind, not the URL's origin.
+        if ReaderLinkPolicy.opensExternally(
+            url: url, navigationType: navigationAction.navigationType,
+            targetIsMainFrame: navigationAction.targetFrame?.isMainFrame ?? true) {
             decisionHandler(.cancel)
             openExternally(url)
             return
@@ -157,7 +156,18 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         if settings.useSystemBrowser {
             UIApplication.shared.open(url)
         } else {
-            present(SFSafariViewController(url: url), animated: true)
+            // This view controller is a page inside a UIPageViewController; presenting from it
+            // directly can silently fail, so present from the top-most controller in the window.
+            let presenter = topmostPresenter ?? self
+            presenter.present(SFSafariViewController(url: url), animated: true)
         }
+    }
+
+    /// The deepest currently-presented controller reachable from this scene's root, or nil if
+    /// the view is not yet in a window.
+    private var topmostPresenter: UIViewController? {
+        guard var top = view.window?.rootViewController else { return nil }
+        while let presented = top.presentedViewController { top = presented }
+        return top
     }
 }
