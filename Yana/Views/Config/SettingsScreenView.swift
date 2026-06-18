@@ -22,12 +22,18 @@ struct SettingsScreenView: View {
     @State private var openaiKey = ""
     @State private var anthropicKey = ""
     @State private var geminiKey = ""
+    @State private var mistralKey = ""
+    @State private var qwenKey = ""
+    @State private var deepseekKey = ""
 
     @State private var redditStatus: TestStatus = .idle
     @State private var youtubeStatus: TestStatus = .idle
     @State private var openaiStatus: TestStatus = .idle
     @State private var anthropicStatus: TestStatus = .idle
     @State private var geminiStatus: TestStatus = .idle
+    @State private var mistralStatus: TestStatus = .idle
+    @State private var qwenStatus: TestStatus = .idle
+    @State private var deepseekStatus: TestStatus = .idle
     @State private var appleStatus: TestStatus = .idle
 
     var body: some View {
@@ -172,61 +178,113 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.purple))
             }
 
-            DisclosureGroup("OpenAI") {
-                SecureField("API Key", text: $openaiKey)
-                    .onChange(of: openaiKey) { _, v in
-                        KeychainService.saveAPIKey(v, for: .openaiAPIKey); openaiStatus = .idle
-                    }
-                TextField("API URL", text: $settings.openaiAPIURL).autocorrectionDisabled()
-                Picker("Model", selection: $settings.openaiModel) {
-                    ForEach(AIProvider.openai.models, id: \.self) { Text($0).tag($0) }
+            providerConfig
+        }
+    }
+
+    /// Detailed config for the currently-selected provider only (mirrors AggregatorOptionsForm's
+    /// switch-on-type). `.none` shows nothing; keys for other providers stay in the Keychain.
+    @ViewBuilder
+    private var providerConfig: some View {
+        switch settings.activeAIProvider {
+        case .none:
+            EmptyView()
+        case .openai:
+            SecureField("API Key", text: $openaiKey)
+                .onChange(of: openaiKey) { _, v in
+                    KeychainService.saveAPIKey(v, for: .openaiAPIKey); openaiStatus = .idle
                 }
-                testControls(status: openaiStatus, disabled: openaiKey.isEmpty) {
-                    runTest({ openaiStatus = $0 }) {
-                        await CredentialTester.ai(provider: .openai, apiKey: openaiKey,
-                                                  model: settings.openaiModel,
-                                                  openaiAPIURL: settings.openaiAPIURL)
-                    }
+            TextField("API URL", text: $settings.openaiAPIURL).autocorrectionDisabled()
+            Picker("Model", selection: $settings.openaiModel) {
+                ForEach(AIProvider.openai.models, id: \.self) { Text($0).tag($0) }
+            }
+            testControls(status: openaiStatus, disabled: openaiKey.isEmpty) {
+                runTest({ openaiStatus = $0 }) {
+                    await CredentialTester.ai(provider: .openai, apiKey: openaiKey,
+                                              model: settings.openaiModel,
+                                              openaiAPIURL: settings.openaiAPIURL)
                 }
             }
-            DisclosureGroup("Anthropic") {
-                SecureField("API Key", text: $anthropicKey)
-                    .onChange(of: anthropicKey) { _, v in
-                        KeychainService.saveAPIKey(v, for: .anthropicAPIKey); anthropicStatus = .idle
-                    }
-                Picker("Model", selection: $settings.anthropicModel) {
-                    ForEach(AIProvider.anthropic.models, id: \.self) { Text($0).tag($0) }
+        case .anthropic:
+            SecureField("API Key", text: $anthropicKey)
+                .onChange(of: anthropicKey) { _, v in
+                    KeychainService.saveAPIKey(v, for: .anthropicAPIKey); anthropicStatus = .idle
                 }
-                testControls(status: anthropicStatus, disabled: anthropicKey.isEmpty) {
-                    runTest({ anthropicStatus = $0 }) {
-                        await CredentialTester.ai(provider: .anthropic, apiKey: anthropicKey,
-                                                  model: settings.anthropicModel,
-                                                  openaiAPIURL: settings.openaiAPIURL)
-                    }
+            Picker("Model", selection: $settings.anthropicModel) {
+                ForEach(AIProvider.anthropic.models, id: \.self) { Text($0).tag($0) }
+            }
+            testControls(status: anthropicStatus, disabled: anthropicKey.isEmpty) {
+                runTest({ anthropicStatus = $0 }) {
+                    await CredentialTester.ai(provider: .anthropic, apiKey: anthropicKey,
+                                              model: settings.anthropicModel,
+                                              openaiAPIURL: settings.openaiAPIURL)
                 }
             }
-            DisclosureGroup("Gemini") {
-                SecureField("API Key", text: $geminiKey)
-                    .onChange(of: geminiKey) { _, v in
-                        KeychainService.saveAPIKey(v, for: .geminiAPIKey); geminiStatus = .idle
-                    }
-                Picker("Model", selection: $settings.geminiModel) {
-                    ForEach(AIProvider.gemini.models, id: \.self) { Text($0).tag($0) }
+        case .gemini:
+            SecureField("API Key", text: $geminiKey)
+                .onChange(of: geminiKey) { _, v in
+                    KeychainService.saveAPIKey(v, for: .geminiAPIKey); geminiStatus = .idle
                 }
-                testControls(status: geminiStatus, disabled: geminiKey.isEmpty) {
-                    runTest({ geminiStatus = $0 }) {
-                        await CredentialTester.ai(provider: .gemini, apiKey: geminiKey,
-                                                  model: settings.geminiModel,
-                                                  openaiAPIURL: settings.openaiAPIURL)
-                    }
+            Picker("Model", selection: $settings.geminiModel) {
+                ForEach(AIProvider.gemini.models, id: \.self) { Text($0).tag($0) }
+            }
+            testControls(status: geminiStatus, disabled: geminiKey.isEmpty) {
+                runTest({ geminiStatus = $0 }) {
+                    await CredentialTester.ai(provider: .gemini, apiKey: geminiKey,
+                                              model: settings.geminiModel,
+                                              openaiAPIURL: settings.openaiAPIURL)
                 }
             }
-            if settings.activeAIProvider == .appleIntelligence {
-                LabeledContent("Status", value: appleIntelligenceStatus)
-                testControls(status: appleStatus, disabled: false) {
-                    let available = AppleIntelligenceClient().availability == .available
-                    appleStatus = available ? .valid : .invalid(appleIntelligenceStatus)
+        case .mistral:
+            SecureField("API Key", text: $mistralKey)
+                .onChange(of: mistralKey) { _, v in
+                    KeychainService.saveAPIKey(v, for: .mistralAPIKey); mistralStatus = .idle
                 }
+            Picker("Model", selection: $settings.mistralModel) {
+                ForEach(AIProvider.mistral.models, id: \.self) { Text($0).tag($0) }
+            }
+            testControls(status: mistralStatus, disabled: mistralKey.isEmpty) {
+                runTest({ mistralStatus = $0 }) {
+                    await CredentialTester.ai(provider: .mistral, apiKey: mistralKey,
+                                              model: settings.mistralModel,
+                                              openaiAPIURL: settings.openaiAPIURL)
+                }
+            }
+        case .qwen:
+            SecureField("API Key", text: $qwenKey)
+                .onChange(of: qwenKey) { _, v in
+                    KeychainService.saveAPIKey(v, for: .qwenAPIKey); qwenStatus = .idle
+                }
+            Picker("Model", selection: $settings.qwenModel) {
+                ForEach(AIProvider.qwen.models, id: \.self) { Text($0).tag($0) }
+            }
+            testControls(status: qwenStatus, disabled: qwenKey.isEmpty) {
+                runTest({ qwenStatus = $0 }) {
+                    await CredentialTester.ai(provider: .qwen, apiKey: qwenKey,
+                                              model: settings.qwenModel,
+                                              openaiAPIURL: settings.openaiAPIURL)
+                }
+            }
+        case .deepseek:
+            SecureField("API Key", text: $deepseekKey)
+                .onChange(of: deepseekKey) { _, v in
+                    KeychainService.saveAPIKey(v, for: .deepseekAPIKey); deepseekStatus = .idle
+                }
+            Picker("Model", selection: $settings.deepseekModel) {
+                ForEach(AIProvider.deepseek.models, id: \.self) { Text($0).tag($0) }
+            }
+            testControls(status: deepseekStatus, disabled: deepseekKey.isEmpty) {
+                runTest({ deepseekStatus = $0 }) {
+                    await CredentialTester.ai(provider: .deepseek, apiKey: deepseekKey,
+                                              model: settings.deepseekModel,
+                                              openaiAPIURL: settings.openaiAPIURL)
+                }
+            }
+        case .appleIntelligence:
+            LabeledContent("Status", value: appleIntelligenceStatus)
+            testControls(status: appleStatus, disabled: false) {
+                let available = AppleIntelligenceClient().availability == .available
+                appleStatus = available ? .valid : .invalid(appleIntelligenceStatus)
             }
         }
     }
@@ -322,5 +380,8 @@ struct SettingsScreenView: View {
         openaiKey = KeychainService.loadAPIKey(for: .openaiAPIKey) ?? ""
         anthropicKey = KeychainService.loadAPIKey(for: .anthropicAPIKey) ?? ""
         geminiKey = KeychainService.loadAPIKey(for: .geminiAPIKey) ?? ""
+        mistralKey = KeychainService.loadAPIKey(for: .mistralAPIKey) ?? ""
+        qwenKey = KeychainService.loadAPIKey(for: .qwenAPIKey) ?? ""
+        deepseekKey = KeychainService.loadAPIKey(for: .deepseekAPIKey) ?? ""
     }
 }
