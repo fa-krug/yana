@@ -131,7 +131,7 @@ final class AggregationService {
             provider: provider,
             model: model,
             apiKey: key,
-            openaiAPIURL: settings.openaiAPIURL,
+            apiBaseURL: settings.openaiAPIURL,
             temperature: settings.aiTemperature,
             maxTokens: settings.aiMaxTokens,
             requestTimeout: settings.aiRequestTimeout,

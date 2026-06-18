@@ -36,7 +36,7 @@ enum CredentialTester {
             provider: provider,
             model: model,
             apiKey: apiKey,
-            openaiAPIURL: openaiAPIURL,
+            apiBaseURL: openaiAPIURL,
             temperature: 0.0,
             maxTokens: 16,       // tiny probe — keep the test cheap
             requestTimeout: 30,

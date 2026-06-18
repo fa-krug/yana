@@ -19,7 +19,7 @@ struct AIProcessorTests {
 
     private func config(provider: AIProvider = .openai, key: String = "k") -> AIConfig {
         AIConfig(provider: provider, model: "m", apiKey: key,
-                 openaiAPIURL: "https://api.openai.com/v1",
+                 apiBaseURL: "https://api.openai.com/v1",
                  temperature: 0.3, maxTokens: 2000, requestTimeout: 120,
                  maxRetries: 3, retryDelay: 0, maxRetryTime: 60)
     }
