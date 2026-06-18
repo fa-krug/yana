@@ -146,7 +146,7 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     // MARK: - Links → in-app browser
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
         // Only a link the user tapped (`.linkActivated`) leaves the reader; the article load,
         // image-scheme requests and embeds are `.other` and load in place. See ReaderLinkPolicy.

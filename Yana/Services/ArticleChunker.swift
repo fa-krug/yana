@@ -11,7 +11,7 @@ enum ArticleChunker {
         // Top-level block elements; fall back to the whole string if parsing yields nothing.
         let blocks: [String]
         if let body = try? SwiftSoup.parse(html).body(),
-           let children = try? body.children().array(),
+           case let children = body.children().array(),
            !children.isEmpty {
             blocks = children.compactMap { try? $0.outerHtml() }
         } else {
