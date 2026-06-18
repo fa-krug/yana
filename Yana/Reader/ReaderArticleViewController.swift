@@ -64,6 +64,7 @@ final class ReaderArticleViewController: UIViewController,
         super.viewWillAppear(animated)
         navigationController?.setToolbarHidden(false, animated: false)
         applyFullscreen(settings.articleFullscreenEnabled && isFullscreenAvailable, animated: false)
+        displayedWebVC?.reload()
     }
 
     // MARK: - Chrome
