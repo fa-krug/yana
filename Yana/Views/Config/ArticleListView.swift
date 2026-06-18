@@ -17,6 +17,10 @@ struct ArticleListView: View {
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
 
+    /// Shared, app-lifetime flag so the spinner survives leaving and returning to this screen
+    /// while a detached update Task keeps running in the background.
+    private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
+
     private var results: [Article] {
         let searched = ArticleSearch.filter(allArticles, query: searchText)
         return TagFilter.apply(to: searched, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged)
@@ -51,14 +55,6 @@ struct ArticleListView: View {
                 .tint(.yellow)
                 Button {
                     UpdateActivity.shared.restart {
-                        await AggregationService(context: modelContext).update(article: article)
-                    }
-                } label: {
-                    Label("Update", systemImage: "arrow.clockwise")
-                }
-                .tint(.blue)
-                Button {
-                    UpdateActivity.shared.restart {
                         await AggregationService(context: modelContext).forceReload(article: article)
                     }
                 } label: {
@@ -75,6 +71,15 @@ struct ArticleListView: View {
         }
         .navigationTitle("Articles")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if isUpdating {
+                    // While any update runs, the button becomes a tappable spinner that stops it.
+                    Button { UpdateActivity.shared.cancel() } label: {
+                        ProgressView()
+                    }
+                    .accessibilityLabel(Text("Stop updating"))
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showFilter = true
