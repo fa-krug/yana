@@ -50,13 +50,17 @@ struct ArticleListView: View {
                 }
                 .tint(.yellow)
                 Button {
-                    Task { await AggregationService(context: modelContext).update(article: article) }
+                    UpdateActivity.shared.restart {
+                        await AggregationService(context: modelContext).update(article: article)
+                    }
                 } label: {
                     Label("Update", systemImage: "arrow.clockwise")
                 }
                 .tint(.blue)
                 Button {
-                    Task { await AggregationService(context: modelContext).forceReload(article: article) }
+                    UpdateActivity.shared.restart {
+                        await AggregationService(context: modelContext).forceReload(article: article)
+                    }
                 } label: {
                     Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
                 }
@@ -104,17 +108,20 @@ struct ArticleListView: View {
     }
 
     private func row(_ article: Article) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(article.title).font(.headline).lineLimit(2)
-            HStack(spacing: 6) {
-                if let name = article.feed?.name, !name.isEmpty {
-                    Text(name).foregroundStyle(Color.accentColor)
-                    Text("·")
+        HStack(spacing: 12) {
+            FeedLogoView(hash: article.feed?.logoHash)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(article.title).font(.headline).lineLimit(2)
+                HStack(spacing: 6) {
+                    if let name = article.feed?.name, !name.isEmpty {
+                        Text(name).foregroundStyle(Color.accentColor)
+                        Text("·")
+                    }
+                    Text(article.date, style: .date)
                 }
-                Text(article.date, style: .date)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
     }
 }

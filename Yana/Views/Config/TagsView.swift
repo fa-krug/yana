@@ -33,8 +33,10 @@ struct TagsView: View {
             NavigationLink {
                 TagEditorView(tag: tag)
             } label: {
-                HStack {
-                    Circle().fill(Color(hex: tag.colorHex) ?? .accentColor).frame(width: 14, height: 14)
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill((Color(hex: tag.colorHex) ?? .accentColor).gradient)
+                        .frame(width: 22, height: 22)
                     Text(tag.name)
                     if tag.isBuiltIn {
                         Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary)

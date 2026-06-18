@@ -7,7 +7,6 @@ import UniformTypeIdentifiers
 struct FeedsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.name) private var feeds: [Feed]
-    @State private var isUpdating = false
     @State private var isImporting = false
     @State private var exportURL: URL?
     @State private var isExporting = false
@@ -15,6 +14,10 @@ struct FeedsView: View {
     @State private var feedToDelete: Feed?
     @State private var searchText = ""
     @State private var settings = AppSettings()
+
+    /// Shared, app-lifetime flag so the spinner survives leaving and returning to this screen
+    /// while a detached update Task keeps running in the background.
+    private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
     private var filteredFeeds: [Feed] {
         NameSearch.filter(feeds, query: searchText, name: \.name)
@@ -35,19 +38,19 @@ struct FeedsView: View {
             },
             leadingActions: { feed in
                 Button {
-                    Task { await updateOne(feed) }
+                    updateOne(feed)
                 } label: {
                     Label("Update", systemImage: "arrow.clockwise")
                 }
                 .tint(.blue)
-                .disabled(isUpdating || !settings.isSourceEnabled(feed.type))
+                .disabled(!settings.isSourceEnabled(feed.type))
                 Button {
-                    Task { await forceReloadOne(feed) }
+                    forceReloadOne(feed)
                 } label: {
                     Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
                 }
                 .tint(.orange)
-                .disabled(isUpdating || !settings.isSourceEnabled(feed.type))
+                .disabled(!settings.isSourceEnabled(feed.type))
             }
         ) { feed in
             NavigationLink {
@@ -66,10 +69,9 @@ struct FeedsView: View {
                 }
             }
             ToolbarItem(placement: .topBarLeading) {
-                if isUpdating {
-                    ProgressView()
-                } else {
-                    Button("Update All") { Task { await updateAll() } }
+                HStack(spacing: 8) {
+                    if isUpdating { ProgressView() }
+                    Button("Update All") { updateAll() }
                         .disabled(feeds.isEmpty)
                 }
             }
@@ -118,6 +120,17 @@ struct FeedsView: View {
         }
     }
 
+    /// A small capsule chip used for at-a-glance feed status (disabled, source off).
+    private func badge(_ text: Text, tint: Color) -> some View {
+        text
+            .font(.caption2)
+            .fontWeight(.medium)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.15), in: Capsule())
+    }
+
     private func row(_ feed: Feed) -> some View {
         let lastError = feed.lastError
         return HStack(spacing: 12) {
@@ -126,12 +139,10 @@ struct FeedsView: View {
             HStack {
                 Text(feed.name).font(.headline)
                 if !feed.enabled {
-                    Text("Disabled").font(.caption).foregroundStyle(.secondary)
+                    badge(Text("Disabled"), tint: .secondary)
                 }
                 if !settings.isSourceEnabled(feed.type) {
-                    Text("\(feed.type.displayName) off")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    badge(Text("\(feed.type.displayName) off"), tint: .orange)
                 }
                 if lastError != nil {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -164,38 +175,39 @@ struct FeedsView: View {
         }
     }
 
-    private func updateAll() async {
-        isUpdating = true
-        defer { isUpdating = false }
-        let count = await AggregationService(context: modelContext).updateAll()
-        if count == 0 {
-            importMessage = String(localized: "No new articles.")
-        } else {
-            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles").")
+    private func updateAll() {
+        UpdateActivity.shared.restart {
+            let count = await AggregationService(context: modelContext).updateAll()
+            guard !Task.isCancelled else { return }
+            if count == 0 {
+                importMessage = String(localized: "No new articles.")
+            } else {
+                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles").")
+            }
         }
     }
 
-    private func updateOne(_ feed: Feed) async {
-        guard !isUpdating else { return }
-        isUpdating = true
-        defer { isUpdating = false }
-        let count = await AggregationService(context: modelContext).update(feed: feed)
-        if count == 0 {
-            importMessage = String(localized: "No new articles.")
-        } else {
-            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+    private func updateOne(_ feed: Feed) {
+        UpdateActivity.shared.restart {
+            let count = await AggregationService(context: modelContext).update(feed: feed)
+            guard !Task.isCancelled else { return }
+            if count == 0 {
+                importMessage = String(localized: "No new articles.")
+            } else {
+                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+            }
         }
     }
 
-    private func forceReloadOne(_ feed: Feed) async {
-        guard !isUpdating else { return }
-        isUpdating = true
-        defer { isUpdating = false }
-        let count = await AggregationService(context: modelContext).forceReload(feed: feed)
-        if count == 0 {
-            importMessage = String(localized: "Reloaded \u{201C}\(feed.name)\u{201D}.")
-        } else {
-            importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+    private func forceReloadOne(_ feed: Feed) {
+        UpdateActivity.shared.restart {
+            let count = await AggregationService(context: modelContext).forceReload(feed: feed)
+            guard !Task.isCancelled else { return }
+            if count == 0 {
+                importMessage = String(localized: "Reloaded \u{201C}\(feed.name)\u{201D}.")
+            } else {
+                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
+            }
         }
     }
 

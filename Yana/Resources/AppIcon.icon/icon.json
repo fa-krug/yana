@@ -6,8 +6,20 @@
     {
       "layers" : [
         {
+          "image-name" : "Gemini_Generated_Image_sm7goksm7goksm7g 2.png",
+          "name" : "Gemini_Generated_Image_sm7goksm7goksm7g 2",
+          "position" : {
+            "scale" : 0.82,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        },
+        {
           "fill" : "automatic",
           "glass" : true,
+          "hidden" : true,
           "image-name" : "Gemini_Generated_Image_tv7txptv7txptv7t.png",
           "name" : "Gemini_Generated_Image_tv7txptv7txptv7t",
           "position" : {
@@ -18,6 +30,19 @@
             ]
           }
         }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    },
+    {
+      "layers" : [
+
       ],
       "shadow" : {
         "kind" : "neutral",

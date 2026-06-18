@@ -38,7 +38,7 @@ struct SettingsScreenView: View {
 
     private var readerSection: some View {
         Section(String(localized: "Reader")) {
-            Picker(String(localized: "Theme"), selection: Binding(
+            Picker(selection: Binding(
                 get: { settings.readerThemeName },
                 set: { newValue in
                     settings.readerThemeName = newValue
@@ -48,21 +48,30 @@ struct SettingsScreenView: View {
                 ForEach(ArticleThemesManager.shared.themeNames, id: \.self) { name in
                     Text(name).tag(name)
                 }
+            } label: {
+                Label(String(localized: "Theme"), systemImage: "paintbrush")
+                    .labelStyle(.tintedIcon(.indigo))
             }
 
-            Picker(String(localized: "Text Size"), selection: Binding(
+            Picker(selection: Binding(
                 get: { settings.articleTextSize },
                 set: { settings.articleTextSize = $0 }
             )) {
                 ForEach(ArticleTextSize.allCases) { size in
                     Text(size.displayName).tag(size)
                 }
+            } label: {
+                Label(String(localized: "Text Size"), systemImage: "textformat.size")
+                    .labelStyle(.tintedIcon(.indigo))
             }
 
-            Toggle(String(localized: "Use System Browser"), isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { settings.useSystemBrowser },
                 set: { settings.useSystemBrowser = $0 }
-            ))
+            )) {
+                Label(String(localized: "Use System Browser"), systemImage: "safari")
+                    .labelStyle(.tintedIcon(.indigo))
+            }
         }
     }
 
@@ -70,7 +79,10 @@ struct SettingsScreenView: View {
 
     private var redditSection: some View {
         Section("Reddit") {
-            Toggle("Enabled", isOn: $settings.redditEnabled)
+            Toggle(isOn: $settings.redditEnabled) {
+                Label("Enabled", systemImage: "bubble.left.and.bubble.right.fill")
+                    .labelStyle(.tintedIcon(.orange))
+            }
             SecureField("Client ID", text: $redditClientID)
                 .onChange(of: redditClientID) { _, v in KeychainService.saveAPIKey(v, for: .redditClientID) }
             SecureField("Client Secret", text: $redditClientSecret)
@@ -82,7 +94,10 @@ struct SettingsScreenView: View {
 
     private var youtubeSection: some View {
         Section("YouTube") {
-            Toggle("Enabled", isOn: $settings.youtubeEnabled)
+            Toggle(isOn: $settings.youtubeEnabled) {
+                Label("Enabled", systemImage: "play.rectangle.fill")
+                    .labelStyle(.tintedIcon(.red))
+            }
             SecureField("API Key", text: $youtubeKey)
                 .onChange(of: youtubeKey) { _, v in KeychainService.saveAPIKey(v, for: .youtubeAPIKey) }
         }
@@ -92,7 +107,7 @@ struct SettingsScreenView: View {
 
     private var notificationsSection: some View {
         Section("Notifications") {
-            Toggle("Notify about new articles", isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { settings.notificationsEnabled },
                 set: { newValue in
                     if newValue {
@@ -105,7 +120,10 @@ struct SettingsScreenView: View {
                         settings.notificationsEnabled = false
                     }
                 }
-            ))
+            )) {
+                Label("Notify about new articles", systemImage: "bell.badge.fill")
+                    .labelStyle(.tintedIcon(.red))
+            }
         }
     }
 
@@ -113,8 +131,11 @@ struct SettingsScreenView: View {
 
     private var aiProviderSection: some View {
         Section("AI Provider") {
-            Picker("Active Provider", selection: $settings.activeAIProvider) {
+            Picker(selection: $settings.activeAIProvider) {
                 ForEach(AIProvider.allCases) { Text($0.displayName).tag($0) }
+            } label: {
+                Label("Active Provider", systemImage: "sparkles")
+                    .labelStyle(.tintedIcon(.purple))
             }
 
             DisclosureGroup("OpenAI") {
@@ -179,9 +200,15 @@ struct SettingsScreenView: View {
 
     private var librarySection: some View {
         Section("Library") {
-            Stepper("Keep Articles: \(settings.retentionDays) days", value: $settings.retentionDays, in: 1...365)
-            Stepper("Background Refresh: \(Int(settings.backgroundInterval / 60)) min",
-                    value: $settings.backgroundInterval, in: 300...21600, step: 300)
+            Stepper(value: $settings.retentionDays, in: 1...365) {
+                Label("Keep Articles: \(settings.retentionDays) days", systemImage: "calendar")
+                    .labelStyle(.tintedIcon(.blue))
+            }
+            Stepper(value: $settings.backgroundInterval, in: 300...21600, step: 300) {
+                Label("Background Refresh: \(Int(settings.backgroundInterval / 60)) min",
+                      systemImage: "arrow.clockwise")
+                    .labelStyle(.tintedIcon(.blue))
+            }
         }
     }
 

@@ -159,6 +159,9 @@ final class AggregationService {
             }
             while let result = await group.next() {
                 inserted += result
+                // Stop scheduling new feeds once a newer update has cancelled this run;
+                // in-flight children unwind on their own as the group scope exits.
+                if Task.isCancelled { break }
                 if nextIndex < ids.count {
                     let id = ids[nextIndex]
                     group.addTask { await self.aggregate(feedID: id) }
@@ -230,6 +233,7 @@ final class AggregationService {
         do {
             refreshed = try await aggregator.refetch(seed)
         } catch {
+            if Task.isCancelled { return 0 }
             refreshed = nil
         }
         guard let refreshed else {
@@ -287,6 +291,9 @@ final class AggregationService {
             }
             return inserted
         } catch {
+            // A cancelled run (the user triggered a newer update) is not a feed failure:
+            // leave the existing error/state untouched so no spurious "Update Failed" surfaces.
+            if Task.isCancelled { return 0 }
             let message = Self.userFacingMessage(for: error)
             feed.lastError = message
             lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))

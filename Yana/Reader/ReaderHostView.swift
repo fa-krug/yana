@@ -59,7 +59,6 @@ struct ReaderScreen: View {
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
-    @State private var isRefreshing = false
 
     private var filteredArticles: [Article] {
         TagFilter.apply(
@@ -88,7 +87,7 @@ struct ReaderScreen: View {
                 ReaderHostView(
                     articles: articles,
                     currentIndex: $appState.currentIndex,
-                    isRefreshing: isRefreshing,
+                    isRefreshing: UpdateActivity.shared.isUpdating,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
                     onShowSettings: { appState.showSettings = true },
@@ -143,13 +142,12 @@ struct ReaderScreen: View {
     // MARK: - Refresh
 
     private func triggerRefresh() {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        Task {
+        // A fresh pull cancels any update already running and starts over, rather than no-op'ing.
+        UpdateActivity.shared.restart {
             let service = AggregationService(context: modelContext)
             await service.updateAll()
+            guard !Task.isCancelled else { return }
             appState.errorMessage = SyncFailureSummary.message(for: service.lastRunFailures)
-            isRefreshing = false
         }
     }
 }
