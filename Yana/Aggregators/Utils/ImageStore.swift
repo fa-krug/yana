@@ -66,6 +66,9 @@ actor ImageStore {
 /// Picks the highest-resolution URL from a srcset value (largest `w` descriptor, else
 /// largest `x` descriptor, else the first candidate). Returns nil if none parse.
 /// Ignores empty or `data:` candidate URLs.
+///
+/// Implementation detail of `rewriteImages` — kept `internal` (not `private`) so that
+/// `@testable import Yana` can access it from unit tests.
 func largestSrcsetURL(_ srcset: String) -> String? {
     // Split on commas — each part is one candidate
     let candidates = srcset.split(separator: ",", omittingEmptySubsequences: true)

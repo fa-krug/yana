@@ -14,9 +14,21 @@ struct RewriteImagesTests {
 
     // MARK: - rewriteImages tests
 
-    /// Test 1: data: src with srcset → largest-w candidate wins, img is kept
+    /// Test 1: data: src with srcset → largest-w candidate wins, img is kept,
+    /// and the fetch closure is called with the 1008w URL (not the 336w one).
     @Test func dataSrcWithSrcsetUsesLargestCandidate() async throws {
-        let store = tempStore()
+        // Use a reference-type box so the @Sendable fetch closure can record URLs.
+        final class URLRecorder: @unchecked Sendable {
+            var fetched: [URL] = []
+        }
+        let recorder = URLRecorder()
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 300))
+        let png = renderer.image { ctx in UIColor.green.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 400, height: 300)) }.pngData()!
+        let store = ImageStore(directory: dir, fetch: { url in
+            recorder.fetched.append(url)
+            return (png, "image/png")
+        })
         let html = """
         <html><body>
         <img src="data:image/svg+xml,<svg/>" srcset="https://x.com/a-336.jpg 336w, https://x.com/a-1008.jpg 1008w">
@@ -28,6 +40,9 @@ struct RewriteImagesTests {
         #expect(imgs.count == 1)
         let src = try imgs.first()!.attr("src")
         #expect(src.hasPrefix("\(ReaderWeb.imageScheme)://"))
+        // Prove the LARGEST srcset candidate (1008w) was fetched, not the 336w one.
+        #expect(recorder.fetched.count == 1)
+        #expect(recorder.fetched.first?.absoluteString == "https://x.com/a-1008.jpg")
     }
 
     /// Test 2: srcset only, no src at all → resolved to yana-img://
