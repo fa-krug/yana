@@ -90,7 +90,7 @@ final class YouTubeClient: @unchecked Sendable {
                                fetch: @escaping Fetch = { try await HTTPClient.fetchJSON($0) }) async -> [YouTubeChannelResult] {
         guard !query.isEmpty, !apiKey.isEmpty else { return [] }
         let client = YouTubeClient(apiKey: apiKey, fetch: fetch)
-        guard let data = try? await client.get("search", ["part": "id", "q": query, "type": "channel", "maxResults": "10"]),
+        guard let data = try? await client.get("search", ["part": "id", "q": query, "type": "channel", "maxResults": "25"]),
               let search = try? JSONDecoder().decode(SearchResponse.self, from: data) else { return [] }
         let ids = search.items.compactMap { $0.id.channelId }
         guard !ids.isEmpty,
