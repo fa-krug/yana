@@ -18,6 +18,7 @@ struct ArticleListView: View {
     }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var searchText = ""
+    @State private var debouncedSearch = ""
     @State private var disabledTagNames: Set<String> = []
     @State private var includeUntagged = true
     @State private var showFilter = false
@@ -30,7 +31,7 @@ struct ArticleListView: View {
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
     private var results: [Article] {
-        let searched = ArticleSearch.filter(allArticles, query: searchText)
+        let searched = ArticleSearch.filter(allArticles, query: debouncedSearch)
         return TagFilter.apply(to: searched, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged)
     }
 
@@ -76,6 +77,12 @@ struct ArticleListView: View {
             } label: {
                 row(article)
             }
+        }
+        .task(id: searchText) {
+            // Coalesce keystrokes: a new keystroke cancels this task and restarts the timer.
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            debouncedSearch = searchText
         }
         .navigationTitle("Articles")
         .toolbar {
