@@ -20,6 +20,8 @@ final class ReaderArticleViewController: UIViewController,
 
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private var filterItem: UIBarButtonItem!
+    private var indicatorItem: UIBarButtonItem!
     private var starItem: UIBarButtonItem!
     private var shareItem: UIBarButtonItem!
 
@@ -70,33 +72,42 @@ final class ReaderArticleViewController: UIViewController,
     // MARK: - Chrome
 
     private func configureNavigationItems() {
-        let filter = UIBarButtonItem(
+        filterItem = UIBarButtonItem(
             image: UIImage(systemName: "line.3.horizontal.decrease.circle"),
             style: .plain, target: self, action: #selector(showFilter)
         )
-        filter.accessibilityLabel = String(localized: "Filter articles")
-        let indicatorItem = UIBarButtonItem(customView: activityIndicator)
-        // Rightmost of the left group = the item added last.
-        navigationItem.leftBarButtonItems = [filter, indicatorItem]
+        filterItem.accessibilityLabel = String(localized: "Filter articles")
+        // The loading indicator only joins the left group while a refresh runs (see
+        // setRefreshing). A stopped indicator's bar-button item still reserves width, so it is
+        // added/removed rather than left in place hidden.
+        indicatorItem = UIBarButtonItem(customView: activityIndicator)
+        navigationItem.leftBarButtonItems = [filterItem]
 
-        let gear = UIBarButtonItem(
-            image: UIImage(systemName: "gear"),
+        let library = UIBarButtonItem(
+            image: UIImage(systemName: "books.vertical"),
             style: .plain, target: self, action: #selector(showSettings)
         )
-        gear.accessibilityLabel = String(localized: "Settings")
-        navigationItem.rightBarButtonItem = gear
+        library.accessibilityLabel = String(localized: "Library")
+        starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
+        // rightBarButtonItems is ordered edge-inward, so [library, star] puts the star at the
+        // left of the top-right group and the library button at the screen edge.
+        navigationItem.rightBarButtonItems = [library, starItem]
     }
 
     private func configureToolbar() {
-        starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
         shareItem = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareArticle))
         let browser = UIBarButtonItem(image: UIImage(systemName: "safari"), style: .plain, target: self, action: #selector(openInBrowser))
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
-        toolbarItems = [starItem, flex(), shareItem, flex(), browser]
+        // Share + Open-in-Browser grouped together at the right edge.
+        toolbarItems = [flex(), shareItem, browser]
     }
 
     func setRefreshing(_ isRefreshing: Bool) {
         if isRefreshing { activityIndicator.startAnimating() } else { activityIndicator.stopAnimating() }
+        let items: [UIBarButtonItem] = isRefreshing ? [filterItem, indicatorItem] : [filterItem]
+        if navigationItem.leftBarButtonItems?.count != items.count {
+            navigationItem.leftBarButtonItems = items
+        }
     }
 
     private func updateStarItem() {
