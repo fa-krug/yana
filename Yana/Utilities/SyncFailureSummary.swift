@@ -10,7 +10,7 @@ enum SyncFailureSummary {
             let failure = failures[0]
             return String(localized: "Couldn't update \u{201C}\(failure.feedName)\u{201D}: \(failure.message)")
         default:
-            return String(localized: "\(failures.count) feeds couldn't be updated. Check Feeds in Configuration.")
+            return String(localized: "\(failures.count) feeds couldn't be updated. Check Feeds in the Library.")
         }
     }
 }

@@ -79,7 +79,7 @@ struct ReaderScreen: View {
                     Label("No Articles", systemImage: "tray")
                         .accessibilityIdentifier("emptyArticlesTitle")
                 } description: {
-                    Text("Add feeds in Configuration, then pull down to refresh.")
+                    Text("Add feeds in the Library, then pull down to refresh.")
                 } actions: {
                     Button(String(localized: "Add Your First Feed")) { appState.showSettings = true }
                         .buttonStyle(.borderedProminent)

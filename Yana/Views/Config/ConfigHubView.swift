@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Root of the configuration sheet. Links to Feeds, Tags, and Settings.
+/// Root of the library sheet. Links to Feeds, Tags, and Settings.
 struct ConfigHubView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -28,7 +28,7 @@ struct ConfigHubView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
             }
-            .navigationTitle("Configuration")
+            .navigationTitle("Library")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     ConfirmCircleButton { dismiss() }
