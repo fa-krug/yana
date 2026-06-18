@@ -152,6 +152,27 @@ struct RedditAggregatorTests {
         #expect(!a.content.contains("example.com/thumb2.jpg"), "mobile.twitter.com URL should take header priority over thumbnail")
     }
 
+    /// Force reload sets `dailyLimit = Int.max` (FeedConfig.init(feed:force:)). The fetch-limit
+    /// computation `limit * 3` must not overflow — it previously crashed with an arithmetic
+    /// overflow trap when force-reloading a Reddit feed.
+    @Test func forceReloadDailyLimitDoesNotOverflow() async throws {
+        var opts = RedditOptions()
+        opts.minComments = 5
+        opts.minAgeHours = 0
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: Int.max,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(self.commentsJSON.utf8) }
+            return Data(self.listingJSON.utf8)
+        }
+        let agg = RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+        let articles = try await agg.aggregate()
+        #expect(articles.count == 1)
+    }
+
     @Test func logoImageURLReturnsSubredditIcon() async {
         let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
                                 options: .reddit(RedditOptions()), collectedToday: 0)

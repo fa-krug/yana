@@ -34,7 +34,10 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         let client = try await makeClient()
         let opts = options
         let limit = max(config.dailyLimit, 1)
-        let fetchLimit = min(limit * 3, 100)
+        // Over-fetch 3x the desired count (filtering drops automod/old/low-comment posts),
+        // capped at Reddit's 100-per-listing max. Clamp `limit` before multiplying so a
+        // force reload (dailyLimit == Int.max) doesn't trap on arithmetic overflow.
+        let fetchLimit = min(min(limit, 100) * 3, 100)
 
         let posts = try await client.fetchListing(subreddit: normalizedSubreddit, sort: opts.subredditSort, limit: fetchLimit)
         let cutoff = Date().addingTimeInterval(-Double(opts.minAgeHours) * 3600)
