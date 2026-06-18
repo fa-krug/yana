@@ -41,6 +41,7 @@ struct TagsView: View {
                     Text(tag.name)
                     if tag.isBuiltIn {
                         Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel(Text("System tag"))
                     }
                     Spacer()
                 }
