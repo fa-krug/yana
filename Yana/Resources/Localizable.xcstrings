@@ -1501,6 +1501,16 @@
         }
       }
     },
+    "Showing the nearest article in this filter.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nächstgelegener Artikel in diesem Filter wird angezeigt."
+          }
+        }
+      }
+    },
     "Show Alt Text": {
       "localizations": {
         "de": {

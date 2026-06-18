@@ -157,7 +157,11 @@ struct ReaderScreen: View {
     }
 
     private func clampIndex() {
-        appState.currentIndex = min(appState.currentIndex, max(0, filteredArticles.count - 1))
+        let clamped = min(appState.currentIndex, max(0, filteredArticles.count - 1))
+        if clamped != appState.currentIndex {
+            statusMessage = String(localized: "Showing the nearest article in this filter.")
+        }
+        appState.currentIndex = clamped
     }
 
     // MARK: - Refresh
