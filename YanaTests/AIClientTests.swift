@@ -171,6 +171,6 @@ struct AIClientTests {
         let rec = FetchRecorder([(Data("not json".utf8), 200)])
         let client = AIClient(config: config(provider: .openai), fetch: rec.fetch)
         let result = await client.verify()
-        #expect(result == .network)
+        #expect(result == .unexpectedResponse)
     }
 }
