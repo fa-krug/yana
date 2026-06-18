@@ -63,12 +63,50 @@ actor ImageStore {
     }
 }
 
+/// Picks the highest-resolution URL from a srcset value (largest `w` descriptor, else
+/// largest `x` descriptor, else the first candidate). Returns nil if none parse.
+/// Ignores empty or `data:` candidate URLs.
+func largestSrcsetURL(_ srcset: String) -> String? {
+    // Split on commas — each part is one candidate
+    let candidates = srcset.split(separator: ",", omittingEmptySubsequences: true)
+        .compactMap { part -> (url: String, w: Double?, x: Double?)? in
+            let tokens = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(separator: " ", omittingEmptySubsequences: true)
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard let url = tokens.first, !url.isEmpty, !url.hasPrefix("data:") else { return nil }
+            let descriptor = tokens.dropFirst().first ?? ""
+            var w: Double? = nil
+            var x: Double? = nil
+            if descriptor.hasSuffix("w"), let v = Double(descriptor.dropLast()) { w = v }
+            else if descriptor.hasSuffix("x"), let v = Double(descriptor.dropLast()) { x = v }
+            return (url: url, w: w, x: x)
+        }
+    guard !candidates.isEmpty else { return nil }
+    // Prefer largest w descriptor
+    let wCandidates = candidates.filter { $0.w != nil }
+    if !wCandidates.isEmpty {
+        return wCandidates.max(by: { $0.w! < $1.w! })?.url
+    }
+    // Fall back to largest x descriptor
+    let xCandidates = candidates.filter { $0.x != nil }
+    if !xCandidates.isEmpty {
+        return xCandidates.max(by: { $0.x! < $1.x! })?.url
+    }
+    // No descriptors — return first candidate
+    return candidates.first?.url
+}
+
 /// Walks every `<img>`, downloads via the store, and rewrites `src` to `yana-img://<hash>`.
 /// Unresolved images are dropped (spec decision 3: no remote image URLs).
+/// When `src`/`data-src`/`data-lazy-src` are absent or a `data:` placeholder, falls back
+/// to the best candidate from the `srcset` attribute.
 func rewriteImages(in doc: Document, store: ImageStore, baseURL: URL?) async throws {
     for img in try doc.select("img") {
-        let raw = try [ "src", "data-src", "data-lazy-src" ].lazy
+        var raw = try [ "src", "data-src", "data-lazy-src" ].lazy
             .map { try img.attr($0) }.first { !$0.isEmpty } ?? ""
+        if raw.isEmpty || raw.hasPrefix("data:") {
+            raw = largestSrcsetURL(try img.attr("srcset")) ?? ""
+        }
         guard !raw.isEmpty, !raw.hasPrefix("data:") else { try img.remove(); continue }
         let resolved = URL(string: raw, relativeTo: baseURL)?.absoluteURL
         guard let resolved else { try img.remove(); continue }
