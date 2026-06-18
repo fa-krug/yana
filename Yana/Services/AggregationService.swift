@@ -127,11 +127,14 @@ final class AggregationService {
             keyItem = nil
         }
         let key = keyItem.flatMap(loadKey) ?? ""
+        // OpenAI honors the user-overridable URL; the other OpenAI-compatible providers use
+        // their fixed base. Non-compatible providers (Anthropic/Gemini) ignore this field.
+        let apiBaseURL = provider == .openai ? settings.openaiAPIURL : provider.baseURL
         return AIConfig(
             provider: provider,
             model: model,
             apiKey: key,
-            apiBaseURL: settings.openaiAPIURL,
+            apiBaseURL: apiBaseURL,
             temperature: settings.aiTemperature,
             maxTokens: settings.aiMaxTokens,
             requestTimeout: settings.aiRequestTimeout,
