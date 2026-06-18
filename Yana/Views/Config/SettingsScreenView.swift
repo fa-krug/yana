@@ -105,17 +105,20 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.orange))
             }
             SecureField("Client ID", text: $redditClientID)
+                .disabled(redditStatus == .testing)
                 .onChange(of: redditClientID) { _, v in
                     KeychainService.saveAPIKey(v, for: .redditClientID); redditStatus = .idle
                 }
             SecureField("Client Secret", text: $redditClientSecret)
+                .disabled(redditStatus == .testing)
                 .onChange(of: redditClientSecret) { _, v in
                     KeychainService.saveAPIKey(v, for: .redditClientSecret); redditStatus = .idle
                 }
             TextField("User Agent", text: $settings.redditUserAgent)
                 .autocorrectionDisabled()
             testControls(status: redditStatus,
-                         disabled: redditClientID.isEmpty || redditClientSecret.isEmpty) {
+                         disabled: redditClientID.isEmpty || redditClientSecret.isEmpty,
+                         onClear: { redditStatus = .idle }) {
                 runTest({ redditStatus = $0 }) {
                     await CredentialTester.reddit(clientID: redditClientID,
                                                   clientSecret: redditClientSecret,
@@ -132,10 +135,12 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.red))
             }
             SecureField("API Key", text: $youtubeKey)
+                .disabled(youtubeStatus == .testing)
                 .onChange(of: youtubeKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .youtubeAPIKey); youtubeStatus = .idle
                 }
-            testControls(status: youtubeStatus, disabled: youtubeKey.isEmpty) {
+            testControls(status: youtubeStatus, disabled: youtubeKey.isEmpty,
+                         onClear: { youtubeStatus = .idle }) {
                 runTest({ youtubeStatus = $0 }) {
                     await CredentialTester.youtube(apiKey: youtubeKey)
                 }
@@ -191,14 +196,17 @@ struct SettingsScreenView: View {
             EmptyView()
         case .openai:
             SecureField("API Key", text: $openaiKey)
+                .disabled(openaiStatus == .testing)
                 .onChange(of: openaiKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .openaiAPIKey); openaiStatus = .idle
                 }
             TextField("API URL", text: $settings.openaiAPIURL).autocorrectionDisabled()
+                .disabled(openaiStatus == .testing)
             Picker("Model", selection: $settings.openaiModel) {
                 ForEach(AIProvider.openai.models, id: \.self) { Text($0).tag($0) }
             }
-            testControls(status: openaiStatus, disabled: openaiKey.isEmpty) {
+            testControls(status: openaiStatus, disabled: openaiKey.isEmpty,
+                         onClear: { openaiStatus = .idle }) {
                 runTest({ openaiStatus = $0 }) {
                     await CredentialTester.ai(provider: .openai, apiKey: openaiKey,
                                               model: settings.openaiModel,
@@ -207,13 +215,15 @@ struct SettingsScreenView: View {
             }
         case .anthropic:
             SecureField("API Key", text: $anthropicKey)
+                .disabled(anthropicStatus == .testing)
                 .onChange(of: anthropicKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .anthropicAPIKey); anthropicStatus = .idle
                 }
             Picker("Model", selection: $settings.anthropicModel) {
                 ForEach(AIProvider.anthropic.models, id: \.self) { Text($0).tag($0) }
             }
-            testControls(status: anthropicStatus, disabled: anthropicKey.isEmpty) {
+            testControls(status: anthropicStatus, disabled: anthropicKey.isEmpty,
+                         onClear: { anthropicStatus = .idle }) {
                 runTest({ anthropicStatus = $0 }) {
                     await CredentialTester.ai(provider: .anthropic, apiKey: anthropicKey,
                                               model: settings.anthropicModel,
@@ -222,13 +232,15 @@ struct SettingsScreenView: View {
             }
         case .gemini:
             SecureField("API Key", text: $geminiKey)
+                .disabled(geminiStatus == .testing)
                 .onChange(of: geminiKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .geminiAPIKey); geminiStatus = .idle
                 }
             Picker("Model", selection: $settings.geminiModel) {
                 ForEach(AIProvider.gemini.models, id: \.self) { Text($0).tag($0) }
             }
-            testControls(status: geminiStatus, disabled: geminiKey.isEmpty) {
+            testControls(status: geminiStatus, disabled: geminiKey.isEmpty,
+                         onClear: { geminiStatus = .idle }) {
                 runTest({ geminiStatus = $0 }) {
                     await CredentialTester.ai(provider: .gemini, apiKey: geminiKey,
                                               model: settings.geminiModel,
@@ -237,13 +249,15 @@ struct SettingsScreenView: View {
             }
         case .mistral:
             SecureField("API Key", text: $mistralKey)
+                .disabled(mistralStatus == .testing)
                 .onChange(of: mistralKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .mistralAPIKey); mistralStatus = .idle
                 }
             Picker("Model", selection: $settings.mistralModel) {
                 ForEach(AIProvider.mistral.models, id: \.self) { Text($0).tag($0) }
             }
-            testControls(status: mistralStatus, disabled: mistralKey.isEmpty) {
+            testControls(status: mistralStatus, disabled: mistralKey.isEmpty,
+                         onClear: { mistralStatus = .idle }) {
                 runTest({ mistralStatus = $0 }) {
                     await CredentialTester.ai(provider: .mistral, apiKey: mistralKey,
                                               model: settings.mistralModel,
@@ -252,13 +266,15 @@ struct SettingsScreenView: View {
             }
         case .qwen:
             SecureField("API Key", text: $qwenKey)
+                .disabled(qwenStatus == .testing)
                 .onChange(of: qwenKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .qwenAPIKey); qwenStatus = .idle
                 }
             Picker("Model", selection: $settings.qwenModel) {
                 ForEach(AIProvider.qwen.models, id: \.self) { Text($0).tag($0) }
             }
-            testControls(status: qwenStatus, disabled: qwenKey.isEmpty) {
+            testControls(status: qwenStatus, disabled: qwenKey.isEmpty,
+                         onClear: { qwenStatus = .idle }) {
                 runTest({ qwenStatus = $0 }) {
                     await CredentialTester.ai(provider: .qwen, apiKey: qwenKey,
                                               model: settings.qwenModel,
@@ -267,13 +283,15 @@ struct SettingsScreenView: View {
             }
         case .deepseek:
             SecureField("API Key", text: $deepseekKey)
+                .disabled(deepseekStatus == .testing)
                 .onChange(of: deepseekKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .deepseekAPIKey); deepseekStatus = .idle
                 }
             Picker("Model", selection: $settings.deepseekModel) {
                 ForEach(AIProvider.deepseek.models, id: \.self) { Text($0).tag($0) }
             }
-            testControls(status: deepseekStatus, disabled: deepseekKey.isEmpty) {
+            testControls(status: deepseekStatus, disabled: deepseekKey.isEmpty,
+                         onClear: { deepseekStatus = .idle }) {
                 runTest({ deepseekStatus = $0 }) {
                     await CredentialTester.ai(provider: .deepseek, apiKey: deepseekKey,
                                               model: settings.deepseekModel,
@@ -282,7 +300,8 @@ struct SettingsScreenView: View {
             }
         case .appleIntelligence:
             LabeledContent("Status", value: appleIntelligenceStatus)
-            testControls(status: appleStatus, disabled: false) {
+            testControls(status: appleStatus, disabled: false,
+                         onClear: { appleStatus = .idle }) {
                 let available = AppleIntelligenceClient().availability == .available
                 appleStatus = available ? .valid : .invalid(appleIntelligenceStatus)
             }
@@ -339,7 +358,9 @@ struct SettingsScreenView: View {
 
     /// A "Test" button plus an inline status row, reused by every credential section.
     @ViewBuilder
-    private func testControls(status: TestStatus, disabled: Bool, action: @escaping () -> Void) -> some View {
+    private func testControls(status: TestStatus, disabled: Bool,
+                             onClear: @escaping () -> Void,
+                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 Text("Test")
@@ -360,8 +381,13 @@ struct SettingsScreenView: View {
             Label("Credentials valid", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
         case .invalid(let message):
-            Label(message, systemImage: "xmark.circle.fill")
-                .foregroundStyle(.red)
+            HStack {
+                Label(message, systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                Spacer()
+                Button("Clear", action: onClear)
+                    .buttonStyle(.borderless)
+            }
         }
     }
 
