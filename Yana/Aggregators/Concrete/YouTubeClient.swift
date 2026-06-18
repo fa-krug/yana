@@ -103,6 +103,22 @@ final class YouTubeClient: @unchecked Sendable {
         }
     }
 
+    /// Minimal key check: a cheap `channels` lookup against a known public channel id.
+    /// A valid key returns 2xx (items may be empty); an invalid key returns 400/403.
+    /// Returns nil when the key is accepted.
+    func verifyKey() async -> CredentialTestError? {
+        do {
+            _ = try await get("channels", ["part": "id", "id": "UCBR8-60-B28hp2BmDPdntcQ"])
+            return nil
+        } catch AggregatorError.articleSkip {
+            return .invalidCredentials                       // 400 bad key / 403 forbidden / quota
+        } catch is AggregatorError {
+            return .network                                  // 5xx / size cap
+        } catch {
+            return .network                                  // transport (URLError) etc.
+        }
+    }
+
     // MARK: - Request + URL helpers
 
     private func get(_ endpoint: String, _ params: [String: String]) async throws -> Data {

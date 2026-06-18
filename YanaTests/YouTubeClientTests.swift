@@ -80,4 +80,34 @@ struct YouTubeClientTests {
         _ = try await c.fetchChannelData("UC123456789012345678901234")
         #expect(box.captured?.url?.absoluteString.contains("key=SECRET") == true)
     }
+
+    @Test func verifyKeySucceedsOn2xx() async {
+        let client = YouTubeClient(apiKey: "K") { _ in Data(#"{"items":[]}"#.utf8) }
+        let result = await client.verifyKey()
+        #expect(result == nil)
+    }
+
+    @Test func verifyKeyReportsInvalidCredentialsOn400() async {
+        let client = YouTubeClient(apiKey: "bad") { _ in
+            throw AggregatorError.articleSkip(statusCode: 400)
+        }
+        let result = await client.verifyKey()
+        #expect(result == .invalidCredentials)
+    }
+
+    @Test func verifyKeyReportsInvalidCredentialsOn403() async {
+        let client = YouTubeClient(apiKey: "blocked") { _ in
+            throw AggregatorError.articleSkip(statusCode: 403)
+        }
+        let result = await client.verifyKey()
+        #expect(result == .invalidCredentials)
+    }
+
+    @Test func verifyKeyReportsNetworkOnServerError() async {
+        let client = YouTubeClient(apiKey: "K") { _ in
+            throw AggregatorError.contentFetch("HTTP 500")
+        }
+        let result = await client.verifyKey()
+        #expect(result == .network)
+    }
 }
