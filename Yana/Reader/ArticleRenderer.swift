@@ -17,7 +17,7 @@ enum ArticleRenderer {
             withTemplate: theme.template ?? "",
             substitutions: articleSubstitutions(article: article, title: title, textSize: textSize)
         )) ?? ""
-        return (style, html, title, baseURL(for: article))
+        return (style, html, title, articleBaseHref(for: article))
     }
 
     /// Complete HTML document: page.html with `style`/`body`/`title`/`baseURL` substituted.
@@ -78,8 +78,18 @@ enum ArticleRenderer {
         ["font-size": String(textSize.pointSize)]
     }
 
-    /// scheme://host of the article URL, used as both base href and feed link. Empty if unparseable
-    /// or non-http(s).
+    /// The article's full URL (fragment stripped), used as the document `<base href>` so relative
+    /// links resolve against the real article location — mirroring NetNewsWire's `Article.baseURL`.
+    /// A fragment can't be used as a base URL (the WebView won't load), and only http(s) qualifies.
+    /// Empty when the article has no usable URL.
+    private static func articleBaseHref(for article: Article) -> String {
+        guard var comps = URLComponents(string: article.url) else { return "" }
+        comps.fragment = nil
+        guard let url = comps.url, url.scheme == "http" || url.scheme == "https" else { return "" }
+        return url.absoluteString
+    }
+
+    /// scheme://host of the article URL, used as the feed link. Empty if unparseable or non-http(s).
     private static func baseURL(for article: Article) -> String {
         guard var comps = URLComponents(string: article.url) else { return "" }
         comps.fragment = nil

@@ -15,9 +15,6 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     private var webView: WKWebView!
     private var loadedHTML: String?
-    /// Set immediately before each programmatic `loadHTMLString`; the next main-frame navigation is
-    /// that load (loaded in place). Every other main-frame navigation is a followed link.
-    private var expectingArticleLoad = false
 
     private var topTapZone: UIView!
     private var bottomTapZone: UIView!
@@ -89,8 +86,10 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         )
         guard html != loadedHTML else { return }
         loadedHTML = html
-        expectingArticleLoad = true
-        webView.loadHTMLString(html, baseURL: URL(string: ReaderWeb.baseOrigin))
+        // Load against the bundle directory (like NetNewsWire), not a fake web origin. The article's
+        // own `<base href>` resolves relative links to the real site; tapped links then arrive as
+        // `.linkActivated` and open in the in-app browser.
+        webView.loadHTMLString(html, baseURL: ReaderWeb.pageBaseURL)
     }
 
     @objc private func handleRefresh(_ control: UIRefreshControl) {
@@ -138,28 +137,14 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
-        let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? true
-        // While the reader's own programmatic article load is still in flight, every main-frame
-        // navigation is that load. The flag is cleared in `didCommit` (not here) because WebKit does
-        // not reliably route a `loadHTMLString` load through this method — if we consumed the flag
-        // here, the first tapped link would be mistaken for the article load and open in place.
-        let isExpectedArticleLoad = expectingArticleLoad && isMainFrame
-        // Our own rendered article and `yana-img://` image requests load in place; any followed
-        // link is cancelled and opened in the same browser as the Open-in-Browser button.
-        if ReaderLinkPolicy.opensExternally(
-            url: url, navigationType: navigationAction.navigationType,
-            targetIsMainFrame: isMainFrame, isExpectedArticleLoad: isExpectedArticleLoad) {
+        // Only a link the user tapped (`.linkActivated`) leaves the reader; the article load,
+        // image-scheme requests and embeds are `.other` and load in place. See ReaderLinkPolicy.
+        if ReaderLinkPolicy.opensExternally(url: url, navigationType: navigationAction.navigationType) {
             decisionHandler(.cancel)
             openExternally(url)
             return
         }
         decisionHandler(.allow)
-    }
-
-    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        // The article load (or a live re-render) has committed; any later main-frame navigation is
-        // a followed link that must leave the reader.
-        expectingArticleLoad = false
     }
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,

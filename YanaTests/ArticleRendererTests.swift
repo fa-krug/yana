@@ -29,7 +29,7 @@ struct ArticleRendererTests {
         #expect(r.html.contains("yana-img://abc123"))
         #expect(r.html.contains("mediumText"))
         #expect(r.title == "Hello &amp; Welcome")
-        #expect(r.baseURL == "https://example.com")
+        #expect(r.baseURL == "https://example.com/post/1")
     }
 
     @Test func emptyAuthorAndLogoRenderCleanly() {

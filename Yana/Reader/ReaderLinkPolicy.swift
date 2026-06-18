@@ -1,31 +1,21 @@
 import Foundation
 import WebKit
 
-/// Decides whether a WebView navigation is a link the user followed — which must leave the reader
-/// and open in the in-app browser — versus our own rendered content, which loads in place.
+/// Decides whether a WebView navigation must leave the reader and open in the in-app browser.
 ///
-/// The decision keys off whether the caller *initiated* the load, not the navigation type or URL.
-/// The reader programmatically loads exactly one main-frame document per article (via
-/// `loadHTMLString`); the caller flags that load as `isExpectedArticleLoad`. Every other main-frame
-/// navigation is a followed link. This is necessary because WebKit reports a tapped relative link
-/// that resolves against the base origin (`https://app.yana.local/…`, when the article had no usable
-/// `<base href>`) with navigationType `.other` — indistinguishable from the initial load by type or
-/// URL alone, which is what made earlier origin/type heuristics fail.
+/// This mirrors NetNewsWire's `WebViewController` policy: the decision keys solely off the
+/// navigation *type*. Only `.linkActivated` (a link the user tapped) leaves the reader; the article
+/// load itself, image-scheme requests, embeds and any other navigation are reported as `.other`
+/// and load in place. Keying off the URL's origin is wrong — relative links may resolve against the
+/// document's own base URL, which earlier mistook them for our own content.
 enum ReaderLinkPolicy {
-    static func opensExternally(url: URL, navigationType: WKNavigationType,
-                                targetIsMainFrame: Bool,
-                                isExpectedArticleLoad: Bool) -> Bool {
-        // Locally cached images (served by ImageSchemeHandler) always load in place.
-        if url.scheme == ReaderWeb.imageScheme { return false }
-        // Subframe loads (e.g. video embeds) stay in place even though they are external URLs.
-        guard targetIsMainFrame else { return false }
-        // The reader's own programmatic article load stays in place.
-        if isExpectedArticleLoad { return false }
-
-        // Any other main-frame web navigation is a followed link.
-        if url.scheme == "http" || url.scheme == "https" { return true }
-
-        // Non-web schemes (mailto, tel, custom app links) leave the app only when tapped.
-        return navigationType == .linkActivated
+    static func opensExternally(url: URL, navigationType: WKNavigationType) -> Bool {
+        guard navigationType == .linkActivated else { return false }
+        switch url.scheme?.lowercased() {
+        case "http", "https", "mailto", "tel":
+            return true
+        default:
+            return false
+        }
     }
 }

@@ -8,65 +8,50 @@ import Testing
 struct ReaderLinkPolicyTests {
     private func url(_ s: String) -> URL { URL(string: s)! }
 
-    // The initial article load (the one programmatic loadHTMLString the reader initiates) stays in
-    // place. It is identified by the caller's flag, not by navigation type or URL.
+    // The initial article load is `.other` and loads in place.
     @Test func initialArticleLoadStaysInPlace() {
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url(ReaderWeb.baseOrigin), navigationType: .other,
-            targetIsMainFrame: true, isExpectedArticleLoad: true) == false)
+            url: url("https://www.example.com/a"), navigationType: .other) == false)
     }
 
-    // A tapped absolute external link leaves the reader.
+    // A tapped absolute http(s) link leaves the reader.
     @Test func tappedAbsoluteLinkOpensExternally() {
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url("https://example.com/story"), navigationType: .linkActivated,
-            targetIsMainFrame: true, isExpectedArticleLoad: false) == true)
-    }
-
-    // The bug: a tapped relative link with no usable <base href> resolves against the base origin
-    // AND WebKit reports it as `.other` — indistinguishable from the initial load by type or URL.
-    // It must still leave the reader, which only the load flag (false here) can decide.
-    @Test func tappedBaseOriginLinkReportedAsOtherOpensExternally() {
+            url: url("https://example.com/story"), navigationType: .linkActivated) == true)
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url(ReaderWeb.baseOrigin + "/some/relative/path"),
-            navigationType: .other, targetIsMainFrame: true, isExpectedArticleLoad: false) == true)
+            url: url("http://example.com/story"), navigationType: .linkActivated) == true)
     }
 
-    // The same link arriving as `.linkActivated` also leaves the reader.
-    @Test func tappedBaseOriginLinkOpensExternally() {
+    // A tapped relative link, resolved against the article's <base href> to a real URL, leaves
+    // the reader — this is the bug the origin check used to get wrong.
+    @Test func tappedResolvedRelativeLinkOpensExternally() {
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url(ReaderWeb.baseOrigin + "/some/relative/path"),
-            navigationType: .linkActivated, targetIsMainFrame: true, isExpectedArticleLoad: false) == true)
+            url: url("https://www.heise.de/some/relative/path"), navigationType: .linkActivated) == true)
     }
 
-    // Subframe loads (e.g. video embeds) stay in place even though they are external web URLs.
-    @Test func subframeEmbedStaysInPlace() {
+    // Tapped mailto / tel leave the app.
+    @Test func tappedMailtoAndTelOpenExternally() {
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url("https://www.youtube.com/embed/abc"),
-            navigationType: .other, targetIsMainFrame: false, isExpectedArticleLoad: false) == false)
+            url: url("mailto:someone@example.com"), navigationType: .linkActivated) == true)
+        #expect(ReaderLinkPolicy.opensExternally(
+            url: url("tel:+1234567890"), navigationType: .linkActivated) == true)
     }
 
-    // Our local image scheme always loads in place.
+    // Image-scheme requests are `.other` and load in place.
     @Test func localImageSchemeStaysInPlace() {
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url(ReaderWeb.imageScheme + "://cache/123"),
-            navigationType: .other, targetIsMainFrame: true, isExpectedArticleLoad: false) == false)
+            url: url(ReaderWeb.imageScheme + "://cache/123"), navigationType: .other) == false)
     }
 
-    // Non-web schemes the user taps (mailto, tel) leave the app.
-    @Test func tappedMailtoOpensExternally() {
+    // Non-link navigations (embeds, redirects, programmatic loads) stay in place even for http(s).
+    @Test func nonLinkActivatedWebNavStaysInPlace() {
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url("mailto:someone@example.com"), navigationType: .linkActivated,
-            targetIsMainFrame: true, isExpectedArticleLoad: false) == true)
-        #expect(ReaderLinkPolicy.opensExternally(
-            url: url("tel:+1234567890"), navigationType: .linkActivated,
-            targetIsMainFrame: true, isExpectedArticleLoad: false) == true)
+            url: url("https://www.youtube.com/embed/abc"), navigationType: .other) == false)
     }
 
-    // A non-web scheme that is not a user tap stays in place (e.g. about:blank).
-    @Test func nonTappedNonWebSchemeStaysInPlace() {
+    // A tapped unknown scheme (e.g. about:blank) stays in place.
+    @Test func tappedUnknownSchemeStaysInPlace() {
         #expect(ReaderLinkPolicy.opensExternally(
-            url: url("about:blank"), navigationType: .other,
-            targetIsMainFrame: true, isExpectedArticleLoad: false) == false)
+            url: url("about:blank"), navigationType: .linkActivated) == false)
     }
 }
