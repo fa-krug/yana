@@ -60,8 +60,10 @@ struct ReaderScreen: View {
 
     @State private var didRestoreAnchor = false
 
-    private var filteredArticles: [Article] {
-        TagFilter.apply(
+    @State private var filteredArticles: [Article] = []
+
+    private func recomputeFilter() {
+        filteredArticles = TagFilter.apply(
             to: allArticles,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
@@ -106,11 +108,14 @@ struct ReaderScreen: View {
         } message: {
             Text(appState.errorMessage ?? "")
         }
-        .onAppear { restoreAnchor() }
+        .onAppear { recomputeFilter(); restoreAnchor() }
         .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
         .onChange(of: allArticles) { _, _ in
+            recomputeFilter()
             if didRestoreAnchor { clampIndex() } else { restoreAnchor() }
         }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
     }
 
     private func toggleStar(_ article: Article) {
