@@ -95,4 +95,36 @@ struct RedditClientTests {
         #expect(RedditClient.isExpired(expiry: now.addingTimeInterval(60), now: now) == false)
         #expect(RedditClient.isExpired(expiry: now, now: now) == true)
     }
+
+    @Test func verifySucceedsWhenTokenReturned() async {
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { _ in
+            Data(#"{"access_token":"TKN","expires_in":3600}"#.utf8)
+        }
+        let result = await client.verifyCredentials()
+        #expect(result == nil)
+    }
+
+    @Test func verifyReportsInvalidCredentialsOn401() async {
+        let client = RedditClient(clientID: "bad", clientSecret: "bad", userAgent: "Yana/1.0") { _ in
+            throw AggregatorError.articleSkip(statusCode: 401)
+        }
+        let result = await client.verifyCredentials()
+        #expect(result == .invalidCredentials)
+    }
+
+    @Test func verifyReportsInvalidCredentialsWhenNoToken() async {
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { _ in
+            Data(#"{"error":"invalid_grant"}"#.utf8)
+        }
+        let result = await client.verifyCredentials()
+        #expect(result == .invalidCredentials)
+    }
+
+    @Test func verifyReportsNetworkOnServerError() async {
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { _ in
+            throw AggregatorError.contentFetch("HTTP 503")
+        }
+        let result = await client.verifyCredentials()
+        #expect(result == .network)
+    }
 }

@@ -22,6 +22,9 @@ final class RedditClient: @unchecked Sendable {
     /// Pure expiry gate (testable). True when `now` has reached or passed `expiry`.
     static func isExpired(expiry: Date, now: Date) -> Bool { now >= expiry }
 
+    /// Message used when Reddit returns 2xx but no usable token (rare; treated as bad creds).
+    static let authFailedMessage = "Reddit auth failed"
+
     init(clientID: String, clientSecret: String, userAgent: String,
          fetch: @escaping Fetch = { try await HTTPClient.fetchJSON($0) }) {
         self.clientID = clientID
@@ -42,12 +45,29 @@ final class RedditClient: @unchecked Sendable {
         let data = try await fetch(req)
         let decoded = try? JSONDecoder().decode(RedditTokenResponse.self, from: data)
         guard let token = decoded?.accessToken, !token.isEmpty else {
-            throw AggregatorError.contentFetch("Reddit auth failed")
+            throw AggregatorError.contentFetch(Self.authFailedMessage)
         }
         // Refresh 60s before the real expiry to avoid using a token mid-flight as it lapses.
         let ttl = max(0, (decoded?.expiresIn ?? 3600) - 60)
         setCachedToken(token, expiry: Date().addingTimeInterval(TimeInterval(ttl)))
         return token
+    }
+
+    /// Minimal credential check: request an app-only OAuth token and classify the outcome.
+    /// Returns nil when the token was issued (credentials valid).
+    func verifyCredentials() async -> CredentialTestError? {
+        do {
+            _ = try await authToken()
+            return nil
+        } catch AggregatorError.articleSkip {
+            return .invalidCredentials                       // 4xx: key/secret rejected
+        } catch AggregatorError.contentFetch(Self.authFailedMessage) {
+            return .invalidCredentials                       // 2xx but no token: grant rejected
+        } catch is AggregatorError {
+            return .network                                  // 5xx / size cap
+        } catch {
+            return .network                                  // transport (URLError) etc.
+        }
     }
 
     private func cachedTokenValue() -> String? {
