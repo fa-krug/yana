@@ -54,4 +54,27 @@ struct ReaderLinkPolicyTests {
         #expect(ReaderLinkPolicy.opensExternally(
             url: url("about:blank"), navigationType: .linkActivated) == false)
     }
+
+    // MARK: - JS click interception (externalURL(fromClickedHref:))
+
+    // The injected click handler posts the browser-resolved absolute href; Swift turns the
+    // qualifying ones into a URL to open. Relative links arrive already absolutized by the DOM.
+    @Test func clickedHttpHrefBecomesExternalURL() {
+        #expect(ReaderLinkPolicy.externalURL(fromClickedHref: "https://example.com/story")?.absoluteString
+            == "https://example.com/story")
+        #expect(ReaderLinkPolicy.externalURL(fromClickedHref: "http://example.com/story")?.absoluteString
+            == "http://example.com/story")
+    }
+
+    @Test func clickedMailtoAndTelBecomeExternalURL() {
+        #expect(ReaderLinkPolicy.externalURL(fromClickedHref: "mailto:a@b.com") != nil)
+        #expect(ReaderLinkPolicy.externalURL(fromClickedHref: "tel:+1234567890") != nil)
+    }
+
+    // Garbage or non-openable schemes yield nil (the JS side already filters, this is defense).
+    @Test func clickedUnsupportedHrefIsNil() {
+        #expect(ReaderLinkPolicy.externalURL(fromClickedHref: "about:blank") == nil)
+        #expect(ReaderLinkPolicy.externalURL(fromClickedHref: "javascript:void(0)") == nil)
+        #expect(ReaderLinkPolicy.externalURL(fromClickedHref: "") == nil)
+    }
 }

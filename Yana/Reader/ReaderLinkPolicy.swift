@@ -11,11 +11,21 @@ import WebKit
 enum ReaderLinkPolicy {
     static func opensExternally(url: URL, navigationType: WKNavigationType) -> Bool {
         guard navigationType == .linkActivated else { return false }
+        return externalURL(fromClickedHref: url.absoluteString) != nil
+    }
+
+    /// The primary link path: an injected click handler intercepts taps at the DOM level and posts
+    /// the browser-resolved absolute `href`. WebKit does not reliably report tapped links inside a
+    /// `loadHTMLString`-rendered document as `.linkActivated` (they arrive as `.other` and would
+    /// otherwise load in place), so click interception — not the navigation delegate — is the
+    /// reliable signal. Returns the URL to open for http(s)/mailto/tel, or nil to ignore.
+    static func externalURL(fromClickedHref href: String) -> URL? {
+        guard let url = URL(string: href) else { return nil }
         switch url.scheme?.lowercased() {
         case "http", "https", "mailto", "tel":
-            return true
+            return url
         default:
-            return false
+            return nil
         }
     }
 }

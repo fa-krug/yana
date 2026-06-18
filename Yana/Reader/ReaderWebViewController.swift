@@ -6,7 +6,7 @@ import SafariServices
 /// automatic content-inset adjustment keeps the article clear of them. Ported/adapted from
 /// NetNewsWire's WebViewController, trimmed of Account/extractor/search.
 @MainActor
-final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
+final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
 
     let article: Article
     private let allowsFullscreen: Bool
@@ -43,6 +43,17 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
         let config = WKWebViewConfiguration()
         config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ReaderWeb.imageScheme)
+        // Intercept link taps at the DOM level rather than via the navigation delegate: WebKit does
+        // not reliably classify tapped links inside a `loadHTMLString`-rendered document as
+        // `.linkActivated`, so `decidePolicyFor` would let them load in place. The injected script
+        // posts the browser-resolved absolute href here (the delegate stays as defense-in-depth).
+        let controller = WKUserContentController()
+        controller.add(WeakScriptMessageHandler(self), name: ReaderWeb.linkClickedHandler)
+        controller.addUserScript(WKUserScript(
+            source: ReaderWeb.linkInterceptionScript,
+            injectionTime: .atDocumentStart, forMainFrameOnly: true
+        ))
+        config.userContentController = controller
         webView = WKWebView(frame: view.bounds, configuration: config)
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -87,8 +98,8 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         guard html != loadedHTML else { return }
         loadedHTML = html
         // Load against the bundle directory (like NetNewsWire), not a fake web origin. The article's
-        // own `<base href>` resolves relative links to the real site; tapped links then arrive as
-        // `.linkActivated` and open in the in-app browser.
+        // own `<base href>` resolves relative links to the real site; the injected click handler
+        // (see ReaderWeb.linkInterceptionScript) then routes tapped links to the in-app browser.
         webView.loadHTMLString(html, baseURL: ReaderWeb.pageBaseURL)
     }
 
@@ -147,6 +158,14 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         decisionHandler(.allow)
     }
 
+    // Primary link path: the injected click handler posts the resolved absolute href here.
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == ReaderWeb.linkClickedHandler,
+              let href = message.body as? String,
+              let url = ReaderLinkPolicy.externalURL(fromClickedHref: href) else { return }
+        openExternally(url)
+    }
+
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url { openExternally(url) }
@@ -174,5 +193,17 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         guard var top = view.window?.rootViewController else { return nil }
         while let presented = top.presentedViewController { top = presented }
         return top
+    }
+}
+
+/// Forwards script messages to a weakly-held delegate. `WKUserContentController` retains its message
+/// handlers strongly; registering the view controller directly would create a retain cycle
+/// (controller → webView → configuration → userContentController → controller).
+@MainActor
+final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    private weak var delegate: WKScriptMessageHandler?
+    init(_ delegate: WKScriptMessageHandler) { self.delegate = delegate }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(controller, didReceive: message)
     }
 }
