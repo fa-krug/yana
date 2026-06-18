@@ -28,6 +28,7 @@ enum ArticleUpsert {
                 existing.content = item.content
                 existing.author = item.author
                 existing.iconURL = item.iconURL
+                existing.summary = item.summary
                 // date left untouched — an article's publication date is immutable, and
                 // re-stamping it on every refresh would let a missing/unparseable date
                 // (which falls back to "now") drift the article to the top of the timeline.
@@ -46,7 +47,8 @@ enum ArticleUpsert {
                     content: item.content,
                     date: item.date,
                     author: item.author,
-                    iconURL: item.iconURL
+                    iconURL: item.iconURL,
+                    summary: item.summary
                 )
                 article.createdAt = now
                 article.feed = feed

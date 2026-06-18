@@ -37,12 +37,16 @@ designed for privacy-conscious users who want their feeds without any backend.
 - **Services** (`Yana/Services/`): `AggregationService` (orchestrates feed updates and
   upserts into SwiftData; `updateAll()`/`update(feed:)` return the count of newly inserted
   articles), `KeychainService` (stores aggregator API keys), the AI
-  post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini JSON-mode calls) and
-  `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert) —
+  post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini/Mistral/Qwen/DeepSeek JSON-mode calls;
+  Mistral/Qwen/DeepSeek use the OpenAI-compatible API with a custom `apiBaseURL`) and
+  `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert;
+  when summarization is enabled a `summary` field is stored on the article and rendered as its own
+  block between the article header and body in the reader) —
   `CredentialTester` (validates entered Reddit/YouTube/AI keys via a minimal auth probe on each
   client — `RedditClient.verifyCredentials`, `YouTubeClient.verifyKey`, `AIClient.verify` — mapping
   outcomes to a shared `CredentialTestError`: invalid-credentials / network / unexpected-response;
-  surfaced by per-section **Test** buttons in Settings) —
+  surfaced by per-section **Test** buttons in Settings; the AI section shows config fields — API key,
+  model, and (for OpenAI-compatible providers) API URL — for the selected provider only) —
   `BackgroundRefreshManager` (best-effort periodic `BGAppRefreshTask`: registers at launch,
   reschedules at `AppSettings.backgroundInterval`, runs `updateAll()` in the handler, then posts
   a new-article notification when enabled), `NotificationService` (`Notifying` protocol +

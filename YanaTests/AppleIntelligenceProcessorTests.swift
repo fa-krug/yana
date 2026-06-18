@@ -114,7 +114,7 @@ struct AppleIntelligenceProcessorTests {
     // MARK: - Reduce path tests
 
     @Test func summarizeMultiChunkTriggersReduceExactlyOnce() async {
-        // summarize=true + multi-chunk input → reduce call happens exactly once.
+        // summarize=true + multi-chunk input → reduce call happens exactly once in the summary pass.
         // HTML must produce ≥2 chunks: two ~1404-char blocks exceed contentBudgetTokens (2496).
         let gen = RecordingGenerator()
         gen.mapTransform = { prompt in
@@ -132,12 +132,14 @@ struct AppleIntelligenceProcessorTests {
         let out = await proc.process([article(html)], ai: summarizeOpts)
 
         let reduceCalls = gen.calls.filter { $0.instructions == AppleIntelligenceProcessor.reduceInstructions }
-        // Reduce was called exactly once.
+        // Reduce was called exactly once (inside the summary pass).
         #expect(reduceCalls.count == 1)
-        // Final title and content come from the reduce pass.
+        // Summary is populated from the reduce pass; body is unchanged.
         #expect(out.count == 1)
-        #expect(out[0].title == "REDUCED_TITLE")
-        #expect(out[0].content == "[REDUCED_CONTENT]")
+        #expect(out[0].summary == "[REDUCED_CONTENT]")
+        // Summarize alone must not rewrite the body or the title.
+        #expect(out[0].content == html)
+        #expect(out[0].title == "orig")
     }
 
     @Test func summarizeSingleChunkSkipsReduce() async {

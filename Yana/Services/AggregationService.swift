@@ -113,16 +113,28 @@ final class AggregationService {
         case .gemini:
             model = settings.geminiModel
             keyItem = .geminiAPIKey
+        case .mistral:
+            model = settings.mistralModel
+            keyItem = .mistralAPIKey
+        case .qwen:
+            model = settings.qwenModel
+            keyItem = .qwenAPIKey
+        case .deepseek:
+            model = settings.deepseekModel
+            keyItem = .deepseekAPIKey
         case .appleIntelligence:
             model = ""
             keyItem = nil
         }
         let key = keyItem.flatMap(loadKey) ?? ""
+        // OpenAI honors the user-overridable URL; the other OpenAI-compatible providers use
+        // their fixed base. Non-compatible providers (Anthropic/Gemini) ignore this field.
+        let apiBaseURL = provider == .openai ? settings.openaiAPIURL : provider.baseURL
         return AIConfig(
             provider: provider,
             model: model,
             apiKey: key,
-            openaiAPIURL: settings.openaiAPIURL,
+            apiBaseURL: apiBaseURL,
             temperature: settings.aiTemperature,
             maxTokens: settings.aiMaxTokens,
             requestTimeout: settings.aiRequestTimeout,
@@ -227,7 +239,7 @@ final class AggregationService {
         let seed = AggregatedArticle(
             title: article.title, identifier: article.identifier, url: article.url,
             rawContent: article.rawContent, content: article.content, date: article.date,
-            author: article.author, iconURL: article.iconURL
+            author: article.author, iconURL: article.iconURL, summary: article.summary
         )
         let refreshed: AggregatedArticle?
         do {

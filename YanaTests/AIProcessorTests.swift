@@ -19,7 +19,7 @@ struct AIProcessorTests {
 
     private func config(provider: AIProvider = .openai, key: String = "k") -> AIConfig {
         AIConfig(provider: provider, model: "m", apiKey: key,
-                 openaiAPIURL: "https://api.openai.com/v1",
+                 apiBaseURL: "https://api.openai.com/v1",
                  temperature: 0.3, maxTokens: 2000, requestTimeout: 120,
                  maxRetries: 3, retryDelay: 0, maxRetryTime: 60)
     }
@@ -108,7 +108,7 @@ struct AIProcessorTests {
                                ai: ai(summarize: true, improve: true, translate: true, language: "German"))
 
         let p = gen.prompts.first ?? ""
-        #expect(p.contains("You must return the result as a JSON object with keys 'title' and 'content'."))
+        #expect(p.contains("You must return the result as a JSON object with keys 'title', 'content', and 'summary'."))
         #expect(p.contains("Summarize the article content concisely."))
         #expect(p.contains("Keep all links (<a> tags) exactly as they are"))
         #expect(p.contains("Translate the title and content to German."))

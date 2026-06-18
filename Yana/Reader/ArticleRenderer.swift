@@ -43,7 +43,7 @@ enum ArticleRenderer {
         d["external_link_label"] = ""
         d["external_link_stripped"] = ""
         d["external_link"] = ""
-        d["body"] = article.content
+        d["body"] = Self.composeBody(content: article.content, summary: article.summary)
         d["text_size_class"] = textSize.cssClass
 
         if let hash = article.feed?.logoHash, !hash.isEmpty {
@@ -68,6 +68,19 @@ enum ArticleRenderer {
         d["time_medium"] = mediumTime.string(from: date)
         d["time_short"] = shortTime.string(from: date)
         return d
+    }
+
+    /// The body HTML for the `[[body]]` macro: the article content, optionally preceded by a
+    /// styled summary block (rendered between the header/title and the article body). HTML-escapes
+    /// the summary text since the model returns it as plain text / simple HTML; wrapping in a
+    /// `<div>` keeps it isolated from the body markup.
+    static func composeBody(content: String, summary: String) -> String {
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return content }
+        let label = ContentFormatter.escapeHTML(String(localized: "Summary"))
+        let escaped = ContentFormatter.escapeHTML(trimmed)
+        return "<div class=\"yana-summary\"><div class=\"yana-summary-label\">\(label)</div>\(escaped)</div>"
+            + content
     }
 
     /// Drives the `[[font-size]]` macro (the `:root` body font size) from the user's selected

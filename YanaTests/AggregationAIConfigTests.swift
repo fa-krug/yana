@@ -105,7 +105,7 @@ struct AggregationAIConfigTests {
 
         let config = AggregationService.makeAIConfig(settings: settings, loadKey: { _ in "k" })
 
-        #expect(config.openaiAPIURL == "https://proxy.example/v1")
+        #expect(config.apiBaseURL == "https://proxy.example/v1")
         #expect(config.temperature == 0.7)
         #expect(config.maxTokens == 1234)
         #expect(config.requestTimeout == 45)

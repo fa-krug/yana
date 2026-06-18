@@ -25,7 +25,7 @@ struct AIClientTests {
             provider: provider,
             model: model,
             apiKey: key,
-            openaiAPIURL: "https://api.openai.com/v1",
+            apiBaseURL: "https://api.openai.com/v1",
             temperature: 0.3,
             maxTokens: 2000,
             requestTimeout: 120,

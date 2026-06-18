@@ -12,6 +12,9 @@ final class Article {
     var date: Date = Date.now
     var author: String = ""
     var iconURL: String?
+    /// AI-generated summary, shown above the body in the reader. Defaulted for lightweight
+    /// SwiftData migration; empty when summarization is off.
+    var summary: String = ""
     var createdAt: Date = Date.now
 
     /// Snapshot of the feed's tags at import, plus the built-in Starred tag when starred.
@@ -27,7 +30,8 @@ final class Article {
         content: String = "",
         date: Date = .now,
         author: String = "",
-        iconURL: String? = nil
+        iconURL: String? = nil,
+        summary: String = ""
     ) {
         self.title = title
         self.identifier = identifier
@@ -37,6 +41,7 @@ final class Article {
         self.date = date
         self.author = author
         self.iconURL = iconURL
+        self.summary = summary
         self.createdAt = .now
     }
 
