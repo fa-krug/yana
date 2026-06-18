@@ -108,7 +108,7 @@ struct AIProcessorTests {
                                ai: ai(summarize: true, improve: true, translate: true, language: "German"))
 
         let p = gen.prompts.first ?? ""
-        #expect(p.contains("You must return the result as a JSON object with keys 'title' and 'content'."))
+        #expect(p.contains("You must return the result as a JSON object with keys 'title', 'content', and 'summary'."))
         #expect(p.contains("Summarize the article content concisely."))
         #expect(p.contains("Keep all links (<a> tags) exactly as they are"))
         #expect(p.contains("Translate the title and content to German."))

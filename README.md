@@ -49,9 +49,12 @@ privacy-conscious users who want their feeds without any backend.
 - **Refresh.** Pull down on the reader to force-update the current article and the whole
   timeline. Per-feed and all-feeds updates are available in the config hub.
 - **Keys.** Reddit and YouTube require user-supplied API keys; AI post-processing
-  (summarize / improve / translate) uses your own OpenAI / Anthropic / Gemini key. Secrets
-  are stored in the Keychain. A **Test** button in Settings checks each key with a minimal
-  auth call and tells you whether it's valid before you rely on it.
+  (summarize / improve / translate) uses your own OpenAI / Anthropic / Gemini / Mistral /
+  Qwen / DeepSeek key. Settings shows config fields for the selected provider only (API key,
+  model, and — for OpenAI-compatible providers — API URL). A generated summary appears as
+  its own block between the article header and body. Secrets are stored in the Keychain.
+  A **Test** button in Settings checks each key with a minimal auth call and tells you
+  whether it's valid before you rely on it.
 
 ## Features
 
