@@ -12,8 +12,8 @@ enum RefreshOutcome {
         }
         let articleWord = newCount == 1 ? String(localized: "article") : String(localized: "articles")
         if let name = feedName {
-            return "Added \(newCount) new \(articleWord) from \u{201C}\(name)\u{201D}."
+            return String(localized: "Added \(newCount) new \(articleWord) from \u{201C}\(name)\u{201D}.")
         }
-        return "Added \(newCount) new \(articleWord)."
+        return String(localized: "Added \(newCount) new \(articleWord).")
     }
 }
