@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 /// Bridges the UIKit reader into SwiftUI: feeds the filtered timeline + selected index down to
 /// `ReaderArticleViewController` and reports index changes back up. The chrome buttons call back
@@ -152,8 +153,6 @@ struct ReaderScreen: View {
         }
     }
 }
-
-import UIKit
 
 /// Presents a `UIActivityViewController` from SwiftUI (used by the search detail + link sheets).
 struct ShareSheet: UIViewControllerRepresentable {
