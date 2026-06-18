@@ -311,6 +311,17 @@
         }
       }
     },
+    "Clear All": {
+      "comment": "A button that resets the timeline filter so all tags and feeds are active.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle zur\u00fccksetzen"
+          }
+        }
+      }
+    },
     "Close": {
       "comment": "Accessibility label for the button that dismisses the Library sheet.",
       "localizations": {

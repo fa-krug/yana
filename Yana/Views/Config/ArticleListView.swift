@@ -12,6 +12,7 @@ struct ArticleListView: View {
     @State private var searchText = ""
     @State private var disabledTagNames: Set<String> = []
     @State private var includeUntagged = true
+    @State private var disabledFeedNames: Set<String> = []
     @State private var showFilter = false
     @State private var articleToDelete: Article?
 
@@ -23,11 +24,12 @@ struct ArticleListView: View {
 
     private var results: [Article] {
         let searched = ArticleSearch.filter(allArticles, query: searchText)
-        return TagFilter.apply(to: searched, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged)
+        let byTag = TagFilter.apply(to: searched, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged)
+        return FeedFilter.apply(to: byTag, disabledFeedNames: disabledFeedNames)
     }
 
     private var isFilterActive: Bool {
-        !disabledTagNames.isEmpty || !includeUntagged
+        !disabledTagNames.isEmpty || !includeUntagged || !disabledFeedNames.isEmpty
     }
 
     var body: some View {
@@ -91,7 +93,11 @@ struct ArticleListView: View {
             }
         }
         .sheet(isPresented: $showFilter) {
-            ArticleTagFilterView(disabledTagNames: $disabledTagNames, includeUntagged: $includeUntagged)
+            ArticleTagFilterView(
+                disabledTagNames: $disabledTagNames,
+                includeUntagged: $includeUntagged,
+                disabledFeedNames: $disabledFeedNames
+            )
         }
         .confirmationDialog(
             String(localized: "Delete Article?"),
