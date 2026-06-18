@@ -14,6 +14,7 @@ struct FeedsView: View {
     @State private var feedToDelete: Feed?
     @State private var searchText = ""
     @State private var settings = AppSettings()
+    @State private var showingCreateFeed = false
 
     /// Shared, app-lifetime flag so the spinner survives leaving and returning to this screen
     /// while a detached update Task keeps running in the background.
@@ -62,8 +63,8 @@ struct FeedsView: View {
         .navigationTitle("Feeds")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    FeedEditorView(feed: nil)
+                Button {
+                    showingCreateFeed = true
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -83,6 +84,9 @@ struct FeedsView: View {
                     Image(systemName: "ellipsis.circle")
                 }
             }
+        }
+        .sheet(isPresented: $showingCreateFeed) {
+            NavigationStack { FeedEditorView(feed: nil) }
         }
         .fileImporter(
             isPresented: $isImporting,

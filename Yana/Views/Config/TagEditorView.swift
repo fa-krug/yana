@@ -4,10 +4,19 @@ import SwiftUI
 /// Create or rename/recolor a tag. The built-in Starred tag can be recolored but not renamed.
 struct TagEditorView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
 
     let tag: Tag?
     @State private var name: String
     @State private var color: Color
+
+    /// nil tag = creating a new tag, presented as a sheet with explicit Cancel/confirm.
+    private var isCreating: Bool { tag == nil }
+
+    /// A new tag can only be committed once it has a non-empty name.
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     init(tag: Tag?) {
         self.tag = tag
@@ -21,8 +30,15 @@ struct TagEditorView: View {
                 .disabled(tag?.isBuiltIn == true)
             ColorPicker("Color", selection: $color, supportsOpacity: false)
         }
-        .navigationTitle(tag == nil ? "New Tag" : "Edit Tag")
-        .onDisappear { save() }
+        .navigationTitle(isCreating ? "New Tag" : "Edit Tag")
+        // Create flow: explicit Cancel/confirm in a sheet. Edit flow: auto-save on dismiss.
+        .modifier(EditorSaveBehavior(
+            isCreating: isCreating,
+            canSave: canSave,
+            onSave: { save(); dismiss() },
+            onCancel: { dismiss() },
+            onDisappearSave: save
+        ))
     }
 
     /// Auto-save on exit. An empty name discards the edit: a new tag is never inserted,
