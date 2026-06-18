@@ -71,7 +71,9 @@ designed for privacy-conscious users who want their feeds without any backend.
 
 - **No server:** all content is aggregated on-device. There is no login.
 - **No read/unread state:** the home surface is a single **endless timeline** of all articles
-  ordered by date, swiped both directions, with the position remembered across launches.
+  ordered by import date (`Article.createdAt`), swiped both directions, with the position remembered
+  across launches. Re-fetched articles keep their original `createdAt`, so updates don't jump the
+  timeline.
 - **Tags, not groups:** feeds carry tags, which are **snapshotted onto each article at import
   time** (not retroactive). **Starred is a built-in tag** applied per-article. The timeline is
   filtered by toggling tags (all on by default; an "Untagged" entry covers tagless articles).
@@ -113,7 +115,7 @@ before use, with Apple Intelligence checked for on-device availability instead.
 1. **Feed configuration** — create/edit/delete feeds, choose an aggregator type, set per-feed options, assign tags
 2. **Tag management** — create/rename/recolor/delete/reorder tags; Starred is a locked built-in tag
 3. **Local aggregation** — fetch & parse feeds on-device, store articles in SwiftData (tags snapshotted per article at import)
-4. **Endless timeline** — single date-ordered stream of all articles, swiped both directions, position remembered
+4. **Endless timeline** — single stream of all articles ordered by import date, swiped both directions, position remembered
 5. **Tag filter** — filter the timeline by toggling tags (all on by default; includes an "Untagged" entry)
 6. **Article detail** — render article HTML content in the swipe reader
 7. **Starred** — star/unstar an article (adds/removes the built-in Starred tag); starred articles are exempt from cleanup

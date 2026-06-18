@@ -54,7 +54,7 @@ struct ReaderScreen: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \Article.date, order: .reverse) private var allArticles: [Article]
+    @Query(sort: \Article.createdAt, order: .reverse) private var allArticles: [Article]
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 

@@ -7,7 +7,7 @@ import SwiftUI
 /// `AppSettings`) so it never affects the home timeline.
 struct ArticleListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Article.date, order: .reverse) private var allArticles: [Article]
+    @Query(sort: \Article.createdAt, order: .reverse) private var allArticles: [Article]
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var searchText = ""
     @State private var disabledTagNames: Set<String> = []
