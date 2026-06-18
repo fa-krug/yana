@@ -53,6 +53,20 @@ struct ArticleUpsertTests {
         #expect(article.createdAt == originalCreatedAt)    // timeline position preserved
     }
 
+    @Test func preservesOriginalDateOnReimport() throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "f")
+        context.insert(feed)
+
+        let published = Date(timeIntervalSince1970: 1_000_000)
+        ArticleUpsert.apply([aggregated("x1", date: published)], to: feed, starredTag: nil, context: context, now: .now)
+        let article = try #require(feed.articles.first)
+
+        // Re-import with a different (e.g. "now" fallback) date must NOT move the article.
+        ArticleUpsert.apply([aggregated("x1", date: .now)], to: feed, starredTag: nil, context: context, now: .now)
+        #expect(article.date == published)
+    }
+
     @Test func returnsCountOfNewlyInsertedOnly() throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "f")

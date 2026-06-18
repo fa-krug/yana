@@ -28,7 +28,9 @@ enum ArticleUpsert {
                 existing.content = item.content
                 existing.author = item.author
                 existing.iconURL = item.iconURL
-                existing.date = item.date
+                // date left untouched — an article's publication date is immutable, and
+                // re-stamping it on every refresh would let a missing/unparseable date
+                // (which falls back to "now") drift the article to the top of the timeline.
                 existing.tags = feed.tags
                 if wasStarred, let starredTag, !existing.tags.contains(where: { $0.id == starredTag.id }) {
                     existing.tags.append(starredTag)

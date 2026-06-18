@@ -31,12 +31,21 @@ enum FeedParser {
         return ParsedFeed(entries: delegate.entries)
     }
 
-    // RFC 822 (RSS pubDate) — cached, built once instead of per call.
-    // Configured once at init then used read-only (`date(from:)`), which is thread-safe.
-    private static let rfc822Formatters: [DateFormatter] = {
-        ["EEE, dd MMM yyyy HH:mm:ss Z", "EEE, dd MMM yyyy HH:mm:ss zzz", "dd MMM yyyy HH:mm:ss Z"].map { fmt in
+    // Fixed-format dates (RSS pubDate, date-only) — cached, built once instead of
+    // per call. Configured once at init then used read-only (`date(from:)`), which
+    // is thread-safe. Order matters: most specific (with seconds) first.
+    private static let fixedFormatters: [DateFormatter] = {
+        [
+            "EEE, dd MMM yyyy HH:mm:ss Z", "EEE, dd MMM yyyy HH:mm:ss zzz",
+            "dd MMM yyyy HH:mm:ss Z",
+            "EEE, dd MMM yyyy HH:mm Z", "EEE, dd MMM yyyy HH:mm zzz",   // seconds omitted
+            "yyyy-MM-dd'T'HH:mm:ssZ",                                   // ISO without 'Z' literal
+            "yyyy-MM-dd HH:mm:ss",                                      // space-separated, no zone
+            "yyyy-MM-dd",                                               // date only
+        ].map { fmt in
             let f = DateFormatter()
             f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(identifier: "UTC")
             f.dateFormat = fmt
             return f
         }
@@ -51,12 +60,15 @@ enum FeedParser {
     }()
 
     static func parseDate(_ s: String?) -> Date? {
-        guard let s, !s.isEmpty else { return nil }
-        for f in rfc822Formatters {
-            if let d = f.date(from: s) { return d }
+        guard let s else { return nil }
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let d = isoPlain.date(from: trimmed) { return d }
+        if let d = isoFractional.date(from: trimmed) { return d }
+        for f in fixedFormatters {
+            if let d = f.date(from: trimmed) { return d }
         }
-        if let d = isoPlain.date(from: s) { return d }
-        return isoFractional.date(from: s)
+        return nil
     }
 }
 
@@ -65,6 +77,9 @@ private final class FeedXMLDelegate: NSObject, XMLParserDelegate {
     private var current: FeedEntry?
     private var text = ""
     private var inItem = false
+    /// Atom <updated> date, used only as a fallback when no original publication
+    /// date (<published>/pubDate/dc:date) is present. Reset per item.
+    private var updatedFallback: Date?
 
     func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,
                 qualifiedName qn: String?, attributes attrs: [String: String]) {
@@ -73,6 +88,7 @@ private final class FeedXMLDelegate: NSObject, XMLParserDelegate {
         if lower == "item" || lower == "entry" {
             inItem = true
             current = FeedEntry()
+            updatedFallback = nil
         } else if inItem, lower == "link", let href = attrs["href"], !href.isEmpty {
             let rel = attrs["rel"] ?? "alternate"     // Atom: absent rel means "alternate"
             if rel == "alternate" { current?.link = href }   // ignore self/enclosure/etc.
@@ -97,6 +113,7 @@ private final class FeedXMLDelegate: NSObject, XMLParserDelegate {
         defer { text = "" }
         guard inItem, current != nil else { return }
         if lower == "item" || lower == "entry" {
+            if current?.published == nil { current?.published = updatedFallback }
             if let c = current { entries.append(c) }
             current = nil
             inItem = false
@@ -131,8 +148,12 @@ private final class FeedXMLDelegate: NSObject, XMLParserDelegate {
             if current?.link.isEmpty ?? true { current?.link = trimmed }
         case "author", "dc:creator", "name":
             if current?.author.isEmpty ?? true { current?.author = trimmed }
-        case "pubdate", "published", "updated", "dc:date":
+        case "pubdate", "published", "dc:date":
+            // Original publication date — authoritative for timeline ordering.
             if current?.published == nil { current?.published = FeedParser.parseDate(trimmed) }
+        case "updated":
+            // Last-modified date — only a fallback (resolved at item end).
+            if updatedFallback == nil { updatedFallback = FeedParser.parseDate(trimmed) }
         default: break
         }
     }
