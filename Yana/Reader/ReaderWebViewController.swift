@@ -124,11 +124,18 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     @objc private func tapZoneTapped() { onRequestShowBars() }
 
-    // MARK: - Links → native browser
+    // MARK: - Links → in-app browser
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
+        guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
+        // Our own rendered article (loaded under the base origin) and `yana-img://` image
+        // requests load in place. Every other http(s) navigation — any tapped link whatever its
+        // navigation type, redirect, or `target="_blank"` — is cancelled and opened in the same
+        // browser as the Open-in-Browser button.
+        let isOwnDocument = url.absoluteString.hasPrefix(ReaderWeb.baseOrigin)
+        let isWebLink = url.scheme == "http" || url.scheme == "https"
+        if isWebLink && !isOwnDocument {
             decisionHandler(.cancel)
             openExternally(url)
             return
