@@ -149,7 +149,10 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
         if let headerURL = makeHeaderImageURL(forPage: article.rawContent),
            let headerID = Self.extractImageID(headerURL) {
             for img in try doc.select("img") {
-                let src = try img.attr("src")
+                var src = try img.attr("src")
+                if src.isEmpty || src.hasPrefix("data:") {
+                    src = largestSrcsetURL(try img.attr("srcset")) ?? ""
+                }
                 if !src.isEmpty, Self.extractImageID(src) == headerID { try img.remove() }
             }
         }

@@ -112,6 +112,51 @@ struct MactechnewsAggregatorTests {
         #expect(imgCount == 2)
     }
 
+    // MARK: - Lazy-loaded image numeric-ID dedup (srcset fallback)
+
+    @Test func numericIDDedupRemovesLazyLoadedImageViaSrcset() async throws {
+        // Verifies that when the body <img> has a data: placeholder in src but the real URL
+        // (with the same numeric ID as the header og:image) is in the srcset, the image is
+        // still removed by the numeric-ID dedup path.
+        // Header: Cover-X.592736.jpg → ID "592736"
+        // Body img: src="data:image/svg+xml,x" srcset="/img/Bild.592736.jpg 336w" → same ID → should be removed
+        // Other img: src="/img/Other.111111.jpg" → different ID → should survive
+        // Without the fix, the lazy img passes dedup (extractImageID("data:…") = nil ≠ headerID)
+        // and rewriteImages keeps it as a yana-img:// entry, giving 2 body images instead of 1.
+        let page = """
+        <html><head><meta property="og:image" content="https://www.mactechnews.de/img/Cover-X.592736.jpg"></head>
+        <body><div class="MtnArticle"><p>Body</p>\
+        <img src="data:image/svg+xml,x" srcset="https://www.mactechnews.de/img/Bild.592736.jpg 336w">\
+        <img src="https://www.mactechnews.de/img/Other.111111.jpg"></div></body></html>
+        """
+        final class StubLazyDedup: MactechnewsAggregator, @unchecked Sendable {
+            let page: String
+            init(_ page: String, _ store: ImageStore) {
+                self.page = page
+                super.init(config: FeedConfig(type: .mactechnews, identifier: "",
+                           dailyLimit: 20, options: .mactechnews(MactechnewsOptions()), collectedToday: 0),
+                           credentials: .init(), store: store)
+            }
+            override func fetchEntries() async throws -> [FeedEntry] {
+                [FeedEntry(title: "T", link: "https://www.mactechnews.de/news/a.html", content: "<p>s</p>",
+                           summary: nil, entryDescription: nil, published: .now, author: "", enclosures: [],
+                           itunesDuration: nil, itunesImage: nil, mediaThumbnails: [])]
+            }
+            override func fetchArticleHTML(_ url: String) async throws -> String { page }
+            override func makeHeaderImageURL(forPage html: String) -> String? {
+                "https://www.mactechnews.de/img/Cover-X.592736.jpg"
+            }
+        }
+        let agg = StubLazyDedup(page, tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Body"))
+        // After dedup the lazy 592736 img is removed; only Other.111111.jpg (rewritten to yana-img://) + header survive.
+        // Total <img> count in the full content: 1 header img + 1 body img (Other) = 2.
+        // Without the fix an extra yana-img:// entry for Bild.592736 leaks through → imgCount == 3.
+        let imgCount = a.content.components(separatedBy: "<img").count - 1
+        #expect(imgCount == 2, "lazy-loaded image with matching numeric ID should be deduped; expected 2 imgs (header + Other), got \(imgCount)")
+    }
+
     // MARK: - Pagination detection
 
     @Test func detectsPaginationFromQueryParamLinks() {

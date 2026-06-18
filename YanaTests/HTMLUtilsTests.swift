@@ -39,4 +39,29 @@ struct HTMLUtilsTests {
         let html = try HTMLUtils.bodyHTML(doc)
         #expect(!html.contains("<img"))
     }
+
+    // MARK: - Lazy-loaded image de-dup (srcset fallback)
+
+    @Test func removeImageByURLRemovesLazyLoadedImageViaSrcset() throws {
+        // Simulates a lazy-loaded image: src is a data: placeholder, real URL only in srcset.
+        // Header URL: https://example.com/photo.jpg  → base "photo"
+        // Body <img>: src="data:image/svg+xml,x" srcset="https://example.com/photo-336.jpg 336w, https://example.com/photo-1008.jpg 1008w"
+        // photo-336 strips dimension suffix (-336) → "photo" (same base) → should be removed.
+        let doc = try HTMLUtils.parse(
+            "<img src=\"data:image/svg+xml,x\" srcset=\"https://example.com/photo-336.jpg 336w, https://example.com/photo-1008.jpg 1008w\"><p>body</p>"
+        )
+        try HTMLUtils.removeImageByURL(doc, url: "https://example.com/photo.jpg")
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(!html.contains("<img"), "lazy-loaded image should be removed when srcset matches header URL base filename")
+    }
+
+    @Test func removeImageByURLDoesNotRemoveLazyImageWithDifferentBase() throws {
+        // A different image (base "banner", not "photo") must NOT be removed.
+        let doc = try HTMLUtils.parse(
+            "<img src=\"data:image/svg+xml,x\" srcset=\"https://example.com/banner-336.jpg 336w\"><p>body</p>"
+        )
+        try HTMLUtils.removeImageByURL(doc, url: "https://example.com/photo.jpg")
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(html.contains("<img"), "image with different base filename should NOT be removed")
+    }
 }
