@@ -61,6 +61,7 @@ struct AIProcessor: AIProcessing {
                 var updated = article
                 if let title = parsed["title"] as? String { updated.title = title }
                 if let content = parsed["content"] as? String { updated.content = content }
+                if let summary = parsed["summary"] as? String { updated.summary = summary }
                 output.append(updated)
             } catch {
                 continue        // drop on AI failure
@@ -74,15 +75,20 @@ struct AIProcessor: AIProcessing {
     static func buildPrompt(title: String, cleanHTML: String, ai: AIOptions) -> String {
         var parts: [String] = []
 
+        let keyList = ai.summarize ? "'title', 'content', and 'summary'" : "'title' and 'content'"
         parts.append(
             "You are an AI assistant that processes article content. "
             + "You will receive an article title and content in HTML format. "
-            + "You must return the result as a JSON object with keys 'title' and 'content'. "
+            + "You must return the result as a JSON object with keys \(keyList). "
             + "Do not include any markdown formatting (like ```json) in the response, just the raw JSON string."
         )
 
         if ai.summarize {
-            parts.append(ArticleAIText.summarizeInstruction)
+            parts.append(
+                ArticleAIText.summarizeInstruction
+                + " Put this summary in the 'summary' key. "
+                + "Keep the 'content' field as the full article HTML — do not replace the content with the summary."
+            )
         }
 
         if ai.improveWriting {
