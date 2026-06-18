@@ -134,3 +134,22 @@ a.footnote {
 	position:relative;
 	top: -0.1em;
 }
+
+/* Yana AI summary block — rendered between the article header and body. */
+.yana-summary {
+	border-left: 4px solid rgba(40, 97, 227, 0.9);
+	background: rgba(127, 127, 127, 0.10);
+	padding: 0.7em 0.95em;
+	margin: 0 0 1.4em 0;
+	border-radius: 5px;
+	font-size: 0.95em;
+}
+
+.yana-summary-label {
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	font-size: 0.72em;
+	opacity: 0.6;
+	margin-bottom: 0.35em;
+}

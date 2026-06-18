@@ -1556,6 +1556,16 @@
         }
       }
     },
+    "Summary": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zusammenfassung"
+          }
+        }
+      }
+    },
     "Summarize": {
       "localizations": {
         "de": {
