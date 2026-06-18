@@ -186,6 +186,15 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         }
     }
 
+    /// Selftext truncated at the first inline link to a *specific comment*
+    /// (`.../comments/<id>/<slug>/<commentID>`), so an image or link quoted under a referenced
+    /// comment thread isn't mistaken for this post's own header image. (Server parity.)
+    private func selftextTruncatedBeforeCommentURL(_ text: String) -> String {
+        let pattern = #"https?://[^\s]*/comments/[a-zA-Z0-9]+/[^/\s]+/[a-zA-Z0-9]+"#
+        guard let r = text.range(of: pattern, options: .regularExpression) else { return text }
+        return String(text[..<r.lowerBound])
+    }
+
     /// og:image scraped from a linked page (Priority 3 fallback / Priority 5). Network failures
     /// degrade to nil so the chain falls through rather than throwing.
     private func pageImageURL(_ url: String) async -> String? {
@@ -227,9 +236,11 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             if isDirect, !isRedditCommentsURL(decoded) { return decoded }
         }
         // Priority 3: image URL inside selftext; else og:image of the first non-Twitter link.
+        // Links quoted under a referenced comment thread are dropped (truncation) so they don't
+        // hijack the header.
         if post.isSelf, !post.selftext.isEmpty {
             var firstLink: String?
-            for url in selftextURLs(post.selftext) {
+            for url in selftextURLs(selftextTruncatedBeforeCommentURL(post.selftext)) {
                 let lower = url.lowercased()
                 if lower.contains("preview.redd.it")
                     || [".jpg", ".jpeg", ".png", ".webp", ".gif"].contains(where: { lower.contains($0) }) {

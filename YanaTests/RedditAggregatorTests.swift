@@ -295,4 +295,27 @@ struct RedditAggregatorTests {
         #expect(rec.urls.contains("https://cdn.example.com/lead.jpg"),
                 "og:image from the linked page should become the header when Reddit has no preview")
     }
+
+    /// Priority 3 truncation: an image link that appears *after* a referenced comment URL in the
+    /// selftext belongs to the quoted discussion, not this post — so it must not be promoted to the
+    /// header. The chain falls back to the thumbnail instead. (Server _extract_image_url_from_selftext.)
+    @Test func selftextImageAfterCommentURLIsNotPromoted() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"ct1","title":"Quoted thread",
+                   "selftext":"As discussed https://www.reddit.com/r/swift/comments/ab12/title/cd34 see https://preview.redd.it/after.png",
+                   "url":"https://www.reddit.com/r/swift/comments/ct1/quoted_thread/",
+                   "permalink":"/r/swift/comments/ct1/quoted_thread/",
+                   "created_utc":\(recentUTC),"author":"gwen","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,
+                   "thumbnail":"https://example.com/thumb.jpg"}}
+        ]}}
+        """
+        _ = try await aggregator(listing: listing, store: recordingStore(rec)).aggregate()
+        #expect(!rec.urls.contains("https://preview.redd.it/after.png"),
+                "an image after a referenced comment URL belongs to the quoted thread, not the header")
+        #expect(rec.urls.contains("https://example.com/thumb.jpg"),
+                "with the post-comment image excluded, the chain falls back to the thumbnail")
+    }
 }
