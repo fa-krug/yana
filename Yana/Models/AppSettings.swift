@@ -34,8 +34,8 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .anthropic: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-8"]
         case .gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
         case .mistral: ["mistral-small-latest", "mistral-large-latest", "mistral-medium-latest"]
-        case .qwen: ["qwen-plus", "qwen-turbo", "qwen-max"]
-        case .deepseek: ["deepseek-chat", "deepseek-reasoner"]
+        case .qwen: ["qwen3.5-flash", "qwen3.5-plus", "qwen3-max"]
+        case .deepseek: ["deepseek-v4-flash", "deepseek-v4-pro"]
         case .appleIntelligence: []
         }
     }
@@ -76,8 +76,8 @@ final class AppSettings {
             Key.anthropicModel: "claude-haiku-4-5-20251001",
             Key.geminiModel: "gemini-2.5-flash",
             Key.mistralModel: "mistral-small-latest",
-            Key.qwenModel: "qwen-plus",
-            Key.deepseekModel: "deepseek-chat",
+            Key.qwenModel: "qwen3.5-flash",
+            Key.deepseekModel: "deepseek-v4-flash",
             Key.aiTemperature: 0.3,
             Key.aiMaxTokens: 2000,
             Key.aiMaxPromptLength: 500,
@@ -203,11 +203,11 @@ final class AppSettings {
         set { withMutation(keyPath: \.mistralModel) { defaults.set(newValue, forKey: Key.mistralModel) } }
     }
     var qwenModel: String {
-        get { access(keyPath: \.qwenModel); return defaults.string(forKey: Key.qwenModel) ?? "qwen-plus" }
+        get { access(keyPath: \.qwenModel); return defaults.string(forKey: Key.qwenModel) ?? "qwen3.5-flash" }
         set { withMutation(keyPath: \.qwenModel) { defaults.set(newValue, forKey: Key.qwenModel) } }
     }
     var deepseekModel: String {
-        get { access(keyPath: \.deepseekModel); return defaults.string(forKey: Key.deepseekModel) ?? "deepseek-chat" }
+        get { access(keyPath: \.deepseekModel); return defaults.string(forKey: Key.deepseekModel) ?? "deepseek-v4-flash" }
         set { withMutation(keyPath: \.deepseekModel) { defaults.set(newValue, forKey: Key.deepseekModel) } }
     }
 
