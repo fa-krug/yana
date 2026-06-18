@@ -41,7 +41,7 @@ designed for privacy-conscious users who want their feeds without any backend.
   Mistral/Qwen/DeepSeek use the OpenAI-compatible API with a custom `apiBaseURL`) and
   `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert;
   when summarization is enabled a `summary` field is stored on the article and rendered as its own
-  block between the article header and body in the reader) —
+  block between the lead image and the article text in the reader) —
   `CredentialTester` (validates entered Reddit/YouTube/AI keys via a minimal auth probe on each
   client — `RedditClient.verifyCredentials`, `YouTubeClient.verifyKey`, `AIClient.verify` — mapping
   outcomes to a shared `CredentialTestError`: invalid-credentials / network / unexpected-response;

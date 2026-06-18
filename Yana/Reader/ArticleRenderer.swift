@@ -70,17 +70,33 @@ enum ArticleRenderer {
         return d
     }
 
-    /// The body HTML for the `[[body]]` macro: the article content, optionally preceded by a
-    /// styled summary block (rendered between the header/title and the article body). HTML-escapes
-    /// the summary text since the model returns it as plain text / simple HTML; wrapping in a
-    /// `<div>` keeps it isolated from the body markup.
+    /// The body HTML for the `[[body]]` macro: the article content with a styled summary block
+    /// inserted just after the lead-media `<header>` (the article image) so it sits between the
+    /// image and the article text; when the content has no leading header the block goes at the
+    /// very top. HTML-escapes the summary text since the model returns it as plain text / simple
+    /// HTML; wrapping in a `<div>` keeps it isolated from the body markup.
     static func composeBody(content: String, summary: String) -> String {
         let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return content }
         let label = ContentFormatter.escapeHTML(String(localized: "Summary"))
         let escaped = ContentFormatter.escapeHTML(trimmed)
-        return "<div class=\"yana-summary\"><div class=\"yana-summary-label\">\(label)</div>\(escaped)</div>"
-            + content
+        let block = "<div class=\"yana-summary\"><div class=\"yana-summary-label\">\(label)</div>\(escaped)</div>"
+        return insert(summaryBlock: block, into: content)
+    }
+
+    /// Places `block` after the content's leading `<header>…</header>` (the lead media / article
+    /// image) so the summary renders between the image and the body text. The header must be the
+    /// first element — a nested header inside the body never matches. Falls back to prepending
+    /// when there is no leading header (nothing to sit below).
+    private static func insert(summaryBlock block: String, into content: String) -> String {
+        let leading = content.drop { $0 == " " || $0 == "\n" || $0 == "\t" || $0 == "\r" }
+        guard leading.prefix(7).lowercased() == "<header",
+              let headerEnd = content.range(of: "</header>", options: .caseInsensitive) else {
+            return block + content
+        }
+        var result = content
+        result.insert(contentsOf: block, at: headerEnd.upperBound)
+        return result
     }
 
     /// Drives the `[[font-size]]` macro (the `:root` body font size) from the user's selected
