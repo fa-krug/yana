@@ -34,4 +34,14 @@ struct IdentifierSearchTests {
         await model.search("")
         #expect(model.rows.isEmpty)
     }
+
+    @Test func subscriberCompactFormatting() {
+        #expect(SubscriberCount.compact(7_937_468) == "7.9M")
+        #expect(SubscriberCount.compact(2_360_328) == "2.4M")
+        #expect(SubscriberCount.compact(411_321) == "411K")
+        #expect(SubscriberCount.compact(30_251) == "30K")
+        #expect(SubscriberCount.compact(1_500) == "1.5K")
+        #expect(SubscriberCount.compact(999) == "999")
+        #expect(SubscriberCount.compact(0) == "0")
+    }
 }

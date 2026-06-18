@@ -1,5 +1,21 @@
 import SwiftUI
 
+/// Formats a subscriber/member count compactly (e.g. 7937468 → "7.9M", 411321 → "411K").
+enum SubscriberCount {
+    static func compact(_ n: Int) -> String {
+        func scale(_ value: Double, _ suffix: String) -> String {
+            let s = value >= 10 ? String(format: "%.0f", value) : String(format: "%.1f", value)
+            let trimmed = s.hasSuffix(".0") ? String(s.dropLast(2)) : s
+            return trimmed + suffix
+        }
+        switch n {
+        case 1_000_000...: return scale(Double(n) / 1_000_000, "M")
+        case 1_000...: return scale(Double(n) / 1_000, "K")
+        default: return "\(n)"
+        }
+    }
+}
+
 /// A pickable search result row (value is saved to the feed identifier).
 struct IdentifierSearchRow: Identifiable, Sendable {
     var value: String
