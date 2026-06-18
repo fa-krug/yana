@@ -89,6 +89,34 @@ struct AppSettingsTests {
         #expect(fired)
     }
 
+    @Test func changingTextSizePostsChangeNotification() {
+        let settings = AppSettings(defaults: freshDefaults())
+        settings.articleTextSize = .medium // baseline
+
+        nonisolated(unsafe) var posted = false
+        let token = NotificationCenter.default.addObserver(
+            forName: AppSettings.articleTextSizeDidChange, object: nil, queue: nil
+        ) { _ in posted = true }
+
+        settings.articleTextSize = .large
+        NotificationCenter.default.removeObserver(token)
+        #expect(posted)
+    }
+
+    @Test func settingSameTextSizeDoesNotPost() {
+        let settings = AppSettings(defaults: freshDefaults())
+        settings.articleTextSize = .large
+
+        nonisolated(unsafe) var posted = false
+        let token = NotificationCenter.default.addObserver(
+            forName: AppSettings.articleTextSizeDidChange, object: nil, queue: nil
+        ) { _ in posted = true }
+
+        settings.articleTextSize = .large // unchanged
+        NotificationCenter.default.removeObserver(token)
+        #expect(!posted)
+    }
+
     @Test func isSourceEnabledGatesRedditAndYouTube() {
         let defaults = freshDefaults()
         let settings = AppSettings(defaults: defaults)

@@ -62,16 +62,21 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         }
 
         configureTapZones()
+        // Re-render live (no app restart) when the reader's appearance settings change.
         NotificationCenter.default.addObserver(
-            self, selector: #selector(themeDidChange),
+            self, selector: #selector(appearanceDidChange),
             name: ArticleThemesManager.currentThemeDidChange, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(appearanceDidChange),
+            name: AppSettings.articleTextSizeDidChange, object: nil
         )
         render()
     }
 
     func reload() { render() }
 
-    @objc private func themeDidChange() { render() }
+    @objc private func appearanceDidChange() { render() }
 
     private func render() {
         let html = ArticleRenderer.fullPageHTML(

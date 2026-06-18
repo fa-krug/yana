@@ -38,6 +38,9 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
 @MainActor
 @Observable
 final class AppSettings {
+    /// Posted when `articleTextSize` changes so the reader can re-render live (no app restart).
+    static let articleTextSizeDidChange = Notification.Name("YanaArticleTextSizeDidChange")
+
     @ObservationIgnored private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -224,7 +227,11 @@ final class AppSettings {
     }
     var articleTextSize: ArticleTextSize {
         get { access(keyPath: \.articleTextSize); return ArticleTextSize(rawValue: defaults.integer(forKey: Key.articleTextSize)) ?? .medium }
-        set { withMutation(keyPath: \.articleTextSize) { defaults.set(newValue.rawValue, forKey: Key.articleTextSize) } }
+        set {
+            let changed = newValue != articleTextSize
+            withMutation(keyPath: \.articleTextSize) { defaults.set(newValue.rawValue, forKey: Key.articleTextSize) }
+            if changed { NotificationCenter.default.post(name: Self.articleTextSizeDidChange, object: self) }
+        }
     }
     var useSystemBrowser: Bool {
         get { access(keyPath: \.useSystemBrowser); return defaults.bool(forKey: Key.useSystemBrowser) }

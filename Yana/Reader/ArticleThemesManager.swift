@@ -13,12 +13,18 @@ final class ArticleThemesManager {
     private(set) var themeNames: [String]
     private(set) var currentTheme: ArticleTheme
 
+    /// The name of the resolved `currentTheme`. The change guard compares against this rather than
+    /// the persisted key, because callers (the Settings picker) may write the shared
+    /// `settings.readerThemeName` key *before* calling us — comparing against the key would then
+    /// see no change and silently skip the re-resolve + notification, requiring an app restart.
+    private var currentName: String
+
     var currentThemeName: String {
         get {
             UserDefaults.standard.string(forKey: Self.themeNameKey) ?? ArticleTheme.defaultThemeName
         }
         set {
-            guard newValue != UserDefaults.standard.string(forKey: Self.themeNameKey) else { return }
+            guard newValue != currentName else { return }
             UserDefaults.standard.set(newValue, forKey: Self.themeNameKey)
             updateCurrentTheme()
             NotificationCenter.default.post(name: Self.currentThemeDidChange, object: self)
@@ -28,6 +34,7 @@ final class ArticleThemesManager {
     private init() {
         self.themeNames = Self.allThemeNames()
         self.currentTheme = ArticleTheme.defaultTheme
+        self.currentName = ArticleTheme.defaultThemeName
         updateCurrentTheme()
     }
 
@@ -51,6 +58,7 @@ final class ArticleThemesManager {
             name = ArticleTheme.defaultThemeName
             UserDefaults.standard.set(name, forKey: Self.themeNameKey)
         }
+        currentName = name
         currentTheme = theme(named: name) ?? ArticleTheme.defaultTheme
     }
 

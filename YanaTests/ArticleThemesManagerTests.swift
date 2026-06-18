@@ -27,4 +27,28 @@ struct ArticleThemesManagerTests {
         #expect(manager.currentThemeName == ArticleTheme.defaultThemeName)
         manager.currentThemeName = ArticleTheme.defaultThemeName
     }
+
+    /// Reproduces the reader's live-theme bug: the Settings picker writes the shared
+    /// `settings.readerThemeName` UserDefaults key *before* calling the manager. The manager must
+    /// still detect the change (resolve the new theme and post `currentThemeDidChange`) so the
+    /// reader re-renders without an app restart.
+    @Test func switchingThemeUpdatesWhenSharedKeyPrewritten() {
+        let manager = ArticleThemesManager.shared
+        manager.currentThemeName = ArticleTheme.defaultThemeName // baseline
+
+        // Simulate AppSettings.readerThemeName writing the same key first.
+        UserDefaults.standard.set("Sepia", forKey: "settings.readerThemeName")
+
+        nonisolated(unsafe) var posted = false
+        let token = NotificationCenter.default.addObserver(
+            forName: ArticleThemesManager.currentThemeDidChange, object: nil, queue: nil
+        ) { _ in posted = true }
+
+        manager.currentThemeName = "Sepia"
+        NotificationCenter.default.removeObserver(token)
+
+        #expect(posted)
+        #expect(manager.currentTheme.name == "Sepia")
+        manager.currentThemeName = ArticleTheme.defaultThemeName // reset for other tests
+    }
 }
