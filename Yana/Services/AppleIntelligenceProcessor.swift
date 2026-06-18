@@ -87,22 +87,21 @@ struct AppleIntelligenceProcessor: AIProcessing {
                                           tokenCount: generator.tokenCount)
         var partials: [String] = []
         for chunk in chunks {
-            let result = try await generator.generate(
+            let result = try await generator.generateSummary(
                 instructions: Self.summaryInstructions,
                 prompt: Self.prompt(title: title, html: chunk),
                 temperature: temperature,
                 maxTokens: maxTokens
             )
-            partials.append(result.content)
+            partials.append(result)
         }
         guard partials.count > 1 else { return partials.first ?? "" }
-        let reduced = try await generator.generate(
+        return try await generator.generateSummary(
             instructions: Self.reduceInstructions,
             prompt: Self.prompt(title: title, html: ArticleAIText.cap(partials.joined(separator: "\n"))),
             temperature: temperature,
             maxTokens: maxTokens
         )
-        return reduced.content
     }
 
     // MARK: - Prompt assembly (guided generation: no JSON-format boilerplate needed)

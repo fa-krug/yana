@@ -19,13 +19,25 @@ struct ProcessedArticle {
     var content: String
 }
 
+/// Guided-generation output shape for the summary pass. A distinct type whose `@Guide`
+/// steers the model toward a concise summary — reusing `ProcessedArticle` here made the
+/// model reproduce the full article body (its `content` guide says "preserve the input
+/// structure"), so summaries came back as the article verbatim.
+@Generable
+struct ArticleSummary {
+    @Guide(description: "A concise summary of the article in plain text — a few sentences at most, not the full article")
+    var summary: String
+}
+
 /// Abstraction over on-device generation so `AppleIntelligenceProcessor` is testable with a fake.
 protocol ArticleGenerating: Sendable {
     var availability: AppleIntelligenceAvailability { get }
     /// Estimated token count, for chunk budgeting.
     func tokenCount(_ text: String) -> Int
-    /// One guided-generation call. Throws on generation failure.
+    /// One guided-generation call for the body-rewrite pass. Throws on generation failure.
     func generate(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> ProcessedArticle
+    /// One guided-generation call for the summary pass, returning plain-text summary. Throws on failure.
+    func generateSummary(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String
 }
 
 /// Concrete `ArticleGenerating` backed by the on-device system language model.
@@ -56,5 +68,12 @@ struct AppleIntelligenceClient: ArticleGenerating {
         let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
         let response = try await session.respond(to: prompt, generating: ProcessedArticle.self, options: options)
         return response.content
+    }
+
+    func generateSummary(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
+        let session = LanguageModelSession(instructions: instructions)
+        let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
+        let response = try await session.respond(to: prompt, generating: ArticleSummary.self, options: options)
+        return response.content.summary
     }
 }
