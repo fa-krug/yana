@@ -57,7 +57,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             let permalink = "https://reddit.com\(RedditMarkdown.decodeEntities(original.permalink))"
             let isCrossPost = post.crosspostParentList?.isEmpty == false
             var body = try await buildContent(post: original, isCrossPost: isCrossPost, client: client)
-            let headerURL = headerImageURL(for: original)
+            let headerURL = await headerImageURL(for: original)
 
             if let headerURL { body = stripImage(from: body, url: headerURL) }
             var headerHTML: String?
@@ -158,7 +158,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         """
     }
 
-    // MARK: - Header image (ports reddit/images.py priority chain, minus link-page scraping)
+    // MARK: - Header image (ports reddit/images.py extract_header_image_url priority chain)
 
     /// Returns true if `url` is a Twitter/X status URL (mirrors server's `is_twitter_url`).
     private func isTwitterURL(_ url: String) -> Bool {
@@ -170,7 +170,30 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         return isTwitterHost && components.path.contains("/status/")
     }
 
-    private func headerImageURL(for post: RedditPostData) -> String? {
+    /// True for a Reddit post permalink (`reddit.com/r/<sub>/comments/<id>/...`). These are internal
+    /// links, never a header image, so the direct-image and link-scrape strategies must skip them.
+    private func isRedditCommentsURL(_ url: String) -> Bool {
+        url.range(of: #"reddit\.com/r/[^/\s]+/comments/[a-zA-Z0-9]+"#, options: .regularExpression) != nil
+    }
+
+    /// All http(s) URLs found in selftext (plain or markdown-embedded), entity-decoded.
+    private func selftextURLs(_ text: String) -> [String] {
+        guard !text.isEmpty, let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
+        else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return detector.matches(in: text, range: range).compactMap {
+            $0.url.map { RedditMarkdown.decodeEntities($0.absoluteString) }
+        }
+    }
+
+    /// og:image scraped from a linked page (Priority 3 fallback / Priority 5). Network failures
+    /// degrade to nil so the chain falls through rather than throwing.
+    private func pageImageURL(_ url: String) async -> String? {
+        guard let u = URL(string: url), let html = try? await pageFetch(u) else { return nil }
+        return HeaderElementExtractor.metaImageURL(pageHTML: html, articleURL: url)
+    }
+
+    private func headerImageURL(for post: RedditPostData) async -> String? {
         // Priority 0 (highest): domain image override wins over all other strategies.
         if !post.url.isEmpty, let overrideURL = DomainImageOverrides.overrideImageURL(for: post.url) {
             return overrideURL
@@ -179,15 +202,14 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         if !post.url.isEmpty, EmbedRewriter.extractYouTubeID(from: post.url) != nil {
             return RedditMarkdown.decodeEntities(post.url)
         }
+        // Priority 0.5: Twitter/X *link* post — the post URL itself is a tweet (header embed).
+        if !post.url.isEmpty {
+            let decoded = RedditMarkdown.decodeEntities(post.url)
+            if isTwitterURL(decoded) { return decoded }
+        }
         // Priority 0.6: Twitter/X URL in selftext (return URL for header embed)
         if post.isSelf, !post.selftext.isEmpty {
-            let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
-            let range = NSRange(post.selftext.startIndex..<post.selftext.endIndex, in: post.selftext)
-            let matches = detector?.matches(in: post.selftext, range: range) ?? []
-            for match in matches {
-                guard let url = match.url?.absoluteString else { continue }
-                if isTwitterURL(url) { return url }
-            }
+            for url in selftextURLs(post.selftext) where isTwitterURL(url) { return url }
         }
         // Gallery first image
         if post.isGallery, let meta = post.mediaMetadata, let first = post.galleryData?.items.first,
@@ -195,22 +217,40 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             if info.e == "AnimatedImage", let raw = info.s?.gif ?? info.s?.mp4 { return RedditMarkdown.decodeEntities(raw) }
             if info.e == "Image", let raw = info.s?.u { return RedditMarkdown.decodeEntities(raw) }
         }
-        // Direct image post
+        // Direct image post (ignore Reddit comment permalinks, which are internal links)
         if !post.url.isEmpty {
             let decoded = RedditMarkdown.decodeEntities(post.url)
             let lower = decoded.lowercased()
             let isDirect = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".gifv"].contains { lower.contains($0) }
                 || lower.contains("i.redd.it")
-            if isDirect { return decoded }
+                || (lower.contains("preview.redd.it") && lower.contains(".gif"))
+            if isDirect, !isRedditCommentsURL(decoded) { return decoded }
         }
-        // Preview source
+        // Priority 3: image URL inside selftext; else og:image of the first non-Twitter link.
+        if post.isSelf, !post.selftext.isEmpty {
+            var firstLink: String?
+            for url in selftextURLs(post.selftext) {
+                let lower = url.lowercased()
+                if lower.contains("preview.redd.it")
+                    || [".jpg", ".jpeg", ".png", ".webp", ".gif"].contains(where: { lower.contains($0) }) {
+                    return url
+                }
+                if firstLink == nil, !isTwitterURL(url) { firstLink = url }
+            }
+            if let firstLink, let image = await pageImageURL(firstLink) { return image }
+        }
+        // Priority 4: preview source, then thumbnail fallback.
         if let src = post.preview?.images.first?.source?.url {
             return RedditMarkdown.decodeEntities(src)
         }
-        // Thumbnail fallback
         if let thumb = post.thumbnail, thumb.hasPrefix("http"),
            !["self", "default", "nsfw", "spoiler"].contains(thumb) {
             return RedditMarkdown.decodeEntities(thumb)
+        }
+        // Priority 5: link post with no Reddit-supplied image — scrape the linked page's og:image.
+        if !post.isSelf, !post.url.isEmpty {
+            let decoded = RedditMarkdown.decodeEntities(post.url)
+            if !isRedditCommentsURL(decoded), let image = await pageImageURL(decoded) { return image }
         }
         return nil
     }
