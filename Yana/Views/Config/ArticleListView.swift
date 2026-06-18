@@ -7,7 +7,15 @@ import SwiftUI
 /// `AppSettings`) so it never affects the home timeline.
 struct ArticleListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Article.createdAt, order: .reverse) private var allArticles: [Article]
+    @Query(ArticleListView.timelineDescriptor) private var allArticles: [Article]
+
+    static var timelineDescriptor: FetchDescriptor<Article> {
+        var descriptor = FetchDescriptor<Article>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        return descriptor
+    }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var searchText = ""
     @State private var disabledTagNames: Set<String> = []

@@ -54,7 +54,16 @@ struct ReaderScreen: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \Article.createdAt, order: .reverse) private var allArticles: [Article]
+    @Query(ReaderScreen.timelineDescriptor) private var allArticles: [Article]
+
+    static var timelineDescriptor: FetchDescriptor<Article> {
+        var descriptor = FetchDescriptor<Article>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        // Batch-load the relationships every page render touches, avoiding N+1 faulting.
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        return descriptor
+    }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 
