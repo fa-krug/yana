@@ -8,13 +8,17 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
     private let credentials: AggregatorCredentials
     private let store: ImageStore
     private let injectedClient: RedditClient?
+    /// Fetches a linked page's HTML for og:image scraping. Injectable so tests stay hermetic.
+    private let pageFetch: @Sendable (URL) async throws -> String
 
     init(config: FeedConfig, credentials: AggregatorCredentials, store: ImageStore = .shared,
-         client: RedditClient? = nil) {
+         client: RedditClient? = nil,
+         pageFetch: @escaping @Sendable (URL) async throws -> String = { try await HTTPClient.fetchHTML($0) }) {
         self.config = config
         self.credentials = credentials
         self.store = store
         self.injectedClient = client
+        self.pageFetch = pageFetch
     }
 
     private var options: RedditOptions {
