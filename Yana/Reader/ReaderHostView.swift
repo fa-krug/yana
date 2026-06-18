@@ -9,6 +9,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let articles: [Article]
     @Binding var currentIndex: Int
     let isRefreshing: Bool
+    let isFilterActive: Bool
     var onRefresh: (() -> Void)?
     var onShowFilter: (() -> Void)?
     var onShowSettings: (() -> Void)?
@@ -24,6 +25,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onRefresh = onRefresh
         reader.configure(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
+        reader.setFilterActive(isFilterActive)
 
         let nav = UINavigationController(rootViewController: reader)
         nav.isToolbarHidden = false
@@ -39,6 +41,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onRefresh = onRefresh
         reader.update(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
+        reader.setFilterActive(isFilterActive)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -89,6 +92,7 @@ struct ReaderScreen: View {
                     articles: articles,
                     currentIndex: $appState.currentIndex,
                     isRefreshing: UpdateActivity.shared.isUpdating,
+                    isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
                     onShowSettings: { appState.showSettings = true },

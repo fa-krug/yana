@@ -110,6 +110,12 @@ final class ReaderArticleViewController: UIViewController,
         }
     }
 
+    func setFilterActive(_ active: Bool) {
+        filterItem.image = UIImage(systemName: active
+            ? "line.3.horizontal.decrease.circle.fill"
+            : "line.3.horizontal.decrease.circle")
+    }
+
     private func updateStarItem() {
         guard let article = currentArticle() else { return }
         starItem.image = UIImage(systemName: article.isStarred ? "star.fill" : "star")

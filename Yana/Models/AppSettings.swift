@@ -259,6 +259,11 @@ final class AppSettings {
         get { access(keyPath: \.includeUntagged); return defaults.bool(forKey: Key.includeUntagged) }
         set { withMutation(keyPath: \.includeUntagged) { defaults.set(newValue, forKey: Key.includeUntagged) } }
     }
+    /// True when the timeline filter would hide some articles (a tag is off, or untagged
+    /// articles are excluded). Drives the reader's filter-button active state.
+    var isTimelineFilterActive: Bool {
+        !disabledTagNames.isEmpty || !includeUntagged
+    }
 
     // MARK: Reader
     var readerThemeName: String {
