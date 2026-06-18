@@ -32,10 +32,11 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
             return article
         }
         do {
-            let header = await HeaderElementExtractor.extract(
-                articleURL: article.url, title: article.title, store: store, credentials: credentials)
             let raw = try await fetchArticleHTML(article.url)
             article.rawContent = raw
+            let header = await HeaderElementExtractor.extract(
+                articleURL: article.url, title: article.title, store: store,
+                credentials: credentials, pageHTML: raw)
 
             let selector = opts.customContentSelector.isEmpty ? contentSelector : opts.customContentSelector
             var removeSelectors = selectorsToRemove

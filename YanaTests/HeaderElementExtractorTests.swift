@@ -35,4 +35,60 @@ struct HeaderElementExtractorTests {
         #expect(HeaderElementExtractor.looksLikeImage("https://x.com/article.png-gallery") == false)
         #expect(HeaderElementExtractor.looksLikeImage("https://x.com/article") == false)
     }
+
+    // MARK: - og:image / twitter:image fallback (Task 1)
+
+    @Test func ogImageInPageHTMLProducesHeader() async {
+        let store = tempStore()
+        let pageHTML = """
+        <html><head><meta property="og:image" content="https://www.heise.de/img/lead.jpg"></head><body></body></html>
+        """
+        let header = await HeaderElementExtractor.extract(
+            articleURL: "https://www.heise.de/news/x.html",
+            title: "T", store: store, credentials: .init(), pageHTML: pageHTML)
+        #expect(header?.html.contains("\(ReaderWeb.imageScheme)://") == true)
+        #expect(header?.dedupURL == "https://www.heise.de/img/lead.jpg")
+    }
+
+    @Test func twitterImageFallbackWhenNoOgImage() async {
+        let store = tempStore()
+        let pageHTML = """
+        <html><head><meta name="twitter:image" content="https://www.heise.de/img/tw.jpg"></head><body></body></html>
+        """
+        let header = await HeaderElementExtractor.extract(
+            articleURL: "https://www.heise.de/news/x.html",
+            title: "T", store: store, credentials: .init(), pageHTML: pageHTML)
+        #expect(header?.html.contains("\(ReaderWeb.imageScheme)://") == true)
+        #expect(header?.dedupURL == "https://www.heise.de/img/tw.jpg")
+    }
+
+    @Test func relativeOgImageResolvesAgainstArticleURL() async {
+        let store = tempStore()
+        let pageHTML = """
+        <html><head><meta property="og:image" content="/img/rel.jpg"></head><body></body></html>
+        """
+        let header = await HeaderElementExtractor.extract(
+            articleURL: "https://www.heise.de/news/x.html",
+            title: "T", store: store, credentials: .init(), pageHTML: pageHTML)
+        #expect(header?.dedupURL == "https://www.heise.de/img/rel.jpg")
+    }
+
+    @Test func pageHTMLWithNoMetaImageReturnsNil() async {
+        let store = tempStore()
+        let pageHTML = "<html><head><title>No image here</title></head><body></body></html>"
+        let header = await HeaderElementExtractor.extract(
+            articleURL: "https://www.heise.de/news/x.html",
+            title: "T", store: store, credentials: .init(), pageHTML: pageHTML)
+        #expect(header == nil)
+    }
+
+    @Test func callingWithoutPageHTMLStillWorks() async {
+        // Regression: existing call sites without pageHTML keep compiling and behaving correctly.
+        let store = tempStore()
+        let header = await HeaderElementExtractor.extract(
+            articleURL: "https://x.com/photo.jpg",
+            title: "T", store: store, credentials: .init())
+        #expect(header?.html.contains("\(ReaderWeb.imageScheme)://") == true)
+        #expect(header?.dedupURL == "https://x.com/photo.jpg")
+    }
 }

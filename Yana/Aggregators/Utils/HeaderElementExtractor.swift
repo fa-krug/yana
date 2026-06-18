@@ -7,7 +7,7 @@ struct HeaderElement: Sendable { var html: String; var dedupURL: String? }
 /// Strategy chain mirroring services/header_element: YouTube thumbnail/embed → generic image.
 /// (Reddit-specific strategies live in the Reddit aggregator, Phase 4e.)
 enum HeaderElementExtractor {
-    static func extract(articleURL: String, title: String, store: ImageStore, credentials: AggregatorCredentials) async -> HeaderElement? {
+    static func extract(articleURL: String, title: String, store: ImageStore, credentials: AggregatorCredentials, pageHTML: String? = nil) async -> HeaderElement? {
         // 0. Domain override: use the configured image URL instead of any extraction strategy.
         if let overrideURL = DomainImageOverrides.overrideImageURL(for: articleURL),
            let url = URL(string: overrideURL),
@@ -22,10 +22,26 @@ enum HeaderElementExtractor {
             return HeaderElement(html: html, dedupURL: nil)
         }
         // 2. Generic lead image: only when the URL looks like an image.
-        guard looksLikeImage(articleURL), let url = URL(string: articleURL),
-              let hash = await store.store(remoteURL: url, isHeader: true) else { return nil }
-        let html = ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
-        return HeaderElement(html: html, dedupURL: articleURL)
+        if looksLikeImage(articleURL), let url = URL(string: articleURL),
+           let hash = await store.store(remoteURL: url, isHeader: true) {
+            let html = ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
+            return HeaderElement(html: html, dedupURL: articleURL)
+        }
+        // 3. og:image / twitter:image from already-fetched page HTML (MetaTagImageStrategy).
+        if let html = pageHTML, let doc = try? HTMLUtils.parse(html) {
+            let rawOG = try? doc.select("meta[property=og:image]").first()?.attr("content")
+            let rawTW = try? doc.select("meta[name=twitter:image]").first()?.attr("content")
+            let raw = (rawOG.flatMap { $0.isEmpty ? nil : $0 }) ?? (rawTW.flatMap { $0.isEmpty ? nil : $0 })
+            if let raw {
+                let resolved = URL(string: raw, relativeTo: URL(string: articleURL))?.absoluteString ?? raw
+                if let url = URL(string: resolved),
+                   let hash = await store.store(remoteURL: url, isHeader: true) {
+                    let imgHTML = ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
+                    return HeaderElement(html: imgHTML, dedupURL: resolved)
+                }
+            }
+        }
+        return nil
     }
 
     static func looksLikeImage(_ url: String) -> Bool {

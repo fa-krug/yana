@@ -106,7 +106,10 @@ struct MactechnewsAggregatorTests {
         #expect(!a.content.contains("592736"))           // duplicate numeric-ID image removed
         #expect(a.content.contains("111111") || a.content.contains("\(ReaderWeb.imageScheme)://"))  // other image kept/localized
         let imgCount = a.content.components(separatedBy: "<img").count - 1
-        #expect(imgCount == 1)   // duplicate-ID image removed; only the distinct-ID image survives
+        // Now that og:image produces a header image, we expect 2 images:
+        // 1 header (yana-img:// from og:image) + 1 body (Other.111111.jpg localized).
+        // Bild.592736.jpg is removed by numeric-ID dedup.
+        #expect(imgCount == 2)
     }
 
     // MARK: - Pagination detection

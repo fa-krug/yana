@@ -64,10 +64,11 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
     override func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle {
         var article = article
         do {
-            let header = await HeaderElementExtractor.extract(
-                articleURL: article.url, title: article.title, store: store, credentials: credentials)
             let first = try await fetchArticleHTML(article.url)
             article.rawContent = first
+            let header = await HeaderElementExtractor.extract(
+                articleURL: article.url, title: article.title, store: store,
+                credentials: credentials, pageHTML: first)
 
             // Combine pages if enabled and pagination detected.
             var contentDivs: [String] = extractContentDivHTML(from: first).map { [$0] } ?? []
