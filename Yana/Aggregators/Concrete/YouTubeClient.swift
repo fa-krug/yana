@@ -108,7 +108,7 @@ final class YouTubeClient: @unchecked Sendable {
     /// Returns nil when the key is accepted.
     func verifyKey() async -> CredentialTestError? {
         do {
-            let data = try await get("channels", ["part": "id", "id": "UCBR8-60-B28hp2BmDPdntcQ"])
+            let data = try await get("channels", ["part": "snippet", "id": "UCBR8-60-B28hp2BmDPdntcQ"])
             _ = try JSONDecoder().decode(ChannelsResponse.self, from: data)
             return nil
         } catch AggregatorError.articleSkip {
