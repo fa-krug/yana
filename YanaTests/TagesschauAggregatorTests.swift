@@ -64,6 +64,27 @@ struct TagesschauAggregatorTests {
         #expect(a.content.contains("Story text"))
     }
 
+    @Test func usesDOMPosterWhenMediaPlayerJSONLacksImage() async throws {
+        // Real Tagesschau video pages carry no poster in the MediaPlayer JSON; the preview
+        // image lives in a sibling <picture> under the shared article-head__media parent.
+        let json = "{&quot;mc&quot;:{&quot;streams&quot;:[{&quot;media&quot;:[{&quot;url&quot;:"
+            + "&quot;https://t.de/v.mp4&quot;,&quot;mimeType&quot;:&quot;video/mp4&quot;}]}]}}"
+        let page = """
+        <html><body>
+        <div class="article-head__media">
+          <div class="ts-picture__poster-wrapper"><picture class="ts-picture ts-picture--teaser-top">
+            <img class="ts-image" src="https://images.tagesschau.de/poster.jpg"></picture></div>
+          <div data-v-type="MediaPlayer" class="mediaplayer teaser-top" data-v="\(json)"></div>
+        </div>
+        <p class="textabsatz">Story text</p>
+        </body></html>
+        """
+        let agg = StubTS(entries: [entry("Mit Video")], page: page, options: TagesschauOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("<video"))
+        #expect(a.content.contains("poster=\"https://images.tagesschau.de/poster.jpg\""))
+    }
+
     @Test func skipsLivestreamAndPodcastTitlesAndVideoURLs() async throws {
         let agg = StubTS(entries: [
             entry("Livestream: Pressekonferenz"),

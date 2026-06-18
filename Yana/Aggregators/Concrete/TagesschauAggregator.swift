@@ -133,8 +133,9 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     // MARK: - Media header (div[data-v-type=MediaPlayer])
 
-    // Streams-only: builds the header from MediaPlayer stream JSON. The Python `sharing@web.embedCode`
-    // and DOM-image fallbacks are intentionally not ported (omission is deliberate, not a bug).
+    // Builds the header from MediaPlayer stream JSON. The poster falls back to the sibling/parent
+    // `<img>` in the DOM (mirrors the server) since the JSON rarely carries one. The Python
+    // `sharing@web.embedCode` iframe path is intentionally not ported (omission is deliberate).
     static func extractMediaHeader(_ html: String) throws -> String? {
         let doc = try HTMLUtils.parse(html)
         var players = try doc.select("div[data-v-type=MediaPlayer]").array().filter {
@@ -172,6 +173,17 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
         for stream in (mc["streams"] as? [[String: Any]]) ?? [] {
             for f in fields { if let v = stream[f] as? String, !v.isEmpty { return absolutize(v) } }
         }
+        if let dom = playerImageFromDOM(player) { return absolutize(dom) }
+        return nil
+    }
+
+    /// Most Tagesschau video/audio pages carry no poster in the MediaPlayer JSON; the preview
+    /// image sits in a sibling/parent `<picture>` in the DOM. Mirrors the server's DOM fallback.
+    private static func playerImageFromDOM(_ player: Element) -> String? {
+        if let parent = player.parent(),
+           let src = try? parent.select("img").first()?.attr("src"), !src.isEmpty { return src }
+        if let prev = try? player.previousElementSibling(),
+           let src = try? prev.select("img").first()?.attr("src"), !src.isEmpty { return src }
         return nil
     }
 
