@@ -7,15 +7,14 @@ enum ReaderWeb {
     /// Custom URL scheme for locally cached images (served by ImageSchemeHandler).
     static let imageScheme = "yana-img"
 
-    /// Base URL the reader loads article HTML against — the app bundle's resource directory, mirroring
-    /// NetNewsWire's `ArticleRenderer.page.baseURL`. A `file://` base (rather than a fake web origin)
-    /// lets the article's own `<base href>` resolve relative links to the real site.
-    static let pageBaseURL: URL = {
-        if let page = Bundle.main.url(forResource: "page", withExtension: "html") {
-            return page.deletingLastPathComponent()
-        }
-        return Bundle.main.bundleURL
-    }()
+    /// Base URL the reader loads article HTML against. It must be `baseOrigin` so the document's
+    /// real `window.location.origin` matches the `origin=` parameter baked into every video embed —
+    /// otherwise YouTube refuses to play with "Error 153 / video player configuration error". This
+    /// mirrors the Yana server's proxy, which serves embeds from a single consistent origin (its own
+    /// host); the host need not be reachable (the server's dev default is `http://localhost:8000`),
+    /// only consistent. The HTML is supplied inline by `loadHTMLString`, so nothing is fetched from
+    /// this origin, and the article's own `<base href>` still resolves relative links to the real site.
+    static let pageBaseURL = URL(string: baseOrigin)!
 
     /// Name of the `WKScriptMessageHandler` the link-interception script posts to.
     static let linkClickedHandler = "linkClicked"
