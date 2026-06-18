@@ -46,10 +46,8 @@ designed for privacy-conscious users who want their feeds without any backend.
   (pure standard-OPML encode/decode with `yana:` extension attributes) and `FeedPortability`
   (`Feed` ↔ OPML mapping: restores type/options/tags, falls back to `feedContent` for foreign
   OPML, dedupes by identifier+type).
-- **Views** (`Yana/Views/`): the swipe-through `ArticleReaderView` (the endless-timeline home
-  surface; renders the body via the shared `ArticleContentView`) and the configuration hub
-  (feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`,
-  and settings).
+- **Reader** (`Yana/Reader/`): a UIKit port of NetNewsWire's reader. `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that owns the `@Query` timeline, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderWebViewController` (per-article `WKWebView`, pull-to-refresh, native-browser links). Article HTML is rendered by `ArticleRenderer` + `MacroProcessor` driving NNW's `.nnwtheme` themes via `ArticleThemesManager` (8 bundled themes under `Yana/Resources/Themes/`, with CSS/templates under `Yana/Resources/ArticleRendering/`) and `ArticleTextSize`. Links open in `SFSafariViewController` or the system browser when the "Use System Browser" setting is on. A dedicated **Reader** settings section exposes theme, text size, and system-browser preference.
+- **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
@@ -69,8 +67,7 @@ designed for privacy-conscious users who want their feeds without any backend.
 - **Tags, not groups:** feeds carry tags, which are **snapshotted onto each article at import
   time** (not retroactive). **Starred is a built-in tag** applied per-article. The timeline is
   filtered by toggling tags (all on by default; an "Untagged" entry covers tagless articles).
-- **Force update:** a **pull-down gesture** on the reader refreshes the current article and
-  the whole timeline; per-feed / all-feeds updates also live in the config hub.
+- **Force update:** a **pull-down gesture** on the reader (now the ported `ReaderWebViewController`) refreshes the current article and the whole timeline; per-feed / all-feeds updates also live in the config hub.
 - **SwiftData source of truth:** views read via `@Query`; `AggregationService` writes.
 - **Pluggable aggregators:** each content source is an `Aggregator` keyed by `AggregatorType`.
 - **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum (one case per
