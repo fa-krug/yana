@@ -5,7 +5,6 @@
 - iOS 26.0+
 - Xcode 26.0+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.38+
-- A running [Yana](../Yana) server instance for testing
 
 ## Getting Started
 
@@ -31,9 +30,10 @@ Select the **Yana** scheme and press Cmd+R to build and run.
 Yana/                       # All Swift source code
   YanaApp.swift             # App entry point
   ContentView.swift         # Root view
-  Models/                   # Data models (AppState, API types)
+  Models/                   # SwiftData @Model types (Feed, Tag, Article), options, settings
+  Aggregators/              # AggregatorType, Aggregator protocol, registry, DTOs
   Views/                    # SwiftUI views by feature
-  Services/                 # Business logic (API, auth, sync)
+  Services/                 # On-device aggregation, Keychain, AI, credential validation
   Utilities/                # Constants and extensions
   Resources/                # Asset catalogs
   Entitlements/             # iOS entitlements
@@ -87,19 +87,10 @@ YanaUITests/
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-## Server API
+## On-Device Aggregation
 
-The app communicates with a Yana server via the Google Reader-compatible API. Key endpoints:
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/greader/accounts/ClientLogin` | POST | Authenticate |
-| `/api/greader/reader/api/0/subscription/list` | GET | List feeds |
-| `/api/greader/reader/api/0/unread-count` | GET | Unread counts |
-| `/api/greader/reader/api/0/stream/items/ids` | GET | Article IDs |
-| `/api/greader/reader/api/0/stream/items/contents` | POST | Article content |
-| `/api/greader/reader/api/0/edit-tag` | POST | Mark read/starred |
-
-Auth header: `Authorization: GoogleLogin auth=<TOKEN>`
-
-See the [Yana CLAUDE.md](../Yana/CLAUDE.md) for full API documentation.
+There is **no server and no login.** The app fetches, parses, and processes every feed
+on-device and stores articles locally with SwiftData. Each content source is a pluggable
+`Aggregator` keyed by an `AggregatorType`, orchestrated by `AggregationService`. Reddit and
+YouTube use user-supplied API keys (stored in the Keychain); AI post-processing uses your own
+OpenAI / Anthropic / Gemini key. See [CLAUDE.md](CLAUDE.md) for the full architecture.
