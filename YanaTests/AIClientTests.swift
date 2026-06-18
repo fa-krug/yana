@@ -144,4 +144,33 @@ struct AIClientTests {
         }
         #expect(rec.requests.count == 4)        // 1 initial + maxRetries(3)
     }
+
+    @Test func verifySucceedsOn2xx() async {
+        let body = #"{"choices":[{"message":{"content":"pong"}}]}"#
+        let rec = FetchRecorder([(Data(body.utf8), 200)])
+        let client = AIClient(config: config(provider: .openai), fetch: rec.fetch)
+        let result = await client.verify()
+        #expect(result == nil)
+    }
+
+    @Test func verifyReportsInvalidCredentialsOn401() async {
+        let rec = FetchRecorder([(Data("{}".utf8), 401)])
+        let client = AIClient(config: config(provider: .openai), fetch: rec.fetch)
+        let result = await client.verify()
+        #expect(result == .invalidCredentials)
+    }
+
+    @Test func verifyReportsInvalidCredentialsOn403() async {
+        let rec = FetchRecorder([(Data("{}".utf8), 403)])
+        let client = AIClient(config: config(provider: .anthropic), fetch: rec.fetch)
+        let result = await client.verify()
+        #expect(result == .invalidCredentials)
+    }
+
+    @Test func verifyReportsUnexpectedOnUnparseableBody() async {
+        let rec = FetchRecorder([(Data("not json".utf8), 200)])
+        let client = AIClient(config: config(provider: .openai), fetch: rec.fetch)
+        let result = await client.verify()
+        #expect(result == .unexpectedResponse)
+    }
 }
