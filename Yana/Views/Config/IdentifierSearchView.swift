@@ -118,6 +118,7 @@ struct IdentifierSearchView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var model: IdentifierSearchModel
     @State private var query = ""
+    @State private var searchTask: Task<Void, Never>?
     let onPick: (String) -> Void
 
     init(kind: AggregatorIdentifierKind, onPick: @escaping (String) -> Void) {
@@ -135,11 +136,21 @@ struct IdentifierSearchView: View {
                     onPick(row.value)
                     dismiss()
                 } label: {
-                    Text(row.title)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(row.title).font(.headline)
+                        if !row.subtitle.isEmpty {
+                            Text(row.subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
             }
+            .listStyle(.plain)
             .overlay {
-                if model.isSearching {
+                if model.isSearching && model.rows.isEmpty {
                     ProgressView()
                 } else if model.rows.isEmpty {
                     if model.hasSearched {
@@ -147,16 +158,36 @@ struct IdentifierSearchView: View {
                             "No Results", systemImage: "magnifyingglass",
                             description: Text("No matches found. Check the search term, "
                                 + "and that the required API key is set in Settings."))
+                    } else if model.kind == .youtubeChannel {
+                        ContentUnavailableView(
+                            "Search Channels", systemImage: "magnifyingglass",
+                            description: Text("Enter a channel name to search."))
                     } else {
                         ContentUnavailableView("Search", systemImage: "magnifyingglass")
                     }
                 }
             }
             .navigationTitle("Search")
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query)
-            .onSubmit(of: .search) { Task { await model.search(query) } }
+            .onChange(of: query) { _, newValue in
+                searchTask?.cancel()
+                searchTask = Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    await model.search(newValue)
+                }
+            }
+            .onSubmit(of: .search) {
+                searchTask?.cancel()
+                Task { await model.search(query) }
+            }
+            .task { await model.preload() }
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("Cancel")
+                }
             }
         }
     }
