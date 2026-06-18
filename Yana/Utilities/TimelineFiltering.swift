@@ -14,6 +14,18 @@ enum TagFilter {
     }
 }
 
+/// Filters the timeline by active feeds. An article is shown unless its source feed is
+/// disabled. Articles whose feed has been deleted (`feed == nil`) are always shown.
+enum FeedFilter {
+    static func apply(to articles: [Article], disabledFeedNames: Set<String>) -> [Article] {
+        guard !disabledFeedNames.isEmpty else { return articles }
+        return articles.filter { article in
+            guard let name = article.feed?.name else { return true }
+            return !disabledFeedNames.contains(name)
+        }
+    }
+}
+
 /// Resolves an article `identifier` to its index in the currently displayed list.
 /// Returns `nil` when the identifier is missing — used by the pager's data source to
 /// decide whether a neighbouring page exists.

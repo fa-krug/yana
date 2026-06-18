@@ -61,11 +61,12 @@ struct ReaderScreen: View {
     @State private var didRestoreAnchor = false
 
     private var filteredArticles: [Article] {
-        TagFilter.apply(
+        let byTag = TagFilter.apply(
             to: allArticles,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
+        return FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
