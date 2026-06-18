@@ -48,4 +48,8 @@ final class UpdateActivity {
         current = task
         return task
     }
+
+    /// Cancel the current update, if any. The operation unwinds on its next
+    /// `Task.isCancelled` check and `run`'s `defer` rebalances the in-flight count.
+    func cancel() { current?.cancel() }
 }

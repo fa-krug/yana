@@ -70,10 +70,18 @@ struct FeedsView: View {
                 }
             }
             ToolbarItem(placement: .topBarLeading) {
-                HStack(spacing: 8) {
-                    if isUpdating { ProgressView() }
-                    Button("Update All") { updateAll() }
-                        .disabled(feeds.isEmpty)
+                if isUpdating {
+                    // While any update runs, the button becomes a tappable spinner that stops it.
+                    Button { UpdateActivity.shared.cancel() } label: {
+                        ProgressView()
+                    }
+                    .accessibilityLabel(Text("Stop updating"))
+                } else {
+                    Button { updateAll() } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(feeds.isEmpty)
+                    .accessibilityLabel(Text("Update all"))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
