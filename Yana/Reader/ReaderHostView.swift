@@ -72,11 +72,12 @@ struct ReaderScreen: View {
     @State private var filteredArticles: [Article] = []
 
     private func recomputeFilter() {
-        filteredArticles = TagFilter.apply(
+        let byTag = TagFilter.apply(
             to: allArticles,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
+        filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -125,6 +126,7 @@ struct ReaderScreen: View {
         }
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
     }
 
     private func toggleStar(_ article: Article) {
