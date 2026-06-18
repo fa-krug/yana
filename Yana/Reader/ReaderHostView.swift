@@ -120,7 +120,7 @@ struct ReaderScreen: View {
                     .background(.thinMaterial, in: Capsule())
                     .padding(.top, 8)
                     .transition(.move(edge: .top).combined(with: .opacity))
-                    .task {
+                    .task(id: statusMessage) {
                         try? await Task.sleep(for: .seconds(2.5))
                         self.statusMessage = nil
                     }

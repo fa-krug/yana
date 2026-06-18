@@ -388,11 +388,15 @@ struct SettingsScreenView: View {
             Stepper(value: $settings.retentionDays, in: 1...365) {
                 Label("Keep Articles: \(settings.retentionDays) days", systemImage: "calendar")
                     .labelStyle(.tintedIcon(.blue))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
             }
             Stepper(value: $settings.backgroundInterval, in: 300...21600, step: 300) {
                 Label("Background Refresh: \(Int(settings.backgroundInterval / 60)) min",
                       systemImage: "arrow.clockwise")
                     .labelStyle(.tintedIcon(.blue))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
             }
         }
     }
