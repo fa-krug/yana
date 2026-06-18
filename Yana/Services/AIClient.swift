@@ -55,6 +55,25 @@ struct AIClient: Sendable {
         return try parse(data)
     }
 
+    /// Minimal credential check: a tiny non-JSON generation. Returns nil when the provider
+    /// accepts the key and returns a parseable response. Callers should build the `AIConfig`
+    /// with a small `maxTokens` so the probe is cheap.
+    func verify() async -> CredentialTestError? {
+        do {
+            _ = try await generate(prompt: "ping", jsonMode: false)
+            return nil
+        } catch AIClientError.httpStatus(let code) {
+            return (code == 401 || code == 403 || code == 400) ? .invalidCredentials : .unexpectedResponse
+        } catch AIClientError.invalidResponseShape, AIClientError.unsupportedProvider {
+            return .unexpectedResponse
+        } catch is URLError {
+            return .network
+        } catch {
+            // unparseable body / other unexpected errors
+            return .unexpectedResponse
+        }
+    }
+
     // MARK: - Request building (per provider)
 
     private func buildRequest(

@@ -1895,6 +1895,66 @@
           }
         }
       }
+    },
+    "Invalid credentials. Check the values and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ungültige Zugangsdaten. Werte prüfen und erneut versuchen."
+          }
+        }
+      }
+    },
+    "Network error. Check your connection and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Netzwerkfehler. Verbindung prüfen und erneut versuchen."
+          }
+        }
+      }
+    },
+    "Unexpected response from the server.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unerwartete Antwort vom Server."
+          }
+        }
+      }
+    },
+    "Test": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testen"
+          }
+        }
+      }
+    },
+    "Credentials valid": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zugangsdaten gültig"
+          }
+        }
+      }
+    },
+    "Testing…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird getestet …"
+          }
+        }
+      }
     }
   },
   "version": "1.1"
