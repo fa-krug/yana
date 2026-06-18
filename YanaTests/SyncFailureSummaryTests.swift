@@ -23,6 +23,6 @@ struct SyncFailureSummaryTests {
         ]
         let count = failures.count
         #expect(SyncFailureSummary.message(for: failures)
-                == String(localized: "\(count) feeds couldn't be updated. Check Feeds in Configuration."))
+                == String(localized: "\(count) feeds couldn't be updated. Check Feeds in the Library."))
     }
 }
