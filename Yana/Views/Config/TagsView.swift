@@ -67,6 +67,7 @@ struct TagsView: View {
             Button(String(localized: "Delete"), role: .destructive) {
                 if let resolved = tagsToDelete {
                     delete(resolved)
+                    Haptics.notify(.success)
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}

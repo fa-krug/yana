@@ -138,6 +138,7 @@ struct ReaderScreen: View {
         guard let starredTag else { return }
         article.setStarred(!article.isStarred, using: starredTag)
         try? modelContext.save()
+        Haptics.impact(.light)
     }
 
     // MARK: - Anchor (position memory)
@@ -176,6 +177,7 @@ struct ReaderScreen: View {
                 appState.errorMessage = failure
             } else {
                 statusMessage = RefreshOutcome.message(newCount: count, feedName: nil)
+                Haptics.impact(.light)
             }
         }
     }

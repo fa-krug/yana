@@ -48,6 +48,7 @@ struct ArticleListView: View {
                     guard let starredTag else { return }
                     article.setStarred(!article.isStarred, using: starredTag)
                     try? modelContext.save()
+                    Haptics.impact(.light)
                 } label: {
                     Label(article.isStarred ? "Unstar" : "Star",
                           systemImage: article.isStarred ? "star.slash" : "star")
@@ -102,6 +103,7 @@ struct ArticleListView: View {
                 Button(String(localized: "Delete"), role: .destructive) {
                     modelContext.delete(article)
                     try? modelContext.save()
+                    Haptics.notify(.success)
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}

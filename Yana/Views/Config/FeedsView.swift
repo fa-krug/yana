@@ -120,6 +120,7 @@ struct FeedsView: View {
                 Button(String(localized: "Delete"), role: .destructive) {
                     modelContext.delete(feed)
                     try? modelContext.save()
+                    Haptics.notify(.success)
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
