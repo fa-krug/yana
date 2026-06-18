@@ -43,7 +43,10 @@ enum HTMLUtils {
         let targetBase = baseFilename(url)
         let targetFile = (url as NSString).lastPathComponent
         for img in try doc.select("img") {
-            let src = try firstNonEmpty(img, ["src", "data-src", "data-lazy-src"])
+            var src = try firstNonEmpty(img, ["src", "data-src", "data-lazy-src"])
+            if src == nil || src!.hasPrefix("data:") {
+                src = largestSrcsetURL(try img.attr("srcset"))
+            }
             guard let src, !src.hasPrefix("data:") else { continue }
             let file = (src as NSString).lastPathComponent
             if src == url || (file == targetFile && file.count > 3) || (baseFilename(src) == targetBase && targetBase.count > 3) {
