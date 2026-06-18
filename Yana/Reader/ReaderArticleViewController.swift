@@ -21,6 +21,7 @@ final class ReaderArticleViewController: UIViewController,
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
     private var starItem: UIBarButtonItem!
+    private var shareItem: UIBarButtonItem!
 
     private var isFullscreenAvailable: Bool { traitCollection.userInterfaceIdiom == .phone }
     private var displayedWebVC: ReaderWebViewController? {
@@ -87,10 +88,10 @@ final class ReaderArticleViewController: UIViewController,
 
     private func configureToolbar() {
         starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
-        let share = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareArticle))
+        shareItem = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareArticle))
         let browser = UIBarButtonItem(image: UIImage(systemName: "safari"), style: .plain, target: self, action: #selector(openInBrowser))
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
-        toolbarItems = [starItem, flex(), share, flex(), browser]
+        toolbarItems = [starItem, flex(), shareItem, flex(), browser]
     }
 
     func setRefreshing(_ isRefreshing: Bool) {
@@ -163,7 +164,7 @@ final class ReaderArticleViewController: UIViewController,
     @objc private func shareArticle() {
         guard let article = currentArticle(), let url = URL(string: article.url) else { return }
         let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        activity.popoverPresentationController?.barButtonItem = toolbarItems?.first
+        activity.popoverPresentationController?.barButtonItem = shareItem
         present(activity, animated: true)
     }
 
@@ -181,7 +182,7 @@ final class ReaderArticleViewController: UIViewController,
 
     @objc private func toggleFullscreenFromNavBar() {
         guard isFullscreenAvailable else { return }
-        applyFullscreen(true, animated: true)
+        applyFullscreen(!settings.articleFullscreenEnabled, animated: true)
     }
 
     private func applyFullscreen(_ hidden: Bool, animated: Bool) {
