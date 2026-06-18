@@ -59,6 +59,7 @@ struct ReaderScreen: View {
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
+    @State private var statusMessage: String?
 
     private var filteredArticles: [Article] {
         TagFilter.apply(
@@ -106,6 +107,21 @@ struct ReaderScreen: View {
         } message: {
             Text(appState.errorMessage ?? "")
         }
+        .overlay(alignment: .top) {
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.subheadline)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.thinMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task {
+                        try? await Task.sleep(for: .seconds(2.5))
+                        self.statusMessage = nil
+                    }
+            }
+        }
+        .animation(.snappy, value: statusMessage)
         .onAppear { restoreAnchor() }
         .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
         .onChange(of: allArticles) { _, _ in
@@ -145,9 +161,13 @@ struct ReaderScreen: View {
         // A fresh pull cancels any update already running and starts over, rather than no-op'ing.
         UpdateActivity.shared.restart {
             let service = AggregationService(context: modelContext)
-            await service.updateAll()
+            let count = await service.updateAll()
             guard !Task.isCancelled else { return }
-            appState.errorMessage = SyncFailureSummary.message(for: service.lastRunFailures)
+            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
+                appState.errorMessage = failure
+            } else {
+                statusMessage = RefreshOutcome.message(newCount: count, feedName: nil)
+            }
         }
     }
 }

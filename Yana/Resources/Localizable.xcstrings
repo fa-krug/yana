@@ -157,6 +157,26 @@
         }
       }
     },
+    "article": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artikel"
+          }
+        }
+      }
+    },
+    "articles": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artikel"
+          }
+        }
+      }
+    },
     "Added %lld new %@ from “%@”.": {
       "localizations": {
         "de": {

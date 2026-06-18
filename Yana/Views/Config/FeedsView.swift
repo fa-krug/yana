@@ -191,11 +191,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).updateAll()
             guard !Task.isCancelled else { return }
-            if count == 0 {
-                importMessage = String(localized: "No new articles.")
-            } else {
-                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles").")
-            }
+            importMessage = RefreshOutcome.message(newCount: count, feedName: nil)
         }
     }
 
@@ -203,11 +199,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).update(feed: feed)
             guard !Task.isCancelled else { return }
-            if count == 0 {
-                importMessage = String(localized: "No new articles.")
-            } else {
-                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
-            }
+            importMessage = RefreshOutcome.message(newCount: count, feedName: feed.name)
         }
     }
 
@@ -215,11 +207,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).forceReload(feed: feed)
             guard !Task.isCancelled else { return }
-            if count == 0 {
-                importMessage = String(localized: "Reloaded \u{201C}\(feed.name)\u{201D}.")
-            } else {
-                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
-            }
+            importMessage = RefreshOutcome.message(newCount: count, feedName: feed.name)
         }
     }
 
