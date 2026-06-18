@@ -121,13 +121,15 @@ struct ArticleListView: View {
                 Text(article.title).font(.headline).lineLimit(2)
                 HStack(spacing: 6) {
                     if let name = article.feed?.name, !name.isEmpty {
-                        Text(name).foregroundStyle(Color.accentColor)
-                        Text("·")
+                        Text(name)
+                            .fontWeight(.medium)
+                            .foregroundStyle(Color.accentColor)
+                        Text("·").foregroundStyle(.tertiary)
                     }
                     Text(article.date, style: .date)
+                        .foregroundStyle(.tertiary)
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
     }
