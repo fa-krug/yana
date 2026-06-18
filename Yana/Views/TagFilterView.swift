@@ -41,7 +41,7 @@ struct TagFilterView: View {
         }
     }
 
-    private func toggleRow(_ name: String, isActive: Bool, set: @escaping @MainActor @Sendable (Bool) -> Void) -> some View {
+    private func toggleRow(_ name: String, isActive: Bool, set: @escaping (Bool) -> Void) -> some View {
         Toggle(name, isOn: Binding(get: { isActive }, set: set))
     }
 }

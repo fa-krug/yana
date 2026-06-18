@@ -93,7 +93,7 @@ struct AggregatorOptionsForm: View {
 
     // MARK: - Per-type sections
 
-    private func toggleSection(isOn: Bool, label: LocalizedStringKey, set: @escaping @MainActor @Sendable (Bool) -> Void) -> some View {
+    private func toggleSection(isOn: Bool, label: LocalizedStringKey, set: @escaping (Bool) -> Void) -> some View {
         Section("Options") {
             Toggle(label, isOn: Binding(get: { isOn }, set: set))
         }
