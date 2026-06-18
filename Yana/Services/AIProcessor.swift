@@ -166,10 +166,14 @@ struct AIProcessor: AIProcessing {
         return obj
     }
 
+    /// Compiled once: ```` ```(?:json)?\s*(\{.*?\})\s*``` ```` (DOTALL via `[\s\S]`).
+    private static let fencedJSONRegex = try? NSRegularExpression(
+        pattern: "```(?:json)?\\s*(\\{[\\s\\S]*?\\})\\s*```"
+    )
+
     /// Mirrors the server regex ```` ```(?:json)?\s*(\{.*?\})\s*``` ```` (DOTALL).
     private static func firstFencedJSON(in raw: String) -> String? {
-        let pattern = "```(?:json)?\\s*(\\{[\\s\\S]*?\\})\\s*```"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        guard let regex = fencedJSONRegex else { return nil }
         let range = NSRange(raw.startIndex..<raw.endIndex, in: raw)
         guard let match = regex.firstMatch(in: raw, range: range), match.numberOfRanges >= 2,
               let captured = Range(match.range(at: 1), in: raw)
