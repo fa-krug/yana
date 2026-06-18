@@ -95,4 +95,25 @@ struct RedditClientTests {
         #expect(RedditClient.isExpired(expiry: now.addingTimeInterval(60), now: now) == false)
         #expect(RedditClient.isExpired(expiry: now, now: now) == true)
     }
+
+    private let popularJSON = """
+    {"data":{"children":[
+      {"data":{"display_name":"funny","title":"funny","subscribers":40000000}},
+      {"data":{"display_name":"","title":"blank","subscribers":1}},
+      {"data":{"display_name":"AskReddit","title":"Ask Reddit","subscribers":45000000}}
+    ]}}
+    """
+
+    @Test func popularSubredditsParsedAndFiltered() async {
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret")
+        let results = await RedditClient.popularSubreddits(
+            credentials: creds, userAgent: "Yana/1.0") { request in
+                let url = request.url!.absoluteString
+                if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+                return Data(self.popularJSON.utf8)
+            }
+        // Blank display_name is filtered out.
+        #expect(results.map(\.displayName) == ["funny", "AskReddit"])
+        #expect(results.first?.subscribers == 40_000_000)
+    }
 }

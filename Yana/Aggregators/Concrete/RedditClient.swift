@@ -110,7 +110,21 @@ final class RedditClient: @unchecked Sendable {
               !query.isEmpty else { return [] }
         let client = RedditClient(clientID: id, clientSecret: secret, userAgent: userAgent, fetch: fetch)
         guard let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://oauth.reddit.com/subreddits/search.json?q=\(q)&limit=10&raw_json=1"),
+              let url = URL(string: "https://oauth.reddit.com/subreddits/search.json?q=\(q)&limit=25&raw_json=1"),
+              let data = try? await client.authorizedGET(url),
+              let listing = try? JSONDecoder().decode(RedditSubredditListing.self, from: data) else { return [] }
+        return listing.data.children.map {
+            RedditSubredditResult(displayName: $0.data.displayName ?? "",
+                                  title: $0.data.title ?? "",
+                                  subscribers: $0.data.subscribers ?? 0)
+        }.filter { !$0.displayName.isEmpty }
+    }
+
+    static func popularSubreddits(credentials: AggregatorCredentials, userAgent: String,
+                                  fetch: @escaping Fetch = { try await HTTPClient.fetchJSON($0) }) async -> [RedditSubredditResult] {
+        guard let id = credentials.redditClientID, let secret = credentials.redditClientSecret else { return [] }
+        let client = RedditClient(clientID: id, clientSecret: secret, userAgent: userAgent, fetch: fetch)
+        guard let url = URL(string: "https://oauth.reddit.com/subreddits/popular.json?limit=25&raw_json=1"),
               let data = try? await client.authorizedGET(url),
               let listing = try? JSONDecoder().decode(RedditSubredditListing.self, from: data) else { return [] }
         return listing.data.children.map {
