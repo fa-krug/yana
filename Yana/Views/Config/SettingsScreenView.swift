@@ -86,6 +86,11 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.indigo))
             }
 
+            Text("The quick brown fox jumps over the lazy dog.")
+                .font(.system(size: CGFloat(settings.articleTextSize.pointSize)))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(Text("Text size preview"))
+
             Toggle(isOn: Binding(
                 get: { settings.useSystemBrowser },
                 set: { settings.useSystemBrowser = $0 }
