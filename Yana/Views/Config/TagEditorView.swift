@@ -28,6 +28,7 @@ struct TagEditorView: View {
         Form {
             Section {
                 TextField("Name", text: $name)
+                    .submitLabel(.done)
                     .disabled(tag?.isBuiltIn == true)
                 ColorPicker("Color", selection: $color, supportsOpacity: false)
             } footer: {

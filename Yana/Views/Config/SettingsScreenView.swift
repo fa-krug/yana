@@ -110,11 +110,15 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.orange))
             }
             SecureField("Client ID", text: $redditClientID)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(redditStatus == .testing)
                 .onChange(of: redditClientID) { _, v in
                     KeychainService.saveAPIKey(v, for: .redditClientID); redditStatus = .idle
                 }
             SecureField("Client Secret", text: $redditClientSecret)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(redditStatus == .testing)
                 .onChange(of: redditClientSecret) { _, v in
                     KeychainService.saveAPIKey(v, for: .redditClientSecret); redditStatus = .idle
@@ -140,6 +144,8 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.red))
             }
             SecureField("API Key", text: $youtubeKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(youtubeStatus == .testing)
                 .onChange(of: youtubeKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .youtubeAPIKey); youtubeStatus = .idle
@@ -201,11 +207,15 @@ struct SettingsScreenView: View {
             EmptyView()
         case .openai:
             SecureField("API Key", text: $openaiKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(openaiStatus == .testing)
                 .onChange(of: openaiKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .openaiAPIKey); openaiStatus = .idle
                 }
-            TextField("API URL", text: $settings.openaiAPIURL).autocorrectionDisabled()
+            TextField("API URL", text: $settings.openaiAPIURL)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(openaiStatus == .testing)
             Picker("Model", selection: $settings.openaiModel) {
                 ForEach(AIProvider.openai.models, id: \.self) { Text($0).tag($0) }
@@ -220,6 +230,8 @@ struct SettingsScreenView: View {
             }
         case .anthropic:
             SecureField("API Key", text: $anthropicKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(anthropicStatus == .testing)
                 .onChange(of: anthropicKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .anthropicAPIKey); anthropicStatus = .idle
@@ -237,6 +249,8 @@ struct SettingsScreenView: View {
             }
         case .gemini:
             SecureField("API Key", text: $geminiKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(geminiStatus == .testing)
                 .onChange(of: geminiKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .geminiAPIKey); geminiStatus = .idle
@@ -254,6 +268,8 @@ struct SettingsScreenView: View {
             }
         case .mistral:
             SecureField("API Key", text: $mistralKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(mistralStatus == .testing)
                 .onChange(of: mistralKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .mistralAPIKey); mistralStatus = .idle
@@ -271,6 +287,8 @@ struct SettingsScreenView: View {
             }
         case .qwen:
             SecureField("API Key", text: $qwenKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(qwenStatus == .testing)
                 .onChange(of: qwenKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .qwenAPIKey); qwenStatus = .idle
@@ -288,6 +306,8 @@ struct SettingsScreenView: View {
             }
         case .deepseek:
             SecureField("API Key", text: $deepseekKey)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .disabled(deepseekStatus == .testing)
                 .onChange(of: deepseekKey) { _, v in
                     KeychainService.saveAPIKey(v, for: .deepseekAPIKey); deepseekStatus = .idle
