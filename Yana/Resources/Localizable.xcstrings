@@ -1362,6 +1362,16 @@
         }
       }
     },
+    "Retry": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut versuchen"
+          }
+        }
+      }
+    },
     "Retry Delay: %llds": {
       "localizations": {
         "de": {

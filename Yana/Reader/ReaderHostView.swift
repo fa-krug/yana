@@ -103,6 +103,7 @@ struct ReaderScreen: View {
             get: { appState.errorMessage != nil },
             set: { if !$0 { appState.errorMessage = nil } }
         )) {
+            Button("Retry") { triggerRefresh() }
             Button("OK", role: .cancel) {}
         } message: {
             Text(appState.errorMessage ?? "")
