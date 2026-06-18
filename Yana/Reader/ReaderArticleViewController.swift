@@ -12,6 +12,13 @@ final class ReaderArticleViewController: UIViewController,
     var onShowSettings: (() -> Void)?
     var onToggleStar: ((Article) -> Void)?
     var onRefresh: (() -> Void)?
+    var onCopyLink: ((Article) -> Void)?
+    var onSummarize: ((Article) -> Void)?
+    var onGoToFeed: ((Feed) -> Void)?
+    /// Whether AI is configured/available; gates the Summarize menu item. Set by the host.
+    var aiReady = false
+    /// True while an on-demand summary is in flight; disables the Summarize menu item.
+    var isSummarizing = false
 
     private let pageController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
     private var articles: [Article] = []
@@ -24,6 +31,7 @@ final class ReaderArticleViewController: UIViewController,
     private var indicatorItem: UIBarButtonItem!
     private var starItem: UIBarButtonItem!
     private var shareItem: UIBarButtonItem!
+    private var menuItem: UIBarButtonItem!
 
     private var isFullscreenAvailable: Bool { traitCollection.userInterfaceIdiom == .phone }
     private var displayedWebVC: ReaderWebViewController? {
@@ -89,9 +97,21 @@ final class ReaderArticleViewController: UIViewController,
         )
         library.accessibilityLabel = String(localized: "Library")
         starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
-        // rightBarButtonItems is ordered edge-inward, so [library, star] puts the star at the
-        // left of the top-right group and the library button at the screen edge.
-        navigationItem.rightBarButtonItems = [library, starItem]
+
+        // Overflow menu, rebuilt each time it opens so conditional items track the current
+        // article + AI state. UIDeferredMenuElement.uncached re-invokes the provider per present.
+        menuItem = UIBarButtonItem(
+            image: UIImage(systemName: "ellipsis.circle"),
+            menu: UIMenu(children: [
+                UIDeferredMenuElement.uncached { [weak self] completion in
+                    completion(self?.buildMenuActions() ?? [])
+                }
+            ])
+        )
+        menuItem.accessibilityLabel = String(localized: "More actions")
+        // rightBarButtonItems is ordered edge-inward: [menu, library, star] puts the overflow
+        // menu at the screen edge, then the library button, then the star.
+        navigationItem.rightBarButtonItems = [menuItem, library, starItem]
     }
 
     private func configureToolbar() {
@@ -171,6 +191,48 @@ final class ReaderArticleViewController: UIViewController,
         guard let article = currentArticle() else { return }
         onToggleStar?(article)
         updateStarItem()
+    }
+
+    private func buildMenuActions() -> [UIMenuElement] {
+        guard let article = currentArticle() else { return [] }
+        let config = ReaderMenuBuilder.config(
+            hasURL: !article.url.isEmpty, hasFeed: article.feed != nil, aiReady: aiReady
+        )
+        var actions: [UIMenuElement] = []
+
+        actions.append(UIAction(
+            title: String(localized: "Force update"),
+            image: UIImage(systemName: "arrow.clockwise")
+        ) { [weak self] _ in self?.onRefresh?() })
+
+        if config.showCopyLink {
+            actions.append(UIAction(
+                title: String(localized: "Copy link"),
+                image: UIImage(systemName: "link")
+            ) { [weak self] _ in self?.onCopyLink?(article) })
+        }
+
+        if config.showSummarize {
+            let summarize = UIAction(
+                title: String(localized: "Summarize"),
+                image: UIImage(systemName: "sparkles")
+            ) { [weak self] _ in self?.onSummarize?(article) }
+            if isSummarizing { summarize.attributes = .disabled }
+            actions.append(summarize)
+        }
+
+        if config.showGoToFeed, let feed = article.feed {
+            actions.append(UIAction(
+                title: String(localized: "Go to feed"),
+                image: UIImage(systemName: "dot.radiowaves.up.forward")
+            ) { [weak self] _ in self?.onGoToFeed?(feed) })
+        }
+
+        return actions
+    }
+
+    func reloadCurrentPage() {
+        displayedWebVC?.reload()
     }
 
     @objc private func shareArticle() {
