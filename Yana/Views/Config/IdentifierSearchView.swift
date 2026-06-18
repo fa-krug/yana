@@ -76,10 +76,15 @@ final class IdentifierSearchModel {
     }
 
     func search(_ query: String) async {
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { rows = preloadedRows; hasSearched = false; return }
         searchGeneration += 1
         let generation = searchGeneration
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            rows = preloadedRows
+            hasSearched = false
+            isSearching = false
+            return
+        }
         isSearching = true
         let mapped: [IdentifierSearchRow]
         switch kind {
@@ -90,7 +95,7 @@ final class IdentifierSearchModel {
         default:
             mapped = []
         }
-        // A newer keystroke superseded this search while it was in flight — drop the result.
+        // A newer search (including a field-clear) superseded this one while it was in flight.
         guard generation == searchGeneration else { return }
         rows = mapped
         isSearching = false

@@ -58,6 +58,18 @@ struct IdentifierSearchTests {
         #expect(model.rows.first?.subtitle.contains("40M") == true)
     }
 
+    @Test func preloadIsIdempotent() async {
+        final class Counter: @unchecked Sendable { var value = 0 }
+        let counter = Counter()
+        let model = IdentifierSearchModel(kind: .subreddit, credentials: .init(), userAgent: "Yana/1.0",
+            redditSearch: { _ in [] }, youtubeSearch: { _ in [] },
+            redditPopular: { counter.value += 1; return [RedditSubredditResult(displayName: "funny", title: "Funny", subscribers: 5)] })
+        await model.preload()
+        await model.preload()
+        #expect(counter.value == 1)
+        #expect(model.rows.count == 1)
+    }
+
     @Test func clearingQueryRestoresPreloadedRows() async {
         let model = IdentifierSearchModel(kind: .subreddit, credentials: .init(), userAgent: "Yana/1.0",
             redditSearch: { _ in [RedditSubredditResult(displayName: "swift", title: "Swift", subscribers: 1)] },
