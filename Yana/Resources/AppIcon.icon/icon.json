@@ -6,6 +6,18 @@
     {
       "layers" : [
         {
+          "image-name" : "Image.png",
+          "name" : "Image",
+          "position" : {
+            "scale" : 1.87,
+            "translation-in-points" : [
+              0,
+              93.5
+            ]
+          }
+        },
+        {
+          "hidden" : true,
           "image-name" : "Gemini_Generated_Image_sm7goksm7goksm7g 2.png",
           "name" : "Gemini_Generated_Image_sm7goksm7goksm7g 2",
           "position" : {
