@@ -5,6 +5,9 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
     case openai
     case anthropic
     case gemini
+    case mistral
+    case qwen
+    case deepseek
     case appleIntelligence
 
     var id: String { rawValue }
@@ -15,6 +18,9 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .openai: "OpenAI"
         case .anthropic: "Anthropic"
         case .gemini: "Gemini"
+        case .mistral: "Mistral"
+        case .qwen: "Qwen"
+        case .deepseek: "DeepSeek"
         case .appleIntelligence: "Apple Intelligence"
         }
     }
@@ -27,11 +33,27 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini", "o3"]
         case .anthropic: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-8"]
         case .gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
+        case .mistral: ["mistral-small-latest", "mistral-large-latest", "mistral-medium-latest"]
+        case .qwen: ["qwen-plus", "qwen-turbo", "qwen-max"]
+        case .deepseek: ["deepseek-chat", "deepseek-reasoner"]
         case .appleIntelligence: []
         }
     }
 
     var defaultModel: String { models.first ?? "" }
+
+    /// Default chat-completions base URL for the OpenAI-compatible providers. For `.openai`
+    /// the user-overridable `AppSettings.openaiAPIURL` takes precedence (resolved by callers);
+    /// the other three use these fixed bases. Empty for providers that don't use this path.
+    var baseURL: String {
+        switch self {
+        case .openai: "https://api.openai.com/v1"
+        case .mistral: "https://api.mistral.ai/v1"
+        case .qwen: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+        case .deepseek: "https://api.deepseek.com/v1"
+        case .none, .anthropic, .gemini, .appleIntelligence: ""
+        }
+    }
 }
 
 /// Non-secret user preferences, backed by UserDefaults. Secrets live in `KeychainService`.
@@ -53,6 +75,9 @@ final class AppSettings {
             Key.openaiModel: "gpt-4o-mini",
             Key.anthropicModel: "claude-haiku-4-5-20251001",
             Key.geminiModel: "gemini-2.5-flash",
+            Key.mistralModel: "mistral-small-latest",
+            Key.qwenModel: "qwen-plus",
+            Key.deepseekModel: "deepseek-chat",
             Key.aiTemperature: 0.3,
             Key.aiMaxTokens: 2000,
             Key.aiMaxPromptLength: 500,
@@ -81,6 +106,9 @@ final class AppSettings {
         static let openaiModel = "settings.openaiModel"
         static let anthropicModel = "settings.anthropicModel"
         static let geminiModel = "settings.geminiModel"
+        static let mistralModel = "settings.mistralModel"
+        static let qwenModel = "settings.qwenModel"
+        static let deepseekModel = "settings.deepseekModel"
         // AI knobs
         static let aiTemperature = "settings.aiTemperature"
         static let aiMaxTokens = "settings.aiMaxTokens"
@@ -169,6 +197,18 @@ final class AppSettings {
     var geminiModel: String {
         get { access(keyPath: \.geminiModel); return defaults.string(forKey: Key.geminiModel) ?? "gemini-2.5-flash" }
         set { withMutation(keyPath: \.geminiModel) { defaults.set(newValue, forKey: Key.geminiModel) } }
+    }
+    var mistralModel: String {
+        get { access(keyPath: \.mistralModel); return defaults.string(forKey: Key.mistralModel) ?? "mistral-small-latest" }
+        set { withMutation(keyPath: \.mistralModel) { defaults.set(newValue, forKey: Key.mistralModel) } }
+    }
+    var qwenModel: String {
+        get { access(keyPath: \.qwenModel); return defaults.string(forKey: Key.qwenModel) ?? "qwen-plus" }
+        set { withMutation(keyPath: \.qwenModel) { defaults.set(newValue, forKey: Key.qwenModel) } }
+    }
+    var deepseekModel: String {
+        get { access(keyPath: \.deepseekModel); return defaults.string(forKey: Key.deepseekModel) ?? "deepseek-chat" }
+        set { withMutation(keyPath: \.deepseekModel) { defaults.set(newValue, forKey: Key.deepseekModel) } }
     }
 
     // MARK: AI knobs

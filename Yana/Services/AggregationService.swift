@@ -113,6 +113,15 @@ final class AggregationService {
         case .gemini:
             model = settings.geminiModel
             keyItem = .geminiAPIKey
+        case .mistral:
+            model = settings.mistralModel
+            keyItem = .mistralAPIKey
+        case .qwen:
+            model = settings.qwenModel
+            keyItem = .qwenAPIKey
+        case .deepseek:
+            model = settings.deepseekModel
+            keyItem = .deepseekAPIKey
         case .appleIntelligence:
             model = ""
             keyItem = nil

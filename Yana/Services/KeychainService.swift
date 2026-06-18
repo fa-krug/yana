@@ -61,6 +61,9 @@ enum KeychainService: Sendable {
         case openaiAPIKey = "openai_api_key"
         case anthropicAPIKey = "anthropic_api_key"
         case geminiAPIKey = "gemini_api_key"
+        case mistralAPIKey = "mistral_api_key"
+        case qwenAPIKey = "qwen_api_key"
+        case deepseekAPIKey = "deepseek_api_key"
     }
 
     @discardableResult

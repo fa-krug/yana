@@ -84,6 +84,9 @@ struct AIClient: Sendable {
         case .openai: return (try openaiRequest(prompt: prompt, jsonMode: jsonMode), Self.parseOpenAI)
         case .anthropic: return (try anthropicRequest(prompt: prompt), Self.parseAnthropic)
         case .gemini: return (try geminiRequest(prompt: prompt, jsonMode: jsonMode), Self.parseGemini)
+        case .mistral: return (try mistralRequest(prompt: prompt, jsonMode: jsonMode), Self.parseOpenAI)
+        case .qwen: return (try qwenRequest(prompt: prompt, jsonMode: jsonMode), Self.parseOpenAI)
+        case .deepseek: return (try deepseekRequest(prompt: prompt, jsonMode: jsonMode), Self.parseOpenAI)
         case .none, .appleIntelligence: throw AIClientError.unsupportedProvider
         }
     }
@@ -154,6 +157,48 @@ struct AIClient: Sendable {
             "generationConfig": generationConfig,
         ]
         return try jsonRequest(url: url, headers: ["x-goog-api-key": config.apiKey], body: body)
+    }
+
+    private func mistralRequest(prompt: String, jsonMode: Bool) throws -> URLRequest {
+        guard let url = URL(string: "\(config.provider.baseURL)/chat/completions") else {
+            throw AIClientError.invalidResponseShape
+        }
+        var body: [String: Any] = [
+            "model": config.model,
+            "messages": [["role": "user", "content": prompt]],
+            "temperature": config.temperature,
+            "max_tokens": config.maxTokens,
+        ]
+        if jsonMode { body["response_format"] = ["type": "json_object"] }
+        return try jsonRequest(url: url, headers: ["Authorization": "Bearer \(config.apiKey)"], body: body)
+    }
+
+    private func qwenRequest(prompt: String, jsonMode: Bool) throws -> URLRequest {
+        guard let url = URL(string: "\(config.provider.baseURL)/chat/completions") else {
+            throw AIClientError.invalidResponseShape
+        }
+        var body: [String: Any] = [
+            "model": config.model,
+            "messages": [["role": "user", "content": prompt]],
+            "temperature": config.temperature,
+            "max_tokens": config.maxTokens,
+        ]
+        if jsonMode { body["response_format"] = ["type": "json_object"] }
+        return try jsonRequest(url: url, headers: ["Authorization": "Bearer \(config.apiKey)"], body: body)
+    }
+
+    private func deepseekRequest(prompt: String, jsonMode: Bool) throws -> URLRequest {
+        guard let url = URL(string: "\(config.provider.baseURL)/chat/completions") else {
+            throw AIClientError.invalidResponseShape
+        }
+        var body: [String: Any] = [
+            "model": config.model,
+            "messages": [["role": "user", "content": prompt]],
+            "temperature": config.temperature,
+            "max_tokens": config.maxTokens,
+        ]
+        if jsonMode { body["response_format"] = ["type": "json_object"] }
+        return try jsonRequest(url: url, headers: ["Authorization": "Bearer \(config.apiKey)"], body: body)
     }
 
     // MARK: - Response parsing (per provider)
