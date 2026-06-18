@@ -127,7 +127,13 @@ struct ReaderScreen: View {
             }
         }
         .animation(.snappy, value: statusMessage)
-        .onAppear { restoreAnchor() }
+        .onAppear {
+            restoreAnchor()
+            if !settings.hasSeenFullscreenHint, UIDevice.current.userInterfaceIdiom == .phone {
+                statusMessage = String(localized: "Tap the title bar to hide the toolbars.")
+                settings.hasSeenFullscreenHint = true
+            }
+        }
         .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
         .onChange(of: allArticles) { _, _ in
             if didRestoreAnchor { clampIndex() } else { restoreAnchor() }

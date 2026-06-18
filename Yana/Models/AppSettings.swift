@@ -129,6 +129,7 @@ final class AppSettings {
         static let articleTextSize = "settings.articleTextSize"
         static let useSystemBrowser = "settings.useSystemBrowser"
         static let articleFullscreenEnabled = "settings.articleFullscreenEnabled"
+        static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
     }
 
     var activeAIProvider: AIProvider {
@@ -285,6 +286,11 @@ final class AppSettings {
     var articleFullscreenEnabled: Bool {
         get { access(keyPath: \.articleFullscreenEnabled); return defaults.bool(forKey: Key.articleFullscreenEnabled) }
         set { withMutation(keyPath: \.articleFullscreenEnabled) { defaults.set(newValue, forKey: Key.articleFullscreenEnabled) } }
+    }
+    /// One-time flag: whether the reader's tap-to-hide-bars hint has been shown.
+    var hasSeenFullscreenHint: Bool {
+        get { access(keyPath: \.hasSeenFullscreenHint); return defaults.bool(forKey: Key.hasSeenFullscreenHint) }
+        set { withMutation(keyPath: \.hasSeenFullscreenHint) { defaults.set(newValue, forKey: Key.hasSeenFullscreenHint) } }
     }
 
     // MARK: Timeline position

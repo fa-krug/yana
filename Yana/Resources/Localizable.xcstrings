@@ -2105,6 +2105,16 @@
           }
         }
       }
+    },
+    "Tap the title bar to hide the toolbars.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf die Titelleiste tippen, um die Symbolleisten auszublenden."
+          }
+        }
+      }
     }
   },
   "version": "1.1"
