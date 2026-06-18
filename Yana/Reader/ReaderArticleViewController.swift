@@ -83,15 +83,15 @@ final class ReaderArticleViewController: UIViewController,
         indicatorItem = UIBarButtonItem(customView: activityIndicator)
         navigationItem.leftBarButtonItems = [filterItem]
 
-        let gear = UIBarButtonItem(
-            image: UIImage(systemName: "gear"),
+        let library = UIBarButtonItem(
+            image: UIImage(systemName: "books.vertical"),
             style: .plain, target: self, action: #selector(showSettings)
         )
-        gear.accessibilityLabel = String(localized: "Settings")
+        library.accessibilityLabel = String(localized: "Library")
         starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
-        // rightBarButtonItems is ordered edge-inward, so [gear, star] puts the star at the
-        // left of the top-right group and the gear at the screen edge.
-        navigationItem.rightBarButtonItems = [gear, starItem]
+        // rightBarButtonItems is ordered edge-inward, so [library, star] puts the star at the
+        // left of the top-right group and the library button at the screen edge.
+        navigationItem.rightBarButtonItems = [library, starItem]
     }
 
     private func configureToolbar() {
