@@ -9,6 +9,7 @@ struct TagsView: View {
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]
     @State private var tagsToDelete: [Tag]?
     @State private var searchText = ""
+    @State private var showingCreateTag = false
 
     private var filteredTags: [Tag] {
         NameSearch.filter(tags, query: searchText, name: \.name)
@@ -49,9 +50,12 @@ struct TagsView: View {
         .navigationTitle("Tags")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink { TagEditorView(tag: nil) } label: { Image(systemName: "plus") }
+                Button { showingCreateTag = true } label: { Image(systemName: "plus") }
             }
             ToolbarItem(placement: .topBarLeading) { EditButton() }
+        }
+        .sheet(isPresented: $showingCreateTag) {
+            NavigationStack { TagEditorView(tag: nil) }
         }
         .confirmationDialog(
             (tagsToDelete?.count ?? 0) == 1

@@ -4,6 +4,7 @@ import SwiftUI
 /// Create or edit a `Feed`. New feeds are inserted on save; existing feeds are updated.
 struct FeedEditorView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Tag.sortOrder) private var allTags: [Tag]
 
     /// nil = create a new feed.
@@ -84,7 +85,14 @@ struct FeedEditorView: View {
                 model.identifier = picked
             }
         }
-        .onDisappear { save() }
+        // Create flow: explicit Cancel/confirm in a sheet. Edit flow: auto-save on dismiss.
+        .modifier(EditorSaveBehavior(
+            isCreating: feed == nil,
+            canSave: model.isValid,
+            onSave: { save(); dismiss() },
+            onCancel: { dismiss() },
+            onDisappearSave: save
+        ))
     }
 
     /// Predefined choices for the current type, plus the current identifier as a
