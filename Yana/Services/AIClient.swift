@@ -69,8 +69,8 @@ struct AIClient: Sendable {
         } catch is URLError {
             return .network
         } catch {
-            // All other errors (including JSON parsing failures) are unexpected responses
-            return .unexpectedResponse
+            // transport / other errors
+            return .network
         }
     }
 
