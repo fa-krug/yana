@@ -390,6 +390,40 @@ struct AggregationServiceTests {
         func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { refetchResult }
     }
 
+    /// Fake whose `refetch` mirrors the real aggregators (e.g. `FullWebsiteAggregator.enrich`):
+    /// it mutates the seed's content and returns the *same* struct, so every other seed field
+    /// (including the carried `summary`) rides through unchanged.
+    private struct EchoRefetchAggregator: Aggregator {
+        func validate() throws {}
+        func aggregate() async throws -> [AggregatedArticle] { [] }
+        func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? {
+            var refreshed = seed
+            refreshed.content = "REFRESHED"
+            return refreshed
+        }
+    }
+
+    @Test func forceReloadArticleClearsStaleSummaryWhenReprocessProducesNone() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .fullWebsite, identifier: "a")
+        context.insert(feed)
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil,
+                              summary: "STALE SUMMARY")
+        article.feed = feed
+        context.insert(article)
+
+        // Identity AI transform models a run that no longer summarizes (e.g. translate-only):
+        // the processor leaves the carried summary untouched. The stale summary must NOT survive.
+        let service = AggregationService(context: context, makeAggregator: { _, _ in
+            EchoRefetchAggregator()
+        }, aiProcessor: FakeAIProcessor())
+        await service.forceReload(article: article)
+
+        #expect(article.content == "REFRESHED")   // content refreshed via refetch
+        #expect(article.summary == "")             // derived AI summary cleared, not carried over
+    }
+
     @Test func forceReloadArticleRefreshesContentPreservingIdentity() async throws {
         let context = try makeContext()
         let starred = try #require((try? context.fetch(FetchDescriptor<Yana.Tag>()))?.first { $0.isBuiltIn })
