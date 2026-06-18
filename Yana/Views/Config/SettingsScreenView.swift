@@ -17,6 +17,7 @@ struct SettingsScreenView: View {
 
     var body: some View {
         Form {
+            readerSection
             redditSection
             youtubeSection
             notificationsSection
@@ -30,6 +31,38 @@ struct SettingsScreenView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Enable notifications for Yana in the Settings app to get alerts about new articles.")
+        }
+    }
+
+    // MARK: Reader
+
+    private var readerSection: some View {
+        Section(String(localized: "Reader")) {
+            Picker(String(localized: "Theme"), selection: Binding(
+                get: { settings.readerThemeName },
+                set: { newValue in
+                    settings.readerThemeName = newValue
+                    ArticleThemesManager.shared.currentThemeName = newValue
+                }
+            )) {
+                ForEach(ArticleThemesManager.shared.themeNames, id: \.self) { name in
+                    Text(name).tag(name)
+                }
+            }
+
+            Picker(String(localized: "Text Size"), selection: Binding(
+                get: { settings.articleTextSize },
+                set: { settings.articleTextSize = $0 }
+            )) {
+                ForEach(ArticleTextSize.allCases) { size in
+                    Text(size.displayName).tag(size)
+                }
+            }
+
+            Toggle(String(localized: "Use System Browser"), isOn: Binding(
+                get: { settings.useSystemBrowser },
+                set: { settings.useSystemBrowser = $0 }
+            ))
         }
     }
 

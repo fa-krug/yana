@@ -60,6 +60,7 @@ final class AppSettings {
             Key.aiRetryDelay: 2,
             Key.aiRequestDelay: 2,
             Key.includeUntagged: true,
+            Key.articleTextSize: ArticleTextSize.medium.rawValue,
         ])
     }
 
@@ -92,6 +93,11 @@ final class AppSettings {
         static let includeUntagged = "settings.includeUntagged"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
+        // Reader
+        static let readerThemeName = "settings.readerThemeName"
+        static let articleTextSize = "settings.articleTextSize"
+        static let useSystemBrowser = "settings.useSystemBrowser"
+        static let articleFullscreenEnabled = "settings.articleFullscreenEnabled"
     }
 
     var activeAIProvider: AIProvider {
@@ -209,6 +215,24 @@ final class AppSettings {
     var includeUntagged: Bool {
         get { access(keyPath: \.includeUntagged); return defaults.bool(forKey: Key.includeUntagged) }
         set { withMutation(keyPath: \.includeUntagged) { defaults.set(newValue, forKey: Key.includeUntagged) } }
+    }
+
+    // MARK: Reader
+    var readerThemeName: String {
+        get { access(keyPath: \.readerThemeName); return defaults.string(forKey: Key.readerThemeName) ?? ArticleTheme.defaultThemeName }
+        set { withMutation(keyPath: \.readerThemeName) { defaults.set(newValue, forKey: Key.readerThemeName) } }
+    }
+    var articleTextSize: ArticleTextSize {
+        get { access(keyPath: \.articleTextSize); return ArticleTextSize(rawValue: defaults.integer(forKey: Key.articleTextSize)) ?? .medium }
+        set { withMutation(keyPath: \.articleTextSize) { defaults.set(newValue.rawValue, forKey: Key.articleTextSize) } }
+    }
+    var useSystemBrowser: Bool {
+        get { access(keyPath: \.useSystemBrowser); return defaults.bool(forKey: Key.useSystemBrowser) }
+        set { withMutation(keyPath: \.useSystemBrowser) { defaults.set(newValue, forKey: Key.useSystemBrowser) } }
+    }
+    var articleFullscreenEnabled: Bool {
+        get { access(keyPath: \.articleFullscreenEnabled); return defaults.bool(forKey: Key.articleFullscreenEnabled) }
+        set { withMutation(keyPath: \.articleFullscreenEnabled) { defaults.set(newValue, forKey: Key.articleFullscreenEnabled) } }
     }
 
     // MARK: Timeline position
