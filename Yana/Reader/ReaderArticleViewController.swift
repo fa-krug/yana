@@ -182,8 +182,17 @@ final class ReaderArticleViewController: UIViewController,
     @objc private func shareArticle() {
         guard let article = currentArticle(), let url = URL(string: article.url) else { return }
         let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        let presenter = topmostPresenter ?? self
         activity.popoverPresentationController?.barButtonItem = shareItem
-        present(activity, animated: true)
+        presenter.present(activity, animated: true)
+    }
+
+    /// The deepest currently-presented controller reachable from this scene's root, or nil if
+    /// the view is not yet in a window. Mirrors ReaderWebViewController.topmostPresenter.
+    private var topmostPresenter: UIViewController? {
+        guard var top = view.window?.rootViewController else { return nil }
+        while let presented = top.presentedViewController { top = presented }
+        return top
     }
 
     @objc private func openInBrowser() {
