@@ -37,7 +37,7 @@ struct ArticleListView: View {
             searchPrompt: "Search articles",
             emptyTitle: "No Articles",
             emptyIcon: "tray",
-            emptyDescription: "Add feeds and refresh to see articles here.",
+            emptyDescription: "No articles yet. Add feeds, then pull to refresh.",
             onDelete: { offsets in
                 // Resolve immediately so stale indices can't delete the wrong article
                 guard let article = offsets.map({ results[$0] }).first else { return }

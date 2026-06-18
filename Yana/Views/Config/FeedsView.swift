@@ -127,7 +127,7 @@ struct FeedsView: View {
         } message: {
             if let feed = feedToDelete {
                 Text(
-                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \(feed.articles.count) articles will be removed.")
+                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \(feed.articles.count) articles will be permanently deleted.")
                 )
             }
         }

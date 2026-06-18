@@ -554,22 +554,6 @@
         }
       }
     },
-    "Delete “%@”? Its %lld articles will be removed.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "„%1$@“ löschen? Die zugehörigen %2$lld Artikel werden entfernt."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Delete “%1$@”? Its %2$lld articles will be removed."
-          }
-        }
-      }
-    },
     "Delete “%@”? This cannot be undone.": {
       "localizations": {
         "de": {
@@ -2112,6 +2096,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Auf die Titelleiste tippen, um die Symbolleisten auszublenden."
+          }
+        }
+      }
+    },
+    "No articles yet. Add feeds, then pull to refresh.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch keine Artikel. Feeds hinzufügen und dann zum Aktualisieren ziehen."
+          }
+        }
+      }
+    },
+    "Delete “%@”? Its %lld articles will be permanently deleted.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%1$@“ löschen? Die zugehörigen %2$lld Artikel werden endgültig gelöscht."
           }
         }
       }
