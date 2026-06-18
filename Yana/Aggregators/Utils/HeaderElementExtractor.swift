@@ -28,20 +28,26 @@ enum HeaderElementExtractor {
             return HeaderElement(html: html, dedupURL: articleURL)
         }
         // 3. og:image / twitter:image from already-fetched page HTML (MetaTagImageStrategy).
-        if let html = pageHTML, let doc = try? HTMLUtils.parse(html) {
-            let rawOG = try? doc.select("meta[property=og:image]").first()?.attr("content")
-            let rawTW = try? doc.select("meta[name=twitter:image]").first()?.attr("content")
-            let raw = (rawOG.flatMap { $0.isEmpty ? nil : $0 }) ?? (rawTW.flatMap { $0.isEmpty ? nil : $0 })
-            if let raw {
-                let resolved = URL(string: raw, relativeTo: URL(string: articleURL))?.absoluteString ?? raw
-                if let url = URL(string: resolved),
-                   let hash = await store.store(remoteURL: url, isHeader: true) {
-                    let imgHTML = ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
-                    return HeaderElement(html: imgHTML, dedupURL: resolved)
-                }
-            }
+        if let html = pageHTML, let resolved = metaImageURL(pageHTML: html, articleURL: articleURL),
+           let url = URL(string: resolved),
+           let hash = await store.store(remoteURL: url, isHeader: true) {
+            let imgHTML = ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
+            return HeaderElement(html: imgHTML, dedupURL: resolved)
         }
         return nil
+    }
+
+    /// The og:image (preferred) or twitter:image URL declared in `pageHTML`, resolved against
+    /// `articleURL`. Pure — no network — so callers that already hold the page HTML (e.g. the
+    /// Reddit link-post scrape) can reuse the meta-tag strategy. Returns nil when neither tag is
+    /// present or has content.
+    static func metaImageURL(pageHTML: String, articleURL: String) -> String? {
+        guard let doc = try? HTMLUtils.parse(pageHTML) else { return nil }
+        let rawOG = try? doc.select("meta[property=og:image]").first()?.attr("content")
+        let rawTW = try? doc.select("meta[name=twitter:image]").first()?.attr("content")
+        guard let raw = (rawOG.flatMap { $0.isEmpty ? nil : $0 }) ?? (rawTW.flatMap { $0.isEmpty ? nil : $0 })
+        else { return nil }
+        return URL(string: raw, relativeTo: URL(string: articleURL))?.absoluteString ?? raw
     }
 
     static func looksLikeImage(_ url: String) -> Bool {

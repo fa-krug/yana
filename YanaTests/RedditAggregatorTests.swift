@@ -227,4 +227,116 @@ struct RedditAggregatorTests {
         // Header image should be cached (yana-image:// scheme in content)
         #expect(articles.first?.content.contains("\(ReaderWeb.imageScheme)://") == true)
     }
+
+    // MARK: - Header-image priority parity with the server (extract_header_image_url)
+
+    /// Records every URL the ImageStore is asked to download, so a test can assert *which*
+    /// candidate became the header (the remote URL is otherwise localized away in the content).
+    private final class FetchRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _urls: [String] = []
+        var urls: [String] { lock.lock(); defer { lock.unlock() }; return _urls }
+        func add(_ u: String) { lock.lock(); _urls.append(u); lock.unlock() }
+    }
+
+    private func recordingStore(_ rec: FetchRecorder) -> ImageStore {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 50, height: 50)).image { _ in }.pngData()!
+        return ImageStore(directory: dir, fetch: { url in rec.add(url.absoluteString); return (png, "image/png") })
+    }
+
+    private func aggregator(listing: String, store: ImageStore,
+                            pageFetch: @escaping @Sendable (URL) async throws -> String = { _ in "" }) -> RedditAggregator {
+        var opts = RedditOptions(); opts.minComments = 5; opts.minAgeHours = 0; opts.includeHeaderImage = true
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(self.commentsJSON.utf8) }
+            return Data(listing.utf8)
+        }
+        return RedditAggregator(config: config, credentials: creds, store: store, client: client, pageFetch: pageFetch)
+    }
+
+    /// Priority 0.5: a link post whose URL *is* a Twitter/X status (not in selftext) must use that
+    /// URL as the header, never the thumbnail. (Server extract_header_image_url Priority 0.5.)
+    @Test func twitterLinkPostUsedAsHeaderOverThumbnail() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"tl1","title":"Tweet link","selftext":"",
+                   "url":"https://x.com/u/status/555","permalink":"/r/swift/comments/tl1/tweet_link/",
+                   "created_utc":\(recentUTC),"author":"dave","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":false,"is_video":false,
+                   "thumbnail":"https://example.com/thumb.jpg"}}
+        ]}}
+        """
+        _ = try await aggregator(listing: listing, store: recordingStore(rec)).aggregate()
+        #expect(!rec.urls.contains("https://example.com/thumb.jpg"),
+                "thumbnail must not be fetched as header when the post URL is a tweet")
+    }
+
+    /// Priority 3: a self-post with a preview.redd.it image link in its selftext (and no top-level
+    /// preview field) must promote that image to the header, not the low-res thumbnail.
+    @Test func selftextImageLinkPromotedToHeader() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"se1","title":"Selftext image","selftext":"Look: https://preview.redd.it/x.png",
+                   "url":"https://www.reddit.com/r/swift/comments/se1/selftext_image/",
+                   "permalink":"/r/swift/comments/se1/selftext_image/",
+                   "created_utc":\(recentUTC),"author":"erin","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,
+                   "thumbnail":"https://example.com/thumb.jpg"}}
+        ]}}
+        """
+        _ = try await aggregator(listing: listing, store: recordingStore(rec)).aggregate()
+        #expect(rec.urls.contains("https://preview.redd.it/x.png"),
+                "selftext image should be promoted to the header")
+        #expect(!rec.urls.contains("https://example.com/thumb.jpg"),
+                "thumbnail must not win over a selftext image")
+    }
+
+    /// Priority 5: a link post with no Reddit preview/thumbnail must fall back to the linked page's
+    /// og:image. (Server extract_header_image_url Priority 5 / link-page scraping.)
+    @Test func linkPostScrapesOgImageWhenNoPreview() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"lp1","title":"Article link","selftext":"",
+                   "url":"https://news.example.com/article","permalink":"/r/swift/comments/lp1/article_link/",
+                   "created_utc":\(recentUTC),"author":"frank","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":false,"is_video":false,"thumbnail":"default"}}
+        ]}}
+        """
+        let page = #"<html><head><meta property="og:image" content="https://cdn.example.com/lead.jpg"></head><body>x</body></html>"#
+        _ = try await aggregator(listing: listing, store: recordingStore(rec), pageFetch: { _ in page }).aggregate()
+        #expect(rec.urls.contains("https://cdn.example.com/lead.jpg"),
+                "og:image from the linked page should become the header when Reddit has no preview")
+    }
+
+    /// Priority 3 truncation: an image link that appears *after* a referenced comment URL in the
+    /// selftext belongs to the quoted discussion, not this post — so it must not be promoted to the
+    /// header. The chain falls back to the thumbnail instead. (Server _extract_image_url_from_selftext.)
+    @Test func selftextImageAfterCommentURLIsNotPromoted() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"ct1","title":"Quoted thread",
+                   "selftext":"As discussed https://www.reddit.com/r/swift/comments/ab12/title/cd34 see https://preview.redd.it/after.png",
+                   "url":"https://www.reddit.com/r/swift/comments/ct1/quoted_thread/",
+                   "permalink":"/r/swift/comments/ct1/quoted_thread/",
+                   "created_utc":\(recentUTC),"author":"gwen","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,
+                   "thumbnail":"https://example.com/thumb.jpg"}}
+        ]}}
+        """
+        _ = try await aggregator(listing: listing, store: recordingStore(rec)).aggregate()
+        #expect(!rec.urls.contains("https://preview.redd.it/after.png"),
+                "an image after a referenced comment URL belongs to the quoted thread, not the header")
+        #expect(rec.urls.contains("https://example.com/thumb.jpg"),
+                "with the post-comment image excluded, the chain falls back to the thumbnail")
+    }
 }
