@@ -18,6 +18,11 @@ struct AppleIntelligenceProcessorTests {
             if shouldThrow { throw NSError(domain: "test", code: 1) }
             return ProcessedArticle(title: "TITLE", content: transform(prompt))
         }
+
+        func generateSummary(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
+            if shouldThrow { throw NSError(domain: "test", code: 1) }
+            return transform(prompt)
+        }
     }
 
     /// Stateful fake generator that records each generate call with its instructions and prompt.
@@ -35,6 +40,15 @@ struct AppleIntelligenceProcessorTests {
                 return ProcessedArticle(title: "REDUCED_TITLE", content: reduceTransform(prompt))
             } else {
                 return ProcessedArticle(title: "TITLE", content: mapTransform(prompt))
+            }
+        }
+
+        func generateSummary(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
+            calls.append((instructions: instructions, prompt: prompt))
+            if instructions == AppleIntelligenceProcessor.reduceInstructions {
+                return reduceTransform(prompt)
+            } else {
+                return mapTransform(prompt)
             }
         }
     }
