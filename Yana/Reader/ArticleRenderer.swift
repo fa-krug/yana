@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 
 /// Renders a Yana `Article` into themed HTML using NNW's template + stylesheet macros.
 /// Adapted from NetNewsWire's ArticleRenderer for Yana's `Article`/`Feed` model.
@@ -12,7 +11,7 @@ enum ArticleRenderer {
         let title = ContentFormatter.escapeHTML(article.title)
         let style = (try? MacroProcessor.renderedText(
             withTemplate: theme.css ?? "",
-            substitutions: styleSubstitutions()
+            substitutions: styleSubstitutions(textSize: textSize)
         )) ?? (theme.css ?? "")
         let html = (try? MacroProcessor.renderedText(
             withTemplate: theme.template ?? "",
@@ -71,8 +70,12 @@ enum ArticleRenderer {
         return d
     }
 
-    private static func styleSubstitutions() -> [String: String] {
-        ["font-size": String(describing: UIFont.preferredFont(forTextStyle: .body).pointSize)]
+    /// Drives the `[[font-size]]` macro (the `:root` body font size) from the user's selected
+    /// text size. On iOS the discrete `.smallText…xxlargeText` classes are gated behind a
+    /// macOS-only `@supports` block, so the picker would otherwise have no effect; routing it
+    /// through this macro makes the selection authoritative across every theme.
+    private static func styleSubstitutions(textSize: ArticleTextSize) -> [String: String] {
+        ["font-size": String(textSize.pointSize)]
     }
 
     /// scheme://host of the article URL, used as both base href and feed link. Empty if unparseable

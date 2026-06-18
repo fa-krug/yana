@@ -47,4 +47,16 @@ struct ArticleRendererTests {
         #expect(html.contains("Body text here."))
         #expect(!html.contains("<script")) // JS intentionally dropped
     }
+
+    /// The Text Size picker must drive the resolved `:root` font size. On iOS the discrete
+    /// `.smallText…xxlargeText` CSS classes only apply inside a macOS-only `@supports` block,
+    /// so the selected size must flow through the `[[font-size]]` macro instead.
+    @Test func textSizeDrivesResolvedFontSize() {
+        let article = makeArticle()
+        let small = ArticleRenderer.articleHTML(article: article, theme: .defaultTheme, textSize: .small)
+        let xxlarge = ArticleRenderer.articleHTML(article: article, theme: .defaultTheme, textSize: .xxlarge)
+        #expect(small.style.contains("font-size: \(ArticleTextSize.small.pointSize)px"))
+        #expect(xxlarge.style.contains("font-size: \(ArticleTextSize.xxlarge.pointSize)px"))
+        #expect(small.style != xxlarge.style)
+    }
 }
