@@ -36,7 +36,15 @@ enum FaviconResolver {
 
     /// Resolve the best icon URL for a site: fetch its HTML, parse icon links, else fall back to
     /// `<origin>/favicon.ico`. Returns nil only when the site URL is unusable or the fetch fails.
-    static func bestIconURL(
+    /// Results are memoized for the app session via `FaviconCache`.
+    static func bestIconURL(forSite siteURL: String) async -> String? {
+        await FaviconCache.shared.value(for: siteURL) {
+            await uncachedBestIconURL(forSite: siteURL)
+        }
+    }
+
+    /// Uncached implementation — fetches HTML and parses icon links with a `/favicon.ico` fallback.
+    static func uncachedBestIconURL(
         forSite siteURL: String,
         fetch: @Sendable (URL) async throws -> (Data, String?) = { try await HTTPClient.fetchData($0) }
     ) async -> String? {
@@ -53,5 +61,20 @@ enum FaviconResolver {
         let parts = sizes.lowercased().split(separator: "x")
         guard parts.count == 2, let w = Int(parts[0]), let h = Int(parts[1]) else { return 0 }
         return w * h
+    }
+}
+
+/// Process-wide memo of resolved favicon URLs, keyed by the site string. Favicons are stable
+/// for an app session, so caching avoids re-fetching the same domain across feeds in one update.
+actor FaviconCache {
+    static let shared = FaviconCache()
+    private var entries: [String: String?] = [:]
+
+    /// Returns the cached result, or computes and stores it on a miss.
+    func value(for site: String, compute: () async -> String?) async -> String? {
+        if let cached = entries[site] { return cached }
+        let resolved = await compute()
+        entries[site] = resolved
+        return resolved
     }
 }
