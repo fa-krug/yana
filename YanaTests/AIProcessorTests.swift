@@ -100,6 +100,23 @@ struct AIProcessorTests {
         #expect(!prompt.contains("<footer>"))
     }
 
+    @Test func restoresLeadHeaderImageOntoAIOutput() async {
+        // stripChrome removes the <header> lead image before the prompt (the model must not
+        // translate the image), but the rendered article must keep its header image. Regression:
+        // AI-translated Reddit posts were losing their header image entirely.
+        let gen = FakeGen([.success(#"{"title":"Neu","content":"<p>übersetzt</p>"}"#)])
+        let proc = processor(gen, config: config())
+        let header = #"<header style="text-align: center;"><img src="yana-img://lead123" alt="lead"></header>"#
+        let out = await proc.process([article("a", content: header + "<p>original</p>")],
+                                     ai: ai(translate: true))
+
+        // The prompt still excludes the header (we never send the lead image to the model)…
+        #expect(!(gen.prompts.first ?? "").contains("<header"))
+        // …but the resulting content keeps the lead image and the translated body.
+        #expect(out.first?.content.contains("yana-img://lead123") == true)
+        #expect(out.first?.content.contains("übersetzt") == true)
+    }
+
     @Test func promptContainsExactInstructionStrings() async {
         let gen = FakeGen([.success(#"{"title":"T","content":"<p>x</p>"}"#)])
         let proc = processor(gen, config: config())
@@ -169,16 +186,20 @@ struct AIProcessorTests {
     }
 
     @Test func processesMultipleArticlesDroppingOnlyFailures() async {
-        let gen = FakeGen([
-            .success(#"{"title":"A","content":"<p>a</p>"}"#),
-            .success("garbage"),
-            .success(#"{"title":"C","content":"<p>c</p>"}"#),
-        ])
-        let proc = processor(gen, config: config())
+        // Key responses to article content (not call order): the batch runs concurrently, so a
+        // counter-based fake would race. The middle article returns junk → dropped.
+        let proc = AIProcessor(config: config(), requestDelay: 0) { prompt, _ in
+            if prompt.contains("body2") { return "garbage" }
+            if prompt.contains("body1") { return #"{"title":"A","content":"<p>a</p>"}"# }
+            return #"{"title":"C","content":"<p>c</p>"}"#
+        }
+        let input = [article("1", content: "<p>body1</p>"),
+                     article("2", content: "<p>body2</p>"),
+                     article("3", content: "<p>body3</p>")]
 
-        let out = await proc.process([article("1"), article("2"), article("3")], ai: ai(summarize: true))
+        let out = await proc.process(input, ai: ai(summarize: true))
 
-        #expect(out.map { $0.title } == ["A", "C"])    // middle one dropped
+        #expect(out.map { $0.title } == ["A", "C"])    // middle one dropped, order preserved
     }
 
     @Test func truncatesOversizedContent() {

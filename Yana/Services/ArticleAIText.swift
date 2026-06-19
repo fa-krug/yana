@@ -22,6 +22,17 @@ enum ArticleAIText {
         return try doc.html()
     }
 
+    /// The leading `<header>` block(s) that `stripChrome` removes — these carry the article's
+    /// cached lead image. Returned as outer HTML so AI post-processing can re-attach the header
+    /// to the model's output (which is generated from header-stripped input and would otherwise
+    /// drop the lead image). Returns nil when the content has no `<header>`. Pure — no network.
+    static func leadingHeaderHTML(_ html: String) throws -> String? {
+        let doc = try SwiftSoup.parse(html)
+        let headers = try doc.select("header").array()
+        guard !headers.isEmpty else { return nil }
+        return try headers.map { try $0.outerHtml() }.joined()
+    }
+
     static let summarizeInstruction =
         "Summarize the article content concisely."
 
