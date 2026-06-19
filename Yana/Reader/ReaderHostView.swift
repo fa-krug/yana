@@ -14,6 +14,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     var onShowFilter: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onToggleStar: ((Article) -> Void)?
+    var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
     var onGoToFeed: ((Feed) -> Void)?
@@ -30,6 +31,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
+        reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
         reader.onGoToFeed = onGoToFeed
@@ -52,6 +54,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
+        reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
         reader.onGoToFeed = onGoToFeed
@@ -137,6 +140,7 @@ struct ReaderScreen: View {
                     onShowFilter: { appState.showFilter = true },
                     onShowSettings: { appState.showSettings = true },
                     onToggleStar: toggleStar,
+                    onForceUpdateArticle: forceUpdateArticle,
                     onCopyLink: copyLink,
                     onSummarize: summarize,
                     onGoToFeed: goToFeed,
@@ -192,7 +196,7 @@ struct ReaderScreen: View {
         .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
         .onChange(of: allArticles) { _, _ in
             recomputeFilter()
-            if didRestoreAnchor { clampIndex() } else { restoreAnchor() }
+            if didRestoreAnchor { reanchorToCurrentArticle() } else { restoreAnchor() }
         }
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
@@ -244,6 +248,15 @@ struct ReaderScreen: View {
         settings.timelineAnchorIdentifier = articles[appState.currentIndex].identifier
     }
 
+    /// Keep the displayed article selected across timeline mutations (refresh / reload / retention
+    /// cleanup) by re-resolving its saved anchor identifier to its new position, rather than holding
+    /// a now-stale positional index. Falls back to the top only if the article is gone.
+    private func reanchorToCurrentArticle() {
+        appState.currentIndex = TimelineAnchor.index(
+            for: settings.timelineAnchorIdentifier, in: filteredArticles
+        )
+    }
+
     private func clampIndex() {
         let clamped = min(appState.currentIndex, max(0, filteredArticles.count - 1))
         if clamped != appState.currentIndex {
@@ -253,6 +266,24 @@ struct ReaderScreen: View {
     }
 
     // MARK: - Refresh
+
+    /// Force-update only the current article: re-fetch and re-process the single article in place,
+    /// leaving the rest of the timeline untouched. Falls back to a forced reload of the owning
+    /// feed when the source cannot re-fetch a lone item (see `AggregationService.forceReload`).
+    private func forceUpdateArticle(_ article: Article) {
+        let feedName = article.feed?.name
+        UpdateActivity.shared.restart {
+            let service = AggregationService(context: modelContext)
+            let count = await service.forceReload(article: article)
+            guard !Task.isCancelled else { return }
+            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
+                appState.errorMessage = failure
+            } else {
+                statusMessage = RefreshOutcome.message(newCount: count, feedName: feedName)
+                Haptics.impact(.light)
+            }
+        }
+    }
 
     private func triggerRefresh() {
         // A fresh pull cancels any update already running and starts over, rather than no-op'ing.

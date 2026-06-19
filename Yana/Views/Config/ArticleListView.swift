@@ -70,7 +70,7 @@ struct ArticleListView: View {
                         await AggregationService(context: modelContext).forceReload(article: article)
                     }
                 } label: {
-                    Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
+                    Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")
                 }
                 .tint(.orange)
             }
