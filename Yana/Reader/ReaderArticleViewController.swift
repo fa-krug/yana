@@ -31,7 +31,6 @@ final class ReaderArticleViewController: UIViewController,
     private var articleListItem: UIBarButtonItem!
     private var filterItem: UIBarButtonItem!
     private var indicatorItem: UIBarButtonItem!
-    private var starItem: UIBarButtonItem!
     private var shareItem: UIBarButtonItem!
     private var menuItem: UIBarButtonItem!
 
@@ -99,8 +98,6 @@ final class ReaderArticleViewController: UIViewController,
         indicatorItem = UIBarButtonItem(customView: activityIndicator)
         navigationItem.leftBarButtonItems = [articleListItem]
 
-        starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
-
         // Overflow menu, rebuilt each time it opens so conditional items track the current
         // article + AI state. UIDeferredMenuElement.uncached re-invokes the provider per present.
         menuItem = UIBarButtonItem(
@@ -112,9 +109,12 @@ final class ReaderArticleViewController: UIViewController,
             ])
         )
         menuItem.accessibilityLabel = String(localized: "More actions")
-        // rightBarButtonItems is ordered edge-inward: [menu, filter, star] puts the overflow
-        // menu at the screen edge, then the filter, then the star (on-screen L→R: star, filter, menu).
-        navigationItem.rightBarButtonItems = [menuItem, filterItem, starItem]
+        // rightBarButtonItems is ordered edge-inward: [menu, filter] puts the overflow menu at the
+        // screen edge, then the filter (on-screen L→R: filter, menu). Starring lives in the overflow
+        // menu rather than its own bar button: a fourth right-side item overflows the bar on
+        // width-constrained displays (e.g. Display Zoom), and iOS 26 then collapses every button into
+        // an automatic "•••" menu that sticks. Two right items leave headroom for the refresh spinner.
+        navigationItem.rightBarButtonItems = [menuItem, filterItem]
     }
 
     private func configureToolbar() {
@@ -139,13 +139,6 @@ final class ReaderArticleViewController: UIViewController,
             : "line.3.horizontal.decrease.circle")
     }
 
-    private func updateStarItem() {
-        guard let article = currentArticle() else { return }
-        starItem.image = UIImage(systemName: article.isStarred ? "star.fill" : "star")
-        starItem.accessibilityLabel = article.isStarred
-            ? String(localized: "Unstar article") : String(localized: "Star article")
-    }
-
     // MARK: - Data
 
     func configure(articles: [Article], index: Int) {
@@ -155,7 +148,6 @@ final class ReaderArticleViewController: UIViewController,
         if let page = makePage(for: self.index) {
             pageController.setViewControllers([page], direction: .forward, animated: false)
         }
-        updateStarItem()
     }
 
     func update(articles: [Article], index: Int) {
@@ -165,11 +157,8 @@ final class ReaderArticleViewController: UIViewController,
         let displayedID = displayedWebVC?.article.identifier
         let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
         self.index = target
-        guard displayedID != targetID, let page = makePage(for: target) else {
-            updateStarItem(); return
-        }
+        guard displayedID != targetID, let page = makePage(for: target) else { return }
         pageController.setViewControllers([page], direction: .forward, animated: false)
-        updateStarItem()
     }
 
     private func clamp(_ i: Int) -> Int { min(max(i, 0), max(0, articles.count - 1)) }
@@ -197,18 +186,18 @@ final class ReaderArticleViewController: UIViewController,
     @objc private func showArticleList() { onShowArticleList?() }
     @objc private func showSettings() { onShowSettings?() }
 
-    @objc private func toggleStar() {
-        guard let article = currentArticle() else { return }
-        onToggleStar?(article)
-        updateStarItem()
-    }
-
     private func buildMenuActions() -> [UIMenuElement] {
         guard let article = currentArticle() else { return [] }
         let config = ReaderMenuBuilder.config(
             hasURL: !article.url.isEmpty, aiReady: aiReady
         )
         var actions: [UIMenuElement] = []
+
+        let isStarred = article.isStarred
+        actions.append(UIAction(
+            title: isStarred ? String(localized: "Unstar") : String(localized: "Star"),
+            image: UIImage(systemName: isStarred ? "star.slash" : "star")
+        ) { [weak self] _ in self?.onToggleStar?(article) })
 
         actions.append(UIAction(
             title: String(localized: "Reload"),
@@ -318,7 +307,6 @@ final class ReaderArticleViewController: UIViewController,
         guard completed, let vc = displayedWebVC,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles) else { return }
         index = i
-        updateStarItem()
         onIndexChange?(i)
     }
 }
