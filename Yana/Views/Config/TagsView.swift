@@ -41,6 +41,7 @@ struct TagsView: View {
                     Text(tag.name)
                     if tag.isBuiltIn {
                         Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel(Text("System tag"))
                     }
                     Spacer()
                 }
@@ -67,6 +68,7 @@ struct TagsView: View {
             Button(String(localized: "Delete"), role: .destructive) {
                 if let resolved = tagsToDelete {
                     delete(resolved)
+                    Haptics.notify(.success)
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}

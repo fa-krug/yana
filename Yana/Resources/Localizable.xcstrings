@@ -317,7 +317,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alle zur\u00fccksetzen"
+            "value": "Alle zurücksetzen"
           }
         }
       }
@@ -2073,6 +2073,136 @@
           "stringUnit": {
             "state": "translated",
             "value": "Zusammenfassung fehlgeschlagen"
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erweitert"
+          }
+        }
+      }
+    },
+    "article": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artikel"
+          }
+        }
+      }
+    },
+    "articles": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artikel"
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Löschen"
+          }
+        }
+      }
+    },
+    "Retry": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "Showing the nearest article in this filter.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nächstgelegener Artikel in diesem Filter wird angezeigt."
+          }
+        }
+      }
+    },
+    "System tag": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemstichwort"
+          }
+        }
+      }
+    },
+    "This is a system tag. You can recolor it, but its name is fixed.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dies ist ein Systemstichwort. Die Farbe lässt sich ändern, der Name ist fest."
+          }
+        }
+      }
+    },
+    "Text size preview": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorschau der Textgröße"
+          }
+        }
+      }
+    },
+    "The quick brown fox jumps over the lazy dog.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Franz jagt im komplett verwahrlosten Taxi quer durch Bayern."
+          }
+        }
+      }
+    },
+    "Tap the title bar to hide the toolbars.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf die Titelleiste tippen, um die Symbolleisten auszublenden."
+          }
+        }
+      }
+    },
+    "No articles yet. Add feeds, then pull to refresh.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noch keine Artikel. Feeds hinzufügen und dann zum Aktualisieren ziehen."
+          }
+        }
+      }
+    },
+    "Delete “%@”? Its %lld articles will be permanently deleted.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%1$@“ löschen? Die zugehörigen %2$lld Artikel werden endgültig gelöscht."
           }
         }
       }

@@ -48,7 +48,7 @@ struct ArticleListView: View {
             searchPrompt: "Search articles",
             emptyTitle: "No Articles",
             emptyIcon: "tray",
-            emptyDescription: "Add feeds and refresh to see articles here.",
+            emptyDescription: "No articles yet. Add feeds, then pull to refresh.",
             onDelete: { offsets in
                 // Resolve immediately so stale indices can't delete the wrong article
                 guard let article = offsets.map({ results[$0] }).first else { return }
@@ -59,6 +59,7 @@ struct ArticleListView: View {
                     guard let starredTag else { return }
                     article.setStarred(!article.isStarred, using: starredTag)
                     try? modelContext.save()
+                    Haptics.impact(.light)
                 } label: {
                     Label(article.isStarred ? "Unstar" : "Star",
                           systemImage: article.isStarred ? "star.slash" : "star")
@@ -123,6 +124,7 @@ struct ArticleListView: View {
                 Button(String(localized: "Delete"), role: .destructive) {
                     modelContext.delete(article)
                     try? modelContext.save()
+                    Haptics.notify(.success)
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
@@ -140,13 +142,15 @@ struct ArticleListView: View {
                 Text(article.title).font(.headline).lineLimit(2)
                 HStack(spacing: 6) {
                     if let name = article.feed?.name, !name.isEmpty {
-                        Text(name).foregroundStyle(Color.accentColor)
-                        Text("·")
+                        Text(name)
+                            .fontWeight(.medium)
+                            .foregroundStyle(Color.accentColor)
+                        Text("·").foregroundStyle(.tertiary)
                     }
                     Text(article.date, style: .date)
+                        .foregroundStyle(.tertiary)
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
             }
         }
     }

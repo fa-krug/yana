@@ -9,6 +9,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let articles: [Article]
     @Binding var currentIndex: Int
     let isRefreshing: Bool
+    let isFilterActive: Bool
     var onRefresh: (() -> Void)?
     var onShowFilter: (() -> Void)?
     var onShowSettings: (() -> Void)?
@@ -37,6 +38,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         context.coordinator.lastReloadToken = reloadToken
         reader.configure(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
+        reader.setFilterActive(isFilterActive)
 
         let nav = UINavigationController(rootViewController: reader)
         nav.isToolbarHidden = false
@@ -61,6 +63,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         }
         reader.update(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
+        reader.setFilterActive(isFilterActive)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -91,6 +94,7 @@ struct ReaderScreen: View {
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
+    @State private var statusMessage: String?
     @State private var isSummarizing = false
     @State private var reloadToken = 0
     @State private var summarizeFailed = false
@@ -128,6 +132,7 @@ struct ReaderScreen: View {
                     articles: articles,
                     currentIndex: $appState.currentIndex,
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
+                    isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
                     onShowSettings: { appState.showSettings = true },
@@ -156,11 +161,34 @@ struct ReaderScreen: View {
             get: { appState.errorMessage != nil },
             set: { if !$0 { appState.errorMessage = nil } }
         )) {
+            Button("Retry") { triggerRefresh() }
             Button("OK", role: .cancel) {}
         } message: {
             Text(appState.errorMessage ?? "")
         }
-        .onAppear { recomputeFilter(); restoreAnchor() }
+        .overlay(alignment: .top) {
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.subheadline)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.thinMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .task(id: statusMessage) {
+                        try? await Task.sleep(for: .seconds(2.5))
+                        self.statusMessage = nil
+                    }
+            }
+        }
+        .animation(.snappy, value: statusMessage)
+        .onAppear {
+            recomputeFilter()
+            restoreAnchor()
+            if !settings.hasSeenFullscreenHint, UIDevice.current.userInterfaceIdiom == .phone {
+                statusMessage = String(localized: "Tap the title bar to hide the toolbars.")
+                settings.hasSeenFullscreenHint = true
+            }
+        }
         .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
         .onChange(of: allArticles) { _, _ in
             recomputeFilter()
@@ -175,6 +203,7 @@ struct ReaderScreen: View {
         guard let starredTag else { return }
         article.setStarred(!article.isStarred, using: starredTag)
         try? modelContext.save()
+        Haptics.impact(.light)
     }
 
     private func copyLink(_ article: Article) {
@@ -216,7 +245,11 @@ struct ReaderScreen: View {
     }
 
     private func clampIndex() {
-        appState.currentIndex = min(appState.currentIndex, max(0, filteredArticles.count - 1))
+        let clamped = min(appState.currentIndex, max(0, filteredArticles.count - 1))
+        if clamped != appState.currentIndex {
+            statusMessage = String(localized: "Showing the nearest article in this filter.")
+        }
+        appState.currentIndex = clamped
     }
 
     // MARK: - Refresh
@@ -225,9 +258,14 @@ struct ReaderScreen: View {
         // A fresh pull cancels any update already running and starts over, rather than no-op'ing.
         UpdateActivity.shared.restart {
             let service = AggregationService(context: modelContext)
-            await service.updateAll()
+            let count = await service.updateAll()
             guard !Task.isCancelled else { return }
-            appState.errorMessage = SyncFailureSummary.message(for: service.lastRunFailures)
+            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
+                appState.errorMessage = failure
+            } else {
+                statusMessage = RefreshOutcome.message(newCount: count, feedName: nil)
+                Haptics.impact(.light)
+            }
         }
     }
 }

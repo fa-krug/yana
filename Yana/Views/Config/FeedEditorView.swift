@@ -28,6 +28,7 @@ struct FeedEditorView: View {
         Form {
             Section("Feed") {
                 TextField("Name", text: $model.name)
+                    .submitLabel(.done)
                 Picker("Type", selection: Binding(get: { model.type }, set: { model.changeType($0) })) {
                     ForEach(availableTypes) { type in
                         Text(type.displayName).tag(type)

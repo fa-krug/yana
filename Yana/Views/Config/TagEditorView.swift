@@ -26,9 +26,16 @@ struct TagEditorView: View {
 
     var body: some View {
         Form {
-            TextField("Name", text: $name)
-                .disabled(tag?.isBuiltIn == true)
-            ColorPicker("Color", selection: $color, supportsOpacity: false)
+            Section {
+                TextField("Name", text: $name)
+                    .submitLabel(.done)
+                    .disabled(tag?.isBuiltIn == true)
+                ColorPicker("Color", selection: $color, supportsOpacity: false)
+            } footer: {
+                if tag?.isBuiltIn == true {
+                    Text("This is a system tag. You can recolor it, but its name is fixed.")
+                }
+            }
         }
         .navigationTitle(isCreating ? "New Tag" : "Edit Tag")
         // Create flow: explicit Cancel/confirm in a sheet. Edit flow: auto-save on dismiss.

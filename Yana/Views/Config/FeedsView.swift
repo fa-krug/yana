@@ -135,13 +135,14 @@ struct FeedsView: View {
                 Button(String(localized: "Delete"), role: .destructive) {
                     modelContext.delete(feed)
                     try? modelContext.save()
+                    Haptics.notify(.success)
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
             if let feed = feedToDelete {
                 Text(
-                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \(feed.articles.count) articles will be removed.")
+                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \(feed.articles.count) articles will be permanently deleted.")
                 )
             }
         }
@@ -206,11 +207,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).updateAll()
             guard !Task.isCancelled else { return }
-            if count == 0 {
-                importMessage = String(localized: "No new articles.")
-            } else {
-                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles").")
-            }
+            importMessage = RefreshOutcome.message(newCount: count, feedName: nil)
         }
     }
 
@@ -218,11 +215,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).update(feed: feed)
             guard !Task.isCancelled else { return }
-            if count == 0 {
-                importMessage = String(localized: "No new articles.")
-            } else {
-                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
-            }
+            importMessage = RefreshOutcome.message(newCount: count, feedName: feed.name)
         }
     }
 
@@ -230,11 +223,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).forceReload(feed: feed)
             guard !Task.isCancelled else { return }
-            if count == 0 {
-                importMessage = String(localized: "Reloaded \u{201C}\(feed.name)\u{201D}.")
-            } else {
-                importMessage = String(localized: "Added \(count) new \(count == 1 ? "article" : "articles") from \u{201C}\(feed.name)\u{201D}.")
-            }
+            importMessage = RefreshOutcome.message(newCount: count, feedName: feed.name)
         }
     }
 

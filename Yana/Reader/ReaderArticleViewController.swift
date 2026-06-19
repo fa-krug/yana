@@ -130,6 +130,12 @@ final class ReaderArticleViewController: UIViewController,
         }
     }
 
+    func setFilterActive(_ active: Bool) {
+        filterItem.image = UIImage(systemName: active
+            ? "line.3.horizontal.decrease.circle.fill"
+            : "line.3.horizontal.decrease.circle")
+    }
+
     private func updateStarItem() {
         guard let article = currentArticle() else { return }
         starItem.image = UIImage(systemName: article.isStarred ? "star.fill" : "star")
@@ -238,8 +244,17 @@ final class ReaderArticleViewController: UIViewController,
     @objc private func shareArticle() {
         guard let article = currentArticle(), let url = URL(string: article.url) else { return }
         let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        let presenter = topmostPresenter ?? self
         activity.popoverPresentationController?.barButtonItem = shareItem
-        present(activity, animated: true)
+        presenter.present(activity, animated: true)
+    }
+
+    /// The deepest currently-presented controller reachable from this scene's root, or nil if
+    /// the view is not yet in a window. Mirrors ReaderWebViewController.topmostPresenter.
+    private var topmostPresenter: UIViewController? {
+        guard var top = view.window?.rootViewController else { return nil }
+        while let presented = top.presentedViewController { top = presented }
+        return top
     }
 
     @objc private func openInBrowser() {
