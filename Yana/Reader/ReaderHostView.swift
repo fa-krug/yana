@@ -54,19 +54,30 @@ struct ReaderScreen: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \Article.createdAt, order: .reverse) private var allArticles: [Article]
+    @Query(ReaderScreen.timelineDescriptor) private var allArticles: [Article]
+
+    static var timelineDescriptor: FetchDescriptor<Article> {
+        var descriptor = FetchDescriptor<Article>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        // Batch-load the relationships every page render touches, avoiding N+1 faulting.
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        return descriptor
+    }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
 
-    private var filteredArticles: [Article] {
+    @State private var filteredArticles: [Article] = []
+
+    private func recomputeFilter() {
         let byTag = TagFilter.apply(
             to: allArticles,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
-        return FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -107,11 +118,15 @@ struct ReaderScreen: View {
         } message: {
             Text(appState.errorMessage ?? "")
         }
-        .onAppear { restoreAnchor() }
+        .onAppear { recomputeFilter(); restoreAnchor() }
         .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
         .onChange(of: allArticles) { _, _ in
+            recomputeFilter()
             if didRestoreAnchor { clampIndex() } else { restoreAnchor() }
         }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
     }
 
     private func toggleStar(_ article: Article) {

@@ -15,6 +15,19 @@ struct FeedsView: View {
     @State private var searchText = ""
     @State private var settings = AppSettings()
     @State private var showingCreateFeed = false
+    @State private var articleCounts: [PersistentIdentifier: Int] = [:]
+
+    private func refreshArticleCounts() {
+        var counts: [PersistentIdentifier: Int] = [:]
+        for feed in feeds {
+            let id = feed.persistentModelID
+            let descriptor = FetchDescriptor<Article>(
+                predicate: #Predicate { $0.feed?.persistentModelID == id }
+            )
+            counts[id] = (try? modelContext.fetchCount(descriptor)) ?? 0
+        }
+        articleCounts = counts
+    }
 
     /// Shared, app-lifetime flag so the spinner survives leaving and returning to this screen
     /// while a detached update Task keeps running in the background.
@@ -61,6 +74,8 @@ struct FeedsView: View {
             }
         }
         .navigationTitle("Feeds")
+        .onAppear { refreshArticleCounts() }
+        .onChange(of: feeds) { _, _ in refreshArticleCounts() }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -163,7 +178,7 @@ struct FeedsView: View {
                 }
             }
             HStack(spacing: 6) {
-                Text("\(feed.articles.count) articles")
+                Text("\(articleCounts[feed.persistentModelID] ?? 0) articles")
                 if let fetched = feed.lastFetchedAt {
                     Text(verbatim: "· \(RelativeTime.compact(since: fetched))")
                         .monospacedDigit()

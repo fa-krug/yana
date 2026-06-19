@@ -7,9 +7,18 @@ import SwiftUI
 /// `AppSettings`) so it never affects the home timeline.
 struct ArticleListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Article.createdAt, order: .reverse) private var allArticles: [Article]
+    @Query(ArticleListView.timelineDescriptor) private var allArticles: [Article]
+
+    static var timelineDescriptor: FetchDescriptor<Article> {
+        var descriptor = FetchDescriptor<Article>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        return descriptor
+    }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var searchText = ""
+    @State private var debouncedSearch = ""
     @State private var disabledTagNames: Set<String> = []
     @State private var includeUntagged = true
     @State private var disabledFeedNames: Set<String> = []
@@ -23,7 +32,7 @@ struct ArticleListView: View {
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
     private var results: [Article] {
-        let searched = ArticleSearch.filter(allArticles, query: searchText)
+        let searched = ArticleSearch.filter(allArticles, query: debouncedSearch)
         let byTag = TagFilter.apply(to: searched, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged)
         return FeedFilter.apply(to: byTag, disabledFeedNames: disabledFeedNames)
     }
@@ -70,6 +79,12 @@ struct ArticleListView: View {
             } label: {
                 row(article)
             }
+        }
+        .task(id: searchText) {
+            // Coalesce keystrokes: a new keystroke cancels this task and restarts the timer.
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            debouncedSearch = searchText
         }
         .navigationTitle("Articles")
         .toolbar {
