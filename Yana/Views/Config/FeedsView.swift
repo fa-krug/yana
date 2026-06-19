@@ -11,7 +11,7 @@ struct FeedsView: View {
     @State private var isImportingOPML = false
     @State private var exportURL: URL?
     @State private var isExporting = false
-    @State private var importMessage: String?
+    @State private var toast: ToastMessage?
     @State private var feedToDelete: Feed?
     @State private var searchText = ""
     @State private var settings = AppSettings()
@@ -134,11 +134,7 @@ struct FeedsView: View {
         .sheet(isPresented: $isExporting) {
             if let url = exportURL { ShareSheet(activityItems: [url]) }
         }
-        .alert("Feeds", isPresented: Binding(get: { importMessage != nil }, set: { if !$0 { importMessage = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(importMessage ?? "")
-        }
+        .toast($toast)
         .confirmationDialog(
             String(localized: "Delete Feed?"),
             isPresented: Binding(get: { feedToDelete != nil }, set: { if !$0 { feedToDelete = nil } }),
@@ -220,7 +216,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).updateAll()
             guard !Task.isCancelled else { return }
-            importMessage = RefreshOutcome.message(newCount: count, feedName: nil)
+            toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: nil))
         }
     }
 
@@ -228,7 +224,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).update(feed: feed)
             guard !Task.isCancelled else { return }
-            importMessage = RefreshOutcome.message(newCount: count, feedName: feed.name)
+            toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
         }
     }
 
@@ -236,7 +232,7 @@ struct FeedsView: View {
         UpdateActivity.shared.restart {
             let count = await AggregationService(context: modelContext).forceReload(feed: feed)
             guard !Task.isCancelled else { return }
-            importMessage = RefreshOutcome.message(newCount: count, feedName: feed.name)
+            toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
         }
     }
 
@@ -248,7 +244,7 @@ struct FeedsView: View {
             exportURL = url
             isExporting = true
         } catch {
-            importMessage = String(localized: "Export failed.")
+            toast = ToastMessage(text: String(localized: "Export failed."), style: .error)
         }
     }
 
@@ -262,11 +258,11 @@ struct FeedsView: View {
             let needsStop = url.startAccessingSecurityScopedResource()
             defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
             guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
-                importMessage = String(localized: "Could not read the file.")
+                toast = ToastMessage(text: String(localized: "Could not read the file."), style: .error)
                 return
             }
             let r = FeedPortability.importOPML(xml, context: modelContext)
-            importMessage = String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped).")
+            toast = ToastMessage(text: String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped)."))
         }
     }
 }
