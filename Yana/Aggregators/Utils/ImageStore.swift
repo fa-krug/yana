@@ -31,9 +31,11 @@ actor ImageStore {
     }()
 
     /// Returns the content hash for a downloaded+compressed image, or nil on failure.
-    func store(remoteURL: URL, isHeader: Bool) async -> String? {
+    /// `removeWhiteBackground` (feed logos) makes a flat edge-connected white backdrop transparent.
+    func store(remoteURL: URL, isHeader: Bool, removeWhiteBackground: Bool = false) async -> String? {
         guard let (data, contentType) = try? await fetch(remoteURL),
-              let compressed = ImageCompressor.compress(data, contentType: contentType, isHeader: isHeader) else { return nil }
+              let compressed = ImageCompressor.compress(data, contentType: contentType, isHeader: isHeader,
+                                                        removeWhiteBackground: removeWhiteBackground) else { return nil }
         let hash = Self.hash(compressed.data)
         extensions[hash] = compressed.ext
         let url = fileURL(forHash: hash)

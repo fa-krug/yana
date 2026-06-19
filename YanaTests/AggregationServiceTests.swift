@@ -18,8 +18,13 @@ struct AggregationServiceTests {
     private struct FakeAggregator: Aggregator {
         let articles: [AggregatedArticle]
         var validateError: Error?
+        /// Optional hook invoked at the start of `aggregate()`, on the main actor.
+        var onAggregate: (@MainActor () -> Void)?
         func validate() throws { if let validateError { throw validateError } }
-        func aggregate() async throws -> [AggregatedArticle] { articles }
+        func aggregate() async throws -> [AggregatedArticle] {
+            await onAggregate?()
+            return articles
+        }
     }
 
     nonisolated private func aggregated(_ id: String, date: Date = .now) -> AggregatedArticle {
@@ -449,7 +454,7 @@ struct AggregationServiceTests {
         #expect(feed.articles.count == 1)                // updated, not duplicated
     }
 
-    @Test func forceReloadArticleFallsBackToFeedWhenRefetchUnsupported() async throws {
+    @Test func forceReloadArticleDoesNotReloadFeedWhenRefetchReturnsNil() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
@@ -458,17 +463,34 @@ struct AggregationServiceTests {
         article.feed = feed
         context.insert(article)
 
-        // refetch returns nil → fallback re-runs the feed, which re-imports id1 with new content.
-        var updatedArticle = self.aggregated("id1")
-        updatedArticle.content = "FROM_FEED"
-        let feedArticle = updatedArticle
+        // refetch returns nil, and the aggregator also offers a feed article — which must NOT be imported.
+        var feedOnly = self.aggregated("id1"); feedOnly.content = "FROM_FEED"
+        let feedArticle = feedOnly
         let service = AggregationService(context: context, makeAggregator: { _, _ in
             RefetchFakeAggregator(articles: [feedArticle], refetchResult: nil)
         }, aiProcessor: FakeAIProcessor())
-        await service.forceReload(article: article)
+        let inserted = await service.forceReload(article: article)
 
-        #expect(article.content == "FROM_FEED")          // refreshed via the forced feed reload
-        #expect(feed.articles.count == 1)
+        #expect(inserted == 0)                       // nothing reloaded
+        #expect(article.content == "OLD")            // current article untouched (no feed reload)
+        #expect(feed.articles.count == 1)            // no extra articles imported
+    }
+
+    @Test func forceReloadArticleReturnsZeroWhenAggregatorUnavailable() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        context.insert(article)
+
+        let service = AggregationService(context: context, makeAggregator: { _, _ in nil },
+                                         aiProcessor: FakeAIProcessor())
+        let inserted = await service.forceReload(article: article)
+
+        #expect(inserted == 0)
+        #expect(article.content == "OLD")
     }
 
     @Test func forceReloadDoesNotRetentionCleanupRefreshedArticles() async throws {
@@ -593,5 +615,43 @@ struct AggregationServiceTests {
         await service.update(feed: feed)
 
         #expect(feed.logoHash == "existing")
+    }
+
+    // MARK: - Update progress (Task 9)
+
+    /// Box to observe a value captured on the main actor inside a factory closure.
+    private final class Box<T>: @unchecked Sendable {
+        var value: T
+        init(_ value: T) { self.value = value }
+    }
+
+    @Test func updateAllReportsProgressThenResets() async throws {
+        let context = try makeContext()
+        // Seed 3 enabled feeds.
+        for i in 0..<3 {
+            context.insert(Feed(name: "F\(i)", aggregatorType: .feedContent, identifier: "f\(i)"))
+        }
+
+        let totalBox = Box(0)
+        // Use `nonisolated(unsafe)` to let the closure capture `service` before it is initialised;
+        // the closure is only *called* during `updateAll()`, after the `let service = …` line
+        // completes, so the reference is always valid by the time it is read.
+        nonisolated(unsafe) var serviceRef: AggregationService? = nil
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in
+                FakeAggregator(
+                    articles: [],
+                    onAggregate: { totalBox.value = serviceRef?.updateProgress.total ?? -1 }
+                )
+            }
+        )
+        serviceRef = service
+
+        await service.updateAll()
+
+        #expect(totalBox.value == 3)               // total was live during the run
+        #expect(service.updateProgress.total == 0)     // reset to idle afterward
+        #expect(service.updateProgress.completed == 0)
     }
 }

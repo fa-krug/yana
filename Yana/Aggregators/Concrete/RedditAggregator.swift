@@ -57,24 +57,46 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             if opts.minComments > 0 && post.numComments < opts.minComments { continue }
             if result.count >= limit { break }
 
-            let permalink = "https://reddit.com\(RedditMarkdown.decodeEntities(original.permalink))"
             let isCrossPost = post.crosspostParentList?.isEmpty == false
-            var body = try await buildContent(post: original, isCrossPost: isCrossPost, client: client)
-            let headerURL = await headerImageURL(for: original)
-
-            if let headerURL { body = stripImage(from: body, url: headerURL) }
-            var headerHTML: String?
-            if opts.includeHeaderImage, let headerURL {
-                headerHTML = try await makeHeaderHTML(headerURL, title: original.title)
-            }
-            let content = ContentFormatter.format(content: body, title: original.title, url: permalink,
-                                                  headerHTML: headerHTML, commentsHTML: nil)
-            result.append(AggregatedArticle(
-                title: original.title, identifier: permalink, url: permalink,
-                rawContent: body, content: content,
-                date: date, author: post.author, iconURL: nil))
+            result.append(try await buildArticle(from: original, isCrossPost: isCrossPost, client: client))
         }
         return result
+    }
+
+    /// Build one article from a (possibly crosspost-resolved) Reddit post. Shared by `aggregate()`
+    /// and `refetch`.
+    private func buildArticle(from post: RedditPostData, isCrossPost: Bool,
+                              client: RedditClient) async throws -> AggregatedArticle {
+        let date = Date(timeIntervalSince1970: post.createdUTC)
+        let permalink = "https://reddit.com\(RedditMarkdown.decodeEntities(post.permalink))"
+        var body = try await buildContent(post: post, isCrossPost: isCrossPost, client: client)
+        let headerURL = await headerImageURL(for: post)
+        if let headerURL { body = stripImage(from: body, url: headerURL) }
+        var headerHTML: String?
+        if options.includeHeaderImage, let headerURL {
+            headerHTML = try await makeHeaderHTML(headerURL, title: post.title)
+        }
+        let content = ContentFormatter.format(content: body, title: post.title, url: permalink,
+                                              headerHTML: headerHTML, commentsHTML: nil)
+        return AggregatedArticle(
+            title: post.title, identifier: permalink, url: permalink,
+            rawContent: body, content: content,
+            date: date, author: post.author, iconURL: nil)
+    }
+
+    func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? {
+        guard let postID = Self.postID(fromPermalink: seed.identifier) else { return nil }
+        let client = try await makeClient()
+        guard let post = try await client.fetchPost(subreddit: normalizedSubreddit, postID: postID) else { return nil }
+        let isCrossPost = post.crosspostParentList?.isEmpty == false
+        let original = post.crosspostParentList?.first ?? post
+        return try await buildArticle(from: original, isCrossPost: isCrossPost, client: client)
+    }
+
+    /// Extract the base-36 post ID from a permalink like `…/r/<sub>/comments/<id>/<slug>/`.
+    static func postID(fromPermalink permalink: String) -> String? {
+        guard let r = permalink.range(of: #"/comments/([a-zA-Z0-9]+)"#, options: .regularExpression) else { return nil }
+        return permalink[r].replacingOccurrences(of: "/comments/", with: "")
     }
 
     func logoImageURL() async -> String? {

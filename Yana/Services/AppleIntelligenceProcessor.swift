@@ -43,6 +43,9 @@ struct AppleIntelligenceProcessor: AIProcessing {
 
     private func processOne(_ article: AggregatedArticle, ai: AIOptions) async throws -> AggregatedArticle {
         let clean = ArticleAIText.cap((try? ArticleAIText.stripChrome(article.content)) ?? article.content)
+        // `stripChrome` drops the lead-image <header>; restore it onto a rewritten body below so
+        // improve/translate don't lose the header image. (Summarize-only leaves `content` as-is.)
+        let headerHTML = (try? ArticleAIText.leadingHeaderHTML(article.content)) ?? nil
 
         var title = article.title
         var content = article.content
@@ -65,7 +68,7 @@ struct AppleIntelligenceProcessor: AIProcessing {
                 if i == 0 { title = result.title }
                 mapped.append(result.content)
             }
-            content = mapped.joined(separator: "\n")
+            content = (headerHTML ?? "") + mapped.joined(separator: "\n")
         }
 
         var updated = article

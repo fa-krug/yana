@@ -39,6 +39,27 @@ struct ImageStoreTests {
         #expect(FileManager.default.fileExists(atPath: resolved.path))   // must find the existing file on disk
     }
 
+    @Test func storeRemovesWhiteLogoBackgroundWhenRequested() async throws {
+        let format = UIGraphicsImageRendererFormat.preferred(); format.scale = 1
+        let logo = UIGraphicsImageRenderer(size: CGSize(width: 200, height: 200), format: format).image { ctx in
+            UIColor.white.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: 200, height: 200))
+            UIColor.black.setFill()
+            ctx.cgContext.fillEllipse(in: CGRect(x: 30, y: 30, width: 140, height: 140))
+        }.pngData()!
+
+        let store = ImageStore(directory: tempDir(), fetch: { _ in (logo, "image/png") })
+        let hash = try #require(await store.store(remoteURL: URL(string: "https://x.com/logo.png")!,
+                                                  isHeader: false, removeWhiteBackground: true))
+        let cached = UIImage(data: try Data(contentsOf: await store.fileURL(forHash: hash)))!.cgImage!
+        var buf = [UInt8](repeating: 0, count: cached.width * cached.height * 4)
+        let ctx = CGContext(data: &buf, width: cached.width, height: cached.height, bitsPerComponent: 8,
+                            bytesPerRow: cached.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(cached, in: CGRect(x: 0, y: 0, width: cached.width, height: cached.height))
+        let cornerAlphaIndex: Int = (2 * cached.width + 2) * 4 + 3
+        #expect(buf[cornerAlphaIndex] == 0)   // corner background transparent in the cached file
+    }
+
     @Test func rewriteImagesReplacesSrcWithScheme() async throws {
         let data = pngData()
         let store = ImageStore(directory: tempDir(), fetch: { _ in (data, "image/png") })

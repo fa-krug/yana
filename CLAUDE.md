@@ -84,7 +84,7 @@ designed for privacy-conscious users who want their feeds without any backend.
   **"Reload"** completely re-fetches in place, bypassing the intake window/cap and upserting
   (content refreshed; `createdAt` + Starred preserved): the reader overflow menu's **"Reload"** and
   the `ArticleListView` swipe's **"Reload"** call `forceReload(article:)` (current article only —
-  falls back to `forceReload(feed:)` when the source can't re-fetch a lone item), while the Feeds
+  every aggregator now re-fetches a single item: website/scrapers re-scrape the page, RSS/podcast pick the matching feed entry, YouTube/Reddit fetch the one video/post; if the item is gone it leaves the article untouched and never reloads the feed), while the Feeds
   swipe **"Reload"** calls `forceReload(feed:)` (re-imports everything the feed offers).
 - **SwiftData source of truth:** views read via `@Query`; `AggregationService` writes.
 - **Pluggable aggregators:** each content source is an `Aggregator` keyed by `AggregatorType`.
