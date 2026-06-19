@@ -151,7 +151,7 @@ struct ReaderScreen: View {
                 .ignoresSafeArea()
             }
         }
-        .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
+        .sheet(isPresented: $appState.showSettings) { NavigationStack { SettingsScreenView() } }
         .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
         .alert("Summarize Failed", isPresented: $summarizeFailed) {
             Button("OK", role: .cancel) {}

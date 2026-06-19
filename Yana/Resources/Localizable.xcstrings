@@ -1267,13 +1267,12 @@
         }
       }
     },
-    "Organize your sources and browse everything you've collected.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quellen organisieren und alles Gesammelte durchsuchen."
+    "Manage your feeds and the tags applied to articles." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feeds und die auf Artikel angewendeten Tags verwalten."
           }
         }
       }
@@ -1552,17 +1551,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sortierreihenfolge"
-          }
-        }
-      }
-    },
-    "Sources, AI, notifications, and library preferences.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quellen, KI, Mitteilungen und Bibliothekseinstellungen."
           }
         }
       }
