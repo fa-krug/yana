@@ -3,6 +3,7 @@ import Foundation
 /// A simple bounded least-recently-used cache. `order` holds keys from LRU (first) to MRU (last);
 /// `store` holds the values. Used by the reader to keep recently-seen page controllers warm while
 /// capping how many live `WKWebView`s exist at once.
+@MainActor
 final class LRUCache<Key: Hashable, Value> {
     private let capacity: Int
     private var store: [Key: Value] = [:]

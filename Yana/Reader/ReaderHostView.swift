@@ -62,6 +62,9 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onSummarize = onSummarize
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
+        // MUST run before the reloadToken re-render: clearing summaryPending here lets the
+        // subsequent reloadCurrentPage render the real summary; the unchanged-HTML guard then
+        // collapses the double render and the placeholder converges correctly.
         reader.setSummarizing(isSummarizing)
         if reloadToken != context.coordinator.lastReloadToken {
             context.coordinator.lastReloadToken = reloadToken

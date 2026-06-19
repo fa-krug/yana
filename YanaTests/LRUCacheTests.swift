@@ -1,6 +1,7 @@
 import Testing
 @testable import Yana
 
+@MainActor
 struct LRUCacheTests {
     @Test func insertAndRetrieve() {
         let c = LRUCache<String, Int>(capacity: 2)
