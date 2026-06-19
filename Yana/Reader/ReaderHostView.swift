@@ -14,6 +14,13 @@ struct ReaderHostView: UIViewControllerRepresentable {
     var onShowFilter: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onToggleStar: ((Article) -> Void)?
+    var onCopyLink: ((Article) -> Void)?
+    var onSummarize: ((Article) -> Void)?
+    var onGoToFeed: ((Feed) -> Void)?
+    let aiReady: Bool
+    let isSummarizing: Bool
+    /// Bumped by the host after a summary is written so the displayed page re-renders.
+    let reloadToken: Int
 
     func makeUIViewController(context: Context) -> UINavigationController {
         let reader = ReaderArticleViewController()
@@ -23,6 +30,12 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
+        reader.onCopyLink = onCopyLink
+        reader.onSummarize = onSummarize
+        reader.onGoToFeed = onGoToFeed
+        reader.aiReady = aiReady
+        reader.isSummarizing = isSummarizing
+        context.coordinator.lastReloadToken = reloadToken
         reader.configure(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
         reader.setFilterActive(isFilterActive)
@@ -39,6 +52,15 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
+        reader.onCopyLink = onCopyLink
+        reader.onSummarize = onSummarize
+        reader.onGoToFeed = onGoToFeed
+        reader.aiReady = aiReady
+        reader.isSummarizing = isSummarizing
+        if reloadToken != context.coordinator.lastReloadToken {
+            context.coordinator.lastReloadToken = reloadToken
+            reader.reloadCurrentPage()
+        }
         reader.update(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
         reader.setFilterActive(isFilterActive)
@@ -48,6 +70,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
 
     @MainActor final class Coordinator {
         var reader: ReaderArticleViewController?
+        var lastReloadToken = 0
     }
 }
 
@@ -57,22 +80,39 @@ struct ReaderScreen: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \Article.createdAt, order: .reverse) private var allArticles: [Article]
+    @Query(ReaderScreen.timelineDescriptor) private var allArticles: [Article]
+
+    static var timelineDescriptor: FetchDescriptor<Article> {
+        var descriptor = FetchDescriptor<Article>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        // Batch-load the relationships every page render touches, avoiding N+1 faulting.
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        return descriptor
+    }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
     @State private var statusMessage: String?
+    @State private var isSummarizing = false
+    @State private var reloadToken = 0
+    @State private var summarizeFailed = false
 
-    private var filteredArticles: [Article] {
-        TagFilter.apply(
+    @State private var filteredArticles: [Article] = []
+
+    private func recomputeFilter() {
+        let byTag = TagFilter.apply(
             to: allArticles,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
+        filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
+
+    private var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
 
     var body: some View {
         let articles = filteredArticles
@@ -91,18 +131,32 @@ struct ReaderScreen: View {
                 ReaderHostView(
                     articles: articles,
                     currentIndex: $appState.currentIndex,
-                    isRefreshing: UpdateActivity.shared.isUpdating,
+                    isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
                     onShowSettings: { appState.showSettings = true },
-                    onToggleStar: toggleStar
+                    onToggleStar: toggleStar,
+                    onCopyLink: copyLink,
+                    onSummarize: summarize,
+                    onGoToFeed: goToFeed,
+                    aiReady: aiReady,
+                    isSummarizing: isSummarizing,
+                    reloadToken: reloadToken
                 )
                 .ignoresSafeArea()
             }
         }
         .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
         .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
+        .sheet(item: $appState.feedToEdit) { feed in
+            NavigationStack { FeedEditorView(feed: feed) }
+        }
+        .alert("Summarize Failed", isPresented: $summarizeFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Could not summarize this article. Please try again.")
+        }
         .alert("Update Failed", isPresented: Binding(
             get: { appState.errorMessage != nil },
             set: { if !$0 { appState.errorMessage = nil } }
@@ -128,6 +182,7 @@ struct ReaderScreen: View {
         }
         .animation(.snappy, value: statusMessage)
         .onAppear {
+            recomputeFilter()
             restoreAnchor()
             if !settings.hasSeenFullscreenHint, UIDevice.current.userInterfaceIdiom == .phone {
                 statusMessage = String(localized: "Tap the title bar to hide the toolbars.")
@@ -136,8 +191,12 @@ struct ReaderScreen: View {
         }
         .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
         .onChange(of: allArticles) { _, _ in
+            recomputeFilter()
             if didRestoreAnchor { clampIndex() } else { restoreAnchor() }
         }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
     }
 
     private func toggleStar(_ article: Article) {
@@ -145,6 +204,28 @@ struct ReaderScreen: View {
         article.setStarred(!article.isStarred, using: starredTag)
         try? modelContext.save()
         Haptics.impact(.light)
+    }
+
+    private func copyLink(_ article: Article) {
+        UIPasteboard.general.string = article.url
+    }
+
+    private func goToFeed(_ feed: Feed) {
+        appState.feedToEdit = feed
+    }
+
+    private func summarize(_ article: Article) {
+        guard !isSummarizing else { return }
+        isSummarizing = true
+        Task {
+            let ok = await AggregationService(context: modelContext).summarize(article)
+            isSummarizing = false
+            if ok {
+                reloadToken += 1
+            } else {
+                summarizeFailed = true
+            }
+        }
     }
 
     // MARK: - Anchor (position memory)

@@ -38,7 +38,7 @@ struct FaviconResolverTests {
 
     @Test func networkUsesParsedIconWhenPresent() async {
         let html = #"<html><head><link rel="apple-touch-icon" href="/touch.png"></head></html>"#
-        let icon = await FaviconResolver.bestIconURL(forSite: "https://example.com/") { _ in
+        let icon = await FaviconResolver.uncachedBestIconURL(forSite: "https://example.com/") { _ in
             (Data(html.utf8), "text/html")
         }
         #expect(icon == "https://example.com/touch.png")
@@ -46,7 +46,7 @@ struct FaviconResolverTests {
 
     @Test func networkFallsBackToFaviconIco() async {
         let html = "<html><head><title>No icons</title></head></html>"
-        let icon = await FaviconResolver.bestIconURL(forSite: "https://example.com/path/") { _ in
+        let icon = await FaviconResolver.uncachedBestIconURL(forSite: "https://example.com/path/") { _ in
             (Data(html.utf8), "text/html")
         }
         #expect(icon == "https://example.com/favicon.ico")
@@ -54,7 +54,7 @@ struct FaviconResolverTests {
 
     @Test func networkReturnsNilWhenFetchThrows() async {
         struct Boom: Error {}
-        let icon = await FaviconResolver.bestIconURL(forSite: "https://example.com/") { _ in throw Boom() }
+        let icon = await FaviconResolver.uncachedBestIconURL(forSite: "https://example.com/") { _ in throw Boom() }
         #expect(icon == nil)
     }
 }

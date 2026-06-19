@@ -192,3 +192,63 @@ struct AIProcessorTests {
         #expect(ArticleAIText.cap(short) == short)
     }
 }
+
+// MARK: - Concurrency tests
+
+/// Tracks how many `generate` calls are in flight at once.
+private actor ConcurrencyProbe {
+    private(set) var peak = 0
+    private var current = 0
+    func enter() { current += 1; peak = max(peak, current) }
+    func leave() { current -= 1 }
+}
+
+@Suite("AIProcessor concurrency")
+struct AIProcessorConcurrencyTests {
+    private func config() -> AIConfig {
+        AIConfig(provider: .openai, model: "m", apiKey: "k",
+                 apiBaseURL: "https://api.openai.com/v1",
+                 temperature: 0.3, maxTokens: 2000, requestTimeout: 120,
+                 maxRetries: 3, retryDelay: 0, maxRetryTime: 60)
+    }
+
+    private func article(_ id: String, content: String = "<p>body</p>") -> AggregatedArticle {
+        AggregatedArticle(title: "T", identifier: id, url: id, rawContent: "",
+                          content: content, date: .now, author: "", iconURL: nil)
+    }
+
+    private func ai() -> AIOptions {
+        AIOptions(summarize: true, improveWriting: false, translate: false, translateLanguage: "English")
+    }
+
+    @MainActor
+    @Test func aiProcessorOverlapsRequests() async {
+        let probe = ConcurrencyProbe()
+        let processor = AIProcessor(config: config(), requestDelay: 0) { prompt, _ in
+            await probe.enter()
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms — long enough to overlap
+            await probe.leave()
+            return #"{"title":"t","content":"c"}"#
+        }
+        let input = (0..<6).map { article("\($0)") }
+        _ = await processor.process(input, ai: ai())
+        #expect(await probe.peak > 1)
+        #expect(await probe.peak <= AIProcessor.maxConcurrentAIRequests)
+    }
+
+    @MainActor
+    @Test func aiProcessorPreservesOrderAndDropsFailures() async {
+        let processor = AIProcessor(config: config(), requestDelay: 0) { prompt, _ in
+            // The second article (content "DROP") returns junk → dropped.
+            if prompt.contains("DROP") { return "not json" }
+            return #"{"title":"ok","content":"c"}"#
+        }
+        let input = [
+            article("a", content: "keep1"),
+            article("b", content: "DROP"),
+            article("c", content: "keep2"),
+        ]
+        let out = await processor.process(input, ai: ai())
+        #expect(out.map(\.identifier) == ["a", "c"]) // order preserved, "b" dropped
+    }
+}

@@ -54,6 +54,20 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .none, .anthropic, .gemini, .appleIntelligence: ""
         }
     }
+
+    /// Keychain item holding this provider's API key. `nil` for providers that need no key
+    /// (`.none`, on-device `.appleIntelligence`).
+    var apiKeyItem: KeychainService.APIKeyItem? {
+        switch self {
+        case .none, .appleIntelligence: return nil
+        case .openai: return .openaiAPIKey
+        case .anthropic: return .anthropicAPIKey
+        case .gemini: return .geminiAPIKey
+        case .mistral: return .mistralAPIKey
+        case .qwen: return .qwenAPIKey
+        case .deepseek: return .deepseekAPIKey
+        }
+    }
 }
 
 /// Non-secret user preferences, backed by UserDefaults. Secrets live in `KeychainService`.
@@ -122,6 +136,7 @@ final class AppSettings {
         // Timeline filter
         static let disabledTagNames = "settings.disabledTagNames"
         static let includeUntagged = "settings.includeUntagged"
+        static let disabledFeedNames = "settings.disabledFeedNames"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
         // Reader
@@ -260,10 +275,15 @@ final class AppSettings {
         get { access(keyPath: \.includeUntagged); return defaults.bool(forKey: Key.includeUntagged) }
         set { withMutation(keyPath: \.includeUntagged) { defaults.set(newValue, forKey: Key.includeUntagged) } }
     }
-    /// True when the timeline filter would hide some articles (a tag is off, or untagged
+    /// Names of feeds currently toggled OFF in the filter. Empty = all active.
+    var disabledFeedNames: Set<String> {
+        get { access(keyPath: \.disabledFeedNames); return Set(defaults.stringArray(forKey: Key.disabledFeedNames) ?? []) }
+        set { withMutation(keyPath: \.disabledFeedNames) { defaults.set(Array(newValue), forKey: Key.disabledFeedNames) } }
+    }
+    /// True when the timeline filter would hide some articles (a tag or feed is off, or untagged
     /// articles are excluded). Drives the reader's filter-button active state.
     var isTimelineFilterActive: Bool {
-        !disabledTagNames.isEmpty || !includeUntagged
+        !disabledTagNames.isEmpty || !includeUntagged || !disabledFeedNames.isEmpty
     }
 
     // MARK: Reader

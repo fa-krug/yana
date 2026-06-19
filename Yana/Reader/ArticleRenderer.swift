@@ -57,7 +57,7 @@ enum ArticleRenderer {
         d["feed_link"] = baseURL(for: article)
         d["byline"] = ContentFormatter.escapeHTML(article.author)
 
-        let date = article.date
+        let date = article.createdAt
         d["datetime_long"] = longDateTime.string(from: date)
         d["datetime_medium"] = mediumDateTime.string(from: date)
         d["datetime_short"] = shortDateTime.string(from: date)
