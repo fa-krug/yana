@@ -30,7 +30,7 @@ final class AggregationService {
     static let defaultLogoResolver: LogoResolver = { config, aggregator in
         guard let urlString = await FeedLogoResolver.logoImageURL(for: config, aggregator: aggregator),
               let url = URL(string: urlString) else { return nil }
-        return await ImageStore.shared.store(remoteURL: url, isHeader: false)
+        return await ImageStore.shared.store(remoteURL: url, isHeader: false, removeWhiteBackground: true)
     }
 
     private let context: ModelContext
