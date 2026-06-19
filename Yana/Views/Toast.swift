@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Visual variant for a transient toast: neutral info vs. a tinted error.
-enum ToastStyle {
+enum ToastStyle: Equatable {
     case info
     case error
 }
@@ -30,6 +30,7 @@ private struct ToastModifier: ViewModifier {
                                 Capsule().fill(.thinMaterial)
                             }
                         }
+                        .clipShape(Capsule())
                         .padding(.top, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .task(id: message) {
