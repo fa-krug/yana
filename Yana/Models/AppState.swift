@@ -9,4 +9,5 @@ final class AppState {
     var errorMessage: String?
     var showSettings = false
     var showFilter = false
+    var showArticleList = false
 }

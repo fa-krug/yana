@@ -9,6 +9,7 @@ final class ReaderArticleViewController: UIViewController,
 
     var onIndexChange: ((Int) -> Void)?
     var onShowFilter: (() -> Void)?
+    var onShowArticleList: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onToggleStar: ((Article) -> Void)?
     var onRefresh: (() -> Void)?
@@ -27,6 +28,7 @@ final class ReaderArticleViewController: UIViewController,
 
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private var articleListItem: UIBarButtonItem!
     private var filterItem: UIBarButtonItem!
     private var indicatorItem: UIBarButtonItem!
     private var starItem: UIBarButtonItem!
@@ -80,6 +82,12 @@ final class ReaderArticleViewController: UIViewController,
     // MARK: - Chrome
 
     private func configureNavigationItems() {
+        articleListItem = UIBarButtonItem(
+            image: UIImage(systemName: "list.bullet"),
+            style: .plain, target: self, action: #selector(showArticleList)
+        )
+        articleListItem.accessibilityLabel = String(localized: "Article list")
+
         filterItem = UIBarButtonItem(
             image: UIImage(systemName: "line.3.horizontal.decrease.circle"),
             style: .plain, target: self, action: #selector(showFilter)
@@ -89,13 +97,8 @@ final class ReaderArticleViewController: UIViewController,
         // setRefreshing). A stopped indicator's bar-button item still reserves width, so it is
         // added/removed rather than left in place hidden.
         indicatorItem = UIBarButtonItem(customView: activityIndicator)
-        navigationItem.leftBarButtonItems = [filterItem]
+        navigationItem.leftBarButtonItems = [articleListItem]
 
-        let library = UIBarButtonItem(
-            image: UIImage(systemName: "books.vertical"),
-            style: .plain, target: self, action: #selector(showSettings)
-        )
-        library.accessibilityLabel = String(localized: "Library")
         starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
 
         // Overflow menu, rebuilt each time it opens so conditional items track the current
@@ -109,9 +112,9 @@ final class ReaderArticleViewController: UIViewController,
             ])
         )
         menuItem.accessibilityLabel = String(localized: "More actions")
-        // rightBarButtonItems is ordered edge-inward: [menu, library, star] puts the overflow
-        // menu at the screen edge, then the library button, then the star.
-        navigationItem.rightBarButtonItems = [menuItem, library, starItem]
+        // rightBarButtonItems is ordered edge-inward: [menu, filter, star] puts the overflow
+        // menu at the screen edge, then the filter, then the star (on-screen L→R: star, filter, menu).
+        navigationItem.rightBarButtonItems = [menuItem, filterItem, starItem]
     }
 
     private func configureToolbar() {
@@ -124,7 +127,7 @@ final class ReaderArticleViewController: UIViewController,
 
     func setRefreshing(_ isRefreshing: Bool) {
         if isRefreshing { activityIndicator.startAnimating() } else { activityIndicator.stopAnimating() }
-        let items: [UIBarButtonItem] = isRefreshing ? [filterItem, indicatorItem] : [filterItem]
+        let items: [UIBarButtonItem] = isRefreshing ? [articleListItem, indicatorItem] : [articleListItem]
         if navigationItem.leftBarButtonItems?.count != items.count {
             navigationItem.leftBarButtonItems = items
         }
@@ -191,6 +194,7 @@ final class ReaderArticleViewController: UIViewController,
     // MARK: - Actions
 
     @objc private func showFilter() { onShowFilter?() }
+    @objc private func showArticleList() { onShowArticleList?() }
     @objc private func showSettings() { onShowSettings?() }
 
     @objc private func toggleStar() {
@@ -226,6 +230,12 @@ final class ReaderArticleViewController: UIViewController,
             if isSummarizing { summarize.attributes = .disabled }
             actions.append(summarize)
         }
+
+        let settings = UIAction(
+            title: String(localized: "Settings"),
+            image: UIImage(systemName: "gearshape")
+        ) { [weak self] _ in self?.onShowSettings?() }
+        actions.append(UIMenu(title: "", options: .displayInline, children: [settings]))
 
         return actions
     }

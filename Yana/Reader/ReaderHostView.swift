@@ -12,6 +12,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let isFilterActive: Bool
     var onRefresh: (() -> Void)?
     var onShowFilter: (() -> Void)?
+    var onShowArticleList: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onToggleStar: ((Article) -> Void)?
     var onForceUpdateArticle: ((Article) -> Void)?
@@ -27,6 +28,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         context.coordinator.reader = reader
         reader.onIndexChange = { currentIndex = $0 }
         reader.onShowFilter = onShowFilter
+        reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
@@ -49,6 +51,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         guard let reader = context.coordinator.reader else { return }
         reader.onIndexChange = { currentIndex = $0 }
         reader.onShowFilter = onShowFilter
+        reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
@@ -135,6 +138,7 @@ struct ReaderScreen: View {
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
+                    onShowArticleList: { appState.showArticleList = true },
                     onShowSettings: { appState.showSettings = true },
                     onToggleStar: toggleStar,
                     onForceUpdateArticle: forceUpdateArticle,
