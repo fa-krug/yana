@@ -47,6 +47,23 @@ struct TagesschauAggregatorTests {
         #expect(!a.content.contains("Ignored"))               // not textabsatz
     }
 
+    @Test func extractsMeldungSubheadHeadingsAndSkipsClasslessNavHeadings() async throws {
+        // Current tagesschau.de / sportschau.de pages use `meldung__subhead` for section
+        // headings; classless <h2>s ("Mehr zum Thema") are navigation and must be excluded.
+        let page = """
+        <html><body>
+        <p class="textabsatz m-ten">Body text</p>
+        <h2 id="x" class="meldung__subhead columns twelve liveblog--anchor">Section heading</h2>
+        <h2>Mehr zum Thema</h2>
+        </body></html>
+        """
+        let agg = StubTS(entries: [entry("Sportbericht")], page: page, options: TagesschauOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Body text"))
+        #expect(a.content.contains("Section heading"))     // meldung__subhead extracted
+        #expect(!a.content.contains("Mehr zum Thema"))       // classless nav heading excluded
+    }
+
     @Test func buildsVideoMediaHeaderFromMediaPlayer() async throws {
         // data-v JSON uses &quot; entities, like the real page.
         let json = "{&quot;mc&quot;:{&quot;streams&quot;:[{&quot;media&quot;:[{&quot;url&quot;:"
