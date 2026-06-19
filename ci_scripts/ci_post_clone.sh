@@ -33,10 +33,17 @@ RESOLVED_DIR="Yana.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
 mkdir -p "$RESOLVED_DIR"
 cp ci_scripts/Package.resolved "$RESOLVED_DIR/Package.resolved"
 
-# Set build number to Xcode Cloud build number for unique TestFlight builds
+# Set build number to Xcode Cloud build number for unique TestFlight builds.
+# We write CFBundleVersion directly into the app's Info.plist rather than using
+# `agvtool new-version -all`: agvtool scans every target and misreads the
+# GENERATE_INFOPLIST_FILE boolean (false/true) as Info.plist paths, emitting
+# `Cannot find ".../NO"` / `".../YES"`. On Xcode Cloud's toolchain that returns
+# a non-zero status, which `set -e` turns into a failed post-clone step. The
+# app target uses an explicit INFOPLIST_FILE with GENERATE_INFOPLIST_FILE=false,
+# so this plist is the build's source of truth for the build number.
 if [ -n "$CI_BUILD_NUMBER" ]; then
     echo "Setting build number to $CI_BUILD_NUMBER..."
-    xcrun agvtool new-version -all "$CI_BUILD_NUMBER"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CI_BUILD_NUMBER" Yana/Info-iOS.plist
     echo "Build number set to $CI_BUILD_NUMBER"
 fi
 
