@@ -61,7 +61,7 @@ struct FeedsView: View {
                 Button {
                     forceReloadOne(feed)
                 } label: {
-                    Label("Force reload", systemImage: "arrow.trianglehead.2.clockwise")
+                    Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")
                 }
                 .tint(.orange)
                 .disabled(!settings.isSourceEnabled(feed.type))

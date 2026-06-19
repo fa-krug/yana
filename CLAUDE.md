@@ -77,7 +77,15 @@ designed for privacy-conscious users who want their feeds without any backend.
 - **Tags, not groups:** feeds carry tags, which are **snapshotted onto each article at import
   time** (not retroactive). **Starred is a built-in tag** applied per-article. The timeline is
   filtered by toggling tags (all on by default; an "Untagged" entry covers tagless articles).
-- **Force update:** a **pull-down gesture** on the reader (now the ported `ReaderWebViewController`) refreshes the current article and the whole timeline; per-feed / all-feeds updates also live in the config hub.
+- **Update vs. reload:** two distinct semantics, reflected in the action labels. **"Update"**
+  fetches only **new** articles (intake-window filtered, daily cap applied): the reader's
+  **pull-down gesture** and the Feeds screen's **"Update all"** call `AggregationService.updateAll()`
+  (all enabled feeds); the Feeds swipe **"Update"** calls `update(feed:)` (that feed only).
+  **"Reload"** completely re-fetches in place, bypassing the intake window/cap and upserting
+  (content refreshed; `createdAt` + Starred preserved): the reader overflow menu's **"Reload"** and
+  the `ArticleListView` swipe's **"Reload"** call `forceReload(article:)` (current article only —
+  falls back to `forceReload(feed:)` when the source can't re-fetch a lone item), while the Feeds
+  swipe **"Reload"** calls `forceReload(feed:)` (re-imports everything the feed offers).
 - **SwiftData source of truth:** views read via `@Query`; `AggregationService` writes.
 - **Pluggable aggregators:** each content source is an `Aggregator` keyed by `AggregatorType`.
 - **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum (one case per

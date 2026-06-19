@@ -12,6 +12,7 @@ final class ReaderArticleViewController: UIViewController,
     var onShowSettings: (() -> Void)?
     var onToggleStar: ((Article) -> Void)?
     var onRefresh: (() -> Void)?
+    var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
     var onGoToFeed: ((Feed) -> Void)?
@@ -207,9 +208,9 @@ final class ReaderArticleViewController: UIViewController,
         var actions: [UIMenuElement] = []
 
         actions.append(UIAction(
-            title: String(localized: "Force update"),
-            image: UIImage(systemName: "arrow.clockwise")
-        ) { [weak self] _ in self?.onRefresh?() })
+            title: String(localized: "Reload"),
+            image: UIImage(systemName: "arrow.trianglehead.2.clockwise")
+        ) { [weak self] _ in self?.onForceUpdateArticle?(article) })
 
         if config.showCopyLink {
             actions.append(UIAction(
