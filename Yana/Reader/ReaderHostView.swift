@@ -12,12 +12,12 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let isFilterActive: Bool
     var onRefresh: (() -> Void)?
     var onShowFilter: (() -> Void)?
+    var onShowArticleList: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onToggleStar: ((Article) -> Void)?
     var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
-    var onGoToFeed: ((Feed) -> Void)?
     let aiReady: Bool
     let isSummarizing: Bool
     /// Bumped by the host after a summary is written so the displayed page re-renders.
@@ -28,13 +28,13 @@ struct ReaderHostView: UIViewControllerRepresentable {
         context.coordinator.reader = reader
         reader.onIndexChange = { currentIndex = $0 }
         reader.onShowFilter = onShowFilter
+        reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
-        reader.onGoToFeed = onGoToFeed
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
         context.coordinator.lastReloadToken = reloadToken
@@ -51,13 +51,13 @@ struct ReaderHostView: UIViewControllerRepresentable {
         guard let reader = context.coordinator.reader else { return }
         reader.onIndexChange = { currentIndex = $0 }
         reader.onShowFilter = onShowFilter
+        reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
         reader.onToggleStar = onToggleStar
         reader.onRefresh = onRefresh
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
-        reader.onGoToFeed = onGoToFeed
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
         if reloadToken != context.coordinator.lastReloadToken {
@@ -125,7 +125,7 @@ struct ReaderScreen: View {
                     Label("No Articles", systemImage: "tray")
                         .accessibilityIdentifier("emptyArticlesTitle")
                 } description: {
-                    Text("Add feeds in the Library, then pull down to refresh.")
+                    Text("Add feeds in Settings, then pull down to refresh.")
                 } actions: {
                     Button(String(localized: "Add Your First Feed")) { appState.showSettings = true }
                         .buttonStyle(.borderedProminent)
@@ -138,12 +138,12 @@ struct ReaderScreen: View {
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
+                    onShowArticleList: { appState.showArticleList = true },
                     onShowSettings: { appState.showSettings = true },
                     onToggleStar: toggleStar,
                     onForceUpdateArticle: forceUpdateArticle,
                     onCopyLink: copyLink,
                     onSummarize: summarize,
-                    onGoToFeed: goToFeed,
                     aiReady: aiReady,
                     isSummarizing: isSummarizing,
                     reloadToken: reloadToken
@@ -151,11 +151,17 @@ struct ReaderScreen: View {
                 .ignoresSafeArea()
             }
         }
-        .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
-        .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
-        .sheet(item: $appState.feedToEdit) { feed in
-            NavigationStack { FeedEditorView(feed: feed) }
+        .sheet(isPresented: $appState.showSettings) { NavigationStack { SettingsScreenView() } }
+        .sheet(isPresented: $appState.showArticleList) {
+            NavigationStack {
+                ArticleListView(
+                    currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
+                        ? filteredArticles[appState.currentIndex].identifier : nil,
+                    onSelect: openArticle
+                )
+            }
         }
+        .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
         .alert("Summarize Failed", isPresented: $summarizeFailed) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -214,8 +220,15 @@ struct ReaderScreen: View {
         UIPasteboard.general.string = article.url
     }
 
-    private func goToFeed(_ feed: Feed) {
-        appState.feedToEdit = feed
+    /// Jump the reader to an article picked from the list. Recompute first so an in-list filter
+    /// change is reflected, then resolve by identifier (not a stale index) and dismiss the sheet.
+    private func openArticle(_ article: Article) {
+        recomputeFilter()
+        if let i = TimelinePageIndex.index(of: article.identifier, in: filteredArticles) {
+            appState.currentIndex = i
+            settings.timelineAnchorIdentifier = article.identifier
+        }
+        appState.showArticleList = false
     }
 
     private func summarize(_ article: Article) {

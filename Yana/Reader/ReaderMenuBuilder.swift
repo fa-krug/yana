@@ -5,11 +5,10 @@ import Foundation
 struct ReaderMenuConfig: Equatable {
     var showCopyLink: Bool
     var showSummarize: Bool
-    var showGoToFeed: Bool
 }
 
 enum ReaderMenuBuilder {
-    static func config(hasURL: Bool, hasFeed: Bool, aiReady: Bool) -> ReaderMenuConfig {
-        ReaderMenuConfig(showCopyLink: hasURL, showSummarize: aiReady, showGoToFeed: hasFeed)
+    static func config(hasURL: Bool, aiReady: Bool) -> ReaderMenuConfig {
+        ReaderMenuConfig(showCopyLink: hasURL, showSummarize: aiReady)
     }
 }

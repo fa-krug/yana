@@ -12,6 +12,7 @@ enum TestStatus: Equatable {
 /// Secrets are read from / written to the Keychain via local @State; non-secret prefs go to
 /// `AppSettings` (UserDefaults).
 struct SettingsScreenView: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var settings = AppSettings()
     @State private var showNotificationDeniedAlert = false
 
@@ -38,6 +39,7 @@ struct SettingsScreenView: View {
 
     var body: some View {
         Form {
+            organizeSection
             readerSection
             redditSection
             youtubeSection
@@ -47,11 +49,38 @@ struct SettingsScreenView: View {
             librarySection
         }
         .navigationTitle("Settings")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button { dismiss() } label: { Image(systemName: "xmark") }
+                    .accessibilityLabel(Text("Close"))
+            }
+        }
         .onAppear(perform: loadSecrets)
         .alert("Notifications Disabled", isPresented: $showNotificationDeniedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Enable notifications for Yana in the Settings app to get alerts about new articles.")
+        }
+    }
+
+    // MARK: Organize
+
+    private var organizeSection: some View {
+        Section {
+            NavigationLink {
+                FeedsView()
+            } label: {
+                Label("Feeds", systemImage: "list.bullet.rectangle")
+                    .labelStyle(.tintedIcon(.orange))
+            }
+            NavigationLink {
+                TagsView()
+            } label: {
+                Label("Tags", systemImage: "tag")
+                    .labelStyle(.tintedIcon(.pink))
+            }
+        } footer: {
+            Text("Manage your feeds and the tags applied to articles.")
         }
     }
 
