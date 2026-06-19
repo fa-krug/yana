@@ -118,6 +118,18 @@ struct AppleIntelligenceProcessorTests {
         }
     }
 
+    @Test func restoresLeadHeaderImageOnRewrite() async {
+        // Improve/translate strips the <header> lead image before generation; the rewritten body
+        // must keep it. Regression: AI-translated posts lost their header image.
+        let gen = FakeGenerator()   // echoes the (header-stripped) prompt as content
+        let proc = AppleIntelligenceProcessor(generator: gen, temperature: 0.3, maxTokens: 2000)
+        let header = #"<header style="text-align:center;"><img src="yana-img://lead123"></header>"#
+        let out = await proc.process([article(header + "<p>body text</p>")], ai: opts)   // improveWriting
+
+        #expect(out.count == 1)
+        #expect(out[0].content.contains("yana-img://lead123"))   // lead image preserved
+    }
+
     @Test func disabledOptionsReturnInputUnchanged() async {
         let proc = AppleIntelligenceProcessor(generator: FakeGenerator(), temperature: 0.3, maxTokens: 2000)
         let none = AIOptions(summarize: false, improveWriting: false, translate: false, translateLanguage: "English")
