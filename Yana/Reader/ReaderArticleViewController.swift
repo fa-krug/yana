@@ -41,6 +41,8 @@ final class ReaderArticleViewController: UIViewController,
 
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private let progressLabel = UILabel()
+    private var progressItem: UIBarButtonItem!
     private var articleListItem: UIBarButtonItem!
     private var filterItem: UIBarButtonItem!
     private var indicatorItem: UIBarButtonItem!
@@ -115,6 +117,9 @@ final class ReaderArticleViewController: UIViewController,
         // setRefreshing). A stopped indicator's bar-button item still reserves width, so it is
         // added/removed rather than left in place hidden.
         indicatorItem = UIBarButtonItem(customView: activityIndicator)
+        progressLabel.font = .preferredFont(forTextStyle: .footnote)
+        progressLabel.textColor = .secondaryLabel
+        progressItem = UIBarButtonItem(customView: progressLabel)
         navigationItem.leftBarButtonItems = [articleListItem]
 
         starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
@@ -141,6 +146,23 @@ final class ReaderArticleViewController: UIViewController,
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
         // Share + Open-in-Browser grouped together at the right edge.
         toolbarItems = [flex(), shareItem, browser]
+    }
+
+    /// Show "Updating N of M…" during a counted multi-feed run; pass nil to clear. The indeterminate
+    /// spinner (setRefreshing) still drives the activity indicator itself.
+    func setUpdateProgress(_ progress: (completed: Int, total: Int)?) {
+        guard let progress, progress.total > 1 else {
+            if navigationItem.leftBarButtonItems?.contains(progressItem) == true {
+                setRefreshing(activityIndicator.isAnimating) // rebuild left items without progress
+            }
+            return
+        }
+        progressLabel.text = String(localized: "Updating \(progress.completed) of \(progress.total)…")
+        progressLabel.sizeToFit()
+        let items: [UIBarButtonItem] = [articleListItem, indicatorItem, progressItem]
+        if navigationItem.leftBarButtonItems != items {
+            navigationItem.leftBarButtonItems = items
+        }
     }
 
     func setRefreshing(_ isRefreshing: Bool) {
