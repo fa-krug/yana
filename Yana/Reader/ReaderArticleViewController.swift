@@ -15,7 +15,6 @@ final class ReaderArticleViewController: UIViewController,
     var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
-    var onGoToFeed: ((Feed) -> Void)?
     /// Whether AI is configured/available; gates the Summarize menu item. Set by the host.
     var aiReady = false
     /// True while an on-demand summary is in flight; disables the Summarize menu item.
@@ -203,7 +202,7 @@ final class ReaderArticleViewController: UIViewController,
     private func buildMenuActions() -> [UIMenuElement] {
         guard let article = currentArticle() else { return [] }
         let config = ReaderMenuBuilder.config(
-            hasURL: !article.url.isEmpty, hasFeed: article.feed != nil, aiReady: aiReady
+            hasURL: !article.url.isEmpty, aiReady: aiReady
         )
         var actions: [UIMenuElement] = []
 
@@ -226,13 +225,6 @@ final class ReaderArticleViewController: UIViewController,
             ) { [weak self] _ in self?.onSummarize?(article) }
             if isSummarizing { summarize.attributes = .disabled }
             actions.append(summarize)
-        }
-
-        if config.showGoToFeed, let feed = article.feed {
-            actions.append(UIAction(
-                title: String(localized: "Go to feed"),
-                image: UIImage(systemName: "dot.radiowaves.up.forward")
-            ) { [weak self] _ in self?.onGoToFeed?(feed) })
         }
 
         return actions

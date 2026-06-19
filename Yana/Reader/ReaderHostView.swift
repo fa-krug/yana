@@ -17,7 +17,6 @@ struct ReaderHostView: UIViewControllerRepresentable {
     var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
-    var onGoToFeed: ((Feed) -> Void)?
     let aiReady: Bool
     let isSummarizing: Bool
     /// Bumped by the host after a summary is written so the displayed page re-renders.
@@ -34,7 +33,6 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
-        reader.onGoToFeed = onGoToFeed
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
         context.coordinator.lastReloadToken = reloadToken
@@ -57,7 +55,6 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
-        reader.onGoToFeed = onGoToFeed
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
         if reloadToken != context.coordinator.lastReloadToken {
@@ -143,7 +140,6 @@ struct ReaderScreen: View {
                     onForceUpdateArticle: forceUpdateArticle,
                     onCopyLink: copyLink,
                     onSummarize: summarize,
-                    onGoToFeed: goToFeed,
                     aiReady: aiReady,
                     isSummarizing: isSummarizing,
                     reloadToken: reloadToken
@@ -153,9 +149,6 @@ struct ReaderScreen: View {
         }
         .sheet(isPresented: $appState.showSettings) { ConfigHubView() }
         .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
-        .sheet(item: $appState.feedToEdit) { feed in
-            NavigationStack { FeedEditorView(feed: feed) }
-        }
         .alert("Summarize Failed", isPresented: $summarizeFailed) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -212,10 +205,6 @@ struct ReaderScreen: View {
 
     private func copyLink(_ article: Article) {
         UIPasteboard.general.string = article.url
-    }
-
-    private func goToFeed(_ feed: Feed) {
-        appState.feedToEdit = feed
     }
 
     private func summarize(_ article: Article) {

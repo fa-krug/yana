@@ -2037,16 +2037,6 @@
         }
       }
     },
-    "Go to feed": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zum Feed"
-          }
-        }
-      }
-    },
     "More actions": {
       "localizations": {
         "de": {
