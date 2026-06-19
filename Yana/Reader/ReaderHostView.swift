@@ -97,10 +97,9 @@ struct ReaderScreen: View {
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
-    @State private var statusMessage: String?
+    @State private var toast: ToastMessage?
     @State private var isSummarizing = false
     @State private var reloadToken = 0
-    @State private var summarizeFailed = false
 
     @State private var filteredArticles: [Article] = []
 
@@ -162,40 +161,12 @@ struct ReaderScreen: View {
             }
         }
         .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
-        .alert("Summarize Failed", isPresented: $summarizeFailed) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Could not summarize this article. Please try again.")
-        }
-        .alert("Update Failed", isPresented: Binding(
-            get: { appState.errorMessage != nil },
-            set: { if !$0 { appState.errorMessage = nil } }
-        )) {
-            Button("Retry") { triggerRefresh() }
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(appState.errorMessage ?? "")
-        }
-        .overlay(alignment: .top) {
-            if let statusMessage {
-                Text(statusMessage)
-                    .font(.subheadline)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(.thinMaterial, in: Capsule())
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .task(id: statusMessage) {
-                        try? await Task.sleep(for: .seconds(2.5))
-                        self.statusMessage = nil
-                    }
-            }
-        }
-        .animation(.snappy, value: statusMessage)
+        .toast($toast)
         .onAppear {
             recomputeFilter()
             restoreAnchor()
             if !settings.hasSeenFullscreenHint, UIDevice.current.userInterfaceIdiom == .phone {
-                statusMessage = String(localized: "Tap the title bar to hide the toolbars.")
+                toast = ToastMessage(text: String(localized: "Tap the title bar to hide the toolbars."))
                 settings.hasSeenFullscreenHint = true
             }
         }
@@ -240,7 +211,10 @@ struct ReaderScreen: View {
             if ok {
                 reloadToken += 1
             } else {
-                summarizeFailed = true
+                toast = ToastMessage(
+                    text: String(localized: "Could not summarize this article. Please try again."),
+                    style: .error
+                )
             }
         }
     }
@@ -273,7 +247,7 @@ struct ReaderScreen: View {
     private func clampIndex() {
         let clamped = min(appState.currentIndex, max(0, filteredArticles.count - 1))
         if clamped != appState.currentIndex {
-            statusMessage = String(localized: "Showing the nearest article in this filter.")
+            toast = ToastMessage(text: String(localized: "Showing the nearest article in this filter."))
         }
         appState.currentIndex = clamped
     }
@@ -290,9 +264,9 @@ struct ReaderScreen: View {
             let count = await service.forceReload(article: article)
             guard !Task.isCancelled else { return }
             if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                appState.errorMessage = failure
+                toast = ToastMessage(text: failure, style: .error)
             } else {
-                statusMessage = RefreshOutcome.message(newCount: count, feedName: feedName)
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feedName))
                 Haptics.impact(.light)
             }
         }
@@ -305,9 +279,9 @@ struct ReaderScreen: View {
             let count = await service.updateAll()
             guard !Task.isCancelled else { return }
             if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                appState.errorMessage = failure
+                toast = ToastMessage(text: failure, style: .error)
             } else {
-                statusMessage = RefreshOutcome.message(newCount: count, feedName: nil)
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: nil))
                 Haptics.impact(.light)
             }
         }
