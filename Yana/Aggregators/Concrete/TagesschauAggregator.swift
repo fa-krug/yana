@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSoup
 
-/// Tagesschau.de. Ports core/aggregators/tagesschau/: textabsatz/trenner extraction,
+/// Tagesschau.de. Ports core/aggregators/tagesschau/: textabsatz/section-heading extraction,
 /// MediaPlayer header, livestream/podcast/video skip-lists, 42 predefined feeds.
 class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
     static let defaultFeed = "https://www.tagesschau.de/infoservices/alle-meldungen-100~rss2.xml"
@@ -79,7 +79,7 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
         return true
     }
 
-    // MARK: - Content extraction (textabsatz / trenner only)
+    // MARK: - Content extraction (textabsatz paragraphs / section headings only)
 
     override func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle {
         var article = article
@@ -102,10 +102,14 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
         }
     }
 
-    /// textabsatz-`<p>` + trenner-`<h2>` only, skipping teaser/bigfive/accordion/related ancestors.
+    /// textabsatz-`<p>` + section-heading-`<h2>` only, skipping teaser/bigfive/accordion/related
+    /// ancestors. Section headings are `meldung__subhead` on current tagesschau.de/sportschau.de
+    /// pages; `trenner` is the legacy class, kept for backward compatibility. Classless `<h2>`s
+    /// ("Mehr zum Thema", "Top-Themen") are navigation and intentionally excluded.
     static func extractTagesschauContent(_ html: String) throws -> String {
         let doc = try HTMLUtils.parse(html)
         let skipClasses = ["teaser", "bigfive", "accordion", "related"]
+        let headingClasses = ["trenner", "meldung__subhead"]
         var parts: [String] = []
         for el in try doc.select("p, h2") {
             if try hasSkippedAncestor(el, skipClasses: skipClasses) { continue }
@@ -113,7 +117,8 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
             if el.tagName() == "p", classes.contains(where: { $0.contains("textabsatz") }) {
                 let inner = try el.html()
                 parts.append("<p>\(inner)</p>")
-            } else if el.tagName() == "h2", classes.contains(where: { $0.contains("trenner") }) {
+            } else if el.tagName() == "h2",
+                      classes.contains(where: { cls in headingClasses.contains { cls.contains($0) } }) {
                 let text = try el.text()
                 parts.append("<h2>\(text)</h2>")
             }

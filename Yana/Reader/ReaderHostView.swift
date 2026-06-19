@@ -275,6 +275,11 @@ struct ReaderScreen: View {
             if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
                 toast = ToastMessage(text: failure, style: .error)
             } else {
+                // Re-render the visible page: forceReload refreshed the article's content in
+                // place, but the WKWebView only re-renders when reloadToken changes (same as
+                // summarize). Without this bump, Reload silently updates the DB while the page
+                // keeps showing the stale content.
+                reloadToken += 1
                 toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feedName))
                 Haptics.impact(.light)
             }
