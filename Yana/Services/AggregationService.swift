@@ -9,6 +9,10 @@ import SwiftData
 final class AggregationService {
     var isUpdating = false
 
+    /// Counted progress for the most recent `updateAll()` run; idle otherwise. Read by the reader
+    /// to show "Updating N of M…". Single-feed/article operations leave it idle.
+    let updateProgress = UpdateProgress()
+
     /// A feed that failed during the most recent run.
     struct FeedFailure: Sendable, Equatable {
         let feedName: String
@@ -149,7 +153,7 @@ final class AggregationService {
     func updateAll() async -> Int {
         lastRunFailures = []
         isUpdating = true
-        defer { isUpdating = false }
+        defer { isUpdating = false; updateProgress.reset() }
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
         let feeds = ((try? context.fetch(descriptor)) ?? [])
             .filter { settings.isSourceEnabled($0.type) }
@@ -160,6 +164,7 @@ final class AggregationService {
         // `Sendable` PersistentIdentifier across the task boundary (not the non-Sendable `Feed`)
         // and re-resolve it on the main actor inside `aggregate(feedID:)`.
         let ids = feeds.map(\.persistentModelID)
+        updateProgress.start(total: ids.count)
         var inserted = 0
         await withTaskGroup(of: Int.self) { group in
             var nextIndex = 0
@@ -170,6 +175,7 @@ final class AggregationService {
                 nextIndex += 1
             }
             while let result = await group.next() {
+                updateProgress.advance()
                 inserted += result
                 // Stop scheduling new feeds once a newer update has cancelled this run;
                 // in-flight children unwind on their own as the group scope exits.
