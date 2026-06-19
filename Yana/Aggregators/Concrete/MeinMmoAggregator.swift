@@ -66,6 +66,9 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         do {
             let first = try await fetchArticleHTML(article.url)
             article.rawContent = first
+            let header = await HeaderElementExtractor.extract(
+                articleURL: article.url, title: article.title, store: store,
+                credentials: credentials, pageHTML: first)
 
             // Combine pages if enabled and pagination detected.
             var contentDivs: [String] = extractContentDivHTML(from: first).map { [$0] } ?? []
@@ -81,7 +84,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
                 }
             }
             let merged = mergeContentDivs(contentDivs)
-            let processed = try await processMeinMmoContent(merged, article: article)
+            let processed = try await processMeinMmoContent(merged, article: article, header: header)
             article.content = processed
             return article
         } catch let error as AggregatorError {
@@ -132,7 +135,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     // MARK: - Content processing
 
-    func processMeinMmoContent(_ html: String, article: AggregatedArticle) async throws -> String {
+    func processMeinMmoContent(_ html: String, article: AggregatedArticle, header: HeaderElement?) async throws -> String {
         let doc = try HTMLUtils.parse(html)
         guard let content = try doc.select(Self.contentDivSelector).first() ?? doc.body() else {
             return ""
@@ -156,12 +159,14 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
         try HTMLUtils.removeEmptyElements(doc, tags: ["p", "div"])
         try EmbedRewriter.rewriteEmbeds(in: doc)   // normalize any remaining YouTube iframes
+        // Drop the lead image from the body when it's promoted to the header (avoids a dupe).
+        if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
         try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))
         try HTMLUtils.sanitizeClassNames(doc)
         try HTMLUtils.removeComments(doc)
         let body = try HTMLUtils.bodyHTML(doc)
         return ContentFormatter.format(content: body, title: article.title, url: article.url,
-                                       headerHTML: nil, commentsHTML: nil)
+                                       headerHTML: header?.html, commentsHTML: nil)
     }
 
     // Dead code: converted nodes are immediately removed by selectorsToRemove (.dailymotion-embed-container)

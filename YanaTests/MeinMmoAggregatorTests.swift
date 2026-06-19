@@ -199,6 +199,20 @@ struct MeinMmoAggregatorTests {
         #expect(a.content.contains("Article text"))
     }
 
+    @Test func extractsHeaderImageFromOgImage() async throws {
+        // The featured/lead image is declared via <meta property="og:image"> and must be
+        // rendered as a header element above the article body (parity with other scrapers).
+        let first = """
+        <html><head><meta property="og:image" content="https://mein-mmo.de/img/cover.jpg"></head>\
+        <body><div class="entry-content"><p>Article text</p></div></body></html>
+        """
+        let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(a.content.contains("<header"))
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))
+        #expect(a.content.contains("Article text"))
+    }
+
     @Test func removesHubBox() async throws {
         // server commit cbc0ad1: div.wp-block-mmo-hub-box must be stripped
         let first = """
