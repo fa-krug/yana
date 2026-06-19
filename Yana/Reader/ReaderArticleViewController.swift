@@ -41,11 +41,10 @@ final class ReaderArticleViewController: UIViewController,
 
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
-    private let progressLabel = UILabel()
-    private var progressItem: UIBarButtonItem!
     private var articleListItem: UIBarButtonItem!
     private var filterItem: UIBarButtonItem!
     private var indicatorItem: UIBarButtonItem!
+    private var starItem: UIBarButtonItem!
     private var shareItem: UIBarButtonItem!
     private var menuItem: UIBarButtonItem!
 
@@ -116,10 +115,9 @@ final class ReaderArticleViewController: UIViewController,
         // setRefreshing). A stopped indicator's bar-button item still reserves width, so it is
         // added/removed rather than left in place hidden.
         indicatorItem = UIBarButtonItem(customView: activityIndicator)
-        progressLabel.font = .preferredFont(forTextStyle: .footnote)
-        progressLabel.textColor = .secondaryLabel
-        progressItem = UIBarButtonItem(customView: progressLabel)
         navigationItem.leftBarButtonItems = [articleListItem]
+
+        starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
 
         // Overflow menu, rebuilt each time it opens so conditional items track the current
         // article + AI state. UIDeferredMenuElement.uncached re-invokes the provider per present.
@@ -132,12 +130,9 @@ final class ReaderArticleViewController: UIViewController,
             ])
         )
         menuItem.accessibilityLabel = String(localized: "More actions")
-        // rightBarButtonItems is ordered edge-inward: [menu, filter] puts the overflow menu at the
-        // screen edge, then the filter (on-screen L→R: filter, menu). Starring lives in the overflow
-        // menu rather than its own bar button: a fourth right-side item overflows the bar on
-        // width-constrained displays (e.g. Display Zoom), and iOS 26 then collapses every button into
-        // an automatic "•••" menu that sticks. Two right items leave headroom for the refresh spinner.
-        navigationItem.rightBarButtonItems = [menuItem, filterItem]
+        // rightBarButtonItems is ordered edge-inward: [menu, filter, star] puts the overflow menu at
+        // the screen edge, then the filter, then the star (on-screen L→R: star, filter, menu).
+        navigationItem.rightBarButtonItems = [menuItem, filterItem, starItem]
     }
 
     private func configureToolbar() {
@@ -148,35 +143,30 @@ final class ReaderArticleViewController: UIViewController,
         toolbarItems = [flex(), shareItem, browser]
     }
 
-    /// Show "Updating N of M…" during a counted multi-feed run; pass nil to clear. The indeterminate
-    /// spinner (setRefreshing) still drives the activity indicator itself.
-    func setUpdateProgress(_ progress: (completed: Int, total: Int)?) {
-        guard let progress, progress.total > 1 else {
-            if navigationItem.leftBarButtonItems?.contains(progressItem) == true {
-                setRefreshing(activityIndicator.isAnimating) // rebuild left items without progress
-            }
-            return
-        }
-        progressLabel.text = String(localized: "Updating \(progress.completed) of \(progress.total)…")
-        progressLabel.sizeToFit()
-        let items: [UIBarButtonItem] = [articleListItem, indicatorItem, progressItem]
-        if navigationItem.leftBarButtonItems != items {
-            navigationItem.leftBarButtonItems = items
-        }
-    }
-
     func setRefreshing(_ isRefreshing: Bool) {
         if isRefreshing { activityIndicator.startAnimating() } else { activityIndicator.stopAnimating() }
         let items: [UIBarButtonItem] = isRefreshing ? [articleListItem, indicatorItem] : [articleListItem]
-        if navigationItem.leftBarButtonItems?.count != items.count {
-            navigationItem.leftBarButtonItems = items
-        }
+        guard navigationItem.leftBarButtonItems?.count != items.count else { return }
+        navigationItem.leftBarButtonItems = items
+        // Re-assert the right group so iOS 26's nav bar re-runs its overflow pass. The spinner is a
+        // custom-view bar item, which the bar cannot move into its automatic "•••" overflow; under a
+        // width-constrained layout it overflows the *standard* buttons instead, and that collapse
+        // sticks even after the spinner is gone unless a fresh layout is forced. Reassigning the
+        // (unchanged) right items is that nudge, so star + filter + menu reappear when refresh ends.
+        navigationItem.rightBarButtonItems = [menuItem, filterItem, starItem]
     }
 
     func setFilterActive(_ active: Bool) {
         filterItem.image = UIImage(systemName: active
             ? "line.3.horizontal.decrease.circle.fill"
             : "line.3.horizontal.decrease.circle")
+    }
+
+    private func updateStarItem() {
+        guard let article = currentArticle() else { return }
+        starItem.image = UIImage(systemName: article.isStarred ? "star.fill" : "star")
+        starItem.accessibilityLabel = article.isStarred
+            ? String(localized: "Unstar article") : String(localized: "Star article")
     }
 
     // MARK: - Data
@@ -188,6 +178,7 @@ final class ReaderArticleViewController: UIViewController,
         if let page = makePage(for: self.index) {
             pageController.setViewControllers([page], direction: .forward, animated: false)
         }
+        updateStarItem()
         prewarmNeighbors(around: self.index)
     }
 
@@ -198,8 +189,9 @@ final class ReaderArticleViewController: UIViewController,
         let displayedID = displayedWebVC?.article.identifier
         let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
         self.index = target
-        guard displayedID != targetID, let page = makePage(for: target) else { return }
+        guard displayedID != targetID, let page = makePage(for: target) else { updateStarItem(); return }
         pageController.setViewControllers([page], direction: .forward, animated: false)
+        updateStarItem()
     }
 
     private func clamp(_ i: Int) -> Int { min(max(i, 0), max(0, articles.count - 1)) }
@@ -243,18 +235,18 @@ final class ReaderArticleViewController: UIViewController,
     @objc private func showArticleList() { onShowArticleList?() }
     @objc private func showSettings() { onShowSettings?() }
 
+    @objc private func toggleStar() {
+        guard let article = currentArticle() else { return }
+        onToggleStar?(article)
+        updateStarItem()
+    }
+
     private func buildMenuActions() -> [UIMenuElement] {
         guard let article = currentArticle() else { return [] }
         let config = ReaderMenuBuilder.config(
             hasURL: !article.url.isEmpty, aiReady: aiReady
         )
         var actions: [UIMenuElement] = []
-
-        let isStarred = article.isStarred
-        actions.append(UIAction(
-            title: isStarred ? String(localized: "Unstar") : String(localized: "Star"),
-            image: UIImage(systemName: isStarred ? "star.slash" : "star")
-        ) { [weak self] _ in self?.onToggleStar?(article) })
 
         actions.append(UIAction(
             title: String(localized: "Reload"),
@@ -374,6 +366,7 @@ final class ReaderArticleViewController: UIViewController,
         guard completed, let vc = displayedWebVC,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles) else { return }
         index = i
+        updateStarItem()
         onIndexChange?(i)
         prewarmNeighbors(around: i)
     }

@@ -22,7 +22,6 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let isSummarizing: Bool
     /// Bumped by the host after a summary is written so the displayed page re-renders.
     let reloadToken: Int
-    let updateProgress: (completed: Int, total: Int)?
 
     func makeUIViewController(context: Context) -> UINavigationController {
         let reader = ReaderArticleViewController()
@@ -41,7 +40,6 @@ struct ReaderHostView: UIViewControllerRepresentable {
         context.coordinator.lastReloadToken = reloadToken
         reader.configure(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
-        reader.setUpdateProgress(updateProgress)
         reader.setFilterActive(isFilterActive)
 
         let nav = UINavigationController(rootViewController: reader)
@@ -72,7 +70,6 @@ struct ReaderHostView: UIViewControllerRepresentable {
         }
         reader.update(articles: articles, index: currentIndex)
         reader.setRefreshing(isRefreshing)
-        reader.setUpdateProgress(updateProgress)
         reader.setFilterActive(isFilterActive)
     }
 
@@ -109,7 +106,6 @@ struct ReaderScreen: View {
     @State private var reloadToken = 0
     @State private var summarizeFailed = false
 
-    @State private var updateProgress: (completed: Int, total: Int)? = nil
     @State private var filteredArticles: [Article] = []
     @State private var hasComputedFilter = false
 
@@ -159,8 +155,7 @@ struct ReaderScreen: View {
                     onSummarize: summarize,
                     aiReady: aiReady,
                     isSummarizing: isSummarizing,
-                    reloadToken: reloadToken,
-                    updateProgress: updateProgress
+                    reloadToken: reloadToken
                 )
                 .ignoresSafeArea()
             }
@@ -315,16 +310,7 @@ struct ReaderScreen: View {
     private func triggerRefresh() {
         UpdateActivity.shared.restart {
             let service = AggregationService(context: modelContext)
-            let monitor = Task { @MainActor in
-                while !Task.isCancelled {
-                    updateProgress = service.updateProgress.isActive
-                        ? (service.updateProgress.completed, service.updateProgress.total) : nil
-                    try? await Task.sleep(for: .milliseconds(150))
-                }
-            }
             let count = await service.updateAll()
-            monitor.cancel()
-            updateProgress = nil
             guard !Task.isCancelled else { return }
             if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
                 appState.errorMessage = failure
