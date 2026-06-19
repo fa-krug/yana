@@ -4,11 +4,13 @@ import UIKit
 
 /// Regression tests for the reader nav-bar chrome.
 ///
-/// A fourth right-side button overflows the bar on width-constrained displays (e.g. Display
-/// Zoom), and iOS 26 then collapses every button into an automatic "•••" overflow menu that
-/// sticks even after the refresh spinner is removed. Starring therefore lives in the overflow
-/// menu, leaving the right group at two items (filter + menu) so the bar keeps headroom for the
-/// refresh spinner that briefly joins the left group.
+/// The disappearing-buttons bug on iOS 26 was NOT about button count: the trigger was the
+/// custom-view items (the refresh spinner, and the former "Updating N of M…" label) injected into
+/// the bar during a refresh. iOS 26 cannot move a custom view into its automatic "•••" overflow, so
+/// under a width-constrained layout it overflows the *standard* buttons instead — and that collapse
+/// sticks once the spinner is gone. The fix drops the wide progress label (spinner only) and has
+/// `setRefreshing` re-assert the right group on every toggle, forcing a fresh overflow pass so the
+/// standard buttons reappear when refresh ends. The standalone star button is therefore safe to keep.
 @MainActor
 struct ReaderChromeTests {
     private func makeLoadedReader() -> ReaderArticleViewController {
@@ -17,24 +19,23 @@ struct ReaderChromeTests {
         return reader
     }
 
-    @Test func rightGroupHasTwoItems() {
+    @Test func rightGroupHasStarFilterAndMenu() {
         let reader = makeLoadedReader()
-        // filter + overflow menu only — no standalone star button.
-        #expect(reader.navigationItem.rightBarButtonItems?.count == 2)
+        // star + filter + overflow menu.
+        #expect(reader.navigationItem.rightBarButtonItems?.count == 3)
     }
 
-    @Test func refreshSpinnerKeepsTotalItemsWithinBudget() {
+    @Test func refreshReassertsRightGroupSoItCannotStickCollapsed() {
         let reader = makeLoadedReader()
-        func total() -> Int {
-            (reader.navigationItem.leftBarButtonItems?.count ?? 0)
-                + (reader.navigationItem.rightBarButtonItems?.count ?? 0)
-        }
-        // At rest: 1 left + 2 right = 3.
-        #expect(total() == 3)
-        // While refreshing the spinner joins the left group: at most 4 bar items.
+        let atRest = reader.navigationItem.rightBarButtonItems
+        // The spinner joins the left group during a refresh; the left group grows then shrinks back.
         reader.setRefreshing(true)
-        #expect(total() <= 4)
+        #expect(reader.navigationItem.leftBarButtonItems?.count == 2)
         reader.setRefreshing(false)
-        #expect(total() == 3)
+        #expect(reader.navigationItem.leftBarButtonItems?.count == 1)
+        // The right group is re-asserted on every refresh toggle, so it always holds all three
+        // items — never left collapsed into an automatic overflow menu after a refresh.
+        #expect(reader.navigationItem.rightBarButtonItems?.count == 3)
+        #expect(reader.navigationItem.rightBarButtonItems?.count == atRest?.count)
     }
 }
