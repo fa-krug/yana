@@ -8,6 +8,7 @@ struct FeedsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.name) private var feeds: [Feed]
     @State private var isImporting = false
+    @State private var isImportingOPML = false
     @State private var exportURL: URL?
     @State private var isExporting = false
     @State private var importMessage: String?
@@ -73,6 +74,18 @@ struct FeedsView: View {
                 row(feed)
             }
         }
+        .overlay {
+            if isImportingOPML {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Importing feeds…").font(.subheadline).foregroundStyle(.secondary)
+                }
+                .padding(24)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .transition(CrossFade.transition)
+            }
+        }
+        .animation(CrossFade.animation, value: isImportingOPML)
         .navigationTitle("Feeds")
         .onAppear { refreshArticleCounts() }
         .onChange(of: feeds) { _, _ in refreshArticleCounts() }
@@ -241,13 +254,19 @@ struct FeedsView: View {
 
     private func handleImport(_ result: Result<[URL], Error>) {
         guard case let .success(urls) = result, let url = urls.first else { return }
-        let needsStop = url.startAccessingSecurityScopedResource()
-        defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
-        guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
-            importMessage = String(localized: "Could not read the file.")
-            return
+        isImportingOPML = true
+        // Let SwiftUI paint the overlay before the synchronous parse blocks the main actor.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            defer { isImportingOPML = false }
+            let needsStop = url.startAccessingSecurityScopedResource()
+            defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
+            guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
+                importMessage = String(localized: "Could not read the file.")
+                return
+            }
+            let r = FeedPortability.importOPML(xml, context: modelContext)
+            importMessage = String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped).")
         }
-        let r = FeedPortability.importOPML(xml, context: modelContext)
-        importMessage = String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped).")
     }
 }

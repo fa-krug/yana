@@ -18,8 +18,13 @@ struct AggregationServiceTests {
     private struct FakeAggregator: Aggregator {
         let articles: [AggregatedArticle]
         var validateError: Error?
+        /// Optional hook invoked at the start of `aggregate()`, on the main actor.
+        var onAggregate: (@MainActor () -> Void)?
         func validate() throws { if let validateError { throw validateError } }
-        func aggregate() async throws -> [AggregatedArticle] { articles }
+        func aggregate() async throws -> [AggregatedArticle] {
+            await onAggregate?()
+            return articles
+        }
     }
 
     nonisolated private func aggregated(_ id: String, date: Date = .now) -> AggregatedArticle {
@@ -593,5 +598,43 @@ struct AggregationServiceTests {
         await service.update(feed: feed)
 
         #expect(feed.logoHash == "existing")
+    }
+
+    // MARK: - Update progress (Task 9)
+
+    /// Box to observe a value captured on the main actor inside a factory closure.
+    private final class Box<T>: @unchecked Sendable {
+        var value: T
+        init(_ value: T) { self.value = value }
+    }
+
+    @Test func updateAllReportsProgressThenResets() async throws {
+        let context = try makeContext()
+        // Seed 3 enabled feeds.
+        for i in 0..<3 {
+            context.insert(Feed(name: "F\(i)", aggregatorType: .feedContent, identifier: "f\(i)"))
+        }
+
+        let totalBox = Box(0)
+        // Use `nonisolated(unsafe)` to let the closure capture `service` before it is initialised;
+        // the closure is only *called* during `updateAll()`, after the `let service = …` line
+        // completes, so the reference is always valid by the time it is read.
+        nonisolated(unsafe) var serviceRef: AggregationService? = nil
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in
+                FakeAggregator(
+                    articles: [],
+                    onAggregate: { totalBox.value = serviceRef?.updateProgress.total ?? -1 }
+                )
+            }
+        )
+        serviceRef = service
+
+        await service.updateAll()
+
+        #expect(totalBox.value == 3)               // total was live during the run
+        #expect(service.updateProgress.total == 0)     // reset to idle afterward
+        #expect(service.updateProgress.completed == 0)
     }
 }

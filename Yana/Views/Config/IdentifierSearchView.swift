@@ -149,9 +149,18 @@ struct IdentifierSearchView: View {
                 .buttonStyle(.plain)
             }
             .listStyle(.plain)
+            .animation(CrossFade.animation, value: model.rows.map(\.id))
             .overlay {
                 if model.isSearching && model.rows.isEmpty {
-                    ProgressView()
+                    List(0..<8, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("r/placeholdername").font(.headline)
+                            Text("Placeholder subtitle · 12K subscribers")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .skeleton(active: true)
                 } else if model.rows.isEmpty {
                     if model.hasSearched {
                         ContentUnavailableView(

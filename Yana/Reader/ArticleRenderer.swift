@@ -7,7 +7,8 @@ enum ArticleRenderer {
     typealias Rendering = (style: String, html: String, title: String, baseURL: String)
 
     /// Body HTML (theme template filled) + resolved CSS + title + base URL.
-    static func articleHTML(article: Article, theme: ArticleTheme, textSize: ArticleTextSize) -> Rendering {
+    static func articleHTML(article: Article, theme: ArticleTheme, textSize: ArticleTextSize,
+                            summaryPending: Bool = false) -> Rendering {
         let title = ContentFormatter.escapeHTML(article.title)
         let style = (try? MacroProcessor.renderedText(
             withTemplate: theme.css ?? "",
@@ -15,14 +16,17 @@ enum ArticleRenderer {
         )) ?? (theme.css ?? "")
         let html = (try? MacroProcessor.renderedText(
             withTemplate: theme.template ?? "",
-            substitutions: articleSubstitutions(article: article, title: title, textSize: textSize)
+            substitutions: articleSubstitutions(article: article, title: title, textSize: textSize,
+                                                summaryPending: summaryPending)
         )) ?? ""
         return (style, html, title, articleBaseHref(for: article))
     }
 
     /// Complete HTML document: page.html with `style`/`body`/`title`/`baseURL` substituted.
-    static func fullPageHTML(article: Article, theme: ArticleTheme, textSize: ArticleTextSize) -> String {
-        let rendering = articleHTML(article: article, theme: theme, textSize: textSize)
+    static func fullPageHTML(article: Article, theme: ArticleTheme, textSize: ArticleTextSize,
+                             summaryPending: Bool = false) -> String {
+        let rendering = articleHTML(article: article, theme: theme, textSize: textSize,
+                                    summaryPending: summaryPending)
         let page = ArticleTheme.stringAtPath(Bundle.main.path(forResource: "page", ofType: "html") ?? "") ?? ""
         return (try? MacroProcessor.renderedText(withTemplate: page, substitutions: [
             "title": rendering.title,
@@ -34,7 +38,8 @@ enum ArticleRenderer {
 
     // MARK: - Substitutions
 
-    private static func articleSubstitutions(article: Article, title: String, textSize: ArticleTextSize) -> [String: String] {
+    private static func articleSubstitutions(article: Article, title: String, textSize: ArticleTextSize,
+                                             summaryPending: Bool = false) -> [String: String] {
         var d = [String: String]()
         let link = article.url
 
@@ -43,7 +48,8 @@ enum ArticleRenderer {
         d["external_link_label"] = ""
         d["external_link_stripped"] = ""
         d["external_link"] = ""
-        d["body"] = Self.composeBody(content: article.content, summary: article.summary)
+        d["body"] = Self.composeBody(content: article.content, summary: article.summary,
+                                     summaryPending: summaryPending)
         d["text_size_class"] = textSize.cssClass
 
         if let hash = article.feed?.logoHash, !hash.isEmpty {
@@ -75,12 +81,21 @@ enum ArticleRenderer {
     /// image and the article text; when the content has no leading header the block goes at the
     /// very top. HTML-escapes the summary text since the model returns it as plain text / simple
     /// HTML; wrapping in a `<div>` keeps it isolated from the body markup.
-    static func composeBody(content: String, summary: String) -> String {
+    static func composeBody(content: String, summary: String, summaryPending: Bool = false) -> String {
         let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return content }
+        if !trimmed.isEmpty {
+            let label = ContentFormatter.escapeHTML(String(localized: "Summary"))
+            let escaped = ContentFormatter.escapeHTML(trimmed)
+            let block = "<div class=\"yana-summary\"><div class=\"yana-summary-label\">\(label)</div>\(escaped)</div>"
+            return insert(summaryBlock: block, into: content)
+        }
+        guard summaryPending else { return content }
         let label = ContentFormatter.escapeHTML(String(localized: "Summary"))
-        let escaped = ContentFormatter.escapeHTML(trimmed)
-        let block = "<div class=\"yana-summary\"><div class=\"yana-summary-label\">\(label)</div>\(escaped)</div>"
+        // Skeleton lines mask the wait at the exact spot the real summary will land.
+        let block = "<div class=\"yana-summary yana-summary-pending\">"
+            + "<div class=\"yana-summary-label\">\(label)</div>"
+            + "<div class=\"yana-skel-line\"></div><div class=\"yana-skel-line\"></div>"
+            + "<div class=\"yana-skel-line short\"></div></div>"
         return insert(summaryBlock: block, into: content)
     }
 

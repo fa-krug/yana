@@ -15,6 +15,7 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     private var webView: WKWebView!
     private var loadedHTML: String?
+    var summaryPending = false { didSet { if summaryPending != oldValue { render() } } }
 
     private var topTapZone: UIView!
     private var bottomTapZone: UIView!
@@ -55,6 +56,13 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         ))
         config.userContentController = controller
         webView = WKWebView(frame: view.bounds, configuration: config)
+        // Avoid the white/system flash and the lingering previous article: the container shows a
+        // system background (adapts light/dark) while the web view paints, then we fade it in.
+        view.backgroundColor = .systemBackground
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.alpha = 0
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -93,9 +101,11 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         let html = ArticleRenderer.fullPageHTML(
             article: article,
             theme: ArticleThemesManager.shared.currentTheme,
-            textSize: settings.articleTextSize
+            textSize: settings.articleTextSize,
+            summaryPending: summaryPending
         )
         guard html != loadedHTML else { return }
+        webView.alpha = 0
         loadedHTML = html
         // Load against the bundle directory (like NetNewsWire), not a fake web origin. The article's
         // own `<base href>` resolves relative links to the real site; the injected click handler
@@ -144,6 +154,11 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     @objc private func tapZoneTapped() { onRequestShowBars() }
 
     // MARK: - Links → in-app browser
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView.alpha < 1 else { return }
+        UIView.animate(withDuration: CrossFade.duration) { webView.alpha = 1 }
+    }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
