@@ -2016,6 +2016,66 @@
           }
         }
       }
+    },
+    "Copy link": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link kopieren"
+          }
+        }
+      }
+    },
+    "Could not summarize this article. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Artikel konnte nicht zusammengefasst werden. Bitte erneut versuchen."
+          }
+        }
+      }
+    },
+    "Force update": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisieren erzwingen"
+          }
+        }
+      }
+    },
+    "Go to feed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zum Feed"
+          }
+        }
+      }
+    },
+    "More actions": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weitere Aktionen"
+          }
+        }
+      }
+    },
+    "Summarize Failed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zusammenfassung fehlgeschlagen"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

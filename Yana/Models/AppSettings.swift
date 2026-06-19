@@ -54,6 +54,20 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .none, .anthropic, .gemini, .appleIntelligence: ""
         }
     }
+
+    /// Keychain item holding this provider's API key. `nil` for providers that need no key
+    /// (`.none`, on-device `.appleIntelligence`).
+    var apiKeyItem: KeychainService.APIKeyItem? {
+        switch self {
+        case .none, .appleIntelligence: return nil
+        case .openai: return .openaiAPIKey
+        case .anthropic: return .anthropicAPIKey
+        case .gemini: return .geminiAPIKey
+        case .mistral: return .mistralAPIKey
+        case .qwen: return .qwenAPIKey
+        case .deepseek: return .deepseekAPIKey
+        }
+    }
 }
 
 /// Non-secret user preferences, backed by UserDefaults. Secrets live in `KeychainService`.

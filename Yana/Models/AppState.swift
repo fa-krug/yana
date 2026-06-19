@@ -9,4 +9,6 @@ final class AppState {
     var errorMessage: String?
     var showSettings = false
     var showFilter = false
+    /// When non-nil, the reader presents `FeedEditorView` for this feed as a sheet.
+    var feedToEdit: Feed?
 }

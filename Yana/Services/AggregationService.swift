@@ -261,6 +261,25 @@ final class AggregationService {
         return inserted
     }
 
+    /// Summarize a single article on demand, independent of its feed's AI options. Runs a
+    /// summarize-only pass through the current AI processor, copies the resulting summary onto
+    /// the article (source content is left untouched), and saves. Returns false — leaving the
+    /// article unchanged — when no summary was produced (AI failure, dropped item, or empty
+    /// content). Callers should only invoke this when AI is configured (see `AIReadiness`).
+    @discardableResult
+    func summarize(_ article: Article) async -> Bool {
+        let seed = AggregatedArticle(
+            title: article.title, identifier: article.identifier, url: article.url,
+            rawContent: article.rawContent, content: article.content, date: article.date,
+            author: article.author, iconURL: article.iconURL
+        )
+        let processed = await currentAIProcessor().process([seed], ai: AIOptions(summarize: true))
+        guard let summary = processed.first?.summary, !summary.isEmpty else { return false }
+        article.summary = summary
+        try? context.save()
+        return true
+    }
+
     // MARK: - Core per-feed run
 
     /// Resolve a feed from its `Sendable` identifier on the main actor, then run the per-feed
