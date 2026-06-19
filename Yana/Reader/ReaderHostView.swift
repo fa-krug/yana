@@ -103,6 +103,7 @@ struct ReaderScreen: View {
     @State private var summarizeFailed = false
 
     @State private var filteredArticles: [Article] = []
+    @State private var hasComputedFilter = false
 
     private func recomputeFilter() {
         let byTag = TagFilter.apply(
@@ -111,6 +112,7 @@ struct ReaderScreen: View {
             includeUntagged: settings.includeUntagged
         )
         filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        hasComputedFilter = true
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -120,7 +122,10 @@ struct ReaderScreen: View {
     var body: some View {
         let articles = filteredArticles
         Group {
-            if articles.isEmpty {
+            switch TimelineLoadState.derive(hasComputedFilter: hasComputedFilter, count: articles.count) {
+            case .loading:
+                SkeletonTimelineView()
+            case .empty:
                 ContentUnavailableView {
                     Label("No Articles", systemImage: "tray")
                         .accessibilityIdentifier("emptyArticlesTitle")
@@ -130,7 +135,7 @@ struct ReaderScreen: View {
                     Button(String(localized: "Add Your First Feed")) { appState.showSettings = true }
                         .buttonStyle(.borderedProminent)
                 }
-            } else {
+            case .loaded:
                 ReaderHostView(
                     articles: articles,
                     currentIndex: $appState.currentIndex,
