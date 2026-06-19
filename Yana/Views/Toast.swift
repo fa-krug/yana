@@ -34,7 +34,9 @@ private struct ToastModifier: ViewModifier {
                         .padding(.top, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .task(id: message) {
-                            try? await Task.sleep(for: .seconds(2.5))
+                            AccessibilityNotification.Announcement(message.text).post()
+                            let dismissAfter: Double = message.style == .error ? 4 : 2.5
+                            try? await Task.sleep(for: .seconds(dismissAfter))
                             self.message = nil
                         }
                 }
