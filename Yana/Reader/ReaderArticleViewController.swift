@@ -301,6 +301,11 @@ final class ReaderArticleViewController: UIViewController,
         displayedWebVC?.reload()
     }
 
+    /// Toggle the pending-summary placeholder on the visible page (the only one being summarized).
+    func setSummarizing(_ summarizing: Bool) {
+        displayedWebVC?.summaryPending = summarizing
+    }
+
     @objc private func shareArticle() {
         guard let article = currentArticle(), let url = URL(string: article.url) else { return }
         let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)

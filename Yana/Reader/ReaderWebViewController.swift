@@ -15,6 +15,7 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     private var webView: WKWebView!
     private var loadedHTML: String?
+    var summaryPending = false { didSet { if summaryPending != oldValue { render() } } }
 
     private var topTapZone: UIView!
     private var bottomTapZone: UIView!
@@ -100,7 +101,8 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         let html = ArticleRenderer.fullPageHTML(
             article: article,
             theme: ArticleThemesManager.shared.currentTheme,
-            textSize: settings.articleTextSize
+            textSize: settings.articleTextSize,
+            summaryPending: summaryPending
         )
         guard html != loadedHTML else { return }
         webView.alpha = 0

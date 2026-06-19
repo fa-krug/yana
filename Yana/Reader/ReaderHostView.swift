@@ -62,6 +62,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onSummarize = onSummarize
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
+        reader.setSummarizing(isSummarizing)
         if reloadToken != context.coordinator.lastReloadToken {
             context.coordinator.lastReloadToken = reloadToken
             reader.reloadCurrentPage()
