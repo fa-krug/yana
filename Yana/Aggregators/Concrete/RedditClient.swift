@@ -107,6 +107,16 @@ final class RedditClient: @unchecked Sendable {
         return valid.sorted { $0.score > $1.score }
     }
 
+    /// Re-fetch a single known post. The `/comments/<id>.json` endpoint returns
+    /// `[postListing, commentListing]`; index 0 holds the post. Returns `nil` when the post is gone.
+    func fetchPost(subreddit: String, postID: String) async throws -> RedditPostData? {
+        guard let url = URL(string:
+            "https://oauth.reddit.com/comments/\(Self.encodePath(postID)).json?raw_json=1")
+        else { throw AggregatorError.contentFetch("invalid post id") }
+        let data = try await authorizedGET(url)
+        return try JSONDecoder().decode(RedditPostResponse.self, from: data).post
+    }
+
     /// Subreddit icon for the feed logo. Prefers `community_icon`, falls back to `icon_img`.
     /// Returns the entity-decoded, trimmed URL, or nil when unavailable.
     func fetchSubredditAbout(_ subreddit: String) async -> String? {
@@ -215,5 +225,19 @@ private struct RedditAboutResponse: Decodable {
         enum CodingKeys: String, CodingKey {
             case communityIcon = "community_icon", iconImg = "icon_img"
         }
+    }
+}
+/// Decodes only element 0 (the post listing) of a `/comments/<id>.json` response.
+private struct RedditPostResponse: Decodable {
+    let post: RedditPostData?
+    private struct PostListing: Decodable {
+        let data: ListingData
+        struct ListingData: Decodable { let children: [Child] }
+        struct Child: Decodable { let data: RedditPostData }
+    }
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        let listing = try container.decode(PostListing.self)   // element 0; element 1 left undecoded
+        post = listing.data.children.first?.data
     }
 }

@@ -148,4 +148,39 @@ struct RedditClientTests {
         let result = await client.verifyCredentials()
         #expect(result == .network)
     }
+
+    @Test func fetchPostDecodesPostFromFirstListing() async throws {
+        let json = """
+        [ {"data":{"children":[
+            {"data":{"id":"p1","title":"Hello","selftext":"Body","url":"https://e.com",
+                     "permalink":"/r/swift/comments/p1/hello/","created_utc":1700000000,
+                     "author":"alice","score":5,"num_comments":2,"is_self":true}}
+          ]}},
+          {"data":{"children":[
+            {"kind":"t1","data":{"id":"c1","body":"Nice","author":"bob","score":1,"permalink":"/r/swift/comments/p1/hello/c1/"}}
+          ]}} ]
+        """
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(#"{"access_token":"TKN"}"#.utf8) }
+            return Data(json.utf8)
+        }
+        let post = try #require(try await client.fetchPost(subreddit: "swift", postID: "p1"))
+        #expect(post.id == "p1")
+        #expect(post.title == "Hello")
+        #expect(post.author == "alice")
+    }
+
+    @Test func fetchPostReturnsNilWhenNoPost() async throws {
+        let json = """
+        [ {"data":{"children":[]}}, {"data":{"children":[]}} ]
+        """
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(#"{"access_token":"TKN"}"#.utf8) }
+            return Data(json.utf8)
+        }
+        let post = try await client.fetchPost(subreddit: "swift", postID: "p1")
+        #expect(post == nil)
+    }
 }

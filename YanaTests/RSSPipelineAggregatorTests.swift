@@ -41,15 +41,41 @@ struct RSSPipelineAggregatorTests {
         #expect(!a.content.contains("Source:"))              // source link lives in the toolbar now
     }
 
-    @Test func refetchDefaultsToNilForRSSPipeline() async throws {
-        final class Stub: RSSPipelineAggregator, @unchecked Sendable {
-            init() { super.init(config: FeedConfig(type: .feedContent, identifier: "u", dailyLimit: 10,
-                                options: .feedContent(FeedContentOptions()), collectedToday: 0),
-                                credentials: .init()) }
-        }
+    @Test func refetchReturnsOnlyMatchingEntry() async throws {
+        let entries = [
+            FeedEntry(title: "One", link: "https://x.com/1", content: "<p>One body</p>",
+                      summary: nil, entryDescription: nil, published: .now, author: "Al",
+                      enclosures: [], itunesDuration: nil, itunesImage: nil, mediaThumbnails: []),
+            FeedEntry(title: "Two", link: "https://x.com/2", content: "<p>Two body</p>",
+                      summary: nil, entryDescription: nil, published: .now, author: "Al",
+                      enclosures: [], itunesDuration: nil, itunesImage: nil, mediaThumbnails: [])
+        ]
+        let agg = StubFeed(entries: entries, config: config(), store: tempStore())
+        let seed = AggregatedArticle(title: "Two", identifier: "https://x.com/2", url: "https://x.com/2",
+                                     rawContent: "", content: "", date: .now, author: "", iconURL: nil)
+        let result = try #require(try await agg.refetch(seed))
+        #expect(result.identifier == "https://x.com/2")
+        #expect(result.content.contains("Two body"))
+    }
+
+    @Test func refetchReturnsNilWhenEntryGone() async throws {
+        let entries = [
+            FeedEntry(title: "One", link: "https://x.com/1", content: "<p>One body</p>",
+                      summary: nil, entryDescription: nil, published: .now, author: "Al",
+                      enclosures: [], itunesDuration: nil, itunesImage: nil, mediaThumbnails: [])
+        ]
+        let agg = StubFeed(entries: entries, config: config(), store: tempStore())
+        let seed = AggregatedArticle(title: "Gone", identifier: "https://x.com/missing", url: "https://x.com/missing",
+                                     rawContent: "", content: "", date: .now, author: "", iconURL: nil)
+        let result = try await agg.refetch(seed)
+        #expect(result == nil)
+    }
+
+    @Test func refetchReturnsNilWhenNoEntriesMatch() async throws {
+        let agg = StubFeed(entries: [], config: config(), store: tempStore())
         let seed = AggregatedArticle(title: "T", identifier: "id", url: "u", rawContent: "",
                                      content: "c", date: .now, author: "", iconURL: nil)
-        let result = try await Stub().refetch(seed)
+        let result = try await agg.refetch(seed)
         #expect(result == nil)
     }
 

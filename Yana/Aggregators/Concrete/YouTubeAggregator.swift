@@ -58,6 +58,22 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
         return result
     }
 
+    func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? {
+        guard let videoID = EmbedRewriter.extractYouTubeID(from: seed.url) else { return nil }
+        let client = try makeClient()
+        guard let video = try await client.fetchVideoDetails([videoID]).first else { return nil }
+        let url = "https://www.youtube.com/watch?v=\(video.id)"
+        let comments = (try? await client.fetchVideoComments(videoID: video.id, max: options.commentLimit)) ?? []
+        let body = buildContentHTML(video: video, videoID: video.id, comments: comments)
+        let embed = EmbedRewriter.youTubeEmbedHTML(videoID: video.id)
+        let content = ContentFormatter.format(content: embed + body, title: video.title, url: url,
+                                              headerHTML: nil, commentsHTML: nil)
+        return AggregatedArticle(
+            title: video.title, identifier: url, url: url,
+            rawContent: body, content: content,
+            date: video.publishedAt ?? Date(), author: seed.author, iconURL: video.thumbnailURL)
+    }
+
     func logoImageURL() async -> String? {
         guard credentials.youtubeAPIKey != nil else { return nil }
         guard let client = try? makeClient() else { return nil }

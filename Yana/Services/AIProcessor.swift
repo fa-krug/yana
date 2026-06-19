@@ -82,6 +82,10 @@ struct AIProcessor: AIProcessing {
     /// the AI-updated article on success, or `nil` to DROP it (invalid JSON or AI failure).
     private func processOne(_ article: AggregatedArticle, ai: AIOptions) async -> AggregatedArticle? {
         guard !article.content.isEmpty else { return article }
+        // `stripChrome` drops the lead-image <header> before the prompt (the model must not
+        // alter/translate the image), so capture it and restore it onto the AI's output —
+        // otherwise AI-processed articles lose their header image.
+        let headerHTML = (try? ArticleAIText.leadingHeaderHTML(article.content)) ?? nil
         let cleanHTML = ArticleAIText.cap((try? ArticleAIText.stripChrome(article.content)) ?? article.content)
         let prompt = Self.buildPrompt(title: article.title, cleanHTML: cleanHTML, ai: ai)
         do {
@@ -89,7 +93,7 @@ struct AIProcessor: AIProcessing {
             guard let parsed = Self.extractJSON(raw) else { return nil }
             var updated = article
             if let title = parsed["title"] as? String { updated.title = title }
-            if let content = parsed["content"] as? String { updated.content = content }
+            if let content = parsed["content"] as? String { updated.content = (headerHTML ?? "") + content }
             if let summary = parsed["summary"] as? String { updated.summary = summary }
             return updated
         } catch {

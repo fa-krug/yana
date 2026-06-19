@@ -26,8 +26,23 @@ final class ReaderArticleViewController: UIViewController,
     private var index = 0
     private var isTransitioning = false
 
+    /// Reader prewarm/cache tuning. Constants so they can be profiled and dialed on-device.
+    /// Radius covers a 5-swipe burst in one direction; capacity holds ±radius on both sides
+    /// plus a little recent history, bounding live WKWebViews.
+    private static let prewarmRadius = 5
+    private static let pageCacheCapacity = 25
+
+    /// Reused page controllers keyed by article identifier; revisiting a recent article is then
+    /// instant (no re-render). LRU eviction tears down off-window web views to bound memory.
+    private let pageCache = LRUCache<String, ReaderWebViewController>(capacity: pageCacheCapacity)
+
+    /// Last observed travel direction, used to bias prewarming toward where the user is going.
+    private var lastDirection: PrewarmPlan.Direction = .none
+
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private let progressLabel = UILabel()
+    private var progressItem: UIBarButtonItem!
     private var articleListItem: UIBarButtonItem!
     private var filterItem: UIBarButtonItem!
     private var indicatorItem: UIBarButtonItem!
@@ -59,6 +74,11 @@ final class ReaderArticleViewController: UIViewController,
         pageController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(pageController.view)
         pageController.didMove(toParent: self)
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification, object: nil
+        )
 
         // Tap the nav bar to hide bars (NNW behavior).
         let tapZone = UIView()
@@ -96,6 +116,9 @@ final class ReaderArticleViewController: UIViewController,
         // setRefreshing). A stopped indicator's bar-button item still reserves width, so it is
         // added/removed rather than left in place hidden.
         indicatorItem = UIBarButtonItem(customView: activityIndicator)
+        progressLabel.font = .preferredFont(forTextStyle: .footnote)
+        progressLabel.textColor = .secondaryLabel
+        progressItem = UIBarButtonItem(customView: progressLabel)
         navigationItem.leftBarButtonItems = [articleListItem]
 
         // Overflow menu, rebuilt each time it opens so conditional items track the current
@@ -125,6 +148,23 @@ final class ReaderArticleViewController: UIViewController,
         toolbarItems = [flex(), shareItem, browser]
     }
 
+    /// Show "Updating N of M…" during a counted multi-feed run; pass nil to clear. The indeterminate
+    /// spinner (setRefreshing) still drives the activity indicator itself.
+    func setUpdateProgress(_ progress: (completed: Int, total: Int)?) {
+        guard let progress, progress.total > 1 else {
+            if navigationItem.leftBarButtonItems?.contains(progressItem) == true {
+                setRefreshing(activityIndicator.isAnimating) // rebuild left items without progress
+            }
+            return
+        }
+        progressLabel.text = String(localized: "Updating \(progress.completed) of \(progress.total)…")
+        progressLabel.sizeToFit()
+        let items: [UIBarButtonItem] = [articleListItem, indicatorItem, progressItem]
+        if navigationItem.leftBarButtonItems != items {
+            navigationItem.leftBarButtonItems = items
+        }
+    }
+
     func setRefreshing(_ isRefreshing: Bool) {
         if isRefreshing { activityIndicator.startAnimating() } else { activityIndicator.stopAnimating() }
         let items: [UIBarButtonItem] = isRefreshing ? [articleListItem, indicatorItem] : [articleListItem]
@@ -148,6 +188,7 @@ final class ReaderArticleViewController: UIViewController,
         if let page = makePage(for: self.index) {
             pageController.setViewControllers([page], direction: .forward, animated: false)
         }
+        prewarmNeighbors(around: self.index)
     }
 
     func update(articles: [Article], index: Int) {
@@ -170,14 +211,30 @@ final class ReaderArticleViewController: UIViewController,
 
     private func makePage(for index: Int) -> ReaderWebViewController? {
         guard articles.indices.contains(index) else { return nil }
+        let article = articles[index]
+        if let cached = pageCache.value(for: article.identifier) { return cached }
         let vc = ReaderWebViewController(
-            article: articles[index],
+            article: article,
             allowsFullscreen: isFullscreenAvailable,
             onRefresh: onRefresh,
             onRequestShowBars: { [weak self] in self?.applyFullscreen(false, animated: true) }
         )
         vc.hideBarsTapZonesActive(settings.articleFullscreenEnabled && isFullscreenAvailable)
+        pageCache.insert(vc, for: article.identifier)
         return vc
+    }
+
+    /// Instantiate (and thus begin loading) the neighbors around `index`, biased toward the last
+    /// travel direction, so a burst of swipes lands on already-rendered HTML.
+    private func prewarmNeighbors(around index: Int) {
+        let targets = PrewarmPlan.indices(
+            current: index, count: articles.count,
+            radius: Self.prewarmRadius, direction: lastDirection
+        )
+        for i in targets {
+            let vc = makePage(for: i)         // inserts into cache + triggers loadHTMLString
+            vc?.loadViewIfNeeded()            // force viewDidLoad → render() now, off-screen
+        }
     }
 
     // MARK: - Actions
@@ -231,6 +288,11 @@ final class ReaderArticleViewController: UIViewController,
 
     func reloadCurrentPage() {
         displayedWebVC?.reload()
+    }
+
+    /// Toggle the pending-summary placeholder on the visible page (the only one being summarized).
+    func setSummarizing(_ summarizing: Bool) {
+        displayedWebVC?.summaryPending = summarizing
     }
 
     @objc private func shareArticle() {
@@ -298,6 +360,11 @@ final class ReaderArticleViewController: UIViewController,
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             willTransitionTo pendingViewControllers: [UIViewController]) {
+        if let next = pendingViewControllers.first as? ReaderWebViewController,
+           let target = TimelinePageIndex.index(of: next.article.identifier, in: articles) {
+            lastDirection = target > index ? .forward : .backward
+            prewarmNeighbors(around: target)   // warm mid-swipe, not only after it finishes
+        }
         isTransitioning = true
     }
 
@@ -308,5 +375,17 @@ final class ReaderArticleViewController: UIViewController,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles) else { return }
         index = i
         onIndexChange?(i)
+        prewarmNeighbors(around: i)
     }
+
+    // MARK: - Memory
+
+    @objc private func handleMemoryWarning() {
+        // Keep only the live ±1 window so the current page and its immediate neighbors survive.
+        let live = PrewarmPlan.indices(current: index, count: articles.count, radius: 1, direction: .none) + [index]
+        let keep = Set(live.filter { articles.indices.contains($0) }.map { articles[$0].identifier })
+        _ = pageCache.trim(toKeep: keep)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 }
