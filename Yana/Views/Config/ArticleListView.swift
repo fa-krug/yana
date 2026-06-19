@@ -1,11 +1,15 @@
 import SwiftData
 import SwiftUI
 
-/// Searchable + filterable list of all articles (newest first), reachable from the config hub.
-/// Tapping a row opens a read-only detail; swipe to delete. Search matches
-/// title/content/author/feed name in memory; the tag filter is transient (local state, never
-/// `AppSettings`) so it never affects the home timeline.
+/// A second view of the reader's timeline: the same articles under the same shared `AppSettings`
+/// filter, plus an in-memory search. Tapping a row reports the article via `onSelect` so the
+/// reader can jump to it; the row matching `currentArticleID` is highlighted and scrolled into
+/// view on appear. Keeps swipe actions (star/reload) and swipe-to-delete.
 struct ArticleListView: View {
+    let currentArticleID: String?
+    let onSelect: (Article) -> Void
+
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(ArticleListView.timelineDescriptor) private var allArticles: [Article]
 
@@ -17,28 +21,32 @@ struct ArticleListView: View {
         return descriptor
     }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
+    @State private var settings = AppSettings()
     @State private var searchText = ""
     @State private var debouncedSearch = ""
-    @State private var disabledTagNames: Set<String> = []
-    @State private var includeUntagged = true
-    @State private var disabledFeedNames: Set<String> = []
     @State private var showFilter = false
     @State private var articleToDelete: Article?
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
 
-    /// Shared, app-lifetime flag so the spinner survives leaving and returning to this screen
-    /// while a detached update Task keeps running in the background.
+    /// Shared, app-lifetime flag so the spinner survives leaving and returning to this screen.
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
+    /// Same pipeline as `ReaderScreen.recomputeFilter` (TagFilter → FeedFilter over the shared
+    /// `AppSettings` filter) plus the search layer, so results are a subset of the reader timeline.
     private var results: [Article] {
         let searched = ArticleSearch.filter(allArticles, query: debouncedSearch)
-        let byTag = TagFilter.apply(to: searched, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged)
-        return FeedFilter.apply(to: byTag, disabledFeedNames: disabledFeedNames)
+        let byTag = TagFilter.apply(to: searched,
+                                    disabledTagNames: settings.disabledTagNames,
+                                    includeUntagged: settings.includeUntagged)
+        return FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
     }
 
-    private var isFilterActive: Bool {
-        !disabledTagNames.isEmpty || !includeUntagged || !disabledFeedNames.isEmpty
+    private var isFilterActive: Bool { settings.isTimelineFilterActive }
+
+    /// Persistent id (not the String identifier) of the currently-selected article, for scrolling.
+    private var currentItemID: Article.ID? {
+        results.first { $0.identifier == currentArticleID }?.id
     }
 
     var body: some View {
@@ -50,10 +58,10 @@ struct ArticleListView: View {
             emptyIcon: "tray",
             emptyDescription: "No articles yet. Add feeds, then pull to refresh.",
             onDelete: { offsets in
-                // Resolve immediately so stale indices can't delete the wrong article
                 guard let article = offsets.map({ results[$0] }).first else { return }
                 articleToDelete = article
             },
+            scrollToID: currentItemID,
             leadingActions: { article in
                 Button {
                     guard let starredTag else { return }
@@ -75,27 +83,26 @@ struct ArticleListView: View {
                 .tint(.orange)
             }
         ) { article in
-            NavigationLink {
-                ArticleDetailView(article: article)
-            } label: {
-                row(article)
-            }
+            Button { onSelect(article) } label: { row(article) }
+                .buttonStyle(.plain)
+                .listRowBackground(article.identifier == currentArticleID
+                                   ? Color.accentColor.opacity(0.15) : nil)
         }
         .task(id: searchText) {
-            // Coalesce keystrokes: a new keystroke cancels this task and restarts the timer.
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
             debouncedSearch = searchText
         }
         .navigationTitle("Articles")
         .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button { dismiss() } label: { Image(systemName: "xmark") }
+                    .accessibilityLabel(Text("Close"))
+            }
             ToolbarItem(placement: .topBarLeading) {
                 if isUpdating {
-                    // While any update runs, the button becomes a tappable spinner that stops it.
-                    Button { UpdateActivity.shared.cancel() } label: {
-                        ProgressView()
-                    }
-                    .accessibilityLabel(Text("Stop updating"))
+                    Button { UpdateActivity.shared.cancel() } label: { ProgressView() }
+                        .accessibilityLabel(Text("Stop updating"))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -108,13 +115,7 @@ struct ArticleListView: View {
                 }
             }
         }
-        .sheet(isPresented: $showFilter) {
-            ArticleTagFilterView(
-                disabledTagNames: $disabledTagNames,
-                includeUntagged: $includeUntagged,
-                disabledFeedNames: $disabledFeedNames
-            )
-        }
+        .sheet(isPresented: $showFilter) { TagFilterView() }
         .confirmationDialog(
             String(localized: "Delete Article?"),
             isPresented: Binding(get: { articleToDelete != nil }, set: { if !$0 { articleToDelete = nil } }),

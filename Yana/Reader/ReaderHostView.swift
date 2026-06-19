@@ -152,6 +152,15 @@ struct ReaderScreen: View {
             }
         }
         .sheet(isPresented: $appState.showSettings) { NavigationStack { SettingsScreenView() } }
+        .sheet(isPresented: $appState.showArticleList) {
+            NavigationStack {
+                ArticleListView(
+                    currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
+                        ? filteredArticles[appState.currentIndex].identifier : nil,
+                    onSelect: openArticle
+                )
+            }
+        }
         .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
         .alert("Summarize Failed", isPresented: $summarizeFailed) {
             Button("OK", role: .cancel) {}
@@ -209,6 +218,17 @@ struct ReaderScreen: View {
 
     private func copyLink(_ article: Article) {
         UIPasteboard.general.string = article.url
+    }
+
+    /// Jump the reader to an article picked from the list. Recompute first so an in-list filter
+    /// change is reflected, then resolve by identifier (not a stale index) and dismiss the sheet.
+    private func openArticle(_ article: Article) {
+        recomputeFilter()
+        if let i = TimelinePageIndex.index(of: article.identifier, in: filteredArticles) {
+            appState.currentIndex = i
+            settings.timelineAnchorIdentifier = article.identifier
+        }
+        appState.showArticleList = false
     }
 
     private func summarize(_ article: Article) {
