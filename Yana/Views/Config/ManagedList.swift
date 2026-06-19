@@ -21,6 +21,10 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
     var onDelete: ((IndexSet) -> Void)? = nil
     var onMove: ((IndexSet, Int) -> Void)? = nil
 
+    /// When set, the list scrolls this row into view once on appear (used to reveal the
+    /// reader's currently-selected article). Existing callers omit it (defaults to nil).
+    var scrollToID: Item.ID? = nil
+
     @ViewBuilder var leadingActions: (Item) -> Leading
     @ViewBuilder var row: (Item) -> Row
 
@@ -29,24 +33,31 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
     }
 
     var body: some View {
-        List {
-            ForEach(items) { item in
-                row(item)
-                    .swipeActions(edge: .leading) {
-                        leadingActions(item)
-                    }
+        ScrollViewReader { proxy in
+            List {
+                ForEach(items) { item in
+                    row(item)
+                        .swipeActions(edge: .leading) {
+                            leadingActions(item)
+                        }
+                }
+                .onDelete(perform: onDelete)
+                .onMove(perform: reorderEnabled ? onMove : nil)
             }
-            .onDelete(perform: onDelete)
-            .onMove(perform: reorderEnabled ? onMove : nil)
-        }
-        .searchable(text: $searchText, prompt: searchPrompt)
-        .overlay {
-            if items.isEmpty {
-                if searchText.isEmpty {
-                    ContentUnavailableView(emptyTitle, systemImage: emptyIcon,
-                                           description: Text(emptyDescription))
-                } else {
-                    ContentUnavailableView.search(text: searchText)
+            .searchable(text: $searchText, prompt: searchPrompt)
+            .overlay {
+                if items.isEmpty {
+                    if searchText.isEmpty {
+                        ContentUnavailableView(emptyTitle, systemImage: emptyIcon,
+                                               description: Text(emptyDescription))
+                    } else {
+                        ContentUnavailableView.search(text: searchText)
+                    }
+                }
+            }
+            .onAppear {
+                if let scrollToID {
+                    proxy.scrollTo(scrollToID, anchor: .center)
                 }
             }
         }
