@@ -26,6 +26,19 @@ final class ReaderArticleViewController: UIViewController,
     private var index = 0
     private var isTransitioning = false
 
+    /// Reader prewarm/cache tuning. Constants so they can be profiled and dialed on-device.
+    /// Radius covers a 5-swipe burst in one direction; capacity holds ±radius on both sides
+    /// plus a little recent history, bounding live WKWebViews.
+    private static let prewarmRadius = 5
+    private static let pageCacheCapacity = 25
+
+    /// Reused page controllers keyed by article identifier; revisiting a recent article is then
+    /// instant (no re-render). LRU eviction tears down off-window web views to bound memory.
+    private let pageCache = LRUCache<String, ReaderWebViewController>(capacity: pageCacheCapacity)
+
+    /// Last observed travel direction, used to bias prewarming toward where the user is going.
+    private var lastDirection: PrewarmPlan.Direction = .none
+
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
     private var articleListItem: UIBarButtonItem!
@@ -60,6 +73,11 @@ final class ReaderArticleViewController: UIViewController,
         pageController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(pageController.view)
         pageController.didMove(toParent: self)
+
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification, object: nil
+        )
 
         // Tap the nav bar to hide bars (NNW behavior).
         let tapZone = UIView()
@@ -156,6 +174,7 @@ final class ReaderArticleViewController: UIViewController,
             pageController.setViewControllers([page], direction: .forward, animated: false)
         }
         updateStarItem()
+        prewarmNeighbors(around: self.index)
     }
 
     func update(articles: [Article], index: Int) {
@@ -181,14 +200,30 @@ final class ReaderArticleViewController: UIViewController,
 
     private func makePage(for index: Int) -> ReaderWebViewController? {
         guard articles.indices.contains(index) else { return nil }
+        let article = articles[index]
+        if let cached = pageCache.value(for: article.identifier) { return cached }
         let vc = ReaderWebViewController(
-            article: articles[index],
+            article: article,
             allowsFullscreen: isFullscreenAvailable,
             onRefresh: onRefresh,
             onRequestShowBars: { [weak self] in self?.applyFullscreen(false, animated: true) }
         )
         vc.hideBarsTapZonesActive(settings.articleFullscreenEnabled && isFullscreenAvailable)
+        pageCache.insert(vc, for: article.identifier)
         return vc
+    }
+
+    /// Instantiate (and thus begin loading) the neighbors around `index`, biased toward the last
+    /// travel direction, so a burst of swipes lands on already-rendered HTML.
+    private func prewarmNeighbors(around index: Int) {
+        let targets = PrewarmPlan.indices(
+            current: index, count: articles.count,
+            radius: Self.prewarmRadius, direction: lastDirection
+        )
+        for i in targets {
+            let vc = makePage(for: i)         // inserts into cache + triggers loadHTMLString
+            vc?.loadViewIfNeeded()            // force viewDidLoad → render() now, off-screen
+        }
     }
 
     // MARK: - Actions
@@ -309,6 +344,11 @@ final class ReaderArticleViewController: UIViewController,
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             willTransitionTo pendingViewControllers: [UIViewController]) {
+        if let next = pendingViewControllers.first as? ReaderWebViewController,
+           let target = TimelinePageIndex.index(of: next.article.identifier, in: articles) {
+            lastDirection = target > index ? .forward : .backward
+            prewarmNeighbors(around: target)   // warm mid-swipe, not only after it finishes
+        }
         isTransitioning = true
     }
 
@@ -320,5 +360,17 @@ final class ReaderArticleViewController: UIViewController,
         index = i
         updateStarItem()
         onIndexChange?(i)
+        prewarmNeighbors(around: i)
     }
+
+    // MARK: - Memory
+
+    @objc private func handleMemoryWarning() {
+        // Keep only the live ±1 window so the current page and its immediate neighbors survive.
+        let live = PrewarmPlan.indices(current: index, count: articles.count, radius: 1, direction: .none) + [index]
+        let keep = Set(live.filter { articles.indices.contains($0) }.map { articles[$0].identifier })
+        _ = pageCache.trim(toKeep: keep)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 }
