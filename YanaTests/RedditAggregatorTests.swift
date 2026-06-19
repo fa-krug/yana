@@ -317,6 +317,49 @@ struct RedditAggregatorTests {
                 "og:image from the linked page should become the header when Reddit has no preview")
     }
 
+    // MARK: - refetch
+
+    private func makeRefetchAggregator() -> RedditAggregator {
+        var opts = RedditOptions(); opts.minComments = 0; opts.minAgeHours = 0
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let postJSON = """
+        [ {"data":{"children":[
+            {"data":{"id":"p1","title":"Hello refreshed","selftext":"Fresh **body**","url":"",
+                     "permalink":"/r/swift/comments/p1/hello/","created_utc":\(recentUTC),
+                     "author":"alice","score":42,"num_comments":7,"is_self":true}}
+          ]}},
+          {"data":{"children":[
+            {"kind":"t1","data":{"id":"c1","body":"Great post","author":"bob","score":10,"permalink":"/r/swift/comments/p1/hello/c1/"}}
+          ]}} ]
+        """
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            return Data(postJSON.utf8)   // both /comments fetches (post + comments) hit this
+        }
+        return RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+    }
+
+    @Test func refetchRebuildsSinglePost() async throws {
+        let seed = AggregatedArticle(title: "Old", identifier: "https://reddit.com/r/swift/comments/p1/hello/",
+                                     url: "https://reddit.com/r/swift/comments/p1/hello/",
+                                     rawContent: "", content: "OLD", date: .now, author: "alice", iconURL: nil)
+        let a = try #require(try await makeRefetchAggregator().refetch(seed))
+        #expect(a.identifier == "https://reddit.com/r/swift/comments/p1/hello/")
+        #expect(a.content.contains("<strong>body</strong>"))   // refreshed selftext markdown
+        #expect(a.content.contains("Great post"))               // comments rebuilt
+    }
+
+    @Test func refetchReturnsNilForUnparseablePermalink() async throws {
+        let seed = AggregatedArticle(title: "x", identifier: "https://reddit.com/r/swift/",
+                                     url: "https://reddit.com/r/swift/",
+                                     rawContent: "", content: "", date: .now, author: "", iconURL: nil)
+        let result = try await makeRefetchAggregator().refetch(seed)
+        #expect(result == nil)
+    }
+
     /// Priority 3 truncation: an image link that appears *after* a referenced comment URL in the
     /// selftext belongs to the quoted discussion, not this post — so it must not be promoted to the
     /// header. The chain falls back to the thumbnail instead. (Server _extract_image_url_from_selftext.)

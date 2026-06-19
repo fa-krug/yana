@@ -39,9 +39,15 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
         return try await finalize(result)
     }
 
-    /// Default: cannot re-fetch a single item in isolation (RSS content lives in the feed payload).
-    /// `FullWebsiteAggregator` overrides this with a real per-URL re-fetch.
-    func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { nil }
+    /// Re-fetch one known article by re-downloading the feed and enriching only the entry whose
+    /// link matches the seed identifier. The network fetch pulls the whole feed (RSS content lives
+    /// in the feed payload), but only the matching entry is returned. `nil` when the entry is gone.
+    /// `FullWebsiteAggregator` overrides this with a per-URL re-scrape.
+    func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? {
+        let entries = try await fetchEntries()
+        guard let entry = entries.first(where: { $0.link == seed.identifier }) else { return nil }
+        return try await enrich(makeArticle(from: entry), entry: entry)
+    }
 
     // MARK: - Hooks
 

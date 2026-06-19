@@ -454,7 +454,7 @@ struct AggregationServiceTests {
         #expect(feed.articles.count == 1)                // updated, not duplicated
     }
 
-    @Test func forceReloadArticleFallsBackToFeedWhenRefetchUnsupported() async throws {
+    @Test func forceReloadArticleDoesNotReloadFeedWhenRefetchReturnsNil() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
@@ -463,17 +463,34 @@ struct AggregationServiceTests {
         article.feed = feed
         context.insert(article)
 
-        // refetch returns nil → fallback re-runs the feed, which re-imports id1 with new content.
-        var updatedArticle = self.aggregated("id1")
-        updatedArticle.content = "FROM_FEED"
-        let feedArticle = updatedArticle
+        // refetch returns nil, and the aggregator also offers a feed article — which must NOT be imported.
+        var feedOnly = self.aggregated("id1"); feedOnly.content = "FROM_FEED"
+        let feedArticle = feedOnly
         let service = AggregationService(context: context, makeAggregator: { _, _ in
             RefetchFakeAggregator(articles: [feedArticle], refetchResult: nil)
         }, aiProcessor: FakeAIProcessor())
-        await service.forceReload(article: article)
+        let inserted = await service.forceReload(article: article)
 
-        #expect(article.content == "FROM_FEED")          // refreshed via the forced feed reload
-        #expect(feed.articles.count == 1)
+        #expect(inserted == 0)                       // nothing reloaded
+        #expect(article.content == "OLD")            // current article untouched (no feed reload)
+        #expect(feed.articles.count == 1)            // no extra articles imported
+    }
+
+    @Test func forceReloadArticleReturnsZeroWhenAggregatorUnavailable() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+        let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
+                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+        article.feed = feed
+        context.insert(article)
+
+        let service = AggregationService(context: context, makeAggregator: { _, _ in nil },
+                                         aiProcessor: FakeAIProcessor())
+        let inserted = await service.forceReload(article: article)
+
+        #expect(inserted == 0)
+        #expect(article.content == "OLD")
     }
 
     @Test func forceReloadDoesNotRetentionCleanupRefreshedArticles() async throws {

@@ -96,4 +96,24 @@ struct YouTubeAggregatorTests {
     @Test func logoImageURLNilWithoutKey() async {
         #expect(await makeAggregator(key: nil).logoImageURL() == nil)
     }
+
+    @Test func refetchRebuildsSingleVideo() async throws {
+        let seed = AggregatedArticle(title: "Old title", identifier: "https://www.youtube.com/watch?v=vid111aaaaa",
+                                     url: "https://www.youtube.com/watch?v=vid111aaaaa",
+                                     rawContent: "", content: "OLD", date: .now, author: "@mychan", iconURL: nil)
+        let a = try #require(try await makeAggregator(key: "K").refetch(seed))
+        #expect(a.identifier == "https://www.youtube.com/watch?v=vid111aaaaa")
+        #expect(a.title == "Cool Video")                                 // refreshed from the API
+        #expect(a.content.contains("youtube-nocookie.com/embed/vid111aaaaa"))
+        #expect(a.content.contains("Line1<br>Line2"))                    // description
+        #expect(a.content.contains("Nice video"))                        // comments
+        #expect(a.author == "@mychan")                                   // carried from seed (no channel resolve)
+    }
+
+    @Test func refetchReturnsNilForUnparseableURL() async throws {
+        let seed = AggregatedArticle(title: "x", identifier: "not-a-video", url: "https://example.com/x",
+                                     rawContent: "", content: "", date: .now, author: "", iconURL: nil)
+        let result = try await makeAggregator(key: "K").refetch(seed)
+        #expect(result == nil)
+    }
 }
