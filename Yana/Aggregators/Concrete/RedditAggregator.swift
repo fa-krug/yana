@@ -84,7 +84,12 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
                 headerHTML = try await makeHeaderHTML(headerURL, title: post.title)
             }
         }
-        let content = ContentFormatter.format(content: body, title: post.title, url: permalink,
+        // Localize inline body images (gallery, GIFs, selftext, comment images) to cached
+        // `yana-img://` references, mirroring the RSS pipeline — so Reddit content is cached,
+        // available offline, and the reader never issues remote image requests. The lead media
+        // (header image / video poster) is localized separately above.
+        let localizedBody = await localizeImages(in: body, baseURL: permalink)
+        let content = ContentFormatter.format(content: localizedBody, title: post.title, url: permalink,
                                               headerHTML: headerHTML, commentsHTML: nil)
         return AggregatedArticle(
             title: post.title, identifier: permalink, url: permalink,
@@ -352,6 +357,15 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             }
         }
         return nil
+    }
+
+    /// Downloads every inline `<img>` in the body via `ImageStore` and rewrites it to a cached
+    /// `yana-img://` reference (drops any that fail to fetch). Returns the body unchanged if it
+    /// can't be parsed.
+    private func localizeImages(in html: String, baseURL: String) async -> String {
+        guard let doc = try? HTMLUtils.parse(html) else { return html }
+        try? await rewriteImages(in: doc, store: store, baseURL: URL(string: baseURL))
+        return (try? HTMLUtils.bodyHTML(doc)) ?? html
     }
 
     private func stripImage(from html: String, url: String) -> String {

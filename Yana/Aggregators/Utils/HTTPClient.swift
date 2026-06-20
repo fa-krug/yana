@@ -5,20 +5,6 @@ import Foundation
 enum HTTPClient {
     static let userAgent = "Mozilla/5.0 (compatible; YanaBot/1.0; +https://github.com/fa-krug/Yana)"
 
-    /// A plain browser User-Agent. Reddit's image CDN (`*.redd.it` — `preview.redd.it`,
-    /// `external-preview.redd.it`, `i.redd.it`) returns 403 to the bot-identifying default UA, so
-    /// image fetches from those hosts must look like a browser. Reddit's signed preview URLs are
-    /// otherwise public, so no auth token is needed — only a non-bot UA.
-    static let browserUserAgent =
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
-        + "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-
-    /// True for hosts whose CDN rejects the bot UA and needs `browserUserAgent` instead.
-    static func usesBrowserUserAgent(host: String?) -> Bool {
-        guard let host = host?.lowercased() else { return false }
-        return host == "redd.it" || host.hasSuffix(".redd.it")
-    }
-
     /// Hard ceiling on a single response body. Untrusted feeds/images must not exhaust memory.
     static let maxResponseBytes = 25 * 1024 * 1024   // 25 MB
 
@@ -35,8 +21,7 @@ enum HTTPClient {
 
     static func fetchData(_ url: URL, timeout: TimeInterval = 30) async throws -> (data: Data, contentType: String?) {
         var request = URLRequest(url: url, timeoutInterval: timeout)
-        let ua = usesBrowserUserAgent(host: url.host) ? browserUserAgent : userAgent
-        request.setValue(ua, forHTTPHeaderField: "User-Agent")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("text/html,application/xhtml+xml,*/*;q=0.8", forHTTPHeaderField: "Accept")
         return try await send(request)
     }
