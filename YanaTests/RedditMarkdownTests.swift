@@ -69,6 +69,41 @@ struct RedditMarkdownTests {
         #expect(html.contains("&lt;img"))
     }
 
+    @Test func backslashEscapedDashIsNotAListAndDropsBackslash() {
+        // Reddit users write "\-" to get a literal dash that isn't a list bullet.
+        let html = RedditMarkdown.toHTML("\\- Through the door\n\n\\- Past the desk")
+        #expect(!html.contains("<ul>"))
+        #expect(!html.contains("<li>"))
+        #expect(!html.contains("\\-"))
+        #expect(html.contains("- Through the door"))
+        #expect(html.contains("- Past the desk"))
+    }
+
+    @Test func backslashEscapedPunctuationStaysLiteral() {
+        let star = RedditMarkdown.toHTML("\\*not italic\\*")
+        #expect(!star.contains("<em>"))
+        #expect(star.contains("*not italic*"))
+        // Backslash before non-escapable char is left untouched.
+        #expect(RedditMarkdown.toHTML("C:\\path").contains("C:\\path"))
+        // Double backslash collapses to a single literal backslash.
+        #expect(RedditMarkdown.toHTML("a\\\\b").contains("a\\b"))
+    }
+
+    @Test func existingHTMLEntitiesArePreserved() {
+        // raw_json=1 returns user-typed entities verbatim; keep them so the WebView decodes them.
+        #expect(RedditMarkdown.toHTML("a&#x200B;b").contains("&#x200B;"))
+        #expect(!RedditMarkdown.toHTML("a&#x200B;b").contains("&amp;#x200B;"))
+        #expect(RedditMarkdown.toHTML("it&#39;s").contains("&#39;"))
+        #expect(RedditMarkdown.toHTML("a&nbsp;b").contains("&nbsp;"))
+        // Already-encoded ampersand is not double-escaped.
+        #expect(RedditMarkdown.toHTML("a &amp; b").contains("&amp;"))
+        #expect(!RedditMarkdown.toHTML("a &amp; b").contains("&amp;amp;"))
+    }
+
+    @Test func bareAmpersandIsStillEscaped() {
+        #expect(RedditMarkdown.toHTML("R&D budget").contains("R&amp;D"))
+    }
+
     @Test func escapingDoesNotBreakMarkdownStructure() {
         // blockquote, spoiler, bold, and a link all still work through the escaped path
         #expect(RedditMarkdown.toHTML("> quoted").contains("<blockquote>"))
