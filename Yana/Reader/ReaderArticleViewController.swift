@@ -314,10 +314,10 @@ final class ReaderArticleViewController: UIViewController,
     @objc private func openInBrowser() {
         guard let article = currentArticle(), let url = URL(string: article.url),
               url.scheme == "http" || url.scheme == "https" else { return }
-        if settings.useSystemBrowser {
-            UIApplication.shared.open(url)
-        } else {
-            present(SFSafariViewController(url: url), animated: true)
+        // Match in-article link taps: try the corresponding native app (universal link) first, then
+        // fall back to the in-app Safari view / system browser. See ReaderLinkPolicy.openExternally.
+        ReaderLinkPolicy.openExternally(url, useSystemBrowser: settings.useSystemBrowser) { [weak self] in
+            self?.topmostPresenter ?? self
         }
     }
 

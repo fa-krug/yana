@@ -1,5 +1,7 @@
 import Foundation
 import WebKit
+import UIKit
+import SafariServices
 
 /// Decides whether a WebView navigation must leave the reader and open in the in-app browser.
 ///
@@ -26,6 +28,28 @@ enum ReaderLinkPolicy {
             return url
         default:
             return nil
+        }
+    }
+
+    /// Opens a link the way a tapped article link does: first ask iOS whether an installed app claims
+    /// this URL as a universal link (e.g. a YouTube/Reddit link opens that app), and only fall back to
+    /// the in-app Safari view (or the system browser, per the user setting) when no app handles it.
+    /// Shared by the in-article link handler and the reader's "Open in Browser" toolbar action so both
+    /// behave the same. `presenter` is evaluated lazily after the universal-link check, since the
+    /// in-app Safari view must be presented from the top-most controller in the window.
+    @MainActor
+    static func openExternally(_ url: URL, useSystemBrowser: Bool, presenter: @escaping () -> UIViewController?) {
+        let scheme = url.scheme?.lowercased()
+        guard scheme == "http" || scheme == "https" else {
+            UIApplication.shared.open(url); return
+        }
+        UIApplication.shared.open(url, options: [.universalLinksOnly: true]) { didOpen in
+            guard !didOpen else { return }
+            if useSystemBrowser {
+                UIApplication.shared.open(url)
+            } else if let presenter = presenter() {
+                presenter.present(SFSafariViewController(url: url), animated: true)
+            }
         }
     }
 }

@@ -199,23 +199,10 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     }
 
     private func openExternally(_ url: URL) {
-        let scheme = url.scheme?.lowercased()
-        guard scheme == "http" || scheme == "https" else {
-            UIApplication.shared.open(url); return
-        }
-        // Mirror NetNewsWire: first ask iOS whether an installed app claims this URL as a universal
-        // link (e.g. tapping a YouTube/Reddit link opens that app). Only fall back to the browser
-        // when no app handles it.
-        UIApplication.shared.open(url, options: [.universalLinksOnly: true]) { [weak self] didOpen in
-            guard !didOpen, let self else { return }
-            if self.settings.useSystemBrowser {
-                UIApplication.shared.open(url)
-            } else {
-                // This view controller is a page inside a UIPageViewController; presenting from it
-                // directly can silently fail, so present from the top-most controller in the window.
-                let presenter = self.topmostPresenter ?? self
-                presenter.present(SFSafariViewController(url: url), animated: true)
-            }
+        // This view controller is a page inside a UIPageViewController; presenting from it directly
+        // can silently fail, so present from the top-most controller in the window.
+        ReaderLinkPolicy.openExternally(url, useSystemBrowser: settings.useSystemBrowser) { [weak self] in
+            self?.topmostPresenter ?? self
         }
     }
 
