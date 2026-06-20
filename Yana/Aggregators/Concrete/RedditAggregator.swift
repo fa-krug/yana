@@ -58,23 +58,31 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             if result.count >= limit { break }
 
             let isCrossPost = post.crosspostParentList?.isEmpty == false
-            result.append(try await buildArticle(from: original, isCrossPost: isCrossPost, client: client))
+            result.append(try await buildArticle(from: original, outer: post, isCrossPost: isCrossPost, client: client))
         }
         return result
     }
 
     /// Build one article from a (possibly crosspost-resolved) Reddit post. Shared by `aggregate()`
     /// and `refetch`.
-    private func buildArticle(from post: RedditPostData, isCrossPost: Bool,
+    private func buildArticle(from post: RedditPostData, outer: RedditPostData, isCrossPost: Bool,
                               client: RedditClient) async throws -> AggregatedArticle {
         let date = Date(timeIntervalSince1970: post.createdUTC)
         let permalink = "https://reddit.com\(RedditMarkdown.decodeEntities(post.permalink))"
         var body = try await buildContent(post: post, isCrossPost: isCrossPost, client: client)
-        let headerURL = await headerImageURL(for: post)
-        if let headerURL { body = stripImage(from: body, url: headerURL) }
         var headerHTML: String?
-        if options.includeHeaderImage, let headerURL {
-            headerHTML = try await makeHeaderHTML(headerURL, title: post.title)
+        // Reddit-hosted video: embed a playable inline player (with a poster) as the lead media.
+        // For crossposts the media often lives on the outer wrapper, not the resolved parent.
+        if let videoHTML = await makeVideoHTML(post: post, outer: outer) {
+            headerHTML = videoHTML
+        } else {
+            // The outer crosspost wrapper carries preview/thumbnail that Reddit omits from the
+            // nested parent entry, so consult it as a fallback for the header image.
+            let headerURL = await headerImageURL(for: post, fallback: outer)
+            if let headerURL { body = stripImage(from: body, url: headerURL) }
+            if options.includeHeaderImage, let headerURL {
+                headerHTML = try await makeHeaderHTML(headerURL, title: post.title)
+            }
         }
         let content = ContentFormatter.format(content: body, title: post.title, url: permalink,
                                               headerHTML: headerHTML, commentsHTML: nil)
@@ -90,7 +98,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         guard let post = try await client.fetchPost(subreddit: normalizedSubreddit, postID: postID) else { return nil }
         let isCrossPost = post.crosspostParentList?.isEmpty == false
         let original = post.crosspostParentList?.first ?? post
-        return try await buildArticle(from: original, isCrossPost: isCrossPost, client: client)
+        return try await buildArticle(from: original, outer: post, isCrossPost: isCrossPost, client: client)
     }
 
     /// Extract the base-36 post ID from a permalink like `…/r/<sub>/comments/<id>/<slug>/`.
@@ -227,7 +235,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         return HeaderElementExtractor.metaImageURL(pageHTML: html, articleURL: url)
     }
 
-    private func headerImageURL(for post: RedditPostData) async -> String? {
+    private func headerImageURL(for post: RedditPostData, fallback: RedditPostData? = nil) async -> String? {
         // Priority 0 (highest): domain image override wins over all other strategies.
         if !post.url.isEmpty, let overrideURL = DomainImageOverrides.overrideImageURL(for: post.url) {
             return overrideURL
@@ -275,13 +283,18 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             }
             if let firstLink, let image = await pageImageURL(firstLink) { return image }
         }
-        // Priority 4: preview source, then thumbnail fallback.
-        if let src = post.preview?.images.first?.source?.url {
-            return RedditMarkdown.decodeEntities(src)
+        // Priority 4: preview source, then thumbnail fallback. Consult the outer crosspost
+        // wrapper too — Reddit omits preview/thumbnail from the nested parent entry.
+        for candidate in [post, fallback].compactMap({ $0 }) {
+            if let src = candidate.preview?.images.first?.source?.url {
+                return RedditMarkdown.decodeEntities(src)
+            }
         }
-        if let thumb = post.thumbnail, thumb.hasPrefix("http"),
-           !["self", "default", "nsfw", "spoiler"].contains(thumb) {
-            return RedditMarkdown.decodeEntities(thumb)
+        for candidate in [post, fallback].compactMap({ $0 }) {
+            if let thumb = candidate.thumbnail, thumb.hasPrefix("http"),
+               !["self", "default", "nsfw", "spoiler"].contains(thumb) {
+                return RedditMarkdown.decodeEntities(thumb)
+            }
         }
         // Priority 5: link post with no Reddit-supplied image — scrape the linked page's og:image.
         if !post.isSelf, !post.url.isEmpty {
@@ -303,6 +316,42 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             return ""
         }
         return ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
+    }
+
+    /// Build an inline HTML5 player for a Reddit-hosted video. Prefers the HLS stream (muxes audio
+    /// and plays inline in WKWebView); falls back to the plain MP4. The poster is the post's
+    /// preview image, cached via `ImageStore`. Returns nil when the post has no Reddit video.
+    private func makeVideoHTML(post: RedditPostData, outer: RedditPostData) async -> String? {
+        guard let video = post.redditVideo ?? outer.redditVideo,
+              let rawSrc = video.hlsURL ?? video.fallbackURL else { return nil }
+        let src = RedditMarkdown.decodeEntities(rawSrc)
+        let type = src.lowercased().contains(".m3u8") ? "application/vnd.apple.mpegurl" : "video/mp4"
+        var posterAttr = ""
+        if let raw = videoPosterURL(post: post, outer: outer), let remote = URL(string: raw),
+           let hash = await store.store(remoteURL: remote, isHeader: true) {
+            posterAttr = " poster=\"\(ReaderWeb.imageScheme)://\(hash)\""
+        }
+        let player = "<video controls playsinline preload=\"metadata\"\(posterAttr) style=\"width: 100%; height: auto;\">"
+            + "<source src=\"\(src)\" type=\"\(type)\">"
+            + "Your browser does not support the video element.</video>"
+        return "<header style=\"margin-bottom: 1.5em;\">\(player)</header>"
+    }
+
+    /// Poster image for a video player: the Reddit preview image, then thumbnail, checking the
+    /// resolved post first and the outer crosspost wrapper second.
+    private func videoPosterURL(post: RedditPostData, outer: RedditPostData) -> String? {
+        for candidate in [post, outer] {
+            if let src = candidate.preview?.images.first?.source?.url {
+                return RedditMarkdown.decodeEntities(src)
+            }
+        }
+        for candidate in [post, outer] {
+            if let thumb = candidate.thumbnail, thumb.hasPrefix("http"),
+               !["self", "default", "nsfw", "spoiler"].contains(thumb) {
+                return RedditMarkdown.decodeEntities(thumb)
+            }
+        }
+        return nil
     }
 
     private func stripImage(from html: String, url: String) -> String {
