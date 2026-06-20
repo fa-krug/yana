@@ -11,12 +11,26 @@ struct ArticleListView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Query(ArticleListView.timelineDescriptor) private var allArticles: [Article]
 
-    static var timelineDescriptor: FetchDescriptor<Article> {
+    /// Cold open materializes only the newest `limit` articles (nil = unbounded). The window grows
+    /// as the user scrolls to the end, and goes unbounded while a search is active so search stays
+    /// complete. Owned by the presenter (ReaderScreen) so it survives this view's re-inits.
+    @Binding var limit: Int?
+    @Query private var allArticles: [Article]
+
+    init(currentArticleID: String?, limit: Binding<Int?>, onSelect: @escaping (Article) -> Void) {
+        self.currentArticleID = currentArticleID
+        self._limit = limit
+        self.onSelect = onSelect
+        // @Query can't take a dynamic fetchLimit via its macro, so build it here in init.
+        _allArticles = Query(Self.timelineDescriptor(limit: limit.wrappedValue))
+    }
+
+    static func timelineDescriptor(limit: Int?) -> FetchDescriptor<Article> {
         var descriptor = FetchDescriptor<Article>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
+        if let limit { descriptor.fetchLimit = limit }
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         return descriptor
     }
@@ -44,13 +58,19 @@ struct ArticleListView: View {
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }
 
-    /// Persistent id (not the String identifier) of the currently-selected article, for scrolling.
-    private var currentItemID: Article.ID? {
-        results.first { $0.identifier == currentArticleID }?.id
+    /// More articles may exist beyond the loaded window: the raw fetch filled the limit. (When the
+    /// limit is nil the window is unbounded, so the database is fully loaded.)
+    private var canLoadMore: Bool {
+        guard let limit else { return false }
+        return allArticles.count >= limit
     }
 
     var body: some View {
-        ManagedList(
+        // Compute the filtered/searched list once per render: it is read for the rows, the
+        // scroll-to target, and delete resolution, and re-runs on every keystroke otherwise.
+        let results = results
+        let currentItemID = results.first { $0.identifier == currentArticleID }?.id
+        return ManagedList(
             items: results,
             searchText: $searchText,
             searchPrompt: "Search articles",
@@ -87,11 +107,17 @@ struct ArticleListView: View {
                 .buttonStyle(.plain)
                 .listRowBackground(article.identifier == currentArticleID
                                    ? Color.accentColor.opacity(0.15) : nil)
+                .onAppear { loadMoreIfNeeded(appearing: article, in: results) }
         }
         .task(id: searchText) {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
             debouncedSearch = searchText
+        }
+        .onChange(of: debouncedSearch) { _, query in
+            // A search must scan the whole library, so drop the window while one is active;
+            // restore it when the search clears so browsing stays fast.
+            limit = query.isEmpty ? TimelineWindow.pageSize : nil
         }
         .navigationTitle("Articles")
         .toolbar {
@@ -134,6 +160,14 @@ struct ArticleListView: View {
                 Text(String(localized: "Delete \u{201C}\(article.title)\u{201D}? This cannot be undone."))
             }
         }
+    }
+
+    /// Grow the window when the last loaded row appears (browse only — search is already
+    /// unbounded). Stops once the database is exhausted (`canLoadMore` is false).
+    private func loadMoreIfNeeded(appearing article: Article, in results: [Article]) {
+        guard debouncedSearch.isEmpty, canLoadMore, let limit,
+              article.id == results.last?.id else { return }
+        self.limit = TimelineWindow.nextLimit(limit)
     }
 
     private func row(_ article: Article) -> some View {
