@@ -22,8 +22,8 @@ The mark is a feminine pair of oversized **round glasses**:
   so the lens interior is a **transparent hole** (the background shows through).
 - **Keyhole bridge** between the lenses.
 - **Temple arms** sweeping out from the upper-outer of each lens.
-- **Eyelashes** — three small, soft, curved leaf shapes fanning from the top of
-  each lens (subtle feminine accent, not spikes).
+- **Eyelashes** — three prominent curved leaf shapes fanning from the top of
+  each lens (a clear feminine accent radiating from the rim).
 
 Everything is pure white on transparency. Decorative elements (arms, bridge,
 lashes) are separate `<path>` elements that union with the lens rings — they do
