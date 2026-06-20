@@ -87,12 +87,26 @@ struct ReaderScreen: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
 
-    @Query(ReaderScreen.timelineDescriptor) private var allArticles: [Article]
+    /// Cold launch materializes only the newest `limit` articles instead of the whole library;
+    /// `onNeedMore` asks the owner (ContentView) to grow the window. See `TimelineWindow`.
+    private let limit: Int
+    private let onNeedMore: () -> Void
 
-    static var timelineDescriptor: FetchDescriptor<Article> {
+    @Query private var allArticles: [Article]
+
+    init(appState: AppState, limit: Int, onNeedMore: @escaping () -> Void) {
+        self.appState = appState
+        self.limit = limit
+        self.onNeedMore = onNeedMore
+        // @Query can't take a dynamic fetchLimit via its macro, so build it here in init.
+        _allArticles = Query(Self.timelineDescriptor(limit: limit))
+    }
+
+    static func timelineDescriptor(limit: Int) -> FetchDescriptor<Article> {
         var descriptor = FetchDescriptor<Article>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
+        descriptor.fetchLimit = limit
         // Batch-load the relationships every page render touches, avoiding N+1 faulting.
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         return descriptor
@@ -116,6 +130,21 @@ struct ReaderScreen: View {
         )
         filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
         hasComputedFilter = true
+        extendWindowIfNeeded()
+    }
+
+    /// Grow the timeline window when the reader is nearing the end of the loaded articles, or when
+    /// an active filter has hidden most of the current page. Idempotent: stops once enough filtered
+    /// articles are loaded or the database is exhausted (see `TimelineWindow`).
+    private func extendWindowIfNeeded() {
+        if TimelineWindow.shouldExtend(
+            loadedRawCount: allArticles.count,
+            currentLimit: limit,
+            filteredCount: filteredArticles.count,
+            index: appState.currentIndex
+        ) {
+            onNeedMore()
+        }
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -179,7 +208,10 @@ struct ReaderScreen: View {
                 settings.hasSeenFullscreenHint = true
             }
         }
-        .onChange(of: appState.currentIndex) { _, _ in saveAnchor() }
+        .onChange(of: appState.currentIndex) { _, _ in
+            saveAnchor()
+            extendWindowIfNeeded()
+        }
         .onChange(of: allArticles) { _, _ in
             recomputeFilter()
             if didRestoreAnchor { reanchorToCurrentArticle() } else { restoreAnchor() }
