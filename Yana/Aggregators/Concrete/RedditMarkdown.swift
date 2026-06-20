@@ -8,12 +8,68 @@ enum RedditMarkdown {
     static func toHTML(_ text: String) -> String {
         guard !text.isEmpty else { return "" }
         var t = String(text.prefix(100_000))     // DoS guard (server: 100KB)
+        t = protectBackslashEscapes(t)            // hide `\`-escaped punctuation from markdown + escaping
         t = escape(t)          // escape user-generated text before emitting any HTML tags
 
         t = replacePreviewImages(t)
         t = applyInline(t)                        // superscript / strikethrough / spoiler
-        let html = blocksToHTML(t)                // paragraphs / lists / blockquotes / inline emphasis+links
-        return linkifyAndTarget(html)
+        var html = blocksToHTML(t)                // paragraphs / lists / blockquotes / inline emphasis+links
+        html = linkifyAndTarget(html)
+        return restoreBackslashEscapes(html)      // emit `\`-escaped punctuation as literal (HTML-safe) chars
+    }
+
+    // MARK: - Backslash escapes (CommonMark)
+
+    /// Punctuation a leading backslash escapes (the CommonMark ASCII-punctuation set).
+    private static let escapablePunctuation = Array(##"!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"##)
+    private static let escapableIndex: [Character: Int] = {
+        var m: [Character: Int] = [:]
+        for (i, c) in escapablePunctuation.enumerated() { m[c] = i }
+        return m
+    }()
+    private static let placeholderBase: UInt32 = 0xE000   // private-use area, never in real text
+
+    /// Replace `\<punct>` with a private-use placeholder so the escaped character is
+    /// interpreted neither as markdown nor as an HTML metacharacter; restored at the end.
+    private static func protectBackslashEscapes(_ s: String) -> String {
+        guard s.contains("\\") else { return s }
+        let chars = Array(s)
+        var out = String()
+        out.reserveCapacity(chars.count)
+        var i = 0
+        while i < chars.count {
+            if chars[i] == "\\", i + 1 < chars.count, let idx = escapableIndex[chars[i + 1]],
+               let scalar = Unicode.Scalar(placeholderBase + UInt32(idx)) {
+                out.unicodeScalars.append(scalar)
+                i += 2
+            } else {
+                out.append(chars[i])
+                i += 1
+            }
+        }
+        return out
+    }
+
+    private static func restoreBackslashEscapes(_ s: String) -> String {
+        let upper = placeholderBase + UInt32(escapablePunctuation.count)
+        guard s.unicodeScalars.contains(where: { $0.value >= placeholderBase && $0.value < upper }) else { return s }
+        var out = String()
+        out.reserveCapacity(s.count)
+        for scalar in s.unicodeScalars {
+            if scalar.value >= placeholderBase, scalar.value < upper {
+                let ch = escapablePunctuation[Int(scalar.value - placeholderBase)]
+                switch ch {
+                case "&": out += "&amp;"
+                case "<": out += "&lt;"
+                case ">": out += "&gt;"
+                case "\"": out += "&quot;"
+                default: out.append(ch)
+                }
+            } else {
+                out.unicodeScalars.append(scalar)
+            }
+        }
+        return out
     }
 
     // MARK: - Reddit preview images
@@ -123,7 +179,10 @@ enum RedditMarkdown {
     // MARK: - Helpers
 
     static func escape(_ s: String) -> String {
-        s.replacingOccurrences(of: "&", with: "&amp;")
+        // Escape a bare `&` but preserve existing HTML entities (e.g. `&#x200B;`, `&#39;`,
+        // `&amp;`) so the WebView decodes them rather than showing the literal source.
+        // Mirrors Python-Markdown, which leaves character references intact.
+        regexReplace(s, #"&(?!(?:#x[0-9A-Fa-f]+|#[0-9]+|[A-Za-z][A-Za-z0-9]*);)"#) { _ in "&amp;" }
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
