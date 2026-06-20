@@ -382,4 +382,64 @@ struct RedditAggregatorTests {
         #expect(rec.urls.contains("https://example.com/thumb.jpg"),
                 "with the post-comment image excluded, the chain falls back to the thumbnail")
     }
+
+    // MARK: - Reddit-hosted video
+
+    /// A native `v.redd.it` video post must embed an inline HTML5 player using the HLS stream
+    /// (audio + inline playback in WKWebView), with the Reddit preview image as the poster.
+    @Test func hostedVideoPostEmbedsInlinePlayer() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"v1","title":"Hosted video","selftext":"",
+                   "url":"https://v.redd.it/abc123","permalink":"/r/swift/comments/v1/hosted_video/",
+                   "created_utc":\(recentUTC),"author":"vic","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":false,"is_video":true,
+                   "thumbnail":"https://example.com/thumb.jpg",
+                   "preview":{"images":[{"source":{"url":"https://preview.redd.it/poster.jpg?width=640"}}]},
+                   "media":{"reddit_video":{"hls_url":"https://v.redd.it/abc123/HLSPlaylist.m3u8?a=1&amp;b=2",
+                                            "fallback_url":"https://v.redd.it/abc123/DASH_720.mp4"}}}}
+        ]}}
+        """
+        let a = try #require(try await aggregator(listing: listing, store: recordingStore(rec)).aggregate().first)
+        #expect(a.content.contains("<video"))
+        #expect(a.content.contains("playsinline"))
+        #expect(a.content.contains("https://v.redd.it/abc123/HLSPlaylist.m3u8?a=1&b=2"),
+                "the HLS stream URL (entity-decoded) must be the player source")
+        #expect(a.content.contains("application/vnd.apple.mpegurl"))
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "poster image must be localized")
+        #expect(rec.urls.contains("https://preview.redd.it/poster.jpg?width=640"),
+                "the preview image must be cached as the video poster")
+    }
+
+    /// Regression: a *crosspost* of a video post. Reddit omits `media`/`preview` from the nested
+    /// `crosspost_parent_list` entry the article is built from — that media lives on the outer
+    /// wrapper. The player (and poster) must fall back to the outer post so the article isn't
+    /// left with no media at all (the reported "missing image" bug).
+    @Test func crosspostVideoFallsBackToOuterWrapperMedia() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"xp1","title":"Crosspost video","selftext":"",
+                   "url":"https://v.redd.it/xyz","permalink":"/r/funny/comments/xp1/crosspost_video/",
+                   "created_utc":\(recentUTC),"author":"sharer","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":false,"is_video":true,
+                   "thumbnail":"https://example.com/outerthumb.jpg",
+                   "preview":{"images":[{"source":{"url":"https://preview.redd.it/outerposter.jpg"}}]},
+                   "media":{"reddit_video":{"hls_url":"https://v.redd.it/xyz/HLSPlaylist.m3u8"}},
+                   "crosspost_parent_list":[
+                     {"id":"orig","title":"DIY elevator","selftext":"",
+                      "url":"https://v.redd.it/xyz","permalink":"/r/TikTokCringe/comments/orig/diy_elevator/",
+                      "created_utc":\(recentUTC),"author":"galaxystars1","score":99,"num_comments":50,
+                      "is_self":false,"is_gallery":false,"is_video":true,"thumbnail":"spoiler"}]}}
+        ]}}
+        """
+        let a = try #require(try await aggregator(listing: listing, store: recordingStore(rec)).aggregate().first)
+        #expect(a.title == "DIY elevator")
+        #expect(a.identifier == "https://reddit.com/r/TikTokCringe/comments/orig/diy_elevator/")
+        #expect(a.content.contains("<video"), "the crosspost parent lacks media; the player must use the outer wrapper")
+        #expect(a.content.contains("https://v.redd.it/xyz/HLSPlaylist.m3u8"))
+        #expect(rec.urls.contains("https://preview.redd.it/outerposter.jpg"),
+                "the poster must fall back to the outer wrapper's preview image")
+    }
 }
