@@ -19,12 +19,18 @@ struct EmbedRewriterTests {
     @Test func youTubeEmbedMatchesProxyShape() {
         let html = EmbedRewriter.youTubeEmbedHTML(videoID: "abc12345678")
         #expect(html.contains("youtube-embed-container"))
+        // Click-to-play facade: a thumbnail poster + play button shown before the iframe loads.
+        #expect(html.contains("youtube-facade"))
+        #expect(html.contains("https://i.ytimg.com/vi/abc12345678/hqdefault.jpg"))
+        #expect(html.contains("youtube-play"))
+        // The player markup is stashed in data-embed (quotes entity-escaped) and swapped in on tap.
         #expect(html.contains("https://www.youtube-nocookie.com/embed/abc12345678?"))
+        #expect(html.contains("autoplay=1"))
         #expect(html.contains("rel=0"))
         #expect(html.contains("modestbranding=1"))
         #expect(html.contains("playsinline=1"))
         #expect(html.contains("origin=\(ReaderWeb.baseOrigin)"))
-        #expect(html.contains("allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\""))
+        #expect(html.contains("allow=&quot;accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share&quot;"))
     }
 
     @Test func rewriteEmbedsReplacesYouTubeIframe() throws {

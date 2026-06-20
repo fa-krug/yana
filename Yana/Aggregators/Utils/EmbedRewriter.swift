@@ -25,12 +25,28 @@ enum EmbedRewriter {
         return nil
     }
 
+    /// A click-to-play facade rather than a bare live iframe: the privacy-mode (`-nocookie`) player
+    /// renders a black box with only a play button until interacted with — no poster — so we paint
+    /// the video's own thumbnail as a proper 16:9 preview and swap in the autoplaying iframe on tap.
+    /// The facade is a `<div>` (not an `<a>`), so the reader's link-tap interceptor ignores it.
+    /// `videoID` is regex-validated (`[A-Za-z0-9_-]`), so it is safe to interpolate into attributes.
     static func youTubeEmbedHTML(videoID: String) -> String {
-        let params = "autoplay=0&loop=0&mute=0&controls=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=\(ReaderWeb.baseOrigin)"
+        let params = "autoplay=1&loop=0&mute=0&controls=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=\(ReaderWeb.baseOrigin)"
         let src = "https://www.youtube-nocookie.com/embed/\(videoID)?\(params)"
         let allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        return "<div class=\"youtube-embed-container\"><iframe src=\"\(src)\" width=\"560\" height=\"315\" "
-            + "allowfullscreen allow=\"\(allow)\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe></div>"
+        let iframe = "<iframe src=\"\(src)\" width=\"560\" height=\"315\" "
+            + "allowfullscreen allow=\"\(allow)\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe>"
+        // Stash the player markup in an attribute (quotes entity-escaped) and replace the facade with
+        // it on tap. getAttribute returns the decoded HTML, so outerHTML rebuilds the iframe in place.
+        let embedAttr = iframe.replacingOccurrences(of: "\"", with: "&quot;")
+        let thumb = "https://i.ytimg.com/vi/\(videoID)/hqdefault.jpg"
+        // The poster is a real <img> (not a CSS background) so the scraper cleaner's
+        // remove-empty-elements pass keeps the facade — it counts img/iframe/video as content.
+        return "<div class=\"youtube-embed-container\">"
+            + "<div class=\"youtube-facade\" role=\"button\" aria-label=\"Play video\" "
+            + "onclick=\"this.outerHTML=this.getAttribute('data-embed')\" data-embed=\"\(embedAttr)\">"
+            + "<img class=\"youtube-poster\" src=\"\(thumb)\" alt=\"\" loading=\"lazy\" />"
+            + "<div class=\"youtube-play\" aria-hidden=\"true\"></div></div></div>"
     }
 
     static func dailymotionEmbedHTML(videoID: String) -> String {
