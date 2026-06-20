@@ -69,9 +69,10 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
         let doc = try HTMLUtils.parse(html)
         try EmbedRewriter.rewriteEmbeds(in: doc)
         if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
+        try HTMLUtils.removeUnsafeTags(doc)
+        try HTMLUtils.removeTrackingPixels(doc)
         try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))
-        try HTMLUtils.sanitizeClassNames(doc)
-        try HTMLUtils.removeComments(doc)
+        try HTMLUtils.finishSanitization(doc)
         let body = try HTMLUtils.bodyHTML(doc)
         return ContentFormatter.format(content: body, title: article.title, url: article.url,
                                        headerHTML: header?.html, commentsHTML: nil)

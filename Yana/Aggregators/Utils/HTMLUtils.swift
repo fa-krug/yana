@@ -38,6 +38,73 @@ enum HTMLUtils {
         }
     }
 
+    // MARK: - Sanitization
+
+    /// Tags that never render usefully in the reader and are dropped from every article body:
+    /// scripts/styles execute or fight the theme, `noscript` is dead weight, and non-YouTube
+    /// `iframe`s are trackers/ads. Run *after* `EmbedRewriter` so the YouTube embeds it normalizes
+    /// (to `youtube-nocookie.com`) are recognized and kept.
+    static func removeUnsafeTags(_ doc: Document) throws {
+        for el in try doc.select("script, style, noscript") { try el.remove() }
+        for el in try doc.select("iframe") {
+            let src = try el.attr("src").lowercased()
+            let isYouTube = src.contains("youtube.com") || src.contains("youtu.be")
+                || src.contains("youtube-nocookie.com")
+            if !isYouTube { try el.remove() }
+        }
+    }
+
+    /// Strip inline event handlers (`onclick`, `onerror`, …) and `javascript:`/`vbscript:` URLs from
+    /// `href`/`src`, so nothing executes when the body is rendered with JavaScript enabled.
+    static func removeUnsafeAttributes(_ doc: Document) throws {
+        for el in try doc.getAllElements() {
+            guard let attrs = el.getAttributes() else { continue }
+            for attr in attrs.asList() {
+                let key = attr.getKey()
+                let lower = key.lowercased()
+                if lower.hasPrefix("on") {
+                    try el.removeAttr(key)
+                } else if lower == "href" || lower == "src" {
+                    let value = attr.getValue().trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    if value.hasPrefix("javascript:") || value.hasPrefix("vbscript:") {
+                        try el.removeAttr(key)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Drop presentational `style` attributes so the theme's CSS fully governs appearance.
+    static func removeInlineStyles(_ doc: Document) throws {
+        for el in try doc.select("[style]") { try el.removeAttr("style") }
+    }
+
+    /// Remove 1×1 (or zero-size) tracking pixels. Call *before* image download so they are neither
+    /// fetched nor cached.
+    static func removeTrackingPixels(_ doc: Document) throws {
+        for img in try doc.select("img") {
+            let w = try img.attr("width").trimmingCharacters(in: .whitespaces)
+            let h = try img.attr("height").trimmingCharacters(in: .whitespaces)
+            if w == "0" || w == "1" || h == "0" || h == "1" { try img.remove() }
+        }
+    }
+
+    /// Serialize without SwiftSoup's pretty-print indentation so the stored body is compact (smaller
+    /// payload for the reader's `loadHTMLString`, less the WebView must parse).
+    static func compact(_ doc: Document) { doc.outputSettings().prettyPrint(pretty: false) }
+
+    /// Shared sanitization tail run after images are localized: neutralize handlers/URLs, strip
+    /// inline styles, sanitize class names, drop comments and empty paragraphs/spans, and compact.
+    /// Centralized so every aggregator's content pipeline stays consistent.
+    static func finishSanitization(_ doc: Document) throws {
+        try removeUnsafeAttributes(doc)
+        try removeInlineStyles(doc)
+        try sanitizeClassNames(doc)
+        try removeComments(doc)
+        try removeEmptyElements(doc, tags: ["p", "span"])
+        compact(doc)
+    }
+
     static func removeImageByURL(_ doc: Document, url: String) throws {
         guard !url.isEmpty, !url.hasPrefix("data:") else { return }
         let targetBase = baseFilename(url)
