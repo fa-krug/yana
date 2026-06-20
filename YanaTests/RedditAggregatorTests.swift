@@ -376,11 +376,16 @@ struct RedditAggregatorTests {
                    "thumbnail":"https://example.com/thumb.jpg"}}
         ]}}
         """
-        _ = try await aggregator(listing: listing, store: recordingStore(rec)).aggregate()
-        #expect(!rec.urls.contains("https://preview.redd.it/after.png"),
-                "an image after a referenced comment URL belongs to the quoted thread, not the header")
+        let a = try #require(try await aggregator(listing: listing, store: recordingStore(rec)).aggregate().first)
+        // The header-selection chain returns exactly one URL, so the thumbnail being fetched as the
+        // header proves the post-comment selftext image was NOT promoted to the header.
         #expect(rec.urls.contains("https://example.com/thumb.jpg"),
                 "with the post-comment image excluded, the chain falls back to the thumbnail")
+        // The quoted-thread image still renders inline in the body — now localized like every other
+        // inline image (downloaded and rewritten to a cached reference), just never as the header.
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))
+        #expect(!a.content.contains("https://preview.redd.it/after.png"),
+                "the inline image is localized to a cached reference, not left as a remote URL")
     }
 
     // MARK: - Reddit-hosted video
@@ -441,5 +446,48 @@ struct RedditAggregatorTests {
         #expect(a.content.contains("https://v.redd.it/xyz/HLSPlaylist.m3u8"))
         #expect(rec.urls.contains("https://preview.redd.it/outerposter.jpg"),
                 "the poster must fall back to the outer wrapper's preview image")
+    }
+
+    // MARK: - Inline image localization
+
+    /// Inline body images (here, an image inside a comment) must be downloaded and rewritten to
+    /// cached `yana-img://` references like every other aggregator — the reader must never issue a
+    /// remote image request. Reddit's CDN UA was never the problem; un-localized inline images were.
+    @Test func inlineBodyImagesAreLocalized() async throws {
+        let rec = FetchRecorder()
+        // A self-post with no header image (empty selftext, `self` thumbnail), so the only image is
+        // the one embedded in a comment body — which is never promoted to the header.
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"ib1","title":"Inline image","selftext":"",
+                   "url":"https://www.reddit.com/r/swift/comments/ib1/inline_image/",
+                   "permalink":"/r/swift/comments/ib1/inline_image/",
+                   "created_utc":\(recentUTC),"author":"frank","score":50,"num_comments":10,
+                   "is_self":true,"is_gallery":false,"is_video":false,"thumbnail":"self"}}
+        ]}}
+        """
+        let comments = """
+        [ {"data":{"children":[]}},
+          {"data":{"children":[
+            {"kind":"t1","data":{"id":"c1","body":"See https://preview.redd.it/c.png","author":"bob","score":10,"permalink":"/r/swift/comments/ib1/inline_image/c1/"}}
+          ]}} ]
+        """
+        let store = recordingStore(rec)
+        var opts = RedditOptions(); opts.minComments = 5; opts.minAgeHours = 0; opts.includeHeaderImage = true
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(comments.utf8) }
+            return Data(listing.utf8)
+        }
+        let a = try #require(try await RedditAggregator(config: config, credentials: creds,
+                                                        store: store, client: client).aggregate().first)
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "inline comment image must be localized")
+        #expect(!a.content.contains("https://preview.redd.it/c.png"), "remote inline image URL must be replaced")
+        #expect(rec.urls.contains("https://preview.redd.it/c.png"),
+                "the inline image must be downloaded into the cache")
     }
 }
