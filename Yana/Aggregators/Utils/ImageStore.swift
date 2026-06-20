@@ -9,7 +9,7 @@ actor ImageStore {
     private let fetch: @Sendable (URL) async throws -> (Data, String?)
     private var extensions: [String: String] = [:]   // hash -> file extension
 
-    init(directory: URL, fetch: @escaping @Sendable (URL) async throws -> (Data, String?) = { try await HTTPClient.fetchData($0) }) {
+    init(directory: URL, fetch: @escaping @Sendable (URL) async throws -> (Data, String?) = { try await HTTPClient.fetchData($0, accept: HTTPClient.imageAccept) }) {
         self.directory = directory
         self.fetch = fetch
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
