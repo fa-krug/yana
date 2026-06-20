@@ -57,6 +57,18 @@ struct RedditMarkdownTests {
         #expect(html.contains("preview.redd.it/abc.png"))
     }
 
+    @Test func previewImageLinkWithLabelDoesNotLeakAltText() {
+        // A markdown preview-image link with a descriptive label must become a single,
+        // well-formed <img>. Regression: the bare-URL pass used to re-match the freshly
+        // created tag's own src, double-wrapping it and leaking `alt="...">` as visible text.
+        let md = "[Werbung für AppleCare-Abdeckung in der macOS-Einstellungen-App]"
+            + "(https://preview.redd.it/abc.png?width=640&s=hash)"
+        let html = RedditMarkdown.toHTML(md)
+        #expect(!html.contains("<img src=\"<img"))                 // no nested/double-wrapped img
+        #expect(html.components(separatedBy: "<img").count == 2)    // exactly one <img>
+        #expect(html.contains("alt=\"Werbung für AppleCare-Abdeckung in der macOS-Einstellungen-App\""))
+    }
+
     @Test func escapesRawHTMLInBody() {
         let html = RedditMarkdown.toHTML("Hello <script>alert(1)</script> world")
         #expect(html.contains("&lt;script&gt;"))
