@@ -83,9 +83,10 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
     func processContent(_ html: String, article: AggregatedArticle, headerHTML: String?) async throws -> String {
         let doc = try HTMLUtils.parse(html)
         try EmbedRewriter.rewriteEmbeds(in: doc)
+        try HTMLUtils.removeUnsafeTags(doc)
+        try HTMLUtils.removeTrackingPixels(doc)
         try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))
-        try HTMLUtils.sanitizeClassNames(doc)
-        try HTMLUtils.removeComments(doc)
+        try HTMLUtils.finishSanitization(doc)
         let body = try HTMLUtils.bodyHTML(doc)
         return ContentFormatter.format(content: body, title: article.title, url: article.url,
                                        headerHTML: headerHTML, commentsHTML: nil)

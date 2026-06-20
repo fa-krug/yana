@@ -64,4 +64,69 @@ struct HTMLUtilsTests {
         let html = try HTMLUtils.bodyHTML(doc)
         #expect(html.contains("<img"), "image with different base filename should NOT be removed")
     }
+
+    // MARK: - Sanitization (Tier 1: unsafe tags + attributes)
+
+    @Test func removeUnsafeTagsStripsScriptStyleNoscript() throws {
+        let doc = try HTMLUtils.parse(
+            "<p>keep</p><script>alert(1)</script><style>.x{}</style><noscript>n</noscript>"
+        )
+        try HTMLUtils.removeUnsafeTags(doc)
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(html.contains("keep"))
+        #expect(!html.contains("<script"))
+        #expect(!html.contains("<style"))
+        #expect(!html.contains("<noscript"))
+    }
+
+    @Test func removeUnsafeTagsKeepsYouTubeIframeDropsOthers() throws {
+        let doc = try HTMLUtils.parse(
+            "<iframe src=\"https://www.youtube-nocookie.com/embed/abc\"></iframe>"
+            + "<iframe src=\"https://ads.example.com/track\"></iframe>"
+        )
+        try HTMLUtils.removeUnsafeTags(doc)
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(html.contains("youtube-nocookie.com"), "YouTube embed must be preserved")
+        #expect(!html.contains("ads.example.com"), "non-YouTube iframe must be dropped")
+    }
+
+    @Test func removeUnsafeAttributesStripsHandlersAndJavascriptURLs() throws {
+        let doc = try HTMLUtils.parse(
+            "<a href=\"javascript:alert(1)\" onclick=\"x()\">a</a><img src=\"yana-img://h\" onerror=\"y()\">"
+        )
+        try HTMLUtils.removeUnsafeAttributes(doc)
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(!html.contains("onclick"))
+        #expect(!html.contains("onerror"))
+        #expect(!html.contains("javascript:"))
+        #expect(html.contains("yana-img://h"), "safe src must be preserved")
+    }
+
+    // MARK: - Sanitization (Tier 2: presentational cruft)
+
+    @Test func removeInlineStylesDropsStyleAttribute() throws {
+        let doc = try HTMLUtils.parse("<p style=\"color:red\">x</p>")
+        try HTMLUtils.removeInlineStyles(doc)
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(!html.contains("style="))
+        #expect(html.contains(">x<"))
+    }
+
+    @Test func removeTrackingPixelsDropsTinyImagesKeepsRealOnes() throws {
+        let doc = try HTMLUtils.parse(
+            "<img src=\"a\" width=\"1\" height=\"1\"><img src=\"b\" width=\"600\" height=\"400\">"
+        )
+        try HTMLUtils.removeTrackingPixels(doc)
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(!html.contains("src=\"a\""), "1x1 tracking pixel must be removed")
+        #expect(html.contains("src=\"b\""), "real image must be kept")
+    }
+
+    // MARK: - Sanitization (Tier 3: compaction)
+
+    @Test func compactDisablesPrettyPrint() throws {
+        let doc = try HTMLUtils.parse("<div><p>x</p></div>")
+        HTMLUtils.compact(doc)
+        #expect(doc.outputSettings().prettyPrint() == false)
+    }
 }
