@@ -10,10 +10,7 @@ enum ArticleRenderer {
     static func articleHTML(article: Article, theme: ArticleTheme, textSize: ArticleTextSize,
                             summaryPending: Bool = false) -> Rendering {
         let title = ContentFormatter.escapeHTML(article.title)
-        let style = (try? MacroProcessor.renderedText(
-            withTemplate: theme.css ?? "",
-            substitutions: styleSubstitutions(textSize: textSize)
-        )) ?? (theme.css ?? "")
+        let style = renderedCSS(theme: theme, textSize: textSize)
         let html = (try? MacroProcessor.renderedText(
             withTemplate: theme.template ?? "",
             substitutions: articleSubstitutions(article: article, title: title, textSize: textSize,
@@ -27,8 +24,7 @@ enum ArticleRenderer {
                              summaryPending: Bool = false) -> String {
         let rendering = articleHTML(article: article, theme: theme, textSize: textSize,
                                     summaryPending: summaryPending)
-        let page = ArticleTheme.stringAtPath(Bundle.main.path(forResource: "page", ofType: "html") ?? "") ?? ""
-        return (try? MacroProcessor.renderedText(withTemplate: page, substitutions: [
+        return (try? MacroProcessor.renderedText(withTemplate: pageTemplate, substitutions: [
             "title": rendering.title,
             "style": rendering.style,
             "body": rendering.html,
@@ -144,6 +140,31 @@ enum ArticleRenderer {
         // Trim trailing slash that URLComponents may emit for bare hosts.
         if result.hasSuffix("/") { result = String(result.dropLast()) }
         return result
+    }
+
+    // MARK: - Caches
+
+    /// `page.html` is the tiny static document shell. It never changes, so read it once instead of
+    /// hitting the bundle (fileExists + file read) on every article render.
+    private static let pageTemplate: String =
+        ArticleTheme.stringAtPath(Bundle.main.path(forResource: "page", ofType: "html") ?? "") ?? ""
+
+    /// Rendered stylesheet memoized by (theme, text size). The CSS only varies by the
+    /// `[[font-size]]` macro, yet templating it rescans the full (tens-of-KB) sheet and allocates a
+    /// new string each call. Since theme/text-size change rarely, cache the result so a burst of
+    /// renders at one appearance reuses it. Bounded by themes × text sizes (a few dozen entries);
+    /// theme files are immutable within a session, so entries never go stale.
+    private static var cssCache: [String: String] = [:]
+
+    private static func renderedCSS(theme: ArticleTheme, textSize: ArticleTextSize) -> String {
+        let key = "\(theme.name)|\(textSize.pointSize)"
+        if let cached = cssCache[key] { return cached }
+        let css = (try? MacroProcessor.renderedText(
+            withTemplate: theme.css ?? "",
+            substitutions: styleSubstitutions(textSize: textSize)
+        )) ?? (theme.css ?? "")
+        cssCache[key] = css
+        return css
     }
 
     // MARK: - Formatters

@@ -179,7 +179,15 @@ final class ReaderArticleViewController: UIViewController,
             pageController.setViewControllers([page], direction: .forward, animated: false)
         }
         updateStarItem()
-        prewarmNeighbors(around: self.index)
+        // Defer neighbor prewarming off the launch path. `configure` runs synchronously inside
+        // `makeUIViewController`, before the first frame is presented; prewarming here would build
+        // and render up to 2*prewarmRadius extra WKWebViews before the user sees the visible page.
+        // Hopping to the next runloop lets the on-screen article render and present first, then the
+        // neighbors warm in the background — same indices, just after first paint.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.prewarmNeighbors(around: self.index)
+        }
     }
 
     func update(articles: [Article], index: Int) {
