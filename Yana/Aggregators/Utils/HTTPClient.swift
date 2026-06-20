@@ -5,11 +5,29 @@ import Foundation
 enum HTTPClient {
     static let userAgent = "Mozilla/5.0 (compatible; YanaBot/1.0; +https://github.com/fa-krug/Yana)"
 
+    /// `Accept` for HTML/text fetches (article pages, feeds).
+    static let htmlAccept = "text/html,application/xhtml+xml,*/*;q=0.8"
+
+    /// `Accept` for image fetches. Must prefer image types: some CDNs content-negotiate on `Accept`
+    /// and — notably Reddit's `*.redd.it` — answer a `text/html` preference with a 307 to an HTML
+    /// media-viewer page instead of the raw image. An image fetch that advertised `htmlAccept` would
+    /// then receive HTML, fail to decode, and silently drop the image (header, inline, and video
+    /// poster alike). Other hosts ignore `Accept` and serve the image regardless.
+    static let imageAccept = "image/*,*/*;q=0.8"
+
     /// Hard ceiling on a single response body. Untrusted feeds/images must not exhaust memory.
     static let maxResponseBytes = 25 * 1024 * 1024   // 25 MB
 
     /// Pure helper (unit-testable): true when the accumulated byte count exceeds the cap.
     static func exceedsCap(received: Int, cap: Int) -> Bool { received > cap }
+
+    /// Build the outgoing request (pure, unit-testable): bot UA + the given `Accept`.
+    static func makeRequest(url: URL, timeout: TimeInterval, accept: String) -> URLRequest {
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(accept, forHTTPHeaderField: "Accept")
+        return request
+    }
 
     static func fetchHTML(_ url: URL, timeout: TimeInterval = 30) async throws -> String {
         let (data, _) = try await fetchData(url, timeout: timeout)
@@ -19,11 +37,9 @@ enum HTTPClient {
         return html
     }
 
-    static func fetchData(_ url: URL, timeout: TimeInterval = 30) async throws -> (data: Data, contentType: String?) {
-        var request = URLRequest(url: url, timeoutInterval: timeout)
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("text/html,application/xhtml+xml,*/*;q=0.8", forHTTPHeaderField: "Accept")
-        return try await send(request)
+    static func fetchData(_ url: URL, timeout: TimeInterval = 30,
+                          accept: String = htmlAccept) async throws -> (data: Data, contentType: String?) {
+        try await send(makeRequest(url: url, timeout: timeout, accept: accept))
     }
 
     static func fetchJSON(_ request: URLRequest) async throws -> Data {
