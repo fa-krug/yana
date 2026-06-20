@@ -1,60 +1,22 @@
 {
   "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+    "automatic-gradient" : "extended-srgb:0.44706,0.35294,0.89412,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "image-name" : "Image.png",
-          "name" : "Image",
-          "position" : {
-            "scale" : 1.87,
-            "translation-in-points" : [
-              0,
-              93.5
-            ]
-          }
-        },
-        {
-          "hidden" : true,
-          "image-name" : "Gemini_Generated_Image_sm7goksm7goksm7g 2.png",
-          "name" : "Gemini_Generated_Image_sm7goksm7goksm7g 2",
-          "position" : {
-            "scale" : 0.82,
-            "translation-in-points" : [
-              0,
-              0
-            ]
-          }
-        },
-        {
-          "fill" : "automatic",
           "glass" : true,
-          "hidden" : true,
-          "image-name" : "Gemini_Generated_Image_tv7txptv7txptv7t.png",
-          "name" : "Gemini_Generated_Image_tv7txptv7txptv7t",
+          "image-name" : "Profile.svg",
+          "name" : "Profile",
           "position" : {
-            "scale" : 1.29,
+            "scale" : 1,
             "translation-in-points" : [
               0,
               0
             ]
           }
         }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.5
-      }
-    },
-    {
-      "layers" : [
-
       ],
       "shadow" : {
         "kind" : "neutral",

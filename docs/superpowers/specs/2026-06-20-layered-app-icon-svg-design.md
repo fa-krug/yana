@@ -15,38 +15,45 @@ backdrop itself.
 
 ## Source
 
-Reference raster: a white right-facing profile (head, face curve, nose, chin,
-neck, hair mass + top bun), with the facial features (round glasses, eye/brow,
-nostril hint, smiling mouth, ear, hairline seam) drawn as the purple background
-showing through, plus a small four-point ✨ sparkle bottom-right. The new vector
-is a tidied interpretation of this raster, not a pixel-exact trace.
+Reference raster: a flat purple (`#725AE4`) screenshot containing a white
+right-facing profile — head, hairline sweep, top bun, two round glasses (with
+bridge and a dark pupil), spiral ear, small nose, smile, and an angled neck.
+All facial/hair detail is rendered as the purple background showing through the
+white. The decision was to reproduce the artwork **exactly**, so the vector is
+produced by **tracing** the reference (potrace) rather than hand-drawing an
+interpretation.
+
+Note: a small four-point ✨ sparkle sits in the **bottom-right corner of the
+screenshot** (≈ y 1360 of 1399) — this is UI chrome from the app that displayed
+the image, **not** part of the logo. It is excluded.
 
 ## Layers
 
-Canvas: **1024×1024** (Icon Composer working size), pure white (`#FFFFFF`) fills
-on transparency. The inversion drops the purple background block, so there are
-two real layers.
+Canvas: **1024×1024** (Icon Composer working size). The traced white region —
+which already contains every line-art feature as a hole — is one shape, so the
+clean layered structure is a **purple background fill + a single white
+foreground layer**:
 
-1. **`profile-body.svg`** — the white profile silhouette as a single filled
-   shape, with the facial features punched out as **transparent cutouts** using
-   even-odd fill (`fill-rule="evenodd"`). Cutouts: round glasses (two
-   lenses + bridge + a temple arm), eye/eyebrow, nostril hint, smiling mouth,
-   ear, and the hairline seam between hair and face. Transparent everywhere
-   outside the silhouette. Cutouts reveal whatever backdrop the active
-   appearance provides, keeping the mark legible in every theme.
+1. **Background** — flat purple `#725AE4`, supplied via the `icon.json`
+   top-level `fill` (an `automatic-gradient` from that color, visually flat,
+   matching the reference). Icon Composer darkens it for Dark and substitutes
+   system glass for Tinted/Clear.
 
-2. **`details.svg`** — additive white marks only: the bun wrap / parting line
-   and the four-point ✨ sparkle. Transparent elsewhere. Sits above
-   `profile-body`.
+2. **`Profile.svg`** — the traced white profile mark on full transparency, with
+   all facial/hair features (hairline, both glass lenses + bridge + pupil, ear
+   spiral, nose, smile) as **transparent holes** (potrace winding). Pure white
+   on transparent, so Icon Composer recolors it per appearance. Fitted to the
+   1024 canvas height-limited with ~10% margin, centered. `glass: true`.
+
+The corner sparkle and the previously-planned additive "details" layer are
+dropped — they were not part of the logo.
 
 ## `icon.json` changes
 
-- Replace the three Gemini PNG layer entries with two SVG layer entries:
-  - `profile-body` (bottom)
-  - `details` (top)
-- Both layers: `glass: true` so they pick up Liquid-Glass specular highlights.
-- **Background:** transparent / no solid fill — the system tile shows through,
-  which is the requested theme-fitting behavior.
+- Replace the three Gemini PNG layer entries with one SVG layer entry,
+  `Profile.svg`, `glass: true`.
+- Top-level `fill`: `automatic-gradient` of `#725AE4`
+  (`extended-srgb:0.44706,0.35294,0.89412,1.00000`).
 - Preserve the existing group `shadow` (`neutral`, opacity 0.5) and
   `translucency` (enabled, 0.5) settings, and `supported-platforms`.
 - Remove the three Gemini PNG assets from `AppIcon.icon/Assets/`:
@@ -67,14 +74,14 @@ No per-appearance SVG variants are authored.
 
 ## Verification
 
-- Each SVG parses as well-formed XML.
-- Each layer rasterizes to the expected shape (per-layer PNG render) and a
-  composite of both layers visually matches the reference mark (silhouette,
-  bun, round glasses, smile, sparkle).
-- Cutouts render as transparent holes (verified by compositing over a
-  contrasting background).
-- `icon.json` remains valid JSON and references only the two new SVG files;
-  no dangling references to removed PNGs.
+- `Profile.svg` parses as well-formed XML.
+- It rasterizes to a shape that matches the reference mark over flat purple
+  (silhouette, bun, hairline, two round glasses + pupil, ear, nose, smile,
+  neck).
+- Cutouts render as transparent holes (verified by compositing over both a
+  light/purple and a dark background — confirms theming).
+- `icon.json` remains valid JSON and references only `Profile.svg`; no
+  dangling references to removed PNGs.
 - The `.icon` bundle opens cleanly in Icon Composer with all four appearances
   rendering.
 
@@ -84,3 +91,6 @@ No per-appearance SVG variants are authored.
 - App Store marketing artwork.
 - Icon animation.
 - Per-theme hand-authored SVG variants.
+- The bottom-right corner sparkle (screenshot UI chrome, not the logo).
+- Splitting the glasses onto their own parallax layer (possible future depth
+  enhancement; current build is background fill + single foreground layer).
