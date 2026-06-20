@@ -490,4 +490,29 @@ struct RedditAggregatorTests {
         #expect(rec.urls.contains("https://preview.redd.it/c.png"),
                 "the inline image must be downloaded into the cache")
     }
+
+    /// Gallery posts: `gallery_data.items[].media_id` (Reddit's snake_case key) must decode so the
+    /// matching `media_metadata` entry resolves to an image URL. A plain JSONDecoder would leave
+    /// `mediaID` nil and silently drop every gallery image.
+    @Test func galleryImagesDecodeAndLocalize() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"g1","title":"Gallery","selftext":"",
+                   "url":"https://www.reddit.com/gallery/g1","permalink":"/r/pics/comments/g1/gallery/",
+                   "created_utc":\(recentUTC),"author":"hank","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":true,"is_video":false,
+                   "gallery_data":{"items":[{"media_id":"AAA"},{"media_id":"BBB"}]},
+                   "media_metadata":{
+                     "AAA":{"e":"Image","s":{"u":"https://preview.redd.it/aaa.jpg?width=640"}},
+                     "BBB":{"e":"Image","s":{"u":"https://preview.redd.it/bbb.jpg?width=640"}}}}}
+        ]}}
+        """
+        let a = try #require(try await aggregator(listing: listing, store: recordingStore(rec)).aggregate().first)
+        #expect(rec.urls.contains("https://preview.redd.it/aaa.jpg?width=640"),
+                "first gallery image must decode (media_id → mediaID) and be downloaded as the header")
+        #expect(rec.urls.contains("https://preview.redd.it/bbb.jpg?width=640"),
+                "second gallery image must decode and be localized inline")
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "gallery images must be localized")
+    }
 }
