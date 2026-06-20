@@ -1,89 +1,62 @@
-# iOS 26 Layered App Icon — Inverted Monochrome SVG
+# iOS 26 Layered App Icon — Glasses Monochrome SVG
 
 Date: 2026-06-20
 
 ## Goal
 
-Replace the Gemini-generated PNG layers in `Yana/Resources/AppIcon.icon` with
-clean, theme-adaptive SVG layers reproducing the Yana profile mark (a
-right-facing profile with a hair bun, round glasses, and a sparkle). The mark is
-inverted relative to the source raster: instead of a white face on a solid
-purple block, the silhouette becomes a **monochrome (white) foreground on full
-transparency**, so Icon Composer auto-derives all four appearances —
-**Default**, **Dark**, **Tinted**, **Clear** — and supplies each appearance's
-backdrop itself.
+Provide the app icon foreground as a clean, theme-adaptive SVG: a pair of **big
+round glasses** (the "reader" mark) rendered as a **monochrome (white)
+foreground on full transparency**, so Icon Composer auto-derives all
+appearances — **Default**, **Dark**, **Tinted**, **Clear** — and supplies each
+appearance's backdrop itself.
 
-## Source
+## Design
 
-Reference raster: a flat purple (`#725AE4`) screenshot containing a white
-right-facing profile — head, hairline sweep, top bun, two round glasses (with
-bridge and a dark pupil), spiral ear, small nose, smile, and an angled neck.
-All facial/hair detail is rendered as the purple background showing through the
-white. The decision was to reproduce the artwork **exactly**, so the vector is
-produced by **tracing** the reference (potrace) rather than hand-drawing an
-interpretation.
+Canvas: **1024×1024** (Icon Composer working size). A single white foreground
+layer (`Profile.svg`) over a purple background fill.
 
-Note: a small four-point ✨ sparkle sits in the **bottom-right corner of the
-screenshot** (≈ y 1360 of 1399) — this is UI chrome from the app that displayed
-the image, **not** part of the logo. It is excluded.
+The mark is a feminine pair of oversized **round glasses**:
 
-## Layers
+- **Two round lenses** — circles (r ≈ 185), drawn as rings: each lens is one
+  `<path>` with an outer and inner circle combined under `fill-rule="evenodd"`,
+  so the lens interior is a **transparent hole** (the background shows through).
+- **Keyhole bridge** between the lenses.
+- **Temple arms** sweeping out from the upper-outer of each lens.
+- **Eyelashes** — three small, soft, curved leaf shapes fanning from the top of
+  each lens (subtle feminine accent, not spikes).
 
-Canvas: **1024×1024** (Icon Composer working size). The traced white region —
-which already contains every line-art feature as a hole — is one shape, so the
-clean layered structure is a **purple background fill + a single white
-foreground layer**:
+Everything is pure white on transparency. Decorative elements (arms, bridge,
+lashes) are separate `<path>` elements that union with the lens rings — they do
+not rely on cross-path `evenodd` interaction (SVG fill rules apply per path).
 
-1. **Background** — flat purple `#725AE4`, supplied via the `icon.json`
-   top-level `fill` (an `automatic-gradient` from that color, visually flat,
-   matching the reference). Icon Composer darkens it for Dark and substitutes
-   system glass for Tinted/Clear.
+## Theming behavior (background is adjustable, frame adapts)
 
-2. **`Profile.svg`** — the traced white profile mark on full transparency, with
-   all facial/hair features (hairline, both glass lenses + bridge + pupil, ear
-   spiral, nose, smile) as **transparent holes** (potrace winding). Pure white
-   on transparent, so Icon Composer recolors it per appearance. Fitted to the
-   1024 canvas height-limited with ~10% margin, centered. `glass: true`.
-
-The corner sparkle and the previously-planned additive "details" layer are
-dropped — they were not part of the logo.
-
-## `icon.json` changes
-
-- Replace the three Gemini PNG layer entries with one SVG layer entry,
-  `Profile.svg`, `glass: true`.
-- Top-level `fill`: `automatic-gradient` of `#725AE4`
-  (`extended-srgb:0.44706,0.35294,0.89412,1.00000`).
-- Preserve the existing group `shadow` (`neutral`, opacity 0.5) and
-  `translucency` (enabled, 0.5) settings, and `supported-platforms`.
-- Remove the three Gemini PNG assets from `AppIcon.icon/Assets/`:
-  - `Gemini_Generated_Image_tv7txptv7txptv7t.png`
-  - `Gemini_Generated_Image_sm7goksm7goksm7g 2.png`
-  - `Image.png`
-
-## Theming behavior
-
-Because the foreground is monochrome-on-transparent and features are cutouts
-(not fixed-color overlays), Icon Composer derives:
-- **Default** — system-tinted foreground over the default backdrop.
-- **Dark** — light foreground over the dark backdrop.
-- **Tinted** — monochrome recolor.
-- **Clear** — glass/transparent backdrop, foreground retained.
+- **Background** — supplied via the `icon.json` top-level `fill` as an
+  `automatic-gradient` of the brand purple `#725AE4`
+  (`extended-srgb:0.44706,0.35294,0.89412,1.00000`). Icon Composer adapts it
+  across appearances (light purple → dark purple) and substitutes system glass
+  for Tinted/Clear. The single fill color is the one editable knob.
+- **Foreground** — monochrome-on-transparent with `glass: true`, so Icon
+  Composer recolors the glasses per appearance and the frame auto-contrasts
+  against the background (purple frame on the light backdrop, white frame on the
+  dark backdrop).
 
 No per-appearance SVG variants are authored.
+
+## `icon.json`
+
+- One SVG layer entry: `Profile.svg`, `glass: true`.
+- Top-level `fill`: `automatic-gradient` of `#725AE4`.
+- Preserve the group `shadow` (`neutral`, opacity 0.5), `translucency`
+  (enabled, 0.5), and `supported-platforms`.
 
 ## Verification
 
 - `Profile.svg` parses as well-formed XML.
-- It rasterizes to a shape that matches the reference mark over flat purple
-  (silhouette, bun, hairline, two round glasses + pupil, ear, nose, smile,
-  neck).
-- Cutouts render as transparent holes (verified by compositing over both a
-  light/purple and a dark background — confirms theming).
-- `icon.json` remains valid JSON and references only `Profile.svg`; no
-  dangling references to removed PNGs.
-- The `.icon` bundle opens cleanly in Icon Composer with all four appearances
-  rendering.
+- Rasterizes to two round glasses (lenses, bridge, temple arms, subtle lashes)
+  with the lens interiors transparent — confirmed by compositing over both a
+  light-purple and a dark-purple background.
+- `icon.json` remains valid JSON and references only `Profile.svg`.
 
 ## Out of scope
 
@@ -91,6 +64,3 @@ No per-appearance SVG variants are authored.
 - App Store marketing artwork.
 - Icon animation.
 - Per-theme hand-authored SVG variants.
-- The bottom-right corner sparkle (screenshot UI chrome, not the logo).
-- Splitting the glasses onto their own parallax layer (possible future depth
-  enhancement; current build is background fill + single foreground layer).
