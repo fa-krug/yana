@@ -62,7 +62,16 @@ struct RedditPostData: Decodable, Sendable {
     }
     struct GalleryData: Decodable, Sendable {
         var items: [Item]
-        struct Item: Decodable, Sendable { var mediaID: String?; var caption: String? }
+        struct Item: Decodable, Sendable {
+            var mediaID: String?
+            var caption: String?
+            // The decoder applies no snake_case strategy, so map Reddit's `media_id` explicitly —
+            // otherwise `mediaID` stays nil and every gallery image is silently dropped.
+            enum CodingKeys: String, CodingKey {
+                case mediaID = "media_id"
+                case caption
+            }
+        }
     }
 
     enum CodingKeys: String, CodingKey {
