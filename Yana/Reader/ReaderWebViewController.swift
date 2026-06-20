@@ -15,6 +15,16 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     private var webView: WKWebView!
     private var loadedHTML: String?
+
+    /// Shared across every reader page so the web views run in one Web Content process instead of
+    /// spawning one each. The reader prewarms several pages at once, so without a shared pool a
+    /// single swipe burst would fork ~10 processes — costly to start and memory-heavy. Sharing the
+    /// pool also shares the page cache.
+    private static let processPool = WKProcessPool()
+
+    /// One stateless image handler for all pages (it only reads from `ImageStore.shared`), so each
+    /// page need not allocate its own.
+    private static let imageSchemeHandler = ImageSchemeHandler()
     var summaryPending = false { didSet { if summaryPending != oldValue { render() } } }
 
     private var topTapZone: UIView!
@@ -43,7 +53,8 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         view.backgroundColor = .systemBackground
 
         let config = WKWebViewConfiguration()
-        config.setURLSchemeHandler(ImageSchemeHandler(), forURLScheme: ReaderWeb.imageScheme)
+        config.processPool = Self.processPool
+        config.setURLSchemeHandler(Self.imageSchemeHandler, forURLScheme: ReaderWeb.imageScheme)
         // Intercept link taps at the DOM level rather than via the navigation delegate: WebKit does
         // not reliably classify tapped links inside a `loadHTMLString`-rendered document as
         // `.linkActivated`, so `decidePolicyFor` would let them load in place. The injected script
