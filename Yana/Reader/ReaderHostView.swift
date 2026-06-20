@@ -122,6 +122,11 @@ struct ReaderScreen: View {
     @State private var filteredArticles: [Article] = []
     @State private var hasComputedFilter = false
 
+    /// Window size for the article-list sheet's timeline query (nil = unbounded, used while a
+    /// search is active so search stays complete). Owned here so it survives the sheet's view
+    /// re-inits; reset on dismiss so each open starts windowed.
+    @State private var articleListLimit: Int? = TimelineWindow.pageSize
+
     private func recomputeFilter() {
         let byTag = TagFilter.apply(
             to: allArticles,
@@ -189,11 +194,13 @@ struct ReaderScreen: View {
             }
         }
         .sheet(isPresented: $appState.showSettings) { NavigationStack { SettingsScreenView() } }
-        .sheet(isPresented: $appState.showArticleList) {
+        .sheet(isPresented: $appState.showArticleList,
+               onDismiss: { articleListLimit = TimelineWindow.pageSize }) {
             NavigationStack {
                 ArticleListView(
                     currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
                         ? filteredArticles[appState.currentIndex].identifier : nil,
+                    limit: $articleListLimit,
                     onSelect: openArticle
                 )
             }
