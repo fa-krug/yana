@@ -81,8 +81,10 @@ enum RedditMarkdown {
             let alt = groups[1].isEmpty ? "Reddit preview image" : groups[1]
             return "<img src=\"\(decodeEntities(groups[2]))\" alt=\"\(alt)\">"
         }
-        // bare preview image url -> <img> (not already inside a markdown link)
-        t = regexReplace(t, #"(?<!\]\()https?://preview\.redd\.it/[^\s)]+"#) { groups in
+        // bare preview image url -> <img> (not already inside a markdown link, and not the
+        // src of an <img> the markdown-link pass just emitted — `(?<!")` skips attribute URLs
+        // so we don't re-wrap a tag and leak its `alt="...">` as visible text)
+        t = regexReplace(t, #"(?<!\]\()(?<!")https?://preview\.redd\.it/[^\s)]+"#) { groups in
             "<img src=\"\(decodeEntities(groups[0]))\" alt=\"Reddit preview image\">"
         }
         return t
