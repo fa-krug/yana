@@ -47,6 +47,8 @@ struct YouTubeAggregatorTests {
         #expect(a.title == "Cool Video")
         #expect(a.identifier == "https://www.youtube.com/watch?v=vid111aaaaa")
         #expect(a.content.contains("youtube-embed-container"))
+        #expect(a.content.contains("youtube-facade"))                   // click-to-play preview poster
+        #expect(a.content.contains("i.ytimg.com/vi/vid111aaaaa/hqdefault.jpg"))  // thumbnail poster
         #expect(a.content.contains("youtube-nocookie.com/embed/vid111aaaaa"))
         #expect(a.content.contains("youtube-description"))
         #expect(a.content.contains("Line1<br>Line2"))
