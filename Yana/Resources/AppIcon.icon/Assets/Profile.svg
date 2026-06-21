@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
 <g fill="#fff" fill-rule="evenodd">
 <!-- Beak (downward, centered between the eyes) -->
-<path d="M487 505 Q512 500 537 505 Q533 565 512 625 Q491 565 487 505 Z"/>
+<path d="M488 504 Q512 499 536 504 Q542 565 512 648 Q482 565 488 504 Z"/>
 <!-- Left eye (round, ring) -->
 <path d="M115 512 A185 185 0 1 0 485 512 A185 185 0 1 0 115 512 Z
          M161 512 A139 139 0 1 0 439 512 A139 139 0 1 0 161 512 Z"/>
