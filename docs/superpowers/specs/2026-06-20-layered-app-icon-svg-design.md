@@ -19,16 +19,17 @@ The mark is a stylized **owl** built from oversized round glasses geometry:
 
 - **Two round eyes** — circles (r ≈ 185), drawn as rings: each eye is one
   `<path>` with an outer and inner circle combined under `fill-rule="evenodd"`,
-  so the eye interior is a **transparent hole** (the background shows through).
-- **Beak** — a downward-pointing rounded triangle centered between the eyes
-  (where a glasses bridge would sit).
-- **Feather tufts** — three prominent curved leaf shapes fanning from the top of
-  each eye (the owl's brow/ear-tuft feathers).
-- No temple arms / handles.
+  so the iris ring is a **transparent gap** (the background shows through).
+- **Pupils** — a filled white disc (r ≈ 58) centered in each eye, so the mark
+  reads as eyes rather than empty lenses.
+- **Beak** — a bold downward-pointing shape (flat/wide top, gently convex sides
+  tapering to a rounded point) centered between the eyes, with clear spacing
+  from the eye rings (where a glasses bridge would sit).
+- No eyebrows / feather tufts, no temple arms / handles.
 
-Everything is pure white on transparency. Decorative elements (beak, feather
-tufts) are separate `<path>` elements that union with the eye rings — they do
-not rely on cross-path `evenodd` interaction (SVG fill rules apply per path).
+Everything is pure white on transparency. The pupils and beak are separate
+`<path>` elements that union with the eye rings — they do not rely on cross-path
+`evenodd` interaction (SVG fill rules apply per path).
 
 ## Theming behavior (background is adjustable, frame adapts)
 
@@ -54,8 +55,8 @@ No per-appearance SVG variants are authored.
 ## Verification
 
 - `Profile.svg` parses as well-formed XML.
-- Rasterizes to an owl (two round eyes, a central downward beak, feather tufts)
-  with the eye interiors transparent — confirmed by compositing over both a
+- Rasterizes to an owl (two round eyes with pupils, a central downward beak)
+  with the iris rings transparent — confirmed by compositing over both a
   light-purple and a dark-purple background.
 - `icon.json` remains valid JSON and references only `Profile.svg`.
 
