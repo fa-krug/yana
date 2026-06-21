@@ -1,4 +1,4 @@
-# iOS 26 Layered App Icon — Glasses Monochrome SVG
+# iOS 26 Layered App Icon — Owl Monochrome SVG
 
 Date: 2026-06-20
 
@@ -15,19 +15,24 @@ appearance's backdrop itself.
 Canvas: **1024×1024** (Icon Composer working size). A single white foreground
 layer (`Profile.svg`) over a purple background fill.
 
-The mark is a feminine pair of oversized **round glasses**:
+The mark is a stylized **owl** built from oversized round glasses geometry:
 
-- **Two round lenses** — circles (r ≈ 185), drawn as rings: each lens is one
+- **Two round eyes** — circles (r ≈ 185), drawn as rings: each eye is one
   `<path>` with an outer and inner circle combined under `fill-rule="evenodd"`,
-  so the lens interior is a **transparent hole** (the background shows through).
-- **Keyhole bridge** between the lenses.
-- **Temple arms** sweeping out from the upper-outer of each lens.
-- **Eyelashes** — three prominent curved leaf shapes fanning from the top of
-  each lens (a clear feminine accent radiating from the rim).
+  so the iris ring is a **transparent gap** (the background shows through).
+- **Pupils** — a filled white disc (r ≈ 58) centered in each eye, so the mark
+  reads as eyes rather than empty lenses.
+- **Beak** — a bold, elongated downward-pointing shape (narrow top, gently
+  convex sides tapering to a point that drops below the eye line) centered
+  between the eyes, with clear spacing from the eye rings (where a glasses
+  bridge would sit).
+- **Ear tufts** — two curved, pointed feather "horns" rising from the top of
+  each eye (the classic horned-owl silhouette).
+- No glasses temple arms / handles.
 
-Everything is pure white on transparency. Decorative elements (arms, bridge,
-lashes) are separate `<path>` elements that union with the lens rings — they do
-not rely on cross-path `evenodd` interaction (SVG fill rules apply per path).
+Everything is pure white on transparency. The pupils, beak, and ear tufts are
+separate `<path>` elements that union with the eye rings — they do not rely on
+cross-path `evenodd` interaction (SVG fill rules apply per path).
 
 ## Theming behavior (background is adjustable, frame adapts)
 
@@ -37,7 +42,7 @@ not rely on cross-path `evenodd` interaction (SVG fill rules apply per path).
   across appearances (light purple → dark purple) and substitutes system glass
   for Tinted/Clear. The single fill color is the one editable knob.
 - **Foreground** — monochrome-on-transparent with `glass: true`, so Icon
-  Composer recolors the glasses per appearance and the frame auto-contrasts
+  Composer recolors the owl per appearance and the frame auto-contrasts
   against the background (purple frame on the light backdrop, white frame on the
   dark backdrop).
 
@@ -53,9 +58,9 @@ No per-appearance SVG variants are authored.
 ## Verification
 
 - `Profile.svg` parses as well-formed XML.
-- Rasterizes to two round glasses (lenses, bridge, temple arms, subtle lashes)
-  with the lens interiors transparent — confirmed by compositing over both a
-  light-purple and a dark-purple background.
+- Rasterizes to an owl (two round eyes with pupils, ear tufts, a central
+  downward beak) with the iris rings transparent — confirmed by compositing
+  over both a light-purple and a dark-purple background.
 - `icon.json` remains valid JSON and references only `Profile.svg`.
 
 ## Out of scope
