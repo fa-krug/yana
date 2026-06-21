@@ -15,7 +15,9 @@ struct ArticleListView: View {
 
     static var timelineDescriptor: FetchDescriptor<Article> {
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            // Ascending import date: oldest first, so the list reads top = old, bottom = new
+            // (matching the reader's left = old, right = new).
+            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
         )
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         return descriptor

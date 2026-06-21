@@ -22,10 +22,11 @@ struct TimelinePageIndexTests {
         #expect(TimelinePageIndex.index(of: "a", in: []) == nil)
     }
 
-    @Test func anchorStillFallsBackToZero() {
+    @Test func anchorFallsBackToNewest() {
         let list = [article("a"), article("b")]
         #expect(TimelineAnchor.index(for: "b", in: list) == 1)
-        #expect(TimelineAnchor.index(for: "missing", in: list) == 0)
-        #expect(TimelineAnchor.index(for: nil, in: list) == 0)
+        // Missing / nil memory resolves to the newest article (last index), not the oldest.
+        #expect(TimelineAnchor.index(for: "missing", in: list) == 1)
+        #expect(TimelineAnchor.index(for: nil, in: list) == 1)
     }
 }
