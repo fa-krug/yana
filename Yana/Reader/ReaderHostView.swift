@@ -8,6 +8,10 @@ import UIKit
 struct ReaderHostView: UIViewControllerRepresentable {
     let articles: [Article]
     @Binding var currentIndex: Int
+    /// Fired only when the *user* pages to a new article (swipe completes), never for the
+    /// programmatic index updates that restore/reanchor perform. The host uses this to persist
+    /// the reading position, so a transient reanchor fallback can never overwrite the saved anchor.
+    var onUserNavigate: ((Int) -> Void)?
     let isRefreshing: Bool
     let isFilterActive: Bool
     var onRefresh: (() -> Void)?
@@ -26,7 +30,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UINavigationController {
         let reader = ReaderArticleViewController()
         context.coordinator.reader = reader
-        reader.onIndexChange = { currentIndex = $0 }
+        reader.onIndexChange = { i in currentIndex = i; onUserNavigate?(i) }
         reader.onShowFilter = onShowFilter
         reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
@@ -49,7 +53,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ nav: UINavigationController, context: Context) {
         guard let reader = context.coordinator.reader else { return }
-        reader.onIndexChange = { currentIndex = $0 }
+        reader.onIndexChange = { i in currentIndex = i; onUserNavigate?(i) }
         reader.onShowFilter = onShowFilter
         reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
@@ -104,7 +108,9 @@ struct ReaderScreen: View {
 
     static func timelineDescriptor(limit: Int) -> FetchDescriptor<Article> {
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            // Ascending import date: oldest first. Index 0 is the leftmost page, so the reader
+            // pages left = older, right = newer.
+            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
         )
         descriptor.fetchLimit = limit
         // Batch-load the relationships every page render touches, avoiding N+1 faulting.
@@ -176,6 +182,7 @@ struct ReaderScreen: View {
                 ReaderHostView(
                     articles: articles,
                     currentIndex: $appState.currentIndex,
+                    onUserNavigate: { saveAnchor(at: $0) },
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
@@ -215,10 +222,10 @@ struct ReaderScreen: View {
                 settings.hasSeenFullscreenHint = true
             }
         }
-        .onChange(of: appState.currentIndex) { _, _ in
-            saveAnchor()
-            extendWindowIfNeeded()
-        }
+        // Programmatic index moves (restore/reanchor/clamp) must NOT persist the anchor — only a
+        // completed user swipe does, via onUserNavigate. This handler only grows the timeline
+        // window as the reader pages toward the end of the loaded slice.
+        .onChange(of: appState.currentIndex) { _, _ in extendWindowIfNeeded() }
         .onChange(of: allArticles) { _, _ in
             recomputeFilter()
             if didRestoreAnchor { reanchorToCurrentArticle() } else { restoreAnchor() }
@@ -276,20 +283,27 @@ struct ReaderScreen: View {
         didRestoreAnchor = true
     }
 
-    private func saveAnchor() {
+    /// Persist the reading position. Called only from a completed user swipe (`onUserNavigate`),
+    /// so it records exactly the article the user paged to and is never reached by the programmatic
+    /// index moves of restore/reanchor/clamp — which previously could overwrite the anchor with a
+    /// fallback position.
+    private func saveAnchor(at index: Int) {
         let articles = filteredArticles
-        guard !articles.isEmpty else { return }
-        guard appState.currentIndex >= 0, appState.currentIndex < articles.count else { return }
-        settings.timelineAnchorIdentifier = articles[appState.currentIndex].identifier
+        guard articles.indices.contains(index) else { return }
+        settings.timelineAnchorIdentifier = articles[index].identifier
     }
 
     /// Keep the displayed article selected across timeline mutations (refresh / reload / retention
     /// cleanup) by re-resolving its saved anchor identifier to its new position, rather than holding
-    /// a now-stale positional index. Falls back to the top only if the article is gone.
+    /// a now-stale positional index. When the anchored article is *not* in the current slice (a
+    /// partial/streamed query delivery, or a transient empty state mid-refresh) we leave the index
+    /// untouched and wait for the next delivery — moving to a fallback here would jump the reader
+    /// and, before, persist that wrong position as the new anchor.
     private func reanchorToCurrentArticle() {
-        appState.currentIndex = TimelineAnchor.index(
-            for: settings.timelineAnchorIdentifier, in: filteredArticles
-        )
+        guard let i = TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: filteredArticles) else {
+            return
+        }
+        appState.currentIndex = i
     }
 
     private func clampIndex() {

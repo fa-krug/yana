@@ -37,9 +37,11 @@ enum TimelinePageIndex {
 }
 
 /// Resolves the persisted timeline anchor (an article `identifier`) to an index in the
-/// currently displayed list, falling back to 0 (newest) when it is missing.
+/// currently displayed list. When there is no remembered position (first launch) or the
+/// anchored article is gone, it falls back to the newest article — the last index in the
+/// ascending timeline — so the reader opens on fresh content rather than the oldest page.
 enum TimelineAnchor {
     static func index(for identifier: String?, in articles: [Article]) -> Int {
-        TimelinePageIndex.index(of: identifier, in: articles) ?? 0
+        TimelinePageIndex.index(of: identifier, in: articles) ?? max(0, articles.count - 1)
     }
 }

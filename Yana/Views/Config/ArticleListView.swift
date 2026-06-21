@@ -28,7 +28,9 @@ struct ArticleListView: View {
 
     static func timelineDescriptor(limit: Int?) -> FetchDescriptor<Article> {
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            // Ascending import date: oldest first, so the list reads top = old, bottom = new
+            // (matching the reader's left = old, right = new).
+            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
         )
         if let limit { descriptor.fetchLimit = limit }
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]

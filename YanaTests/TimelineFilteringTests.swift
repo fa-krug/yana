@@ -28,12 +28,16 @@ struct TimelineFilteringTests {
         #expect(TagFilter.apply(to: [a], disabledTagNames: ["Tech", "Fun"], includeUntagged: true).isEmpty)
     }
 
-    @Test func anchorResolvesToIndexOrZero() {
+    @Test func anchorResolvesToIndexOrNewest() {
         let a = article("a", tags: [])
         let b = article("b", tags: [])
         let list = [a, b]
+        #expect(TimelineAnchor.index(for: "a", in: list) == 0)
         #expect(TimelineAnchor.index(for: "b", in: list) == 1)
-        #expect(TimelineAnchor.index(for: "missing", in: list) == 0)
-        #expect(TimelineAnchor.index(for: nil, in: list) == 0)
+        // No / missing memory falls back to the newest article (last in the ascending timeline),
+        // not the oldest, so a first launch opens on fresh content.
+        #expect(TimelineAnchor.index(for: "missing", in: list) == 1)
+        #expect(TimelineAnchor.index(for: nil, in: list) == 1)
+        #expect(TimelineAnchor.index(for: nil, in: []) == 0)
     }
 }
