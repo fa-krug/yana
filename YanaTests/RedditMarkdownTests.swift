@@ -57,6 +57,18 @@ struct RedditMarkdownTests {
         #expect(html.contains("preview.redd.it/abc.png"))
     }
 
+    @Test func previewImageLinkWithLabelDoesNotLeakAltText() {
+        // A markdown preview-image link with a descriptive label must become a single,
+        // well-formed <img>. Regression: the bare-URL pass used to re-match the freshly
+        // created tag's own src, double-wrapping it and leaking `alt="...">` as visible text.
+        let md = "[Werbung für AppleCare-Abdeckung in der macOS-Einstellungen-App]"
+            + "(https://preview.redd.it/abc.png?width=640&s=hash)"
+        let html = RedditMarkdown.toHTML(md)
+        #expect(!html.contains("<img src=\"<img"))                 // no nested/double-wrapped img
+        #expect(html.components(separatedBy: "<img").count == 2)    // exactly one <img>
+        #expect(html.contains("alt=\"Werbung für AppleCare-Abdeckung in der macOS-Einstellungen-App\""))
+    }
+
     @Test func escapesRawHTMLInBody() {
         let html = RedditMarkdown.toHTML("Hello <script>alert(1)</script> world")
         #expect(html.contains("&lt;script&gt;"))
@@ -67,6 +79,41 @@ struct RedditMarkdownTests {
         let html = RedditMarkdown.toHTML("text <img src=x onerror=alert(1)>")
         #expect(!html.contains("<img src=x onerror"))   // raw tag neutralized
         #expect(html.contains("&lt;img"))
+    }
+
+    @Test func backslashEscapedDashIsNotAListAndDropsBackslash() {
+        // Reddit users write "\-" to get a literal dash that isn't a list bullet.
+        let html = RedditMarkdown.toHTML("\\- Through the door\n\n\\- Past the desk")
+        #expect(!html.contains("<ul>"))
+        #expect(!html.contains("<li>"))
+        #expect(!html.contains("\\-"))
+        #expect(html.contains("- Through the door"))
+        #expect(html.contains("- Past the desk"))
+    }
+
+    @Test func backslashEscapedPunctuationStaysLiteral() {
+        let star = RedditMarkdown.toHTML("\\*not italic\\*")
+        #expect(!star.contains("<em>"))
+        #expect(star.contains("*not italic*"))
+        // Backslash before non-escapable char is left untouched.
+        #expect(RedditMarkdown.toHTML("C:\\path").contains("C:\\path"))
+        // Double backslash collapses to a single literal backslash.
+        #expect(RedditMarkdown.toHTML("a\\\\b").contains("a\\b"))
+    }
+
+    @Test func existingHTMLEntitiesArePreserved() {
+        // raw_json=1 returns user-typed entities verbatim; keep them so the WebView decodes them.
+        #expect(RedditMarkdown.toHTML("a&#x200B;b").contains("&#x200B;"))
+        #expect(!RedditMarkdown.toHTML("a&#x200B;b").contains("&amp;#x200B;"))
+        #expect(RedditMarkdown.toHTML("it&#39;s").contains("&#39;"))
+        #expect(RedditMarkdown.toHTML("a&nbsp;b").contains("&nbsp;"))
+        // Already-encoded ampersand is not double-escaped.
+        #expect(RedditMarkdown.toHTML("a &amp; b").contains("&amp;"))
+        #expect(!RedditMarkdown.toHTML("a &amp; b").contains("&amp;amp;"))
+    }
+
+    @Test func bareAmpersandIsStillEscaped() {
+        #expect(RedditMarkdown.toHTML("R&D budget").contains("R&amp;D"))
     }
 
     @Test func escapingDoesNotBreakMarkdownStructure() {

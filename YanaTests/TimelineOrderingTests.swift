@@ -28,7 +28,7 @@ struct TimelineOrderingTests {
         insertArticle("old", createdAt: base, into: context)
         insertArticle("mid", createdAt: base.addingTimeInterval(100), into: context)
 
-        let fetched = try context.fetch(ReaderScreen.timelineDescriptor)
+        let fetched = try context.fetch(ReaderScreen.timelineDescriptor(limit: 100))
         // Index 0 is the leftmost page; it must be the oldest article.
         #expect(fetched.map(\.identifier) == ["old", "mid", "new"])
     }
@@ -40,7 +40,7 @@ struct TimelineOrderingTests {
         insertArticle("old", createdAt: base, into: context)
         insertArticle("mid", createdAt: base.addingTimeInterval(100), into: context)
 
-        let fetched = try context.fetch(ArticleListView.timelineDescriptor)
+        let fetched = try context.fetch(ArticleListView.timelineDescriptor(limit: 100))
         // Row 0 is the top of the list; it must be the oldest article.
         #expect(fetched.map(\.identifier) == ["old", "mid", "new"])
     }
