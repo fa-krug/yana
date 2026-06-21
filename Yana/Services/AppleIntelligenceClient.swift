@@ -29,6 +29,14 @@ struct ArticleSummary {
     var summary: String
 }
 
+/// Guided-generation output shape for the custom-feed script generator: a complete JavaScript
+/// program. The `@Guide` keeps the model emitting raw code, not prose or Markdown fences.
+@Generable
+struct GeneratedScript {
+    @Guide(description: "A complete JavaScript program that defines a run(input) function and calls Yana.emit(...) for each article. Raw JavaScript only — no Markdown code fences, no explanation.")
+    var code: String
+}
+
 /// Abstraction over on-device generation so `AppleIntelligenceProcessor` is testable with a fake.
 protocol ArticleGenerating: Sendable {
     var availability: AppleIntelligenceAvailability { get }
@@ -75,5 +83,14 @@ struct AppleIntelligenceClient: ArticleGenerating {
         let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
         let response = try await session.respond(to: prompt, generating: ArticleSummary.self, options: options)
         return response.content.summary
+    }
+
+    /// Generate a custom-feed script on-device. Returns raw JavaScript. Kept off the
+    /// `ArticleGenerating` protocol so existing test fakes need not implement it.
+    func generateScript(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
+        let session = LanguageModelSession(instructions: instructions)
+        let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
+        let response = try await session.respond(to: prompt, generating: GeneratedScript.self, options: options)
+        return response.content.code
     }
 }

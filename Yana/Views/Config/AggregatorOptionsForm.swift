@@ -4,6 +4,11 @@ import SwiftUI
 /// AI block. Editing goes through case-specific bindings back into the bound enum.
 struct AggregatorOptionsForm: View {
     @Binding var options: AggregatorOptions
+    /// The feed's identifier (seed URL), needed by the custom-script editor. Default keeps
+    /// existing call sites and previews working.
+    var identifier: String = ""
+
+    @State private var showingScriptEditor = false
 
     var body: some View {
         Group {
@@ -208,6 +213,14 @@ struct AggregatorOptionsForm: View {
         }
     }
 
+    /// Binding into the active `.customScript` case, defaulting to fresh options off-case.
+    private var customScriptBinding: Binding<CustomScriptOptions> {
+        Binding(
+            get: { if case .customScript(let o) = options { return o } else { return CustomScriptOptions() } },
+            set: { options = .customScript($0) }
+        )
+    }
+
     private func customScriptSection(_ o: CustomScriptOptions) -> some View {
         Section("Custom Feed Script") {
             Text("This feed is produced by a script that emits articles. Describe what it should collect, then generate or edit the script.")
@@ -216,18 +229,12 @@ struct AggregatorOptionsForm: View {
             TextField("What should this feed collect?", text: Binding(
                 get: { o.prompt },
                 set: { var n = o; n.prompt = $0; options = .customScript(n) }), axis: .vertical)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Script Source")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TextEditor(text: Binding(
-                    get: { o.source },
-                    set: { var n = o; n.source = $0; options = .customScript(n) }))
-                    .font(.system(.footnote, design: .monospaced))
-                    .frame(minHeight: 160)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
+            Button { showingScriptEditor = true } label: {
+                Label(o.source.isEmpty ? "Generate Script" : "Edit Script", systemImage: "wand.and.stars")
             }
+        }
+        .sheet(isPresented: $showingScriptEditor) {
+            CustomScriptEditorView(options: customScriptBinding, seedURL: identifier)
         }
     }
 }

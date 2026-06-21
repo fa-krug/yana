@@ -20,8 +20,14 @@ struct FeedEditorView: View {
 
     /// Source-enabled types, always including the feed's current type so an existing
     /// feed of a now-inactive source still shows a valid selection while editing.
+    /// Custom-script feeds are authored by AI, so the type is offered only when AI is
+    /// configured (unless this feed already uses it).
     private var availableTypes: [AggregatorType] {
-        AggregatorType.allCases.filter { settings.isSourceEnabled($0) || $0 == model.type }
+        AggregatorType.allCases.filter { type in
+            guard settings.isSourceEnabled(type) || type == model.type else { return false }
+            if type == .customScript { return settings.isAIConfigured || type == model.type }
+            return true
+        }
     }
 
     var body: some View {
@@ -33,6 +39,11 @@ struct FeedEditorView: View {
                     ForEach(availableTypes) { type in
                         Text(type.displayName).tag(type)
                     }
+                }
+                if !settings.isAIConfigured && model.type != .customScript {
+                    Text("Custom Script feeds require AI. Configure a provider in Settings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 if !model.type.identifierChoices.isEmpty {
                     Picker("Feed", selection: $model.identifier) {
@@ -78,7 +89,7 @@ struct FeedEditorView: View {
                 }
             }
 
-            AggregatorOptionsForm(options: $model.options)
+            AggregatorOptionsForm(options: $model.options, identifier: model.identifier)
         }
         .navigationTitle(model.isEditingExisting ? "Edit Feed" : "New Feed")
         .sheet(isPresented: $showingSearch) {

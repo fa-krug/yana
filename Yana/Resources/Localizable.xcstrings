@@ -2264,6 +2264,176 @@
           }
         }
       }
+    },
+    "Describe this feed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diesen Feed beschreiben"
+          }
+        }
+      }
+    },
+    "e.g. Collect the latest posts from this site, with full article text; skip the newsletter box": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "z. B. Die neuesten Beiträge dieser Seite mit vollständigem Artikeltext sammeln; den Newsletter-Block auslassen"
+          }
+        }
+      }
+    },
+    "Enter the feed's URL first.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zuerst die URL des Feeds eingeben."
+          }
+        }
+      }
+    },
+    "Working…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird ausgeführt …"
+          }
+        }
+      }
+    },
+    "Generate & Try": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generieren & testen"
+          }
+        }
+      }
+    },
+    "Problem": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Problem"
+          }
+        }
+      }
+    },
+    "Preview": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorschau"
+          }
+        }
+      }
+    },
+    "Log": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protokoll"
+          }
+        }
+      }
+    },
+    "Images and full formatting appear in the reader.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder und vollständige Formatierung erscheinen im Reader."
+          }
+        }
+      }
+    },
+    "AI is not configured. Add a provider in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "KI ist nicht konfiguriert. Einen Anbieter in den Einstellungen hinzufügen."
+          }
+        }
+      }
+    },
+    "The script ran but produced no preview article.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Skript wurde ausgeführt, hat aber keinen Vorschau-Artikel erzeugt."
+          }
+        }
+      }
+    },
+    "(no text content)": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(kein Textinhalt)"
+          }
+        }
+      }
+    },
+    "Generate Script": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skript generieren"
+          }
+        }
+      }
+    },
+    "Edit Script": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skript bearbeiten"
+          }
+        }
+      }
+    },
+    "Custom Script feeds require AI. Configure a provider in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benutzerdefinierte Skript-Feeds erfordern KI. Einen Anbieter in den Einstellungen konfigurieren."
+          }
+        }
+      }
+    },
+    "The script ran but produced no articles.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Skript wurde ausgeführt, hat aber keine Artikel erzeugt."
+          }
+        }
+      }
+    },
+    "The script failed to run.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Skript konnte nicht ausgeführt werden."
+          }
+        }
+      }
     }
   },
   "version": "1.1"
