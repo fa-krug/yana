@@ -2434,6 +2434,46 @@
           }
         }
       }
+    },
+    "API Secret (optional)": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API-Geheimnis (optional)"
+          }
+        }
+      }
+    },
+    "Secret or API key": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geheimnis oder API-Schlüssel"
+          }
+        }
+      }
+    },
+    "Stored in the Keychain and passed to the script as input.secret. Never included when a script is shared.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird im Schlüsselbund gespeichert und dem Skript als input.secret übergeben. Wird beim Teilen eines Skripts nie mitgegeben."
+          }
+        }
+      }
+    },
+    "This is how the article will appear in the reader.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "So erscheint der Artikel im Reader."
+          }
+        }
+      }
     }
   },
   "version": "1.1"
