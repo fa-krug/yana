@@ -22,14 +22,17 @@ The mark is a stylized **owl** built from oversized round glasses geometry:
   so the iris ring is a **transparent gap** (the background shows through).
 - **Pupils** — a filled white disc (r ≈ 58) centered in each eye, so the mark
   reads as eyes rather than empty lenses.
-- **Beak** — a bold downward-pointing shape (flat/wide top, gently convex sides
-  tapering to a rounded point) centered between the eyes, with clear spacing
-  from the eye rings (where a glasses bridge would sit).
-- No eyebrows / feather tufts, no temple arms / handles.
+- **Beak** — a bold, elongated downward-pointing shape (narrow top, gently
+  convex sides tapering to a point that drops below the eye line) centered
+  between the eyes, with clear spacing from the eye rings (where a glasses
+  bridge would sit).
+- **Ear tufts** — two curved, pointed feather "horns" rising from the top of
+  each eye (the classic horned-owl silhouette).
+- No glasses temple arms / handles.
 
-Everything is pure white on transparency. The pupils and beak are separate
-`<path>` elements that union with the eye rings — they do not rely on cross-path
-`evenodd` interaction (SVG fill rules apply per path).
+Everything is pure white on transparency. The pupils, beak, and ear tufts are
+separate `<path>` elements that union with the eye rings — they do not rely on
+cross-path `evenodd` interaction (SVG fill rules apply per path).
 
 ## Theming behavior (background is adjustable, frame adapts)
 
@@ -55,9 +58,9 @@ No per-appearance SVG variants are authored.
 ## Verification
 
 - `Profile.svg` parses as well-formed XML.
-- Rasterizes to an owl (two round eyes with pupils, a central downward beak)
-  with the iris rings transparent — confirmed by compositing over both a
-  light-purple and a dark-purple background.
+- Rasterizes to an owl (two round eyes with pupils, ear tufts, a central
+  downward beak) with the iris rings transparent — confirmed by compositing
+  over both a light-purple and a dark-purple background.
 - `icon.json` remains valid JSON and references only `Profile.svg`.
 
 ## Out of scope
