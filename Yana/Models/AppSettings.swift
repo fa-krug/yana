@@ -157,6 +157,12 @@ final class AppSettings {
         set { withMutation(keyPath: \.activeAIProvider) { defaults.set(newValue.rawValue, forKey: Key.activeAIProvider) } }
     }
 
+    /// Whether AI can run right now with the active provider (cloud key present, or Apple
+    /// Intelligence available). Gates AI-authored features such as custom-script feed creation.
+    var isAIConfigured: Bool {
+        AIReadiness.isReady(provider: activeAIProvider)
+    }
+
     var retentionDays: Int {
         get { access(keyPath: \.retentionDays); return defaults.integer(forKey: Key.retentionDays) }
         set { withMutation(keyPath: \.retentionDays) { defaults.set(newValue, forKey: Key.retentionDays) } }

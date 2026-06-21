@@ -210,12 +210,12 @@
         }
       }
     },
-    "Article list" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Artikelliste"
+    "Article list": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artikelliste"
           }
         }
       }
@@ -815,11 +815,14 @@
         }
       }
     },
-    "Importing feeds…" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : { "state" : "translated", "value" : "Feeds werden importiert …" }
+    "Importing feeds…": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeds werden importiert …"
+          }
         }
       }
     },
@@ -1274,12 +1277,12 @@
         }
       }
     },
-    "Manage your feeds and the tags applied to articles." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Feeds und die auf Artikel angewendeten Tags verwalten."
+    "Manage your feeds and the tags applied to articles.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeds und die auf Artikel angewendeten Tags verwalten."
           }
         }
       }
@@ -2188,6 +2191,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "„%1$@“ löschen? Die zugehörigen %2$lld Artikel werden endgültig gelöscht."
+          }
+        }
+      }
+    },
+    "Custom Feed Script": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benutzerdefiniertes Feed-Skript"
+          }
+        }
+      }
+    },
+    "This feed is produced by a script that emits articles. Describe what it should collect, then generate or edit the script.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Feed wird von einem Skript erzeugt, das Artikel ausgibt. Beschreiben, was gesammelt werden soll, und das Skript anschließend generieren oder bearbeiten."
+          }
+        }
+      }
+    },
+    "What should this feed collect?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Was soll dieser Feed sammeln?"
+          }
+        }
+      }
+    },
+    "Script Source": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skript-Quelltext"
+          }
+        }
+      }
+    },
+    "The script must define a run(input) function.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Skript muss eine run(input)-Funktion definieren."
+          }
+        }
+      }
+    },
+    "Script error: %@": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriptfehler: %@"
+          }
+        }
+      }
+    },
+    "The script took too long and was stopped.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Skript hat zu lange gedauert und wurde gestoppt."
           }
         }
       }

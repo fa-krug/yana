@@ -5,9 +5,13 @@ struct AggregatorCredentials: Sendable {
     var redditClientID: String?
     var redditClientSecret: String?
     var youtubeAPIKey: String?
+    /// Optional per-feed secret for custom-script feeds, exposed to the script as `input.secret`.
+    /// Stored in the Keychain, keyed by feed identifier; never travels with the exported script.
+    var scriptSecret: String?
 
     /// Read the user-supplied API keys out of the Keychain. Empty strings map to `nil`.
-    static func resolved() -> AggregatorCredentials {
+    /// `scriptSecret` is the per-feed secret for a custom-script run (resolved by the caller).
+    static func resolved(scriptSecret: String? = nil) -> AggregatorCredentials {
         func nonEmpty(_ item: KeychainService.APIKeyItem) -> String? {
             let value = KeychainService.loadAPIKey(for: item)
             return (value?.isEmpty == false) ? value : nil
@@ -15,7 +19,8 @@ struct AggregatorCredentials: Sendable {
         return AggregatorCredentials(
             redditClientID: nonEmpty(.redditClientID),
             redditClientSecret: nonEmpty(.redditClientSecret),
-            youtubeAPIKey: nonEmpty(.youtubeAPIKey)
+            youtubeAPIKey: nonEmpty(.youtubeAPIKey),
+            scriptSecret: (scriptSecret?.isEmpty == false) ? scriptSecret : nil
         )
     }
 }

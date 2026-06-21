@@ -91,6 +91,15 @@ struct MeinMmoOptions: Codable, Sendable, Equatable {
     var ai = AIOptions()
 }
 
+/// A user-built feed driven by a small JavaScript that emits raw articles (see `ScriptEngine`).
+/// `source` is the generated/edited JS; `prompt` is the natural-language brief kept so the user
+/// can refine and regenerate later. Authored via the AI editor; runtime needs no AI.
+struct CustomScriptOptions: Codable, Sendable, Equatable {
+    var source = ""
+    var prompt = ""
+    var ai = AIOptions()
+}
+
 /// Typed per-feed aggregator configuration. One case per `AggregatorType`.
 enum AggregatorOptions: Codable, Sendable, Equatable {
     case fullWebsite(WebsiteOptions)
@@ -107,6 +116,7 @@ enum AggregatorOptions: Codable, Sendable, Equatable {
     case mactechnews(MactechnewsOptions)
     case oglaf(OglafOptions)
     case meinMmo(MeinMmoOptions)
+    case customScript(CustomScriptOptions)
 
     /// The AI block, regardless of which case is active.
     var ai: AIOptions {
@@ -125,6 +135,7 @@ enum AggregatorOptions: Codable, Sendable, Equatable {
         case .mactechnews(let o): o.ai
         case .oglaf(let o): o.ai
         case .meinMmo(let o): o.ai
+        case .customScript(let o): o.ai
         }
     }
 }

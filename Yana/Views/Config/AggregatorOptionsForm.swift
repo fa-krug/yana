@@ -46,6 +46,8 @@ struct AggregatorOptionsForm: View {
                 toggleSection(isOn: o.combinePages, label: "Combine Multi-page Articles") {
                     var n = o; n.combinePages = $0; options = .meinMmo(n)
                 }
+            case .customScript(let o):
+                customScriptSection(o)
             }
 
             aiSection
@@ -86,6 +88,7 @@ struct AggregatorOptionsForm: View {
                 case .mactechnews(var o): o.ai = newAI; options = .mactechnews(o)
                 case .oglaf(var o): o.ai = newAI; options = .oglaf(o)
                 case .meinMmo(var o): o.ai = newAI; options = .meinMmo(o)
+                case .customScript(var o): o.ai = newAI; options = .customScript(o)
                 }
             }
         )
@@ -202,6 +205,29 @@ struct AggregatorOptionsForm: View {
         Section("Options") {
             Toggle("Show Alt Text", isOn: Binding(get: { o.showAltText }, set: { var n = o; n.showAltText = $0; options = .oglaf(n) }))
             Toggle("Convert to Base64", isOn: Binding(get: { o.convertToBase64 }, set: { var n = o; n.convertToBase64 = $0; options = .oglaf(n) }))
+        }
+    }
+
+    private func customScriptSection(_ o: CustomScriptOptions) -> some View {
+        Section("Custom Feed Script") {
+            Text("This feed is produced by a script that emits articles. Describe what it should collect, then generate or edit the script.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            TextField("What should this feed collect?", text: Binding(
+                get: { o.prompt },
+                set: { var n = o; n.prompt = $0; options = .customScript(n) }), axis: .vertical)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Script Source")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: Binding(
+                    get: { o.source },
+                    set: { var n = o; n.source = $0; options = .customScript(n) }))
+                    .font(.system(.footnote, design: .monospaced))
+                    .frame(minHeight: 160)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+            }
         }
     }
 }

@@ -18,6 +18,8 @@ final class AggregatorRegistry: Sendable {
             return makeComicScraper(config.type, config: config, credentials: credentials)
         case .reddit, .youtube, .podcast:
             return makeSocial(config.type, config: config, credentials: credentials)
+        case .customScript:
+            return CustomScriptAggregator(config: config, credentials: credentials)
         }
     }
 

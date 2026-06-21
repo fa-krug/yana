@@ -3,8 +3,14 @@ import Testing
 
 @Suite("AggregatorType")
 struct AggregatorTypeTests {
-    @Test func hasAllFourteenCases() {
-        #expect(AggregatorType.allCases.count == 14)
+    @Test func hasAllFifteenCases() {
+        #expect(AggregatorType.allCases.count == 15)
+    }
+
+    @Test func customScriptIsURLBasedAndNeedsNoAPIKey() {
+        #expect(AggregatorType.customScript.rawValue == "custom_script")
+        #expect(AggregatorType.customScript.identifierKind == .url)
+        #expect(AggregatorType.customScript.requiredAPIKey == AggregatorAPIKey.none)
     }
 
     @Test func rawValuesMatchYanaServer() {

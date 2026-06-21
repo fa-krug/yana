@@ -238,7 +238,7 @@ final class AggregationService {
         defer { isUpdating = false }
 
         let config = FeedConfig(feed: feed, collectedToday: 0)
-        let credentials = AggregatorCredentials.resolved()
+        let credentials = AggregatorCredentials.resolved(scriptSecret: scriptSecret(for: feed))
         guard let aggregator = makeAggregator(config, credentials) else { return 0 }
         // Seed source fields only. `summary` is a derived AI field, not source content: carrying
         // it here would let a stale summary survive a reprocess that no longer produces one (e.g.
@@ -298,12 +298,17 @@ final class AggregationService {
         context.model(for: id) as? T
     }
 
+    /// Per-feed Keychain secret for custom-script feeds (`input.secret`); `nil` for every other type.
+    private func scriptSecret(for feed: Feed) -> String? {
+        feed.type == .customScript ? KeychainService.loadScriptSecret(forFeed: feed.identifier) : nil
+    }
+
     @discardableResult
     private func aggregate(feed: Feed, force: Bool = false) async -> Int {
         let runNow = now()
         let collected = collectedToday(for: feed, now: runNow)
         let config = FeedConfig(feed: feed, collectedToday: collected, force: force)
-        let credentials = AggregatorCredentials.resolved()
+        let credentials = AggregatorCredentials.resolved(scriptSecret: scriptSecret(for: feed))
 
         guard let aggregator = makeAggregator(config, credentials) else {
             let message = AggregatorError.notImplemented(feed.type).errorDescription ?? ""

@@ -79,4 +79,26 @@ enum KeychainService: Sendable {
     static func deleteAPIKey(for item: APIKeyItem) -> Bool {
         delete(key: item.rawValue)
     }
+
+    // MARK: - Per-feed script secrets
+
+    /// Keychain account for a custom-script feed's secret, namespaced by feed identifier so
+    /// each feed has its own. Kept out of the exported script source.
+    private static func scriptSecretKey(forFeed identifier: String) -> String {
+        "script_secret_\(identifier)"
+    }
+
+    static func loadScriptSecret(forFeed identifier: String) -> String? {
+        load(key: scriptSecretKey(forFeed: identifier))
+    }
+
+    @discardableResult
+    static func saveScriptSecret(_ value: String, forFeed identifier: String) -> Bool {
+        save(key: scriptSecretKey(forFeed: identifier), value: value)
+    }
+
+    @discardableResult
+    static func deleteScriptSecret(forFeed identifier: String) -> Bool {
+        delete(key: scriptSecretKey(forFeed: identifier))
+    }
 }

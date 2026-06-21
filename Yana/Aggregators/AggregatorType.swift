@@ -31,6 +31,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
     case youtube
     case reddit
     case podcast
+    case customScript = "custom_script"
 
     var id: String { rawValue }
 
@@ -50,6 +51,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .youtube: "YouTube"
         case .reddit: "Reddit"
         case .podcast: "Podcast"
+        case .customScript: "Custom Script"
         }
     }
 
@@ -67,7 +69,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .mactechnews: "https://www.mactechnews.de/"
         case .oglaf: "https://www.oglaf.com/"
         case .meinMmo: "https://mein-mmo.de/"
-        case .fullWebsite, .feedContent, .youtube, .reddit, .podcast: nil
+        case .fullWebsite, .feedContent, .youtube, .reddit, .podcast, .customScript: nil
         }
     }
 
@@ -117,6 +119,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .mactechnews: .mactechnews(MactechnewsOptions())
         case .oglaf: .oglaf(OglafOptions())
         case .meinMmo: .meinMmo(MeinMmoOptions())
+        case .customScript: .customScript(CustomScriptOptions())
         }
     }
 }
