@@ -45,6 +45,40 @@ struct CaschysBlogAggregatorTests {
         #expect(a.content.contains("youtube-nocookie.com/embed/abc12345678"))  // YouTube kept + rewritten
     }
 
+    @Test func removesWordPressSelfEmbedPromoBlocks() async throws {
+        let page = """
+        <html><body><div class="entry-inner"><p>Body text</p>\
+        <div class="video-container">\
+        <blockquote class="wp-embedded-content"><p>\
+        <a href="https://stadt-bremerhaven.de/audible-3-monate-kostenlos-nutzen-2/">Audible 3 Monate kostenlos nutzen</a>\
+        </p></blockquote>\
+        <p><iframe class="wp-embedded-content" src="https://stadt-bremerhaven.de/audible-3-monate-kostenlos-nutzen-2/embed/"></iframe></p>\
+        </div>\
+        </div></body></html>
+        """
+        let agg = StubCaschy(entries: [entry("Post")], page: page, options: CaschysBlogOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Body text"))
+        #expect(!a.content.contains("Audible 3 Monate kostenlos nutzen"))  // promo blockquote removed
+        #expect(!a.content.contains("audible-3-monate-kostenlos-nutzen-2"))  // promo embed iframe removed
+    }
+
+    @Test func keepsSelfEmbedPromoWhenSkipAdsDisabled() async throws {
+        let page = """
+        <html><body><div class="entry-inner"><p>Body text</p>\
+        <div class="video-container">\
+        <blockquote class="wp-embedded-content"><p>\
+        <a href="https://stadt-bremerhaven.de/audible-3-monate-kostenlos-nutzen-2/">Audible 3 Monate kostenlos nutzen</a>\
+        </p></blockquote>\
+        </div>\
+        </div></body></html>
+        """
+        let agg = StubCaschy(entries: [entry("Post")], page: page,
+                             options: CaschysBlogOptions(skipAds: false), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Audible 3 Monate kostenlos nutzen"))  // kept when skipAds is off
+    }
+
     @Test func skipsAnzeigeAndWeeklyRecap() async throws {
         let agg = StubCaschy(entries: [
             entry("Cooles Gadget (Anzeige)"),
