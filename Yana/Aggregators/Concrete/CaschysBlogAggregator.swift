@@ -40,6 +40,20 @@ class CaschysBlogAggregator: FullWebsiteAggregator, @unchecked Sendable {
         let doc = try HTMLUtils.parse(html)
         let base = URL(string: article.url)
 
+        // Remove WordPress self-embed promo blocks (e.g. "Audible 3 Monate kostenlos nutzen",
+        // "Amazon Music Unlimited: Vier Monate gratis für Prime-Mitglieder"). These render as a
+        // `.wp-embedded-content` blockquote + iframe, usually wrapped in a `.video-container`.
+        // The iframe whitelist below would strip only the iframe, leaving the visible link behind.
+        if caschyOptions.skipAds {
+            for embed in try doc.select(".wp-embedded-content") {
+                if let container = embed.parent(), container.hasClass("video-container") {
+                    try container.remove()
+                } else {
+                    try embed.remove()
+                }
+            }
+        }
+
         // Iframe whitelist: keep only YouTube + Twitter/X; remove the rest.
         for iframe in try doc.select("iframe") {
             let src = try iframe.attr("src")
