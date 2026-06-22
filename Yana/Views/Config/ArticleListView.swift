@@ -28,9 +28,11 @@ struct ArticleListView: View {
 
     static func timelineDescriptor(limit: Int?) -> FetchDescriptor<Article> {
         var descriptor = FetchDescriptor<Article>(
-            // Ascending import date: oldest first, so the list reads top = old, bottom = new
-            // (matching the reader's left = old, right = new).
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            // Window the *newest* page: sort by descending import date so `fetchLimit` keeps the
+            // most-recent `limit` articles (an ascending sort would keep the oldest, leaving the
+            // reader's current article outside the window). `results` reverses the fetch to display
+            // top = old, bottom = new, matching the reader's left = old, right = new.
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         if let limit { descriptor.fetchLimit = limit }
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
@@ -51,7 +53,10 @@ struct ArticleListView: View {
     /// Same pipeline as `ReaderScreen.recomputeFilter` (TagFilter → FeedFilter over the shared
     /// `AppSettings` filter) plus the search layer, so results are a subset of the reader timeline.
     private var results: [Article] {
-        let searched = ArticleSearch.filter(allArticles, query: debouncedSearch)
+        // The query returns newest-first to window the newest page; reverse to chronological
+        // (oldest → new) so the list reads top = old, bottom = new like the reader timeline.
+        let chronological = Array(allArticles.reversed())
+        let searched = ArticleSearch.filter(chronological, query: debouncedSearch)
         let byTag = TagFilter.apply(to: searched,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
@@ -164,11 +169,12 @@ struct ArticleListView: View {
         }
     }
 
-    /// Grow the window when the last loaded row appears (browse only — search is already
-    /// unbounded). Stops once the database is exhausted (`canLoadMore` is false).
+    /// Grow the window when the oldest loaded row (top of the list) appears — browse only, since
+    /// search is already unbounded. The window holds the newest page, so growth loads *older*
+    /// articles at the top. Stops once the database is exhausted (`canLoadMore` is false).
     private func loadMoreIfNeeded(appearing article: Article, in results: [Article]) {
         guard debouncedSearch.isEmpty, canLoadMore, let limit,
-              article.id == results.last?.id else { return }
+              article.id == results.first?.id else { return }
         self.limit = TimelineWindow.nextLimit(limit)
     }
 
