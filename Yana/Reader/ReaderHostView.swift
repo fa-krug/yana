@@ -108,9 +108,11 @@ struct ReaderScreen: View {
 
     static func timelineDescriptor(limit: Int) -> FetchDescriptor<Article> {
         var descriptor = FetchDescriptor<Article>(
-            // Ascending import date: oldest first. Index 0 is the leftmost page, so the reader
-            // pages left = older, right = newer.
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            // Window the *newest* page: sort by descending import date so `fetchLimit` keeps the
+            // most-recent `limit` articles (an ascending sort would keep the oldest). The view
+            // reverses the result to display oldest → new, so index 0 stays the leftmost (oldest)
+            // page and the reader pages left = older, right = newer.
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         descriptor.fetchLimit = limit
         // Batch-load the relationships every page render touches, avoiding N+1 faulting.
@@ -134,8 +136,11 @@ struct ReaderScreen: View {
     @State private var articleListLimit: Int? = TimelineWindow.pageSize
 
     private func recomputeFilter() {
+        // The query returns newest-first to window the newest page; reverse to chronological
+        // (oldest → new) before filtering so the reader pages left = older, right = newer.
+        let chronological = Array(allArticles.reversed())
         let byTag = TagFilter.apply(
-            to: allArticles,
+            to: chronological,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
@@ -144,14 +149,13 @@ struct ReaderScreen: View {
         extendWindowIfNeeded()
     }
 
-    /// Grow the timeline window when the reader is nearing the end of the loaded articles, or when
-    /// an active filter has hidden most of the current page. Idempotent: stops once enough filtered
-    /// articles are loaded or the database is exhausted (see `TimelineWindow`).
+    /// Grow the timeline window when the reader is nearing the *oldest* loaded article (the front of
+    /// the displayed list), or when an active filter has hidden most of the loaded page. Idempotent:
+    /// stops once enough older articles are loaded or the database is exhausted (see `TimelineWindow`).
     private func extendWindowIfNeeded() {
         if TimelineWindow.shouldExtend(
             loadedRawCount: allArticles.count,
             currentLimit: limit,
-            filteredCount: filteredArticles.count,
             index: appState.currentIndex
         ) {
             onNeedMore()

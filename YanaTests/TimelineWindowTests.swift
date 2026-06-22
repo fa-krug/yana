@@ -7,48 +7,37 @@ struct TimelineWindowTests {
     @Test func doesNotExtendWhenDatabaseExhausted() {
         // Fetch returned fewer rows than the limit → no older articles exist.
         #expect(TimelineWindow.shouldExtend(
-            loadedRawCount: 40, currentLimit: 100, filteredCount: 0, index: 0
+            loadedRawCount: 40, currentLimit: 100, index: 0
         ) == false)
     }
 
-    @Test func doesNotExtendWhenEnoughFilteredAhead() {
-        // Full page fetched, plenty of filtered articles ahead of the index.
+    @Test func doesNotExtendWhenEnoughOlderLoaded() {
+        // Full page fetched and the index sits well past the oldest loaded article, so plenty of
+        // older articles are already available behind it.
         #expect(TimelineWindow.shouldExtend(
-            loadedRawCount: 100, currentLimit: 100, filteredCount: 100, index: 0
+            loadedRawCount: 100, currentLimit: 100, index: 50, lookahead: 25
         ) == false)
     }
 
-    // MARK: - Filter-driven growth
+    // MARK: - Swipe / filter-driven growth (toward older articles)
 
-    @Test func extendsWhenFilterHidesMostOfWindow() {
-        // Full page fetched but a harsh filter left too few visible near the top.
+    @Test func extendsWhenIndexApproachesOldestEnd() {
+        // Reader is near the front (oldest) of the loaded list and older rows may still exist.
         #expect(TimelineWindow.shouldExtend(
-            loadedRawCount: 100, currentLimit: 100, filteredCount: 5, index: 0
-        ) == true)
-    }
-
-    // MARK: - Swipe-driven growth
-
-    @Test func extendsWhenIndexApproachesLoadedEnd() {
-        // Reader is near the end of the loaded list and more rows may exist.
-        #expect(TimelineWindow.shouldExtend(
-            loadedRawCount: 100, currentLimit: 100, filteredCount: 100, index: 90,
-            lookahead: 25
+            loadedRawCount: 100, currentLimit: 100, index: 5, lookahead: 25
         ) == true)
     }
 
     @Test func boundaryExactlyAtLookaheadDoesNotExtend() {
-        // filteredCount == index + lookahead → still satisfied (strict less-than).
+        // index == lookahead → exactly `lookahead` older articles loaded (strict less-than).
         #expect(TimelineWindow.shouldExtend(
-            loadedRawCount: 100, currentLimit: 100, filteredCount: 100, index: 75,
-            lookahead: 25
+            loadedRawCount: 100, currentLimit: 100, index: 25, lookahead: 25
         ) == false)
     }
 
-    @Test func extendsJustPastLookaheadBoundary() {
+    @Test func extendsJustInsideLookaheadBoundary() {
         #expect(TimelineWindow.shouldExtend(
-            loadedRawCount: 100, currentLimit: 100, filteredCount: 100, index: 76,
-            lookahead: 25
+            loadedRawCount: 100, currentLimit: 100, index: 24, lookahead: 25
         ) == true)
     }
 
