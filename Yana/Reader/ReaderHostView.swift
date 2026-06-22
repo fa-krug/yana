@@ -191,7 +191,13 @@ struct ReaderScreen: View {
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
-                    onShowArticleList: { appState.showArticleList = true },
+                    onShowArticleList: {
+                        // Open the list windowed to at least the reader's loaded slice so the
+                        // current article is materialized and can be scrolled to — even when the
+                        // user has paged back to content older than the default first page.
+                        articleListLimit = max(TimelineWindow.pageSize, limit)
+                        appState.showArticleList = true
+                    },
                     onShowSettings: { appState.showSettings = true },
                     onToggleStar: toggleStar,
                     onForceUpdateArticle: forceUpdateArticle,
