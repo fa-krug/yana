@@ -108,14 +108,14 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     @objc private func appearanceDidChange() { render() }
 
-    private func render() {
+    private func render(force: Bool = false) {
         let html = ArticleRenderer.fullPageHTML(
             article: article,
             theme: ArticleThemesManager.shared.currentTheme,
             textSize: settings.articleTextSize,
             summaryPending: summaryPending
         )
-        guard html != loadedHTML else { return }
+        guard force || html != loadedHTML else { return }
         webView.alpha = 0
         loadedHTML = html
         // Load against the bundle directory (like NetNewsWire), not a fake web origin. The article's
@@ -169,6 +169,16 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView.alpha < 1 else { return }
         UIView.animate(withDuration: CrossFade.duration) { webView.alpha = 1 }
+    }
+
+    /// The shared Web Content process was terminated — almost always jetsam while the app sat
+    /// suspended in the background (the reader prewarms several web views into one shared process
+    /// pool, making that process a heavy reclaim target). WebKit does not reload automatically, so
+    /// without this the page comes back blank — and a plain `render()` no-ops because the HTML is
+    /// unchanged, which is why only killing and relaunching the app used to recover. Force a
+    /// re-render to repopulate the now-empty web view.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        render(force: true)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
