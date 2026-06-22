@@ -37,10 +37,13 @@ cross-path `evenodd` interaction (SVG fill rules apply per path).
 ## Theming behavior (background is adjustable, frame adapts)
 
 - **Background** — supplied via the `icon.json` top-level `fill` as an
-  `automatic-gradient` of the brand purple `#725AE4`
-  (`extended-srgb:0.44706,0.35294,0.89412,1.00000`). Icon Composer adapts it
-  across appearances (light purple → dark purple) and substitutes system glass
-  for Tinted/Clear. The single fill color is the one editable knob.
+  `automatic-gradient`. Light appearance uses the brand purple `#725AE4`
+  (`extended-srgb:0.44706,0.35294,0.89412,1.00000`); dark appearance uses an
+  explicit brighter purple (`extended-srgb:0.55882,0.44118,1.00000,1.00000`,
+  ≈`#8F71FF`) instead of letting Icon Composer auto-darken the brand purple, so
+  the mark stays vivid on the dark backdrop. Icon Composer still substitutes
+  system glass for Tinted/Clear. The per-appearance fill colors are the
+  editable knob.
 - **Foreground** — monochrome-on-transparent with `glass: true`, so Icon
   Composer recolors the owl per appearance and the frame auto-contrasts
   against the background (purple frame on the light backdrop, white frame on the
