@@ -39,4 +39,19 @@ struct ArticleListSearchTests {
         let results = try context.fetch(FetchDescriptor<Article>(predicate: ArticleListSearch.predicate(for: "rust")))
         #expect(results.map(\.identifier) == ["2"])
     }
+
+    @Test func matchesFeedName() throws {
+        let context = try makeContext()
+        let feed = Feed(name: "TechRadar", aggregatorType: .feedContent, identifier: "f1")
+        context.insert(feed)
+        let matched = Article(title: "Some Title", identifier: "a1", url: "https://example.com/a1", content: "x", author: "Ed")
+        matched.feed = feed
+        context.insert(matched)
+        let unmatched = Article(title: "Other Title", identifier: "a2", url: "https://example.com/a2", content: "y", author: "Fay")
+        context.insert(unmatched)
+        try context.save()
+
+        let results = try context.fetch(FetchDescriptor<Article>(predicate: ArticleListSearch.predicate(for: "techradar")))
+        #expect(results.map(\.identifier) == ["a1"])
+    }
 }

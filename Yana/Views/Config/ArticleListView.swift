@@ -1,9 +1,9 @@
 import SwiftData
 import SwiftUI
 
-/// Builds the SwiftData predicate for the list's full-text search: title / content / author /
-/// feed name, case- & diacritic-insensitive. SQLite performs the scan, so article HTML is never
-/// loaded into memory en masse.
+/// Full-text search over title / content / author / feed name, case- & diacritic-insensitive.
+/// The fetch projects only scalar fields (never `content`), so article HTML is never materialized;
+/// the compound predicate is evaluated in Swift over those projected rows.
 enum ArticleListSearch {
     // NOTE: The #Predicate macro cannot type-check the full four-field expression in one block
     // (type-check timeout). Split into two complementary predicates: one for the article's own
