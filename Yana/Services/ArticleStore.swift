@@ -25,7 +25,7 @@ final class ArticleStore {
     private(set) var hasLoaded = false
 
     private let container: ModelContainer
-    private nonisolated(unsafe) var observer: NSObjectProtocol?
+    private var observer: NSObjectProtocol?
     private var debounce: Task<Void, Never>?
 
     init(container: ModelContainer) { self.container = container }
@@ -44,7 +44,7 @@ final class ArticleStore {
 
     private func scheduleRefresh() {
         debounce?.cancel()
-        debounce = Task { [weak self] in
+        debounce = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
             await self?.refreshNow()
@@ -59,7 +59,7 @@ final class ArticleStore {
         hasLoaded = true
     }
 
-    deinit {
+    isolated deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 }
