@@ -109,7 +109,6 @@ struct ReaderScreen: View {
     @State private var reloadToken = 0
 
     @State private var filteredArticles: [ArticleSummary] = []
-    @State private var hasComputedFilter = false
 
     private func recomputeFilter() {
         // store.summaries is already chronological (oldest → new); filter in place.
@@ -119,7 +118,6 @@ struct ReaderScreen: View {
             includeUntagged: settings.includeUntagged
         )
         filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        hasComputedFilter = store.hasLoaded
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -168,14 +166,10 @@ struct ReaderScreen: View {
         .sheet(isPresented: $appState.showSettings) { NavigationStack { SettingsScreenView() } }
         .sheet(isPresented: $appState.showArticleList) {
             NavigationStack {
-                // ArticleListView still operates on `Article` and its own window (Task 6 migrates it
-                // to summaries + the store). The store already holds the whole library, so present it
-                // unbounded and bridge its `Article` selection to the summary-based `openArticle`.
                 ArticleListView(
                     currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
                         ? filteredArticles[appState.currentIndex].identifier : nil,
-                    limit: .constant(nil),
-                    onSelect: { openArticle(byIdentifier: $0.identifier) }
+                    onSelect: openArticle
                 )
             }
         }
@@ -212,16 +206,10 @@ struct ReaderScreen: View {
     /// Jump the reader to an article picked from the list. Recompute first so an in-list filter
     /// change is reflected, then resolve by identifier (not a stale index) and dismiss the sheet.
     private func openArticle(_ summary: ArticleSummary) {
-        openArticle(byIdentifier: summary.identifier)
-    }
-
-    /// Identifier-based variant used to bridge the list's `Article` selection (Task 6 migrates the
-    /// list to summaries, after which only `openArticle(_:)` remains).
-    private func openArticle(byIdentifier identifier: String) {
         recomputeFilter()
-        if let i = TimelinePageIndex.index(of: identifier, in: filteredArticles) {
+        if let i = TimelinePageIndex.index(of: summary.identifier, in: filteredArticles) {
             appState.currentIndex = i
-            settings.timelineAnchorIdentifier = identifier
+            settings.timelineAnchorIdentifier = summary.identifier
         }
         appState.showArticleList = false
     }

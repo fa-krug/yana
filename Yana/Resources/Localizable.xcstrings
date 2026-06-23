@@ -432,6 +432,16 @@
         }
       }
     },
+    "Current article" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktueller Artikel"
+          }
+        }
+      }
+    },
     "Current: %@": {
       "localizations": {
         "de": {
