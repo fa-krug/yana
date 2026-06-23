@@ -38,6 +38,6 @@ struct TimelineFilteringTests {
         // not the oldest, so a first launch opens on fresh content.
         #expect(TimelineAnchor.index(for: "missing", in: list) == 1)
         #expect(TimelineAnchor.index(for: nil, in: list) == 1)
-        #expect(TimelineAnchor.index(for: nil, in: []) == 0)
+        #expect(TimelineAnchor.index(for: nil, in: [] as [Article]) == 0)
     }
 }
