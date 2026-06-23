@@ -146,7 +146,7 @@ struct ReaderScreen: View {
             case .loaded:
                 ReaderHostView(
                     articles: articles,
-                    resolveArticle: { modelContext.model(for: $0.persistentID) as? Article },
+                    resolveArticle: { ArticleResolution.resolve($0, in: modelContext) },
                     currentIndex: $appState.currentIndex,
                     onUserNavigate: { saveAnchor(at: $0) },
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,

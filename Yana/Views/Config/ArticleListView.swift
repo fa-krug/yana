@@ -70,7 +70,7 @@ struct ArticleListView: View {
     private var isFilterActive: Bool { settings.isTimelineFilterActive }
 
     private func article(for summary: ArticleSummary) -> Article? {
-        modelContext.model(for: summary.persistentID) as? Article
+        ArticleResolution.resolve(summary, in: modelContext)
     }
 
     var body: some View {
