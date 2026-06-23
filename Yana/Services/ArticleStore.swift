@@ -19,6 +19,10 @@ actor ArticleSummaryLoader {
     /// saved anchor (inclusive), ascending. Falls back to the newest `2*radius+1` when there is no
     /// anchor or it is gone. Same light columns / prefetch as `load()`.
     func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary] {
+        // The window splits on `createdAt` (`>= anchorDate` newer, `< anchorDate` older). Under
+        // exact-timestamp ties the anchor may not land in the truncated window; that is acceptable
+        // and self-healing — this is only the transient cold-cache first-paint set, and the full
+        // load (ms later) plus reanchor-by-identifier resolves the true position regardless.
         if let anchorID, let anchorDate = try anchorCreatedAt(for: anchorID) {
             var newerD = lightDescriptor(
                 predicate: #Predicate { $0.createdAt >= anchorDate }, order: .forward
@@ -41,8 +45,12 @@ actor ArticleSummaryLoader {
     }
 
     private func anchorCreatedAt(for identifier: String) throws -> Date? {
-        var d = FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == identifier })
+        var d = FetchDescriptor<Article>(
+            predicate: #Predicate { $0.identifier == identifier },
+            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+        )
         d.fetchLimit = 1
+        d.propertiesToFetch = [\.createdAt]
         return try modelContext.fetch(d).first?.createdAt
     }
 
