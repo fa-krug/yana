@@ -14,6 +14,50 @@ actor ArticleSummaryLoader {
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         return try modelContext.fetch(descriptor).map(ArticleSummary.init)
     }
+
+    /// Anchor-centered slice for the cold-cache fast path: the ~`2*radius+1` articles around the
+    /// saved anchor (inclusive), ascending. Falls back to the newest `2*radius+1` when there is no
+    /// anchor or it is gone. Same light columns / prefetch as `load()`.
+    func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary] {
+        if let anchorID, let anchorDate = try anchorCreatedAt(for: anchorID) {
+            var newerD = lightDescriptor(
+                predicate: #Predicate { $0.createdAt >= anchorDate }, order: .forward
+            )
+            newerD.fetchLimit = radius + 1
+            let newer = try modelContext.fetch(newerD)
+
+            var olderD = lightDescriptor(
+                predicate: #Predicate { $0.createdAt < anchorDate }, order: .reverse
+            )
+            olderD.fetchLimit = radius
+            let older = try modelContext.fetch(olderD)
+
+            return (Array(older.reversed()) + newer).map(ArticleSummary.init)
+        }
+
+        var newestD = lightDescriptor(predicate: nil, order: .reverse)
+        newestD.fetchLimit = 2 * radius + 1
+        return try modelContext.fetch(newestD).reversed().map(ArticleSummary.init)
+    }
+
+    private func anchorCreatedAt(for identifier: String) throws -> Date? {
+        var d = FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == identifier })
+        d.fetchLimit = 1
+        return try modelContext.fetch(d).first?.createdAt
+    }
+
+    /// A `createdAt`-sorted descriptor restricted to the light timeline columns, with `feed`/`tags`
+    /// prefetched — the same shape `load()` uses, factored out for the windowed fetches.
+    private func lightDescriptor(
+        predicate: Predicate<Article>?, order: SortOrder
+    ) -> FetchDescriptor<Article> {
+        var d = FetchDescriptor<Article>(
+            predicate: predicate, sortBy: [SortDescriptor(\.createdAt, order: order)]
+        )
+        d.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
+        d.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        return d
+    }
 }
 
 /// Single source of truth for the timeline/list dataset. Loads the whole library's lightweight
