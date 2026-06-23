@@ -53,8 +53,12 @@ designed for privacy-conscious users who want their feeds without any backend.
   `NewArticleNotification` gating; opt-in, off by default), and the OPML pair — `OPMLCodec`
   (pure standard-OPML encode/decode with `yana:` extension attributes) and `FeedPortability`
   (`Feed` ↔ OPML mapping: restores type/options/tags, falls back to `feedContent` for foreign
-  OPML, dedupes by identifier+type).
-- **Reader** (`Yana/Reader/`): a UIKit port of NetNewsWire's reader. `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that owns the `@Query` timeline, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderWebViewController` (per-article `WKWebView`, pull-to-refresh, native-browser links). Article HTML is rendered by `ArticleRenderer` + `MacroProcessor` driving NNW's `.nnwtheme` themes via `ArticleThemesManager` (8 bundled themes under `Yana/Resources/Themes/`, with CSS/templates under `Yana/Resources/ArticleRendering/`) and `ArticleTextSize`. Links open in `SFSafariViewController` or the system browser when the "Use System Browser" setting is on. A dedicated **Reader** settings section exposes theme, text size, and system-browser preference.
+  OPML, dedupes by identifier+type) — and `ArticleStore` (`@MainActor @Observable`; loads the
+  whole library's lightweight `ArticleSummary` metadata once at launch via an `@ModelActor`
+  background loader, then stays in sync via a coalesced `ModelContext.didSave` observer;
+  consumed by both the reader and `ArticleListView` in place of per-view `@Query`s; the reader
+  resolves each page's full `Article` with HTML on demand by `persistentID`).
+- **Reader** (`Yana/Reader/`): a UIKit port of NetNewsWire's reader. `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderWebViewController` (per-article `WKWebView`, pull-to-refresh, native-browser links); each page's full `Article` (with HTML) is resolved lazily by `persistentID` when the page is rendered. Article HTML is rendered by `ArticleRenderer` + `MacroProcessor` driving NNW's `.nnwtheme` themes via `ArticleThemesManager` (8 bundled themes under `Yana/Resources/Themes/`, with CSS/templates under `Yana/Resources/ArticleRendering/`) and `ArticleTextSize`. Links open in `SFSafariViewController` or the system browser when the "Use System Browser" setting is on. A dedicated **Reader** settings section exposes theme, text size, and system-browser preference.
 - **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
@@ -72,8 +76,9 @@ designed for privacy-conscious users who want their feeds without any backend.
 - **No server:** all content is aggregated on-device. There is no login.
 - **No read/unread state:** the home surface is a single **endless timeline** of all articles
   ordered by import date (`Article.createdAt`), swiped both directions, with the position remembered
-  across launches. Re-fetched articles keep their original `createdAt`, so updates don't jump the
-  timeline.
+  across launches. The full lightweight index is loaded upfront from `ArticleStore` and kept in sync
+  with SwiftData saves; the reader renders each page's HTML lazily. Re-fetched articles keep their
+  original `createdAt`, so updates don't jump the timeline.
 - **Tags, not groups:** feeds carry tags, which are **snapshotted onto each article at import
   time** (not retroactive). **Starred is a built-in tag** applied per-article. The timeline is
   filtered by toggling tags (all on by default; an "Untagged" entry covers tagless articles).
@@ -86,7 +91,7 @@ designed for privacy-conscious users who want their feeds without any backend.
   the `ArticleListView` swipe's **"Reload"** call `forceReload(article:)` (current article only —
   every aggregator now re-fetches a single item: website/scrapers re-scrape the page, RSS/podcast pick the matching feed entry, YouTube/Reddit fetch the one video/post; if the item is gone it leaves the article untouched and never reloads the feed), while the Feeds
   swipe **"Reload"** calls `forceReload(feed:)` (re-imports everything the feed offers).
-- **SwiftData source of truth:** views read via `@Query`; `AggregationService` writes.
+- **SwiftData source of truth:** `AggregationService` writes; views read lightweight metadata via `ArticleStore` (backed by SwiftData) rather than per-view `@Query`s.
 - **Pluggable aggregators:** each content source is an `Aggregator` keyed by `AggregatorType`.
 - **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum (one case per
   aggregator type, including per-scraper structs), not a JSON blob.

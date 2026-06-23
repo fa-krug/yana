@@ -6,7 +6,9 @@ import UIKit
 /// `ReaderArticleViewController` and reports index changes back up. The chrome buttons call back
 /// into SwiftUI for the Filter/Settings sheets and starring.
 struct ReaderHostView: UIViewControllerRepresentable {
-    let articles: [Article]
+    let articles: [ArticleSummary]
+    /// Resolves a summary to its full `Article`; passed straight to the pager.
+    let resolveArticle: (ArticleSummary) -> Article?
     @Binding var currentIndex: Int
     /// Fired only when the *user* pages to a new article (swipe completes), never for the
     /// programmatic index updates that restore/reanchor perform. The host uses this to persist
@@ -30,6 +32,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UINavigationController {
         let reader = ReaderArticleViewController()
         context.coordinator.reader = reader
+        reader.resolveArticle = resolveArticle
         reader.onIndexChange = { i in currentIndex = i; onUserNavigate?(i) }
         reader.onShowFilter = onShowFilter
         reader.onShowArticleList = onShowArticleList
@@ -53,6 +56,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ nav: UINavigationController, context: Context) {
         guard let reader = context.coordinator.reader else { return }
+        reader.resolveArticle = resolveArticle
         reader.onIndexChange = { i in currentIndex = i; onUserNavigate?(i) }
         reader.onShowFilter = onShowFilter
         reader.onShowArticleList = onShowArticleList
@@ -90,35 +94,12 @@ struct ReaderHostView: UIViewControllerRepresentable {
 struct ReaderScreen: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
+    @Environment(ArticleStore.self) private var store
 
-    /// Cold launch materializes only the newest `limit` articles instead of the whole library;
-    /// `onNeedMore` asks the owner (ContentView) to grow the window. See `TimelineWindow`.
-    private let limit: Int
-    private let onNeedMore: () -> Void
-
-    @Query private var allArticles: [Article]
-
-    init(appState: AppState, limit: Int, onNeedMore: @escaping () -> Void) {
+    init(appState: AppState) {
         self.appState = appState
-        self.limit = limit
-        self.onNeedMore = onNeedMore
-        // @Query can't take a dynamic fetchLimit via its macro, so build it here in init.
-        _allArticles = Query(Self.timelineDescriptor(limit: limit))
     }
 
-    static func timelineDescriptor(limit: Int) -> FetchDescriptor<Article> {
-        var descriptor = FetchDescriptor<Article>(
-            // Window the *newest* page: sort by descending import date so `fetchLimit` keeps the
-            // most-recent `limit` articles (an ascending sort would keep the oldest). The view
-            // reverses the result to display oldest → new, so index 0 stays the leftmost (oldest)
-            // page and the reader pages left = older, right = newer.
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = limit
-        // Batch-load the relationships every page render touches, avoiding N+1 faulting.
-        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
-        return descriptor
-    }
     @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 
@@ -127,39 +108,16 @@ struct ReaderScreen: View {
     @State private var isSummarizing = false
     @State private var reloadToken = 0
 
-    @State private var filteredArticles: [Article] = []
-    @State private var hasComputedFilter = false
-
-    /// Window size for the article-list sheet's timeline query (nil = unbounded, used while a
-    /// search is active so search stays complete). Owned here so it survives the sheet's view
-    /// re-inits; reset on dismiss so each open starts windowed.
-    @State private var articleListLimit: Int? = TimelineWindow.pageSize
+    @State private var filteredArticles: [ArticleSummary] = []
 
     private func recomputeFilter() {
-        // The query returns newest-first to window the newest page; reverse to chronological
-        // (oldest → new) before filtering so the reader pages left = older, right = newer.
-        let chronological = Array(allArticles.reversed())
+        // store.summaries is already chronological (oldest → new); filter in place.
         let byTag = TagFilter.apply(
-            to: chronological,
+            to: store.summaries,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
         filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        hasComputedFilter = true
-        extendWindowIfNeeded()
-    }
-
-    /// Grow the timeline window when the reader is nearing the *oldest* loaded article (the front of
-    /// the displayed list), or when an active filter has hidden most of the loaded page. Idempotent:
-    /// stops once enough older articles are loaded or the database is exhausted (see `TimelineWindow`).
-    private func extendWindowIfNeeded() {
-        if TimelineWindow.shouldExtend(
-            loadedRawCount: allArticles.count,
-            currentLimit: limit,
-            index: appState.currentIndex
-        ) {
-            onNeedMore()
-        }
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -169,7 +127,7 @@ struct ReaderScreen: View {
     var body: some View {
         let articles = filteredArticles
         Group {
-            switch TimelineLoadState.derive(hasComputedFilter: hasComputedFilter, count: articles.count) {
+            switch TimelineLoadState.derive(hasComputedFilter: store.hasLoaded, count: articles.count) {
             case .loading:
                 SkeletonTimelineView()
             case .empty:
@@ -185,19 +143,14 @@ struct ReaderScreen: View {
             case .loaded:
                 ReaderHostView(
                     articles: articles,
+                    resolveArticle: { modelContext.model(for: $0.persistentID) as? Article },
                     currentIndex: $appState.currentIndex,
                     onUserNavigate: { saveAnchor(at: $0) },
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
                     onShowFilter: { appState.showFilter = true },
-                    onShowArticleList: {
-                        // Open the list windowed to at least the reader's loaded slice so the
-                        // current article is materialized and can be scrolled to — even when the
-                        // user has paged back to content older than the default first page.
-                        articleListLimit = max(TimelineWindow.pageSize, limit)
-                        appState.showArticleList = true
-                    },
+                    onShowArticleList: { appState.showArticleList = true },
                     onShowSettings: { appState.showSettings = true },
                     onToggleStar: toggleStar,
                     onForceUpdateArticle: forceUpdateArticle,
@@ -211,13 +164,11 @@ struct ReaderScreen: View {
             }
         }
         .sheet(isPresented: $appState.showSettings) { NavigationStack { SettingsScreenView() } }
-        .sheet(isPresented: $appState.showArticleList,
-               onDismiss: { articleListLimit = TimelineWindow.pageSize }) {
+        .sheet(isPresented: $appState.showArticleList) {
             NavigationStack {
                 ArticleListView(
                     currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
                         ? filteredArticles[appState.currentIndex].identifier : nil,
-                    limit: $articleListLimit,
                     onSelect: openArticle
                 )
             }
@@ -232,11 +183,7 @@ struct ReaderScreen: View {
                 settings.hasSeenFullscreenHint = true
             }
         }
-        // Programmatic index moves (restore/reanchor/clamp) must NOT persist the anchor — only a
-        // completed user swipe does, via onUserNavigate. This handler only grows the timeline
-        // window as the reader pages toward the end of the loaded slice.
-        .onChange(of: appState.currentIndex) { _, _ in extendWindowIfNeeded() }
-        .onChange(of: allArticles) { _, _ in
+        .onChange(of: store.summaries) { _, _ in
             recomputeFilter()
             if didRestoreAnchor { reanchorToCurrentArticle() } else { restoreAnchor() }
         }
@@ -258,11 +205,11 @@ struct ReaderScreen: View {
 
     /// Jump the reader to an article picked from the list. Recompute first so an in-list filter
     /// change is reflected, then resolve by identifier (not a stale index) and dismiss the sheet.
-    private func openArticle(_ article: Article) {
+    private func openArticle(_ summary: ArticleSummary) {
         recomputeFilter()
-        if let i = TimelinePageIndex.index(of: article.identifier, in: filteredArticles) {
+        if let i = TimelinePageIndex.index(of: summary.identifier, in: filteredArticles) {
             appState.currentIndex = i
-            settings.timelineAnchorIdentifier = article.identifier
+            settings.timelineAnchorIdentifier = summary.identifier
         }
         appState.showArticleList = false
     }

@@ -42,10 +42,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 struct YanaApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState = AppState()
+    @State private var articleStore = ArticleStore(container: AppContainer.shared)
 
     var body: some Scene {
         WindowGroup {
             ContentView(appState: appState)
+                .environment(articleStore)
+                .task { articleStore.start() }
         }
         .modelContainer(AppContainer.shared)
     }

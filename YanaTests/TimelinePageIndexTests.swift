@@ -19,7 +19,7 @@ struct TimelinePageIndexTests {
         let list = [article("a"), article("b")]
         #expect(TimelinePageIndex.index(of: "missing", in: list) == nil)
         #expect(TimelinePageIndex.index(of: nil, in: list) == nil)
-        #expect(TimelinePageIndex.index(of: "a", in: []) == nil)
+        #expect(TimelinePageIndex.index(of: "a", in: [] as [Article]) == nil)
     }
 
     @Test func anchorFallsBackToNewest() {

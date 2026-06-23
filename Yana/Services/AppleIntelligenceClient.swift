@@ -24,7 +24,7 @@ struct ProcessedArticle {
 /// model reproduce the full article body (its `content` guide says "preserve the input
 /// structure"), so summaries came back as the article verbatim.
 @Generable
-struct ArticleSummary {
+struct GeneratedSummary {
     @Guide(description: "A concise summary of the article in plain text — a few sentences at most, not the full article")
     var summary: String
 }
@@ -73,7 +73,7 @@ struct AppleIntelligenceClient: ArticleGenerating {
     func generateSummary(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
         let session = LanguageModelSession(instructions: instructions)
         let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
-        let response = try await session.respond(to: prompt, generating: ArticleSummary.self, options: options)
+        let response = try await session.respond(to: prompt, generating: GeneratedSummary.self, options: options)
         return response.content.summary
     }
 }
