@@ -4,7 +4,7 @@ import SwiftData
 /// Lightweight, `Sendable` snapshot of an `Article`'s timeline/list metadata — no HTML.
 /// Both the reader pager and the article list browse these; the full `Article` (with
 /// `content`) is resolved per page by `persistentID` only when a page renders.
-struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
+struct ArticleSummary: Identifiable, Sendable, Hashable {
     let persistentID: PersistentIdentifier
     let identifier: String
     let title: String
