@@ -4,7 +4,7 @@
 
 **Goal:** Make the reader interactive at the saved anchor on cold start by serving the article index from a disk cache (warm launch) or a small anchor-centered DB window (cold cache), instead of waiting for a full-library off-main fetch.
 
-**Architecture:** `ArticleStore.bootstrap()` publishes `summaries` from `SummaryIndexCache` (disk) when present, else from `ArticleSummaryLoader.loadWindow(...)` (a ~51-article slice centered on the anchor), flips `hasLoaded` immediately, then reconciles to the authoritative full DB load and rewrites the cache. A stale-`persistentID` safety net lets the reader resolve an `Article` by `identifier` when the cached id misses.
+**Architecture:** `ArticleStore.bootstrap()` publishes `summaries` from `SummaryIndexCache` (disk) when present, else from `ArticleSummaryLoader.loadWindow(...)` (a ~51-article slice centered on the anchor), flips `hasLoaded` immediately, then reconciles to the authoritative full DB load and rewrites the cache. `ArticleSummary.persistentID` is a runtime-only fast-resolve hint (not persisted); `ArticleResolution` resolves a summary to its live `Article` via that id when present, else by a one-row `identifier` fetch.
 
 **Tech Stack:** Swift 6 (strict concurrency, `@MainActor`), SwiftData (`@ModelActor`, `FetchDescriptor`, `#Predicate`), Swift Testing (`import Testing`), XcodeGen.
 
@@ -13,32 +13,33 @@
 - Platform: iOS 26.0+ (iPhone and iPad); deploy/build via simulator `iPhone 17`.
 - Swift 6 strict concurrency; annotate main-actor types `@MainActor`; cross-actor values must be `Sendable`.
 - Tests use Swift Testing (`@Test`, `#expect`) and are `@MainActor`; SwiftData tests use `ModelConfiguration(isStoredInMemoryOnly: true)`.
-- Sources are directory-globbed in `project.yml` (`path: Yana`, `path: YanaTests`); run `xcodegen generate` after adding any new file so the project picks it up.
+- **`-only-testing` uses the test TYPE name, not the `@Suite` display string** — e.g. `-only-testing:YanaTests/SummaryIndexCacheTests` (a wrong identifier silently runs 0 tests and reports success).
+- `PersistentIdentifier` MUST NOT be encoded/persisted — it traps when round-tripped through `PropertyListEncoder`/`JSONEncoder` and is invalid across launches. `ArticleSummary.persistentID` is therefore a non-persisted optional, `nil` after a cache rehydrate.
+- Sources are directory-globbed in `project.yml` (`path: Yana`, `path: YanaTests`); run `xcodegen generate` after adding any new file.
 - No new user-facing strings in this work (no `Localizable.xcstrings` changes required).
 - Build command: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build`
-- Test command: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-- Run a single Swift Testing test: append `-only-testing:YanaTests/<SuiteStruct>/<method>`.
+- Full test command: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
 
 ---
 
-### Task 1: `ArticleSummary` Codable + `SummaryIndexCache`
+### Task 1: Persistable index — runtime-only `persistentID`, `SummaryIndexCache`, `ArticleResolution`
 
 **Files:**
-- Modify: `Yana/Models/ArticleSummary.swift` (add `Codable` to the conformance list)
+- Modify: `Yana/Models/ArticleSummary.swift` (make `persistentID` an optional runtime-only field; add custom `Codable` that omits it)
 - Create: `Yana/Services/SummaryIndexCache.swift`
-- Test: `YanaTests/SummaryIndexCacheTests.swift`
+- Create: `Yana/Services/ArticleResolution.swift`
+- Modify: `Yana/Reader/ReaderHostView.swift:149` (route `resolveArticle` through `ArticleResolution`)
+- Modify: `Yana/Views/Config/ArticleListView.swift:72-74` (route `article(for:)` through `ArticleResolution`)
+- Test: `YanaTests/SummaryIndexCacheTests.swift`, `YanaTests/ArticleResolutionTests.swift`
 
 **Interfaces:**
-- Consumes: `ArticleSummary` (existing struct; `init(_ article: Article)`).
+- Consumes: `ArticleSummary` (existing; `init(_ article: Article)`), `Article`, `ModelContext`.
 - Produces:
-  - `extension ArticleSummary: Codable` (synthesized).
-  - `actor SummaryIndexCache` with:
-    - `static let shared: SummaryIndexCache`
-    - `init(fileURL: URL? = nil)` — defaults to `<Caches>/summary-index.plist`
-    - `func load() -> [ArticleSummary]?`
-    - `func save(_ summaries: [ArticleSummary])`
+  - `ArticleSummary.persistentID: PersistentIdentifier?` + custom `Codable` (encodes every field **except** `persistentID`; decode sets it `nil`).
+  - `actor SummaryIndexCache`: `static let shared`; `init(fileURL: URL? = nil)` (default `<Caches>/summary-index.plist`); `func load() -> [ArticleSummary]?`; `func save(_ summaries: [ArticleSummary])`.
+  - `enum ArticleResolution` (`@MainActor`): `static func resolve(_ summary: ArticleSummary, in context: ModelContext) -> Article?`; `static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article?`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 Create `YanaTests/SummaryIndexCacheTests.swift`:
 
@@ -61,7 +62,7 @@ struct SummaryIndexCacheTests {
         let article = Article(title: id, identifier: id, url: id)
         article.feed = feed
         context.insert(feed); context.insert(article)
-        try context.save()   // permanent persistentModelID so the Codable round-trip is stable
+        try context.save()
         return ArticleSummary(article)
     }
 
@@ -70,7 +71,7 @@ struct SummaryIndexCacheTests {
             .appendingPathComponent("cache-test-\(UUID().uuidString).plist")
     }
 
-    @Test func roundTripsSummaries() async throws {
+    @Test func roundTripsSummariesWithoutPersistentID() async throws {
         let context = try makeContainer().mainContext
         let summaries = [try makeSummary("a", in: context), try makeSummary("b", in: context)]
         let url = tempURL()
@@ -82,6 +83,7 @@ struct SummaryIndexCacheTests {
 
         #expect(loaded?.map(\.identifier) == ["a", "b"])
         #expect(loaded?.first?.feedName == "Acme")
+        #expect(loaded?.first?.persistentID == nil)   // runtime-only; never persisted
     }
 
     @Test func loadReturnsNilWhenAbsent() async throws {
@@ -102,26 +104,135 @@ struct SummaryIndexCacheTests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build-for-testing`
-Expected: FAIL to compile — `cannot find 'SummaryIndexCache' in scope` and/or `ArticleSummary` not `Codable`.
-
-- [ ] **Step 3: Make `ArticleSummary` Codable**
-
-In `Yana/Models/ArticleSummary.swift`, change the declaration line:
+Create `YanaTests/ArticleResolutionTests.swift`:
 
 ```swift
-struct ArticleSummary: Identifiable, Sendable, Hashable {
+import Foundation
+import SwiftData
+import Testing
+@testable import Yana
+
+@MainActor
+@Suite("ArticleResolution")
+struct ArticleResolutionTests {
+    private func makeContainer() throws -> ModelContainer {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        return try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
+    }
+
+    @Test func fetchByIdentifierFindsArticle() async throws {
+        let context = try makeContainer().mainContext
+        context.insert(Article(title: "t", identifier: "wanted", url: "u"))
+        try context.save()
+        #expect(ArticleResolution.fetchByIdentifier("wanted", in: context)?.identifier == "wanted")
+    }
+
+    @Test func fetchByIdentifierReturnsNilForUnknown() async throws {
+        let context = try makeContainer().mainContext
+        #expect(ArticleResolution.fetchByIdentifier("missing", in: context) == nil)
+    }
+
+    @Test func resolveUsesPersistentIDFastPath() async throws {
+        let context = try makeContainer().mainContext
+        let article = Article(title: "t", identifier: "live", url: "u")
+        context.insert(article)
+        try context.save()
+        let summary = ArticleSummary(article)   // carries a live persistentID
+        #expect(ArticleResolution.resolve(summary, in: context)?.identifier == "live")
+    }
+
+    @Test func resolveFallsBackToIdentifierWhenPersistentIDNil() async throws {
+        let context = try makeContainer().mainContext
+        let article = Article(title: "t", identifier: "rehydrated", url: "u")
+        context.insert(article)
+        try context.save()
+
+        // A cache-rehydrated summary has no persistentID: encode → decode drops it.
+        let data = try PropertyListEncoder().encode([ArticleSummary(article)])
+        let decoded = try PropertyListDecoder().decode([ArticleSummary].self, from: data)
+        let summary = try #require(decoded.first)
+        #expect(summary.persistentID == nil)
+        #expect(ArticleResolution.resolve(summary, in: context)?.identifier == "rehydrated")
+    }
+}
 ```
 
-to:
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build-for-testing`
+Expected: FAIL to compile — `SummaryIndexCache` / `ArticleResolution` not in scope.
+
+- [ ] **Step 3: Make `persistentID` runtime-only + custom `Codable`**
+
+In `Yana/Models/ArticleSummary.swift`, replace the type from its declaration through the end of `init(_ article:)` with:
 
 ```swift
 struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
+    /// Runtime-only fast-resolve hint. NOT persisted: `PersistentIdentifier` traps when
+    /// round-tripped through an external coder and is invalid across launches anyway. `nil` when
+    /// the summary was rehydrated from the disk cache; `ArticleResolution` then resolves by
+    /// `identifier`.
+    let persistentID: PersistentIdentifier?
+    let identifier: String
+    let title: String
+    let feedName: String
+    let feedLogoHash: String?
+    let author: String
+    let date: Date
+    let createdAt: Date
+    let tagNames: Set<String>
+    let isStarred: Bool
+
+    var id: String { identifier }
+
+    init(_ article: Article) {
+        persistentID = article.persistentModelID
+        identifier = article.identifier
+        title = article.title
+        feedName = article.feed?.name ?? ""
+        feedLogoHash = article.feed?.logoHash
+        author = article.author
+        date = article.date
+        createdAt = article.createdAt
+        tagNames = Set(article.tags.map(\.name))
+        isStarred = article.isStarred
+    }
+
+    // Persist every field EXCEPT the runtime-only `persistentID`.
+    private enum CodingKeys: String, CodingKey {
+        case identifier, title, feedName, feedLogoHash, author, date, createdAt, tagNames, isStarred
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        persistentID = nil
+        identifier = try c.decode(String.self, forKey: .identifier)
+        title = try c.decode(String.self, forKey: .title)
+        feedName = try c.decode(String.self, forKey: .feedName)
+        feedLogoHash = try c.decodeIfPresent(String.self, forKey: .feedLogoHash)
+        author = try c.decode(String.self, forKey: .author)
+        date = try c.decode(Date.self, forKey: .date)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        tagNames = try c.decode(Set<String>.self, forKey: .tagNames)
+        isStarred = try c.decode(Bool.self, forKey: .isStarred)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(identifier, forKey: .identifier)
+        try c.encode(title, forKey: .title)
+        try c.encode(feedName, forKey: .feedName)
+        try c.encodeIfPresent(feedLogoHash, forKey: .feedLogoHash)
+        try c.encode(author, forKey: .author)
+        try c.encode(date, forKey: .date)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(tagNames, forKey: .tagNames)
+        try c.encode(isStarred, forKey: .isStarred)
+    }
+}
 ```
 
-(All stored properties are `Codable`: `PersistentIdentifier`, `String`, `String?`, `Date`, `Set<String>`, `Bool`. The custom `init(_ article: Article)` coexists with the synthesized `init(from:)`.)
+(`Hashable`/`Equatable` stay synthesized over all stored properties, including the optional `persistentID`.)
 
 - [ ] **Step 4: Create `SummaryIndexCache`**
 
@@ -147,8 +258,8 @@ actor SummaryIndexCache {
         }
     }
 
-    /// The cached index, or `nil` when the file is absent or fails to decode (corruption / a
-    /// format change). A `nil` result is a clean signal to fall back to the DB — never a crash.
+    /// The cached index, or `nil` when the file is absent or fails to decode. `nil` is a clean
+    /// signal to fall back to the DB — never a crash.
     func load() -> [ArticleSummary]? {
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? PropertyListDecoder().decode([ArticleSummary].self, from: data)
@@ -163,16 +274,81 @@ actor SummaryIndexCache {
 }
 ```
 
-- [ ] **Step 5: Regenerate project and run the tests**
+- [ ] **Step 5: Create `ArticleResolution`**
 
-Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/SummaryIndexCache`
-Expected: PASS (3 tests).
+Create `Yana/Services/ArticleResolution.swift`:
 
-- [ ] **Step 6: Commit**
+```swift
+import Foundation
+import SwiftData
+
+/// Resolves an `ArticleSummary` to its live `Article`. Fast path: the runtime `persistentID`.
+/// Fallback: a one-row `identifier` fetch when that id is absent (cache-rehydrated) or stale
+/// (after a store migration) — so the reader never lands on a blank page for a known article.
+@MainActor
+enum ArticleResolution {
+    static func resolve(_ summary: ArticleSummary, in context: ModelContext) -> Article? {
+        if let pid = summary.persistentID, let article = context.model(for: pid) as? Article {
+            return article
+        }
+        return fetchByIdentifier(summary.identifier, in: context)
+    }
+
+    static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article? {
+        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == identifier })
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+}
+```
+
+- [ ] **Step 6: Route both resolve sites through `ArticleResolution`**
+
+In `Yana/Reader/ReaderHostView.swift`, find (≈ line 149, inside the `.loaded` case):
+
+```swift
+                    resolveArticle: { modelContext.model(for: $0.persistentID) as? Article },
+```
+
+Replace with:
+
+```swift
+                    resolveArticle: { ArticleResolution.resolve($0, in: modelContext) },
+```
+
+In `Yana/Views/Config/ArticleListView.swift`, replace the body of `article(for:)` (≈ lines 72-74):
+
+```swift
+    private func article(for summary: ArticleSummary) -> Article? {
+        modelContext.model(for: summary.persistentID) as? Article
+    }
+```
+
+with:
+
+```swift
+    private func article(for summary: ArticleSummary) -> Article? {
+        ArticleResolution.resolve(summary, in: modelContext)
+    }
+```
+
+- [ ] **Step 7: Regenerate and run the tests**
+
+Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/SummaryIndexCacheTests -only-testing:YanaTests/ArticleResolutionTests`
+Expected: PASS — 3 + 4 = 7 tests, no crash / no "unexpected exit".
+
+- [ ] **Step 8: Confirm the pre-existing `ArticleSummary` test still passes**
+
+`YanaTests/ArticleSummaryTests.swift:36` asserts `summary.persistentID == article.persistentModelID`; this still compiles and passes (optional-vs-non-optional `==`). Verify:
+
+Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleSummaryTests`
+Expected: PASS.
+
+- [ ] **Step 9: Commit**
 
 ```bash
-git add Yana/Models/ArticleSummary.swift Yana/Services/SummaryIndexCache.swift YanaTests/SummaryIndexCacheTests.swift project.yml
-git commit -m "feat(cache): persistable ArticleSummary + SummaryIndexCache"
+git add Yana/Models/ArticleSummary.swift Yana/Services/SummaryIndexCache.swift Yana/Services/ArticleResolution.swift Yana/Reader/ReaderHostView.swift Yana/Views/Config/ArticleListView.swift YanaTests/SummaryIndexCacheTests.swift YanaTests/ArticleResolutionTests.swift project.yml
+git commit -m "feat(cache): persistable index + runtime-only persistentID + ArticleResolution"
 ```
 
 ---
@@ -185,7 +361,7 @@ git commit -m "feat(cache): persistable ArticleSummary + SummaryIndexCache"
 
 **Interfaces:**
 - Consumes: existing `@ModelActor actor ArticleSummaryLoader` with `func load() throws -> [ArticleSummary]`.
-- Produces: `func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary]` — returns an ascending (oldest→new) slice centered on the anchor row (inclusive); when `anchorID` is `nil` or not found, returns the newest `2*radius + 1` articles ascending.
+- Produces: `func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary]` — ascending (oldest→new) slice centered on the anchor row (inclusive); when `anchorID` is `nil` or not found, the newest `2*radius + 1` articles ascending.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -205,7 +381,6 @@ struct ArticleSummaryLoaderTests {
         return try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
     }
 
-    /// Insert `count` articles "a0"…"a{count-1}" with strictly increasing createdAt.
     private func seed(_ count: Int, into context: ModelContext) {
         let feed = Feed(name: "Acme", aggregatorType: .feedContent, identifier: "f")
         context.insert(feed)
@@ -224,9 +399,7 @@ struct ArticleSummaryLoaderTests {
 
         let loader = ArticleSummaryLoader(modelContainer: container)
         let window = try await loader.loadWindow(around: "a50", radius: 5)
-        let ids = window.map(\.identifier)
-
-        #expect(ids == ["a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55"])
+        #expect(window.map(\.identifier) == ["a45","a46","a47","a48","a49","a50","a51","a52","a53","a54","a55"])
     }
 
     @Test func fallsBackToNewestWhenAnchorMissing() async throws {
@@ -236,9 +409,7 @@ struct ArticleSummaryLoaderTests {
 
         let loader = ArticleSummaryLoader(modelContainer: container)
         let window = try await loader.loadWindow(around: "does-not-exist", radius: 2)
-
-        // newest 2*2+1 = 5, ascending
-        #expect(window.map(\.identifier) == ["a5","a6","a7","a8","a9"])
+        #expect(window.map(\.identifier) == ["a5","a6","a7","a8","a9"])   // newest 2*2+1, ascending
     }
 
     @Test func fallsBackToNewestWhenAnchorNil() async throws {
@@ -248,9 +419,7 @@ struct ArticleSummaryLoaderTests {
 
         let loader = ArticleSummaryLoader(modelContainer: container)
         let window = try await loader.loadWindow(around: nil, radius: 10)
-
-        // fewer rows than the window: all of them, ascending
-        #expect(window.map(\.identifier) == ["a0","a1","a2","a3"])
+        #expect(window.map(\.identifier) == ["a0","a1","a2","a3"])   // fewer than window: all, ascending
     }
 }
 ```
@@ -258,7 +427,7 @@ struct ArticleSummaryLoaderTests {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build-for-testing`
-Expected: FAIL to compile — `value of type 'ArticleSummaryLoader' has no member 'loadWindow'`.
+Expected: FAIL to compile — `ArticleSummaryLoader` has no member `loadWindow`.
 
 - [ ] **Step 3: Implement `loadWindow` + helper**
 
@@ -270,14 +439,12 @@ In `Yana/Services/ArticleStore.swift`, inside the `ArticleSummaryLoader` actor (
     /// anchor or it is gone. Same light columns / prefetch as `load()`.
     func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary] {
         if let anchorID, let anchorDate = try anchorCreatedAt(for: anchorID) {
-            // newer-or-equal: includes the anchor itself; ascending, capped at radius+1.
             var newerD = lightDescriptor(
                 predicate: #Predicate { $0.createdAt >= anchorDate }, order: .forward
             )
             newerD.fetchLimit = radius + 1
             let newer = try modelContext.fetch(newerD)
 
-            // older: strictly-older articles, fetched newest-first then reversed to ascending.
             var olderD = lightDescriptor(
                 predicate: #Predicate { $0.createdAt < anchorDate }, order: .reverse
             )
@@ -287,7 +454,6 @@ In `Yana/Services/ArticleStore.swift`, inside the `ArticleSummaryLoader` actor (
             return (Array(older.reversed()) + newer).map(ArticleSummary.init)
         }
 
-        // No usable anchor: newest 2*radius+1, fetched newest-first then reversed to ascending.
         var newestD = lightDescriptor(predicate: nil, order: .reverse)
         newestD.fetchLimit = 2 * radius + 1
         return try modelContext.fetch(newestD).reversed().map(ArticleSummary.init)
@@ -315,7 +481,7 @@ In `Yana/Services/ArticleStore.swift`, inside the `ArticleSummaryLoader` actor (
 
 - [ ] **Step 4: Run the tests**
 
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleSummaryLoader.loadWindow`
+Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleSummaryLoaderTests`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
@@ -330,14 +496,14 @@ git commit -m "feat(store): anchor-centered window fetch on ArticleSummaryLoader
 ### Task 3: `ArticleStore` two-phase bootstrap (cache → full / window → full)
 
 **Files:**
-- Modify: `Yana/Services/ArticleStore.swift` (`ArticleStore` class: injectable cache + anchor provider; `bootstrap()`; `fullLoad()`; rewire `start()` and `refreshNow()` to write the cache)
+- Modify: `Yana/Services/ArticleStore.swift` (`ArticleStore` class only — leave the `ArticleSummaryLoader` actor above it untouched)
 - Test: `YanaTests/ArticleStoreTests.swift` (inject a temp cache; add cache-path and window-path tests)
 
 **Interfaces:**
 - Consumes: `SummaryIndexCache` (Task 1), `ArticleSummaryLoader.loadWindow` (Task 2).
 - Produces: `ArticleStore.init(container:cache:anchorProvider:)` with defaults `cache: .shared`, `anchorProvider: { AppSettings().timelineAnchorIdentifier }`; `func bootstrap() async`; unchanged public `summaries` / `hasLoaded` / `refreshNow()` / `start()` surface.
 
-- [ ] **Step 1: Update existing tests to inject a temp cache, and add new tests**
+- [ ] **Step 1: Replace the test file**
 
 Replace the body of `YanaTests/ArticleStoreTests.swift` with:
 
@@ -407,11 +573,11 @@ struct ArticleStoreTests {
         seed(3, into: container.mainContext)             // DB has a0,a1,a2
         try container.mainContext.save()
 
-        // Pre-seed the cache with a DIFFERENT set so we can tell which path produced `summaries`.
+        // Pre-seed the cache with a DIFFERENT id so we can tell the paths apart.
         let cache = tempCache()
         let cachedContext = try makeContainer().mainContext
         insertArticle("cached", into: cachedContext, createdAt: .now)
-        try cachedContext.save()   // permanent persistentModelID so the cache encodes
+        try cachedContext.save()
         let cachedSummary = ArticleSummary(
             try #require(cachedContext.fetch(FetchDescriptor<Article>()).first)
         )
@@ -420,9 +586,8 @@ struct ArticleStoreTests {
         let store = ArticleStore(container: container, cache: cache)
         await store.bootstrap()
 
-        // After bootstrap completes, summaries reflect the authoritative DB (full load), not the cache.
         #expect(store.hasLoaded == true)
-        #expect(store.summaries.map(\.identifier) == ["a0", "a1", "a2"])
+        #expect(store.summaries.map(\.identifier) == ["a0", "a1", "a2"])   // reconciled to DB
     }
 
     @Test func bootstrapUsesAnchorWindowWhenCacheCold() async throws {
@@ -437,7 +602,6 @@ struct ArticleStoreTests {
         )
         await store.bootstrap()
 
-        // Window then full load both completed; final state is the full set, ascending.
         #expect(store.hasLoaded == true)
         #expect(store.summaries.count == 100)
         #expect(store.summaries.first?.identifier == "a0")
@@ -453,7 +617,7 @@ Expected: FAIL to compile — `ArticleStore` has no `init(container:cache:...)` 
 
 - [ ] **Step 3: Rewrite the `ArticleStore` class**
 
-In `Yana/Services/ArticleStore.swift`, replace the entire `ArticleStore` class (the `@MainActor @Observable final class ArticleStore { ... }` block — leave the `ArticleSummaryLoader` actor above it untouched) with:
+In `Yana/Services/ArticleStore.swift`, replace the entire `ArticleStore` class (the `@MainActor @Observable final class ArticleStore { ... }` block — leave the `ArticleSummaryLoader` actor untouched) with:
 
 ```swift
 /// Single source of truth for the timeline/list dataset. On cold start it paints from the disk
@@ -543,7 +707,7 @@ final class ArticleStore {
 
 - [ ] **Step 4: Run the tests**
 
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleStore`
+Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleStoreTests`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -555,119 +719,7 @@ git commit -m "feat(store): cache-then-full bootstrap with anchor-window cold pa
 
 ---
 
-### Task 4: Stale-`persistentID` safety net in article resolution
-
-**Files:**
-- Create: `Yana/Services/ArticleResolution.swift`
-- Modify: `Yana/Reader/ReaderHostView.swift` (replace the inline `resolveArticle` closure with a fallback-aware resolver)
-- Test: `YanaTests/ArticleResolutionTests.swift`
-
-**Interfaces:**
-- Consumes: `ModelContext`, `Article`.
-- Produces: `enum ArticleResolution { static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article? }`.
-
-- [ ] **Step 1: Write the failing test**
-
-Create `YanaTests/ArticleResolutionTests.swift`:
-
-```swift
-import Foundation
-import SwiftData
-import Testing
-@testable import Yana
-
-@MainActor
-@Suite("ArticleResolution")
-struct ArticleResolutionTests {
-    private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        return try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
-    }
-
-    @Test func findsArticleByIdentifier() async throws {
-        let context = try makeContainer().mainContext
-        let a = Article(title: "t", identifier: "wanted", url: "u")
-        context.insert(a)
-        try context.save()
-
-        let found = ArticleResolution.fetchByIdentifier("wanted", in: context)
-        #expect(found?.identifier == "wanted")
-    }
-
-    @Test func returnsNilForUnknownIdentifier() async throws {
-        let context = try makeContainer().mainContext
-        let found = ArticleResolution.fetchByIdentifier("missing", in: context)
-        #expect(found == nil)
-    }
-}
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build-for-testing`
-Expected: FAIL to compile — `cannot find 'ArticleResolution' in scope`.
-
-- [ ] **Step 3: Create `ArticleResolution`**
-
-Create `Yana/Services/ArticleResolution.swift`:
-
-```swift
-import Foundation
-import SwiftData
-
-/// One-row lookup of an `Article` by its stable `identifier`. Used as a fallback when a cached
-/// `persistentID` no longer resolves (e.g. after a store migration), so the reader never lands on
-/// a blank page for a row the disk cache referenced with a now-stale id.
-@MainActor
-enum ArticleResolution {
-    static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article? {
-        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == identifier })
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
-    }
-}
-```
-
-- [ ] **Step 4: Wire the fallback into `ReaderScreen`**
-
-In `Yana/Reader/ReaderHostView.swift`, find this line (in the `.loaded` case, ~line 146):
-
-```swift
-                    resolveArticle: { modelContext.model(for: $0.persistentID) as? Article },
-```
-
-Replace it with:
-
-```swift
-                    resolveArticle: resolveFullArticle,
-```
-
-Then add this method to the `ReaderScreen` struct, immediately after `recomputeFilter()` (it ends at the `}` before `private var starredTag`):
-
-```swift
-    /// Resolve a summary to its live `Article`, falling back to an identifier fetch when the
-    /// (possibly cache-originated) `persistentID` no longer resolves.
-    private func resolveFullArticle(_ summary: ArticleSummary) -> Article? {
-        if let article = modelContext.model(for: summary.persistentID) as? Article { return article }
-        return ArticleResolution.fetchByIdentifier(summary.identifier, in: modelContext)
-    }
-```
-
-- [ ] **Step 5: Run the tests**
-
-Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleResolution`
-Expected: PASS (2 tests).
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add Yana/Services/ArticleResolution.swift Yana/Reader/ReaderHostView.swift YanaTests/ArticleResolutionTests.swift project.yml
-git commit -m "feat(reader): identifier fallback when a cached persistentID misses"
-```
-
----
-
-### Task 5: Full build + regression test sweep
+### Task 4: Full build + regression test sweep
 
 **Files:** none (verification only).
 
@@ -679,9 +731,9 @@ Expected: `** BUILD SUCCEEDED **`.
 - [ ] **Step 2: Run the entire test suite**
 
 Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
-Expected: `** TEST SUCCEEDED **` — all suites pass (`SummaryIndexCache`, `ArticleSummaryLoader.loadWindow`, `ArticleStore`, `ArticleResolution`, plus pre-existing suites unchanged).
+Expected: `** TEST SUCCEEDED **` — all suites pass (`SummaryIndexCache`, `ArticleResolution`, `ArticleSummaryLoader.loadWindow`, `ArticleStore`, plus pre-existing suites), no "unexpected exit".
 
-- [ ] **Step 3: Commit (only if regeneration changed `project.yml`/pbxproj)**
+- [ ] **Step 3: Commit (only if regeneration changed project files)**
 
 ```bash
 git add -A && git commit -m "chore: regenerate project after cold-start cache work" || echo "nothing to commit"
@@ -691,7 +743,8 @@ git add -A && git commit -m "chore: regenerate project after cold-start cache wo
 
 ## Notes for the implementer
 
-- **Why an `actor` for the cache:** it moves `Data(contentsOf:)` / `write(to:)` off the main actor and serializes concurrent `save()` calls from the debounced refresh. `ArticleStore` (main-actor) `await`s it.
-- **Why the window is skipped on a warm launch:** the disk cache already provides a full-sized first dataset; running the window too would briefly *shrink* `summaries`. `bootstrap()` therefore picks cache **or** window, then a single full load.
-- **Republish handling is already in place:** `ReaderScreen.onChange(of: store.summaries)` runs `recomputeFilter()` + `reanchorToCurrentArticle()`, re-resolving the anchor by `identifier` each republish, so `currentIndex` stays pinned across cache→full / window→full transitions.
+- **Why `persistentID` is optional and unencoded:** `PersistentIdentifier` traps when round-tripped through `PropertyListEncoder`/`JSONEncoder` (a cache `save`/`load` of it crashes, not throws). It is a runtime resolution hint only; cache-rehydrated summaries carry `nil` and resolve by `identifier`.
+- **Why an `actor` for the cache:** file IO runs off the main actor and concurrent `save()`s serialize.
+- **Why the window is skipped on a warm launch:** the disk cache already provides a full-sized first dataset; running the window too would briefly *shrink* `summaries`. `bootstrap()` picks cache **or** window, then one full load.
+- **Republish handling already exists:** `ReaderScreen.onChange(of: store.summaries)` runs `recomputeFilter()` + `reanchorToCurrentArticle()`, re-resolving the anchor by `identifier` each republish, so `currentIndex` stays pinned across cache→full / window→full transitions.
 - **`#Predicate` capturing locals:** `anchorDate` and `identifier` are captured `let`s — supported by SwiftData's predicate macro.
