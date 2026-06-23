@@ -129,7 +129,10 @@ struct ReaderScreen: View {
         Group {
             switch TimelineLoadState.derive(hasComputedFilter: store.hasLoaded, count: articles.count) {
             case .loading:
-                SkeletonTimelineView()
+                // No placeholder while the timeline resolves — just the plain background,
+                // which avoids both the skeleton shape and a wrong "No Articles" flash.
+                Color(.systemBackground)
+                    .ignoresSafeArea()
             case .empty:
                 ContentUnavailableView {
                     Label("No Articles", systemImage: "tray")
