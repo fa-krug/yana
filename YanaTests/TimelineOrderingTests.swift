@@ -3,12 +3,16 @@ import SwiftData
 import Testing
 @testable import Yana
 
-/// The timeline windows the *newest* page: both descriptors fetch by descending `createdAt` so
-/// `fetchLimit` keeps the most-recent articles (an ascending sort would keep the oldest, leaving
-/// the reader's current article outside a partial window). The reader and article-list views
-/// reverse the fetch to display oldest → new — left = old / top = old. These tests pin that
-/// contract: a partial window must keep the newest articles, and the natural fetch order is
-/// newest-first so reversing yields the displayed oldest → new order.
+/// The article-list view windows the *newest* page: its descriptor fetches by descending
+/// `createdAt` so `fetchLimit` keeps the most-recent articles (an ascending sort would keep the
+/// oldest, leaving the reader's current article outside a partial window). The view reverses the
+/// fetch to display oldest → new — top = old. These tests pin that contract: a partial window must
+/// keep the newest articles, and the natural fetch order is newest-first so reversing yields the
+/// displayed oldest → new order.
+///
+/// (The reader timeline itself no longer uses a windowed descriptor — `ReaderScreen` is driven by
+/// `ArticleStore`'s chronological `summaries` — so the former `ReaderScreen.timelineDescriptor`
+/// tests were removed with that method.)
 @MainActor
 @Suite("Timeline ordering")
 struct TimelineOrderingTests {
@@ -29,25 +33,6 @@ struct TimelineOrderingTests {
         insertArticle("new", createdAt: base.addingTimeInterval(200), into: context)
         insertArticle("old", createdAt: base, into: context)
         insertArticle("mid", createdAt: base.addingTimeInterval(100), into: context)
-    }
-
-    @Test func readerDescriptorFetchesNewestFirst() throws {
-        let context = try makeContext()
-        seed(context)
-
-        let fetched = try context.fetch(ReaderScreen.timelineDescriptor(limit: 100))
-        // Fetch order is newest-first; the view reverses it to display oldest → new (index 0 = old).
-        #expect(fetched.map(\.identifier) == ["new", "mid", "old"])
-        #expect(fetched.reversed().map(\.identifier) == ["old", "mid", "new"])
-    }
-
-    @Test func readerDescriptorWindowKeepsNewest() throws {
-        let context = try makeContext()
-        seed(context)
-
-        // A window smaller than the library must keep the *newest* articles, not the oldest.
-        let fetched = try context.fetch(ReaderScreen.timelineDescriptor(limit: 2))
-        #expect(fetched.map(\.identifier) == ["new", "mid"])
     }
 
     @Test func articleListDescriptorFetchesNewestFirst() throws {

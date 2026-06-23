@@ -22,7 +22,9 @@ final class ReaderArticleViewController: UIViewController,
     var isSummarizing = false
 
     private let pageController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
-    private var articles: [Article] = []
+    private var articles: [ArticleSummary] = []
+    /// Resolves a summary to its full `Article` (with HTML) on demand, set by the host.
+    var resolveArticle: ((ArticleSummary) -> Article?)?
     private var index = 0
     private var isTransitioning = false
 
@@ -171,7 +173,7 @@ final class ReaderArticleViewController: UIViewController,
 
     // MARK: - Data
 
-    func configure(articles: [Article], index: Int) {
+    func configure(articles: [ArticleSummary], index: Int) {
         self.articles = articles
         self.index = clamp(index)
         loadViewIfNeeded()
@@ -190,7 +192,7 @@ final class ReaderArticleViewController: UIViewController,
         }
     }
 
-    func update(articles: [Article], index: Int) {
+    func update(articles: [ArticleSummary], index: Int) {
         self.articles = articles
         guard !isTransitioning else { return }
         let target = clamp(index)
@@ -205,14 +207,14 @@ final class ReaderArticleViewController: UIViewController,
     private func clamp(_ i: Int) -> Int { min(max(i, 0), max(0, articles.count - 1)) }
 
     private func currentArticle() -> Article? {
-        guard articles.indices.contains(index) else { return nil }
-        return articles[index]
+        displayedWebVC?.article
     }
 
     private func makePage(for index: Int) -> ReaderWebViewController? {
         guard articles.indices.contains(index) else { return nil }
-        let article = articles[index]
-        if let cached = pageCache.value(for: article.identifier) { return cached }
+        let summary = articles[index]
+        if let cached = pageCache.value(for: summary.identifier) { return cached }
+        guard let article = resolveArticle?(summary) else { return nil }
         let vc = ReaderWebViewController(
             article: article,
             allowsFullscreen: isFullscreenAvailable,
@@ -220,7 +222,7 @@ final class ReaderArticleViewController: UIViewController,
             onRequestShowBars: { [weak self] in self?.applyFullscreen(false, animated: true) }
         )
         vc.hideBarsTapZonesActive(settings.articleFullscreenEnabled && isFullscreenAvailable)
-        pageCache.insert(vc, for: article.identifier)
+        pageCache.insert(vc, for: summary.identifier)
         return vc
     }
 
