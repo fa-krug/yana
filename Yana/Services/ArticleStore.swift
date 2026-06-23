@@ -68,30 +68,60 @@ actor ArticleSummaryLoader {
     }
 }
 
-/// Single source of truth for the timeline/list dataset. Loads the whole library's lightweight
-/// metadata once at launch (off-main) and keeps it in sync with every `ModelContext` save.
+/// Single source of truth for the timeline/list dataset. On cold start it paints from the disk
+/// cache (warm) or a small anchor-centered window (cold cache), then reconciles to the full DB
+/// index and keeps in sync with every `ModelContext` save.
 @MainActor
 @Observable
 final class ArticleStore {
     private(set) var summaries: [ArticleSummary] = []
     private(set) var hasLoaded = false
 
+    /// Half-width of the cold-cache window; ~`2*radius+1` articles around the anchor.
+    private static let windowRadius = 25
+
     private let container: ModelContainer
+    private let cache: SummaryIndexCache
+    private let anchorProvider: () -> String?
     private var observer: NSObjectProtocol?
     private var debounce: Task<Void, Never>?
 
-    init(container: ModelContainer) { self.container = container }
+    init(
+        container: ModelContainer,
+        cache: SummaryIndexCache = .shared,
+        anchorProvider: @escaping () -> String? = { AppSettings().timelineAnchorIdentifier }
+    ) {
+        self.container = container
+        self.cache = cache
+        self.anchorProvider = anchorProvider
+    }
 
-    /// Begin observing saves and trigger the first load. Idempotent.
+    /// Begin observing saves and run the first load. Idempotent.
     func start() {
         guard observer == nil else { return }
         observer = NotificationCenter.default.addObserver(
             forName: ModelContext.didSave, object: nil, queue: .main
         ) { [weak self] _ in
-            // Hop to the main actor; coalesce bursts (e.g. an updateAll() run) into one refresh.
             Task { @MainActor [weak self] in self?.scheduleRefresh() }
         }
-        Task { await refreshNow() }
+        Task { await bootstrap() }
+    }
+
+    /// Cold-start path: publish a fast first dataset (disk cache when present, else an
+    /// anchor-centered DB window), flip `hasLoaded`, then reconcile to the authoritative full load.
+    func bootstrap() async {
+        if let cached = await cache.load() {
+            summaries = cached
+            hasLoaded = true
+        } else {
+            let loader = ArticleSummaryLoader(modelContainer: container)
+            let window = (try? await loader.loadWindow(
+                around: anchorProvider(), radius: Self.windowRadius
+            )) ?? []
+            summaries = window
+            hasLoaded = true
+        }
+        await fullLoad()
     }
 
     private func scheduleRefresh() {
@@ -103,12 +133,18 @@ final class ArticleStore {
         }
     }
 
-    /// Reload the index and publish it. Awaited directly by tests.
+    /// Reload the full index from the DB and publish it. Awaited directly by tests.
     func refreshNow() async {
-        let loader = ArticleSummaryLoader(modelContainer: container)
-        let loaded = (try? await loader.load()) ?? []
-        summaries = loaded
+        await fullLoad()
         hasLoaded = true
+    }
+
+    /// Fetch the entire light index off-main, publish it, and rewrite the disk cache.
+    private func fullLoad() async {
+        let loader = ArticleSummaryLoader(modelContainer: container)
+        let all = (try? await loader.load()) ?? []
+        summaries = all
+        await cache.save(all)
     }
 
     isolated deinit {
