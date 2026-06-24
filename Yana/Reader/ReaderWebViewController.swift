@@ -43,10 +43,31 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
 
-        let config = ReaderWebView.makeConfiguration()
+        // Compute the HTML this page would render; it is both the warmup match key and, on a miss,
+        // what `render()` will load.
+        let html = ArticleRenderer.fullPageHTML(
+            article: article,
+            theme: ArticleThemesManager.shared.currentTheme,
+            textSize: settings.articleTextSize,
+            summaryPending: summaryPending
+        )
+
+        let adoptedWarmedView: Bool
+        if let warmed = ReaderWarmupStore.shared.take(identifier: article.identifier, html: html) {
+            // Adopt the launch-warmed web view: its document is already parsed (and painted, if it
+            // was parented off-screen). Detach from the warm host before re-parenting into this page.
+            warmed.removeFromSuperview()
+            webView = warmed
+            loadedHTML = html                 // mark as already-loaded so `render()` no-ops
+            adoptedWarmedView = true
+        } else {
+            webView = WKWebView(frame: view.bounds, configuration: ReaderWebView.makeConfiguration())
+            adoptedWarmedView = false
+        }
         // Each page registers its own (weakly held) link message handler on the shared controller.
-        config.userContentController.add(WeakScriptMessageHandler(self), name: ReaderWeb.linkClickedHandler)
-        webView = WKWebView(frame: view.bounds, configuration: config)
+        webView.configuration.userContentController.add(
+            WeakScriptMessageHandler(self), name: ReaderWeb.linkClickedHandler
+        )
         // Avoid the white/system flash and the lingering previous article: the container shows a
         // system background (adapts light/dark) while the web view paints, then we fade it in.
         view.backgroundColor = .systemBackground
@@ -81,7 +102,16 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
             self, selector: #selector(appearanceDidChange),
             name: AppSettings.articleTextSizeDidChange, object: nil
         )
-        render()
+        if adoptedWarmedView {
+            // The document is already loaded; just reveal it. If the load already finished (no
+            // delegate was attached during warmup, so `didFinish` won't fire again), fade in now;
+            // otherwise the navigation delegate fades it in on `didFinish`.
+            if !webView.isLoading {
+                UIView.animate(withDuration: CrossFade.duration) { self.webView.alpha = 1 }
+            }
+        } else {
+            render()
+        }
     }
 
     func reload() { render() }
