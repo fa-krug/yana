@@ -1,4 +1,6 @@
 import Testing
+import SwiftData
+import Foundation
 @testable import Yana
 
 @MainActor
@@ -38,5 +40,27 @@ struct ReaderWarmupTests {
         box.store(identifier: "a", html: "h", payload: "view")
         #expect(box.discardUnused() == "view")
         #expect(box.discardUnused() == nil)
+    }
+
+    private func makeContext() throws -> ModelContext {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
+        return ModelContext(container)
+    }
+
+    @Test func fetchNewestReturnsMostRecentByCreatedAt() throws {
+        let context = try makeContext()
+        let older = Article(title: "older", identifier: "old", url: "u1")
+        older.createdAt = Date(timeIntervalSince1970: 100)
+        let newer = Article(title: "newer", identifier: "new", url: "u2")
+        newer.createdAt = Date(timeIntervalSince1970: 200)
+        context.insert(older); context.insert(newer)
+        try context.save()
+        #expect(ArticleResolution.fetchNewest(in: context)?.identifier == "new")
+    }
+
+    @Test func fetchNewestReturnsNilWhenEmpty() throws {
+        let context = try makeContext()
+        #expect(ArticleResolution.fetchNewest(in: context) == nil)
     }
 }

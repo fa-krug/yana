@@ -18,4 +18,12 @@ enum ArticleResolution {
         descriptor.fetchLimit = 1
         return try? context.fetch(descriptor).first
     }
+
+    /// The most recent article by import date, or nil if the library is empty. Used by the launch
+    /// warmer when no saved anchor exists (the reader opens to the newest article in that case).
+    static func fetchNewest(in context: ModelContext) -> Article? {
+        var descriptor = FetchDescriptor<Article>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
 }
