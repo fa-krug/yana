@@ -180,6 +180,9 @@ final class ReaderArticleViewController: UIViewController,
         if let page = makePage(for: self.index) {
             pageController.setViewControllers([page], direction: .forward, animated: false)
         }
+        // Release any launch-warmed web view the first page did not adopt (e.g. the saved anchor
+        // was filtered out of the current tag filter and a different article opened first).
+        ReaderWarmupStore.shared.discardUnused()
         updateStarItem()
         // Defer neighbor prewarming off the launch path. `configure` runs synchronously inside
         // `makeUIViewController`, before the first frame is presented; prewarming here would build
