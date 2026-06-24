@@ -16,15 +16,6 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     private var webView: WKWebView!
     private var loadedHTML: String?
 
-    /// Shared across every reader page so the web views run in one Web Content process instead of
-    /// spawning one each. The reader prewarms several pages at once, so without a shared pool a
-    /// single swipe burst would fork ~10 processes — costly to start and memory-heavy. Sharing the
-    /// pool also shares the page cache.
-    private static let processPool = WKProcessPool()
-
-    /// One stateless image handler for all pages (it only reads from `ImageStore.shared`), so each
-    /// page need not allocate its own.
-    private static let imageSchemeHandler = ImageSchemeHandler()
     var summaryPending = false { didSet { if summaryPending != oldValue { render() } } }
 
     private var topTapZone: UIView!
@@ -52,20 +43,9 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
 
-        let config = WKWebViewConfiguration()
-        config.processPool = Self.processPool
-        config.setURLSchemeHandler(Self.imageSchemeHandler, forURLScheme: ReaderWeb.imageScheme)
-        // Intercept link taps at the DOM level rather than via the navigation delegate: WebKit does
-        // not reliably classify tapped links inside a `loadHTMLString`-rendered document as
-        // `.linkActivated`, so `decidePolicyFor` would let them load in place. The injected script
-        // posts the browser-resolved absolute href here (the delegate stays as defense-in-depth).
-        let controller = WKUserContentController()
-        controller.add(WeakScriptMessageHandler(self), name: ReaderWeb.linkClickedHandler)
-        controller.addUserScript(WKUserScript(
-            source: ReaderWeb.linkInterceptionScript,
-            injectionTime: .atDocumentStart, forMainFrameOnly: true
-        ))
-        config.userContentController = controller
+        let config = ReaderWebView.makeConfiguration()
+        // Each page registers its own (weakly held) link message handler on the shared controller.
+        config.userContentController.add(WeakScriptMessageHandler(self), name: ReaderWeb.linkClickedHandler)
         webView = WKWebView(frame: view.bounds, configuration: config)
         // Avoid the white/system flash and the lingering previous article: the container shows a
         // system background (adapts light/dark) while the web view paints, then we fade it in.
