@@ -48,7 +48,9 @@ struct YanaApp: App {
         WindowGroup {
             ContentView(appState: appState)
                 .environment(articleStore)
-                .task { articleStore.start() }
+                // Warm WebKit with the anchor article before the store bootstrap, so the Web Content
+                // process spawn + first-document parse/paint precede the reader's first page.
+                .task { ReaderWarmup.start(); articleStore.start() }
         }
         .modelContainer(AppContainer.shared)
     }
