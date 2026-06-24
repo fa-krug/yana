@@ -63,4 +63,30 @@ struct ReaderWarmupTests {
         let context = try makeContext()
         #expect(ArticleResolution.fetchNewest(in: context) == nil)
     }
+
+    @Test func anchorArticleUsesSavedIdentifierWhenPresent() throws {
+        let context = try makeContext()
+        let a = Article(title: "a", identifier: "saved", url: "u1"); a.createdAt = Date(timeIntervalSince1970: 100)
+        let b = Article(title: "b", identifier: "newest", url: "u2"); b.createdAt = Date(timeIntervalSince1970: 200)
+        context.insert(a); context.insert(b)
+        try context.save()
+        #expect(ReaderWarmup.anchorArticle(savedIdentifier: "saved", in: context)?.identifier == "saved")
+    }
+
+    @Test func anchorArticleFallsBackToNewestWhenNoSavedIdentifier() throws {
+        let context = try makeContext()
+        let a = Article(title: "a", identifier: "old", url: "u1"); a.createdAt = Date(timeIntervalSince1970: 100)
+        let b = Article(title: "b", identifier: "newest", url: "u2"); b.createdAt = Date(timeIntervalSince1970: 200)
+        context.insert(a); context.insert(b)
+        try context.save()
+        #expect(ReaderWarmup.anchorArticle(savedIdentifier: nil, in: context)?.identifier == "newest")
+    }
+
+    @Test func anchorArticleFallsBackToNewestWhenSavedIdentifierMissing() throws {
+        let context = try makeContext()
+        let a = Article(title: "a", identifier: "only", url: "u1"); a.createdAt = Date(timeIntervalSince1970: 100)
+        context.insert(a)
+        try context.save()
+        #expect(ReaderWarmup.anchorArticle(savedIdentifier: "ghost", in: context)?.identifier == "only")
+    }
 }
