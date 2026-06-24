@@ -24,8 +24,7 @@ critical path by performing it during launch, before the reader's first page is 
 then handing the already-loaded web view to the first page.
 
 Non-goals: changing the data/summary load path; deferring the eager store-open (the
-store is already open at launch and that is acceptable); full off-screen *paint* warmup
-(compositing completes on attach — see Edges).
+store is already open at launch and that is acceptable).
 
 ## Design
 
@@ -60,6 +59,15 @@ has a head start over the work that leads to the first page being created.
 5. Builds a `WKWebView` from the shared configuration factory (below), calls
    `loadHTMLString(html, baseURL: ReaderWeb.pageBaseURL)`, and parks
    `(identifier, html, webView)` in `ReaderWarmupStore.shared`.
+6. **Parents the warmed web view off-screen in the key window so it fully paints.** The
+   view is added to the key window sized to the window's bounds but positioned off-screen
+   (origin offset by the window height, so it is laid out and composited at the eventual
+   page width — making the adopted paint pixel-correct — but never visible). This drives
+   WebKit through layout and compositing during launch, not just parse. Getting the key
+   window is why warmup is kicked from the scene `.task` rather than `AppDelegate` (no
+   window exists that early). If no key window is available yet, the web view still loads
+   off-window (process + parse warm) and paint completes on adoption — a graceful
+   degradation, not an error.
 
 The warmed web view has **no** navigation/UI delegate and **no** `linkClickedHandler`
 message handler yet — only the link-interception userscript is injected. Delegates and
@@ -131,13 +139,13 @@ summary state produces a different string and therefore a clean miss — no stal
 1. Compute the page's HTML once (the same `ArticleRenderer.fullPageHTML(...)` call
    `render()` makes).
 2. `ReaderWarmupStore.shared.take(identifier: article.identifier, html: computedHTML)`:
-   - **Hit:** adopt the warmed web view — assign `self.webView`, add the
-     `linkClickedHandler` message handler to the existing
-     `webView.configuration.userContentController`, set `navigationDelegate`/`uiDelegate`
-     to `self`, add to the view hierarchy with the existing constraints, set
-     `loadedHTML = computedHTML` so `render()` is a no-op, and set opacity: if
-     `!webView.isLoading`, fade to `alpha = 1` immediately; otherwise leave `alpha = 0`
-     and let `didFinish` fade it in.
+   - **Hit:** adopt the warmed web view — remove it from the off-screen warm host
+     (`removeFromSuperview`), assign `self.webView`, add the `linkClickedHandler` message
+     handler to the existing `webView.configuration.userContentController`, set
+     `navigationDelegate`/`uiDelegate` to `self`, add to the view hierarchy with the
+     existing constraints, set `loadedHTML = computedHTML` so `render()` is a no-op, and
+     set opacity: if `!webView.isLoading`, fade to `alpha = 1` immediately; otherwise
+     leave `alpha = 0` and let `didFinish` fade it in.
    - **Miss:** current path — build a fresh web view via `ReaderWebView.makeConfiguration()`,
      wire it, and call `render()`.
 
@@ -156,11 +164,12 @@ opened first) is released rather than lingering for the session.
 - **Anchor filtered out / changed between launches:** the first page's HTML won't match
   the warmed HTML → clean miss → normal fresh render; warmed view discarded. Correctness
   unaffected, only a wasted warm.
-- **Off-window warm:** a `WKWebView` not in a window may defer final tiling/compositing.
-  Process spawn, document parse, and userscript injection — the bulk of the cost — still
-  happen during launch; compositing completes quickly on attach. Full off-screen paint
-  (parenting the warmed view into a zero-rect container in the key window) is a possible
-  follow-up, not v1.
+- **Off-screen paint:** the warmed view is parented off-screen in the key window
+  (sized to the window, positioned beyond its bounds) so WebKit completes layout and
+  compositing during launch — not just parse. If no key window exists when warmup runs,
+  it degrades to an off-window warm (process + parse) with paint completing on adoption.
+- **`discardUnused` must remove the off-screen view** from the warm host, not merely drop
+  the slot reference, so a leftover warmed view is not left parented in the window.
 - **Empty library / fresh install:** no anchor and no newest article → warmup is a no-op.
 - **summaryPending mismatch:** if the first page is rendered with `summaryPending: true`
   (rare for a cold-start anchor), its HTML differs → clean miss → normal render.
