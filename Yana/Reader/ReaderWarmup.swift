@@ -46,14 +46,15 @@ enum ReaderWarmup {
     /// kicking off the async web-view load; the WebKit work proceeds on its own.
     static func start() {
         let context = AppContainer.shared.mainContext
-        guard let article = anchorArticle(savedIdentifier: AppSettings().timelineAnchorIdentifier,
+        let settings = AppSettings()
+        guard let article = anchorArticle(savedIdentifier: settings.timelineAnchorIdentifier,
                                           in: context) else { return }
 
         // summaryPending: false — a stored anchor at cold start has no in-flight AI summary job.
         let html = ArticleRenderer.fullPageHTML(
             article: article,
             theme: ArticleThemesManager.shared.currentTheme,
-            textSize: AppSettings().articleTextSize,
+            textSize: settings.articleTextSize,
             summaryPending: false
         )
 
@@ -79,7 +80,7 @@ enum ReaderWarmup {
     private static func keyWindow() -> UIWindow? {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)
+            .compactMap(\.keyWindow)
+            .first
     }
 }

@@ -1,5 +1,3 @@
-import Foundation
-
 /// One parked warmup payload, keyed by the article identifier and the exact rendered HTML.
 /// HTML-string equality is the validity gate: any theme / text-size / summary difference
 /// produces a different string and therefore a clean miss — never a stale render.
