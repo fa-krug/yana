@@ -1,6 +1,6 @@
 # Cold-Start Summary-Index Cache + Anchor-Centered Window Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make the reader interactive at the saved anchor on cold start by serving the article index from a disk cache (warm launch) or a small anchor-centered DB window (cold cache), instead of waiting for a full-library off-main fetch.
 
@@ -39,7 +39,7 @@
   - `actor SummaryIndexCache`: `static let shared`; `init(fileURL: URL? = nil)` (default `<Caches>/summary-index.plist`); `func load() -> [ArticleSummary]?`; `func save(_ summaries: [ArticleSummary])`.
   - `enum ArticleResolution` (`@MainActor`): `static func resolve(_ summary: ArticleSummary, in context: ModelContext) -> Article?`; `static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article?`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `YanaTests/SummaryIndexCacheTests.swift`:
 
@@ -157,12 +157,12 @@ struct ArticleResolutionTests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build-for-testing`
 Expected: FAIL to compile — `SummaryIndexCache` / `ArticleResolution` not in scope.
 
-- [ ] **Step 3: Make `persistentID` runtime-only + custom `Codable`**
+- [x] **Step 3: Make `persistentID` runtime-only + custom `Codable`**
 
 In `Yana/Models/ArticleSummary.swift`, replace the type from its declaration through the end of `init(_ article:)` with:
 
@@ -234,7 +234,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
 
 (`Hashable`/`Equatable` stay synthesized over all stored properties, including the optional `persistentID`.)
 
-- [ ] **Step 4: Create `SummaryIndexCache`**
+- [x] **Step 4: Create `SummaryIndexCache`**
 
 Create `Yana/Services/SummaryIndexCache.swift`:
 
@@ -274,7 +274,7 @@ actor SummaryIndexCache {
 }
 ```
 
-- [ ] **Step 5: Create `ArticleResolution`**
+- [x] **Step 5: Create `ArticleResolution`**
 
 Create `Yana/Services/ArticleResolution.swift`:
 
@@ -302,7 +302,7 @@ enum ArticleResolution {
 }
 ```
 
-- [ ] **Step 6: Route both resolve sites through `ArticleResolution`**
+- [x] **Step 6: Route both resolve sites through `ArticleResolution`**
 
 In `Yana/Reader/ReaderHostView.swift`, find (≈ line 149, inside the `.loaded` case):
 
@@ -332,19 +332,19 @@ with:
     }
 ```
 
-- [ ] **Step 7: Regenerate and run the tests**
+- [x] **Step 7: Regenerate and run the tests**
 
 Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/SummaryIndexCacheTests -only-testing:YanaTests/ArticleResolutionTests`
 Expected: PASS — 3 + 4 = 7 tests, no crash / no "unexpected exit".
 
-- [ ] **Step 8: Confirm the pre-existing `ArticleSummary` test still passes**
+- [x] **Step 8: Confirm the pre-existing `ArticleSummary` test still passes**
 
 `YanaTests/ArticleSummaryTests.swift:36` asserts `summary.persistentID == article.persistentModelID`; this still compiles and passes (optional-vs-non-optional `==`). Verify:
 
 Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleSummaryTests`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add Yana/Models/ArticleSummary.swift Yana/Services/SummaryIndexCache.swift Yana/Services/ArticleResolution.swift Yana/Reader/ReaderHostView.swift Yana/Views/Config/ArticleListView.swift YanaTests/SummaryIndexCacheTests.swift YanaTests/ArticleResolutionTests.swift project.yml
@@ -363,7 +363,7 @@ git commit -m "feat(cache): persistable index + runtime-only persistentID + Arti
 - Consumes: existing `@ModelActor actor ArticleSummaryLoader` with `func load() throws -> [ArticleSummary]`.
 - Produces: `func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary]` — ascending (oldest→new) slice centered on the anchor row (inclusive); when `anchorID` is `nil` or not found, the newest `2*radius + 1` articles ascending.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `YanaTests/ArticleSummaryLoaderTests.swift`:
 
@@ -424,12 +424,12 @@ struct ArticleSummaryLoaderTests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build-for-testing`
 Expected: FAIL to compile — `ArticleSummaryLoader` has no member `loadWindow`.
 
-- [ ] **Step 3: Implement `loadWindow` + helper**
+- [x] **Step 3: Implement `loadWindow` + helper**
 
 In `Yana/Services/ArticleStore.swift`, inside the `ArticleSummaryLoader` actor (right after the existing `load()` method), add:
 
@@ -479,12 +479,12 @@ In `Yana/Services/ArticleStore.swift`, inside the `ArticleSummaryLoader` actor (
     }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleSummaryLoaderTests`
 Expected: PASS (3 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Yana/Services/ArticleStore.swift YanaTests/ArticleSummaryLoaderTests.swift project.yml
@@ -503,7 +503,7 @@ git commit -m "feat(store): anchor-centered window fetch on ArticleSummaryLoader
 - Consumes: `SummaryIndexCache` (Task 1), `ArticleSummaryLoader.loadWindow` (Task 2).
 - Produces: `ArticleStore.init(container:cache:anchorProvider:)` with defaults `cache: .shared`, `anchorProvider: { AppSettings().timelineAnchorIdentifier }`; `func bootstrap() async`; unchanged public `summaries` / `hasLoaded` / `refreshNow()` / `start()` surface.
 
-- [ ] **Step 1: Replace the test file**
+- [x] **Step 1: Replace the test file**
 
 Replace the body of `YanaTests/ArticleStoreTests.swift` with:
 
@@ -610,12 +610,12 @@ struct ArticleStoreTests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build-for-testing`
 Expected: FAIL to compile — `ArticleStore` has no `init(container:cache:...)` / no `bootstrap()`.
 
-- [ ] **Step 3: Rewrite the `ArticleStore` class**
+- [x] **Step 3: Rewrite the `ArticleStore` class**
 
 In `Yana/Services/ArticleStore.swift`, replace the entire `ArticleStore` class (the `@MainActor @Observable final class ArticleStore { ... }` block — leave the `ArticleSummaryLoader` actor untouched) with:
 
@@ -705,12 +705,12 @@ final class ArticleStore {
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/ArticleStoreTests`
 Expected: PASS (4 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Yana/Services/ArticleStore.swift YanaTests/ArticleStoreTests.swift
@@ -723,17 +723,17 @@ git commit -m "feat(store): cache-then-full bootstrap with anchor-window cold pa
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Regenerate and build the app**
+- [x] **Step 1: Regenerate and build the app**
 
 Run: `xcodegen generate && xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build`
 Expected: `** BUILD SUCCEEDED **`.
 
-- [ ] **Step 2: Run the entire test suite**
+- [x] **Step 2: Run the entire test suite**
 
 Run: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
 Expected: `** TEST SUCCEEDED **` — all suites pass (`SummaryIndexCache`, `ArticleResolution`, `ArticleSummaryLoader.loadWindow`, `ArticleStore`, plus pre-existing suites), no "unexpected exit".
 
-- [ ] **Step 3: Commit (only if regeneration changed project files)**
+- [x] **Step 3: Commit (only if regeneration changed project files)**
 
 ```bash
 git add -A && git commit -m "chore: regenerate project after cold-start cache work" || echo "nothing to commit"
