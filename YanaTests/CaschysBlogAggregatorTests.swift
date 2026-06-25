@@ -82,6 +82,7 @@ struct CaschysBlogAggregatorTests {
     @Test func skipsAnzeigeAndWeeklyRecap() async throws {
         let agg = StubCaschy(entries: [
             entry("Cooles Gadget (Anzeige)"),
+            entry("Anzeige: Cooles Gadget"),
             entry("Immer wieder sonntags KW 24"),
             entry("Echte News"),
         ], page: "<div class=\"entry-inner\"><p>x</p></div>", options: CaschysBlogOptions(), store: tempStore())

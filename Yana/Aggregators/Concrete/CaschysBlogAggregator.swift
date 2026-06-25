@@ -31,7 +31,7 @@ class CaschysBlogAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     override func shouldInclude(_ article: AggregatedArticle) -> Bool {
         let title = article.title
-        if caschyOptions.skipAds, title.contains("(Anzeige)") { return false }
+        if caschyOptions.skipAds, title.contains("(Anzeige)") || title.hasPrefix("Anzeige:") { return false }
         if title.contains("Immer wieder sonntags KW") { return false }
         return true
     }
