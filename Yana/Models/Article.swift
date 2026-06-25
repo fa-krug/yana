@@ -3,6 +3,11 @@ import SwiftData
 
 @Model
 final class Article {
+    // Cold-path fetches sort/filter by these: createdAt drives the anchor window, full index
+    // load, and fetchNewest; identifier drives the one-row fetchByIdentifier lookup. Without an
+    // index each is a full table scan over the retained library. Single-column (no query filters
+    // on both together). Additive metadata — SwiftData handles it via lightweight migration.
+    #Index<Article>([\.createdAt], [\.identifier])
     var title: String = ""
     /// URL or external id; dedup key within a feed.
     var identifier: String = ""
