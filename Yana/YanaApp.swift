@@ -33,8 +33,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         backgroundRefresh.schedule()
 
         // Tag bootstrap is idempotent and not needed before first paint (the Starred tag is only
-        // consulted on a user star action), so move its fetch + save off the synchronous launch
-        // path. Save only when an insert actually happened — no per-launch context flush.
+        // consulted on a user star action, by the tag-filter list, and on upsert — all reached
+        // well after this task runs), so move its fetch + save off the synchronous launch path.
+        // Save only when an insert actually happened — no per-launch context flush.
         Task { @MainActor in
             let context = AppContainer.shared.mainContext
             if Tag.ensureBuiltIns(in: context) {
