@@ -27,11 +27,14 @@ final class Tag {
     /// The canonical name of the built-in Starred tag.
     static let starredName = "Starred"
 
-    /// Insert the built-in Starred tag if it isn't already present. Idempotent.
-    static func ensureBuiltIns(in context: ModelContext) {
+    /// Inserts the built-in Starred tag if missing. Returns `true` when it inserted (so the
+    /// caller can save only when something changed), `false` when one already existed.
+    @discardableResult
+    static func ensureBuiltIns(in context: ModelContext) -> Bool {
         let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.isBuiltIn })
         let existing = (try? context.fetch(descriptor)) ?? []
-        guard existing.isEmpty else { return }
+        guard existing.isEmpty else { return false }
         context.insert(Tag(name: starredName, colorHex: "#F5C518", isBuiltIn: true, sortOrder: -1))
+        return true
     }
 }
