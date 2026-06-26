@@ -30,6 +30,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let reloadToken: Int
 
     func makeUIViewController(context: Context) -> UINavigationController {
+        StartupTrace.event("ReaderHost.makeUIViewController")
         let reader = ReaderArticleViewController()
         context.coordinator.reader = reader
         reader.resolveArticle = resolveArticle

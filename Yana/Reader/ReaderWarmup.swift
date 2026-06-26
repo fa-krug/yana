@@ -47,18 +47,28 @@ enum ReaderWarmup {
     static func start() {
         let context = AppContainer.shared.mainContext
         let settings = AppSettings()
-        guard let article = anchorArticle(savedIdentifier: settings.timelineAnchorIdentifier,
-                                          in: context) else { return }
+        guard let article = StartupTrace.measure("ReaderWarmup.anchorFetch", {
+            anchorArticle(savedIdentifier: settings.timelineAnchorIdentifier, in: context)
+        }) else { return }
+
+        // First access triggers the themes manager's one-time bundle scan + current-theme load.
+        let theme = StartupTrace.measure("ArticleThemesManager.currentTheme") {
+            ArticleThemesManager.shared.currentTheme
+        }
 
         // summaryPending: false — a stored anchor at cold start has no in-flight AI summary job.
-        let html = ArticleRenderer.fullPageHTML(
-            article: article,
-            theme: ArticleThemesManager.shared.currentTheme,
-            textSize: settings.articleTextSize,
-            summaryPending: false
-        )
+        let html = StartupTrace.measure("ReaderWarmup.renderHTML") {
+            ArticleRenderer.fullPageHTML(
+                article: article,
+                theme: theme,
+                textSize: settings.articleTextSize,
+                summaryPending: false
+            )
+        }
 
-        let webView = WKWebView(frame: .zero, configuration: ReaderWebView.makeConfiguration())
+        let webView = StartupTrace.measure("ReaderWarmup.makeWebView") {
+            WKWebView(frame: .zero, configuration: ReaderWebView.makeConfiguration())
+        }
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear

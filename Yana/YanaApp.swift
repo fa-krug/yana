@@ -12,7 +12,9 @@ import UIKit
 enum AppContainer {
     static let shared: ModelContainer = {
         do {
-            return try ModelContainer(for: Feed.self, Tag.self, Article.self)
+            return try StartupTrace.measure("ModelContainer.init") {
+                try ModelContainer(for: Feed.self, Tag.self, Article.self)
+            }
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -28,20 +30,27 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        #if DEBUG
+        DebugSeed.seedIfRequested(into: AppContainer.shared.mainContext)
+        #endif
+        StartupTrace.event("didFinishLaunching.begin")
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
-        backgroundRefresh.register()
-        backgroundRefresh.schedule()
+        StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
+        StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
 
         // Tag bootstrap is idempotent and not needed before first paint (the Starred tag is only
         // consulted on a user star action, by the tag-filter list, and on upsert — all reached
         // well after this task runs), so move its fetch + save off the synchronous launch path.
         // Save only when an insert actually happened — no per-launch context flush.
         Task { @MainActor in
-            let context = AppContainer.shared.mainContext
-            if Tag.ensureBuiltIns(in: context) {
-                try? context.save()
+            await StartupTrace.measure("Tag.ensureBuiltIns") {
+                let context = AppContainer.shared.mainContext
+                if Tag.ensureBuiltIns(in: context) {
+                    try? context.save()
+                }
             }
         }
+        StartupTrace.event("didFinishLaunching.end")
         return true
     }
 }
@@ -58,7 +67,11 @@ struct YanaApp: App {
                 .environment(articleStore)
                 // Warm WebKit with the anchor article before the store bootstrap, so the Web Content
                 // process spawn + first-document parse/paint precede the reader's first page.
-                .task { ReaderWarmup.start(); articleStore.start() }
+                .task {
+                    StartupTrace.event("scene.task.begin")
+                    StartupTrace.measure("ReaderWarmup.start") { ReaderWarmup.start() }
+                    articleStore.start()
+                }
         }
         .modelContainer(AppContainer.shared)
     }
