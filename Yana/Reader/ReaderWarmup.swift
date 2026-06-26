@@ -73,17 +73,14 @@ enum ReaderWarmup {
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
 
-        // Parent off-screen in the key window so WebKit lays out + composites at the eventual page
-        // width (making the adopted paint pixel-correct), without ever being visible. Degrades to an
-        // off-window warm (process + parse) if no key window exists yet — paint then completes on adopt.
-        if let window = keyWindow() {
-            webView.frame = CGRect(x: 0, y: window.bounds.height,
-                                   width: window.bounds.width, height: window.bounds.height)
-            window.addSubview(webView)
-            window.sendSubviewToBack(webView)
-        }
-
+        // Start the document load immediately — it progresses (and fires `didFinish`) even before
+        // the view is on-window, so kicking it as early as possible front-loads the parse.
         webView.loadHTMLString(html, baseURL: ReaderWeb.pageBaseURL)
+        // Parent off-screen in the key window so WebKit lays out + composites at the eventual page
+        // width (making the adopted paint pixel-correct), without ever being visible. When the warm
+        // runs before the scene has a key window (launch path), retry on the next runloop until one
+        // exists; a page adopting the view first makes this a no-op (it then has a superview).
+        parentOffScreen(webView)
         ReaderWarmupStore.shared.store(identifier: article.identifier, html: html, webView: webView)
     }
 
@@ -92,5 +89,22 @@ enum ReaderWarmup {
             .compactMap { $0 as? UIWindowScene }
             .compactMap(\.keyWindow)
             .first
+    }
+
+    /// Parent the warmed web view off-screen in the key window for pixel-correct pre-paint. If no
+    /// key window exists yet (warm kicked from `didFinishLaunching` before the scene connects),
+    /// retry on the next runloop, bounded. No-op once the view has a superview — adoption parents
+    /// it into the page, and re-adding it here must never fight that.
+    private static func parentOffScreen(_ webView: WKWebView, retriesLeft: Int = 8) {
+        guard webView.superview == nil else { return }
+        if let window = keyWindow() {
+            webView.frame = CGRect(x: 0, y: window.bounds.height,
+                                   width: window.bounds.width, height: window.bounds.height)
+            window.addSubview(webView)
+            window.sendSubviewToBack(webView)
+            return
+        }
+        guard retriesLeft > 0 else { return }
+        DispatchQueue.main.async { parentOffScreen(webView, retriesLeft: retriesLeft - 1) }
     }
 }
