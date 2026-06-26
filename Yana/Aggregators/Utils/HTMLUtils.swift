@@ -31,6 +31,9 @@ enum HTMLUtils {
     static func removeEmptyElements(_ doc: Document, tags: [String]) throws {
         for tag in tags {
             for el in try doc.select(tag) {
+                // Preserve intentionally-empty decorative elements (e.g. the CSS-drawn play button
+                // on a YouTube/Dailymotion facade), which mark themselves aria-hidden.
+                if (try? el.attr("aria-hidden")) == "true" { continue }
                 let text = try el.text().trimmingCharacters(in: .whitespacesAndNewlines)
                 let hasMedia = !(try el.select("img, iframe, video").isEmpty())
                 if text.isEmpty && !hasMedia { try el.remove() }

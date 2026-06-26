@@ -22,15 +22,11 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     override var contentSelector: String { Self.contentDivSelector }
 
     override var selectorsToRemove: [String] {
-        // .dailymotion-embed-container is included here to mirror server commit 1e3afd3:
-        // the server's extract_mein_mmo_content() calls process_dailymotion_blocks() first
-        // (which builds div.dailymotion-embed-container from div.wp-block-mmo-video), then
-        // immediately decomposes that class in the selectors_to_remove pass. Net effect:
-        // dailymotion embeds are excluded from MeinMMO output entirely. The conversion step
-        // (convertDailymotionBlocks) is intentionally left in place as dead code to mirror
-        // the server; the removal here ensures the final output contains no dailymotion content.
-        // The iframe whitelist drops :not([src*='dailymotion.com']) since no dailymotion iframes
-        // should survive to that point, but YouTube iframes are still preserved.
+        // Dailymotion blocks (div.wp-block-mmo-video) are converted to a click-to-play facade by
+        // convertDailymotionBlocks() before this pass — unlike the Yana server (commit 1e3afd3),
+        // which builds div.dailymotion-embed-container and then strips it. The facade holds no live
+        // <iframe> (the player markup lives in its data-embed attribute), so the iframe whitelist
+        // below does not touch it; YouTube iframes are still preserved.
         ["div.wp-block-mmo-recirculation-box", "div.wp-block-mmo-hub-box",
          "div.reading-position-indicator-end",
          "label.toggle", "a.wp-block-mmo-content-box",
@@ -39,7 +35,6 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
          // processMeinMmoContent() (which runs selectorsToRemove). Do not reorder these calls.
          "div.page-links", "div.sources-wrapper", "div.feedback-box",
          "div.wp-block-wbd-affiliate-widget", "script", "style",
-         ".dailymotion-embed-container",
          "iframe:not([src*='youtube.com']):not([src*='youtu.be'])", "noscript"]
     }
 
@@ -169,19 +164,18 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
                                        headerHTML: header?.html, commentsHTML: nil)
     }
 
-    // Dead code: converted nodes are immediately removed by selectorsToRemove (.dailymotion-embed-container)
-    // — kept to mirror the server pipeline order (server commit 1e3afd3).
+    // Converts div.wp-block-mmo-video (Dailymotion player, dmVideoId in an inline script) into a
+    // click-to-play facade. Runs before selectorsToRemove, which no longer strips the result.
     private func convertDailymotionBlocks(_ content: Element) throws {
         for block in try content.select("div.wp-block-mmo-video") {
             guard let id = dailymotionVideoID(block) else { continue }
-            let title = (try? block.select("div.title").first()?.text()).flatMap { $0 }
-            var html = EmbedRewriter.dailymotionEmbedHTML(videoID: id)
-            if let title, !title.isEmpty {
-                // Append caption inside the container.
-                html = html.replacingOccurrences(of: "</div>", with: "<p>\(title)</p></div>")
+            let container = parse(EmbedRewriter.dailymotionEmbedHTML(videoID: id))
+            // Append the video title as a caption (text set via SwiftSoup so it is escaped).
+            if let title = try? block.select("div.title").first()?.text(), !title.isEmpty {
+                let caption = try container.appendElement("p").addClass("dailymotion-caption")
+                try caption.text(title)
             }
-            let fragment = try SwiftSoup.parseBodyFragment(html)
-            if let replacement = fragment.body()?.child(0) { try block.replaceWith(replacement) }
+            try block.replaceWith(container)
         }
     }
 
