@@ -109,11 +109,22 @@ final class ArticleStore {
     }
 
     /// Cold-start path: publish a fast first dataset (disk cache when present, else an
-    /// anchor-centered DB window), flip `hasLoaded`, then reconcile to the authoritative full load.
+    /// anchor-centered DB window) and flip `hasLoaded`, yield so SwiftUI can build the pager off
+    /// it, then reconcile to the authoritative full load.
     func bootstrap() async {
+        await publishFastDataset()
+        // Let the reader build + adopt the warmed web view before the full DB fetch competes for
+        // the main thread; `fullLoad` self-heals the displayed position by identifier, so deferring
+        // it never strands the anchor.
+        await Task.yield()
+        await fullLoad()
+    }
+
+    /// Publish the fast first dataset (disk cache, else an anchor-centered DB window) and flip
+    /// `hasLoaded`. Does NOT reconcile to the full DB — `bootstrap()` does that after a yield.
+    func publishFastDataset() async {
         if let cached = await StartupTrace.measure("ArticleStore.cache.load", { await cache.load() }) {
             summaries = cached
-            hasLoaded = true
         } else {
             let window = await StartupTrace.measure("ArticleStore.loadWindow") { () -> [ArticleSummary] in
                 let loader = ArticleSummaryLoader(modelContainer: container)
@@ -122,10 +133,9 @@ final class ArticleStore {
                 )) ?? []
             }
             summaries = window
-            hasLoaded = true
         }
+        hasLoaded = true
         StartupTrace.event("ArticleStore.hasLoaded")
-        await fullLoad()
     }
 
     private func scheduleRefresh() {

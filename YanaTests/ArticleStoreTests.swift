@@ -98,4 +98,22 @@ struct ArticleStoreTests {
         #expect(store.summaries.first?.identifier == "a0")
         #expect(store.summaries.last?.identifier == "a99")
     }
+
+    @Test func publishFastDatasetServesWindowWithoutReconcile() async throws {
+        let container = try makeContainer()
+        seed(100, into: container.mainContext)            // a0…a99
+        try container.mainContext.save()
+
+        let store = ArticleStore(
+            container: container,
+            cache: tempCache(),                           // cold cache → anchor window path
+            anchorProvider: { "a50" }
+        )
+        await store.publishFastDataset()
+
+        #expect(store.hasLoaded == true)
+        #expect(store.summaries.count == 51)              // 2*radius+1, NOT the full 100
+        #expect(store.summaries.first?.identifier == "a25")
+        #expect(store.summaries.last?.identifier == "a75")
+    }
 }
