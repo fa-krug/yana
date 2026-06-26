@@ -15,6 +15,11 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     private var webView: WKWebView!
     private var loadedHTML: String?
+    /// Cold-start instrumentation: whether this page adopted the launch-warmed web view.
+    private var adoptedWarmedView = false
+    /// Cold-start instrumentation: true only for the very first reader page (the anchor), so the
+    /// `anchorVisible` marker isn't stolen by a prewarmed neighbor that paints first.
+    private var isColdStartAnchorPage = false
 
     var summaryPending = false { didSet { if summaryPending != oldValue { render() } } }
 
@@ -52,8 +57,9 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
             summaryPending: summaryPending
         )
 
-        let adoptedWarmedView: Bool
+        isColdStartAnchorPage = StartupTrace.firstPageViewDidLoadOnce()
         if let warmed = ReaderWarmupStore.shared.take(identifier: article.identifier, html: html) {
+            StartupTrace.warmupTakeOnce(hit: true)
             // Adopt the launch-warmed web view: its document is already parsed (and painted, if it
             // was parented off-screen). Detach from the warm host before re-parenting into this page.
             warmed.removeFromSuperview()
@@ -61,6 +67,7 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
             loadedHTML = html                 // mark as already-loaded so `render()` no-ops
             adoptedWarmedView = true
         } else {
+            StartupTrace.warmupTakeOnce(hit: false)
             webView = WKWebView(frame: view.bounds, configuration: ReaderWebView.makeConfiguration())
             adoptedWarmedView = false
         }
@@ -107,6 +114,7 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
             // delegate was attached during warmup, so `didFinish` won't fire again), fade in now;
             // otherwise the navigation delegate fades it in on `didFinish`.
             if !webView.isLoading {
+                if isColdStartAnchorPage { Self.markAnchorVisibleOnce(adopted: adoptedWarmedView) }
                 UIView.animate(withDuration: CrossFade.duration) { self.webView.alpha = 1 }
             }
         } else {
@@ -178,7 +186,17 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard webView.alpha < 1 else { return }
+        if isColdStartAnchorPage { Self.markAnchorVisibleOnce(adopted: adoptedWarmedView) }
         UIView.animate(withDuration: CrossFade.duration) { webView.alpha = 1 }
+    }
+
+    /// One-shot cold-start marker: logs when the very first reader page is revealed to the user
+    /// (the anchor article), distinguishing a warmup adoption from a cold render.
+    private static var didMarkAnchorVisible = false
+    static func markAnchorVisibleOnce(adopted: Bool) {
+        guard !didMarkAnchorVisible else { return }
+        didMarkAnchorVisible = true
+        StartupTrace.event(adopted ? "anchorVisible(adopted)" : "anchorVisible(rendered)")
     }
 
     /// The shared Web Content process was terminated — almost always jetsam while the app sat

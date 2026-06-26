@@ -12,7 +12,8 @@ actor ArticleSummaryLoader {
         // Only the light columns; HTML (`content`/`rawContent`/`summary`) stays unfetched.
         descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
-        return try modelContext.fetch(descriptor).map(ArticleSummary.init)
+        let rows = try StartupTrace.measure("fullLoad.fetch") { try modelContext.fetch(descriptor) }
+        return StartupTrace.measure("fullLoad.map") { rows.map(ArticleSummary.init) }
     }
 
     /// Anchor-centered slice for the cold-cache fast path: the ~`2*radius+1` articles around the
@@ -108,20 +109,33 @@ final class ArticleStore {
     }
 
     /// Cold-start path: publish a fast first dataset (disk cache when present, else an
-    /// anchor-centered DB window), flip `hasLoaded`, then reconcile to the authoritative full load.
+    /// anchor-centered DB window) and flip `hasLoaded`, yield so SwiftUI can build the pager off
+    /// it, then reconcile to the authoritative full load.
     func bootstrap() async {
-        if let cached = await cache.load() {
-            summaries = cached
-            hasLoaded = true
-        } else {
-            let loader = ArticleSummaryLoader(modelContainer: container)
-            let window = (try? await loader.loadWindow(
-                around: anchorProvider(), radius: Self.windowRadius
-            )) ?? []
-            summaries = window
-            hasLoaded = true
-        }
+        await publishFastDataset()
+        // Let the reader build + adopt the warmed web view before the full DB fetch competes for
+        // the main thread; `fullLoad` self-heals the displayed position by identifier, so deferring
+        // it never strands the anchor.
+        await Task.yield()
         await fullLoad()
+    }
+
+    /// Publish the fast first dataset (disk cache, else an anchor-centered DB window) and flip
+    /// `hasLoaded`. Does NOT reconcile to the full DB — `bootstrap()` does that after a yield.
+    func publishFastDataset() async {
+        if let cached = await StartupTrace.measure("ArticleStore.cache.load", { await cache.load() }) {
+            summaries = cached
+        } else {
+            let window = await StartupTrace.measure("ArticleStore.loadWindow") { () -> [ArticleSummary] in
+                let loader = ArticleSummaryLoader(modelContainer: container)
+                return (try? await loader.loadWindow(
+                    around: anchorProvider(), radius: Self.windowRadius
+                )) ?? []
+            }
+            summaries = window
+        }
+        hasLoaded = true
+        StartupTrace.event("ArticleStore.hasLoaded")
     }
 
     private func scheduleRefresh() {
@@ -141,10 +155,14 @@ final class ArticleStore {
 
     /// Fetch the entire light index off-main, publish it, and rewrite the disk cache.
     private func fullLoad() async {
-        let loader = ArticleSummaryLoader(modelContainer: container)
-        let all = (try? await loader.load()) ?? []
+        let all = await StartupTrace.measure("ArticleStore.fullLoad") { () -> [ArticleSummary] in
+            let loader = StartupTrace.measure("fullLoad.loaderInit") {
+                ArticleSummaryLoader(modelContainer: container)
+            }
+            return (try? await loader.load()) ?? []
+        }
         summaries = all
-        await cache.save(all)
+        await StartupTrace.measure("fullLoad.cacheSave") { await cache.save(all) }
     }
 
     isolated deinit {

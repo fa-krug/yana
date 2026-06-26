@@ -30,6 +30,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let reloadToken: Int
 
     func makeUIViewController(context: Context) -> UINavigationController {
+        StartupTrace.event("ReaderHost.makeUIViewController")
         let reader = ReaderArticleViewController()
         context.coordinator.reader = reader
         reader.resolveArticle = resolveArticle
@@ -110,14 +111,36 @@ struct ReaderScreen: View {
 
     @State private var filteredArticles: [ArticleSummary] = []
 
+    /// Re-filter only (used by tag/feed/untagged setting changes — position is preserved/clamped
+    /// elsewhere).
     private func recomputeFilter() {
-        // store.summaries is already chronological (oldest → new); filter in place.
         let byTag = TagFilter.apply(
             to: store.summaries,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
         filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+    }
+
+    /// First load: filter + position on the saved anchor in one pass, so the reader is built
+    /// already on the anchor. Subsequent deliveries refilter and re-resolve the displayed article.
+    private func applyTimeline() {
+        guard !didRestoreAnchor else {
+            recomputeFilter()
+            reanchorToCurrentArticle()
+            return
+        }
+        let resolved = TimelineBootstrap.resolve(
+            summaries: store.summaries,
+            disabledTagNames: settings.disabledTagNames,
+            includeUntagged: settings.includeUntagged,
+            disabledFeedNames: settings.disabledFeedNames,
+            anchorIdentifier: settings.timelineAnchorIdentifier
+        )
+        filteredArticles = resolved.articles
+        guard !resolved.articles.isEmpty else { return }   // wait for a non-empty delivery to anchor
+        appState.currentIndex = resolved.anchorIndex
+        didRestoreAnchor = true
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -179,16 +202,14 @@ struct ReaderScreen: View {
         .sheet(isPresented: $appState.showFilter, onDismiss: clampIndex) { TagFilterView() }
         .toast($toast)
         .onAppear {
-            recomputeFilter()
-            restoreAnchor()
+            applyTimeline()
             if !settings.hasSeenFullscreenHint, UIDevice.current.userInterfaceIdiom == .phone {
                 toast = ToastMessage(text: String(localized: "Tap the title bar to hide the toolbars."))
                 settings.hasSeenFullscreenHint = true
             }
         }
         .onChange(of: store.summaries) { _, _ in
-            recomputeFilter()
-            if didRestoreAnchor { reanchorToCurrentArticle() } else { restoreAnchor() }
+            applyTimeline()
         }
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
@@ -235,13 +256,6 @@ struct ReaderScreen: View {
     }
 
     // MARK: - Anchor (position memory)
-
-    private func restoreAnchor() {
-        let articles = filteredArticles
-        guard !articles.isEmpty, !didRestoreAnchor else { return }
-        appState.currentIndex = TimelineAnchor.index(for: settings.timelineAnchorIdentifier, in: articles)
-        didRestoreAnchor = true
-    }
 
     /// Persist the reading position. Called only from a completed user swipe (`onUserNavigate`),
     /// so it records exactly the article the user paged to and is never reached by the programmatic
