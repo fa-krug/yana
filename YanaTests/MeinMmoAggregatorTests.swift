@@ -65,25 +65,28 @@ struct MeinMmoAggregatorTests {
         #expect(!a.content.contains("Page two"))
     }
 
-    // Server commit 1e3afd3 excludes dailymotion embeds from MeinMMO output entirely:
-    // process_dailymotion_blocks() builds div.dailymotion-embed-container but
-    // selectors_to_remove immediately decomposes it. iOS mirrors this: the conversion step
-    // runs first, then .dailymotion-embed-container is stripped by selectorsToRemove.
-    @Test func excludesDailymotionAndRemovesPaginationMarkers() async throws {
+    // Mein-MMO Dailymotion videos (div.wp-block-mmo-video, dmVideoId in an inline script) are
+    // rendered as a click-to-play facade — the same treatment as YouTube — rather than dropped.
+    // The live player iframe is stashed in the facade's data-embed attribute; the video title
+    // becomes a caption.
+    @Test func includesDailymotionAsFacadeAndRemovesPaginationMarkers() async throws {
         let first = """
         <html><body><div class="gp-entry-content"><p>Intro</p>\
-        <div class="wp-block-mmo-video"><script>var x = { dmVideoId: 'x9yt07o' };</script></div>\
+        <div class="wp-block-mmo-video"><div class="title">Cool Trailer</div>\
+        <script>window.Mmo.functions.renderDmPlayer({ dmVideoId: 'x9yt07o' });</script></div>\
         <p><em>Weiter geht es auf Seite 2.</em></p>\
         <div class="wp-block-mmo-recirculation-box">related junk</div>\
         </div></body></html>
         """
         let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
         let a = try await enrichOne(agg)
-        // Dailymotion content must NOT appear in final output (server commit 1e3afd3)
-        #expect(!a.content.contains("dailymotion-embed-container"))
-        #expect(!a.content.contains("dailymotion.com"))
-        #expect(!a.content.contains("x9yt07o"))
-        // Other content and removals still work
+        // Dailymotion is rendered as a play-button facade carrying the player URL + video id.
+        #expect(a.content.contains("dailymotion-facade"))
+        #expect(a.content.contains("dailymotion-play"))
+        #expect(a.content.contains("geo.dailymotion.com/player.html?video=x9yt07o"))
+        // The video title is preserved as a caption.
+        #expect(a.content.contains("Cool Trailer"))
+        // Other content and removals still work.
         #expect(a.content.contains("Intro"))
         #expect(!a.content.contains("Weiter geht es auf Seite"))
         #expect(!a.content.contains("related junk"))
@@ -98,6 +101,57 @@ struct MeinMmoAggregatorTests {
         let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
         let a = try await enrichOne(agg)
         #expect(a.content.contains("youtube-nocookie.com/embed/abc12345678"))
+    }
+
+    // Mein-MMO wraps YouTube embeds in the `wbd-embed-privacy` (GDPR consent) plugin: the live
+    // <iframe> exists only entity-encoded inside a `data-embed-content` attribute, while the visible
+    // DOM is a consent placeholder plus a plain "Link zum YouTube Inhalt" anchor. The aggregator must
+    // find that anchor and rewrite the figure to a play-button facade — and must NOT leak the consent
+    // overlay's opt-out text ("Anzeige von YouTube Inhalten … widerrufen") into the output. Exercised
+    // through the multi-page merge path, where the figure lives on a fetched secondary page.
+    @Test func convertsEmbedPrivacyWrappedYouTube() async throws {
+        let figurePage = #"""
+        <html><body><div class="entry-content"><p>Intro before</p><figure class="wp-block-embed is-type-video is-provider-youtube wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio"><div class="wp-block-embed__wrapper">
+                <div class="embed-privacy-container embed-youtube">
+                    <div class="embed-privacy-overlay" data-embed-provider="youtube">
+                        <div class="embed-privacy-inner">
+                        <div class="logo"></div>
+                        <div class="title">Empfohlener redaktioneller Inhalt</div>
+                        <p>An dieser Stelle findest du einen externen Inhalt von YouTube, der den Artikel ergänzt.</p>
+                        <button>YouTube Inhalt anzeigen</button>
+                        <div class="notice">
+                            Ich bin damit einverstanden, dass mir externe Inhalte angezeigt werden.
+                            Mehr dazu in unserer <a href="https://mein-mmo.de/datenschutzerklaerung/" target="_blank" rel="nofollow noopener">Datenschutzerklärung</a>.
+                        </div>
+                        </div>
+                    </div>
+                    <div class="embed-privacy-content" data-embed-content="		&lt;div class=&quot;wbd-embed&quot;&gt;
+                &lt;div class=&quot;wbd-embed-wrapper wbd-embed-aspect-16-9&quot;&gt;&lt;iframe title=&quot;Death Note (Anime-Trailer)&quot; width=&quot;720&quot; height=&quot;405&quot; src=&quot;https://www.youtube-nocookie.com/embed/9BxbETVKSLk?feature=oembed&quot; frameborder=&quot;0&quot; allowfullscreen&gt;&lt;/iframe&gt;&lt;/div&gt;
+                    &lt;div class=&quot;embed-privacy-optout&quot;&gt;
+                        Anzeige von YouTube Inhalten &lt;a href=&quot;javascript:void(0);&quot; data-embed-provider=&quot;youtube&quot; data-embed-status=&quot;1&quot; onClick=&quot;window.wbdEmbedPrivacy.optout(this);&quot;&gt;widerrufen&lt;/a&gt;.
+                        &lt;span class=&quot;notice&quot;&gt;Mehr dazu in unserer &lt;a href=&quot;https://mein-mmo.de/datenschutzerklaerung/&quot; target=&quot;_blank&quot; rel=&quot;nofollow noopener&quot;&gt;Datenschutzerklärung&lt;/a&gt;.&lt;/span&gt;
+                    &lt;/div&gt;
+            &lt;/div&gt;
+            ">
+                        Link zum <a href="https://www.youtube.com/watch?v=9BxbETVKSLk" target="_blank" rel="nofollow noopener">YouTube Inhalt</a>
+                </div>
+            </div>
+        </div></figure><p>Outro after</p></div></body></html>
+        """#
+        // Put the figure on page 2 and fetch it via pagination, mirroring reality.
+        let page1 = #"""
+        <html><body><div class="entry-content"><p>Page one</p>\
+        <div class="page-links"><a class="post-page-numbers" href="https://mein-mmo.de/post-1/2/">2</a></div>\
+        </div></body></html>
+        """#
+        let agg = StubMmo(first: page1, extraPages: ["https://mein-mmo.de/post-1/2/": figurePage],
+                          options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        // The consent-wrapped iframe is rewritten to a play-button facade pointing at the real video…
+        #expect(a.content.contains("youtube-facade"))
+        #expect(a.content.contains("youtube-nocookie.com/embed/9BxbETVKSLk"))
+        // …and the consent overlay's opt-out text never reaches the output.
+        #expect(!a.content.contains("Anzeige von YouTube Inhalten"))
     }
 
     @Test func extractsContentFromRedesignedEntryContentClass() async throws {

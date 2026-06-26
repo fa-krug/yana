@@ -49,10 +49,28 @@ enum EmbedRewriter {
             + "<div class=\"youtube-play\" aria-hidden=\"true\"></div></div></div>"
     }
 
-    static func dailymotionEmbedHTML(videoID: String) -> String {
-        let src = "https://geo.dailymotion.com/player.html?video=\(videoID)"
-        return "<div class=\"dailymotion-embed-container\"><iframe src=\"\(src)\" width=\"560\" height=\"315\" "
-            + "allowfullscreen allow=\"autoplay; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe></div>"
+    /// Click-to-play facade for Dailymotion, mirroring `youTubeEmbedHTML`: the video's own thumbnail
+    /// is painted as a 16:9 preview and the autoplaying player iframe is swapped in on tap (the tap is
+    /// the user gesture that unblocks sound). The facade is a `<div>` (not an `<a>`), so the reader's
+    /// link-tap interceptor ignores it. `videoID` is sanitized to `[A-Za-z0-9]` (Dailymotion IDs are
+    /// alphanumeric), so it is safe to interpolate into attributes.
+    static func dailymotionEmbedHTML(videoID rawID: String) -> String {
+        let videoID = rawID.filter { $0.isLetter || $0.isNumber }
+        let src = "https://geo.dailymotion.com/player.html?video=\(videoID)&autoplay=1"
+        let allow = "autoplay; fullscreen; picture-in-picture; web-share"
+        let iframe = "<iframe src=\"\(src)\" width=\"560\" height=\"315\" "
+            + "allowfullscreen allow=\"\(allow)\" referrerpolicy=\"strict-origin-when-cross-origin\"></iframe>"
+        // Stash the player markup in an attribute (quotes entity-escaped) and replace the facade with
+        // it on tap. getAttribute returns the decoded HTML, so outerHTML rebuilds the iframe in place.
+        let embedAttr = iframe.replacingOccurrences(of: "\"", with: "&quot;")
+        let thumb = "https://www.dailymotion.com/thumbnail/video/\(videoID)"
+        // The poster is a real <img> (not a CSS background) so the scraper cleaner's
+        // remove-empty-elements pass keeps the facade — it counts img/iframe/video as content.
+        return "<div class=\"dailymotion-embed-container\">"
+            + "<div class=\"dailymotion-facade\" role=\"button\" aria-label=\"Play video\" "
+            + "onclick=\"this.outerHTML=this.getAttribute('data-embed')\" data-embed=\"\(embedAttr)\">"
+            + "<img class=\"dailymotion-poster\" src=\"\(thumb)\" alt=\"\" loading=\"lazy\" />"
+            + "<div class=\"dailymotion-play\" aria-hidden=\"true\"></div></div></div>"
     }
 
     static func rewriteEmbeds(in doc: Document) throws {
