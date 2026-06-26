@@ -123,3 +123,33 @@ untouched.
 - WebKit render micro-tuning / theme-CSS slimming (separate effort; device-validate
   first).
 - Any change to update/reload semantics, tag snapshotting, or the timeline model.
+
+## Outcome (2026-06-26, iPhone 17 simulator, 100 seeded articles, warm cache)
+
+Implemented as Tasks 0–5 (commits `6acbbec`..`aade209`). Full test suite green.
+
+**Measured cold-start markers, same machine state (3 runs each):**
+
+| Marker | Pre-lever baseline (`6acbbec`) | All levers (`aade209`) |
+|---|---|---|
+| warmup render starts | ~+330ms (scene `.task`) | **~+123ms** (`didFinishLaunching`) — Lever 1 |
+| `ArticleStore.hasLoaded` | ~+308–320ms | ~+307ms |
+| reader built + warmup adopted (`warmupTake.HIT`) | ~+362–383ms | ~+355–360ms |
+| `anchorVisible(adopted)` | ~+1780–1880ms | ~+1770–1790ms |
+
+**Key conclusions:**
+- **No regression.** The pre-lever baseline measured *on the same machine state* shows the
+  same ~1780ms `anchorVisible` as the post-lever build. An earlier-in-the-day baseline read
+  ~970ms; re-measuring proved that was a faster machine/simulator state, not a code difference.
+- **The levers improve the touchable markers**: warmup render now starts ~200ms earlier
+  (Lever 1), and `hasLoaded`/adoption land marginally earlier (Levers 2+3). `warmupTake.HIT`
+  confirms the warmup is still adopted (no cold re-render).
+- **WebKit first-paint dominates and is not app-touchable in the simulator.** The
+  adoption→visible gap was ~460ms in the morning and ~1420ms now for *both* baseline and
+  post-lever builds — it swings with machine/simulator state by 3×, swamping the touchable
+  wins. This is the simulator artifact the design called out.
+
+**Required follow-up: device validation.** The real size of the WebKit paint (and therefore
+the real, perceptible win from the earlier load + tighter gating) can only be measured on
+hardware, where WebKit is far faster than the simulator. Capture the same `StartupTrace`
+markers on a device before drawing conclusions about user-perceived cold-start speed.
