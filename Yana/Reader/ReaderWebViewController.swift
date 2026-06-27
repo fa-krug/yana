@@ -68,7 +68,10 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
             adoptedWarmedView = true
         } else {
             StartupTrace.warmupTakeOnce(hit: false)
-            webView = WKWebView(frame: view.bounds, configuration: ReaderWebView.makeConfiguration())
+            // No launch-warmed anchor to adopt: take a blank-warmed view from the pool (NNW's
+            // WebViewProvider model) so the Web Content process spin-up + first layout are already
+            // done, and this page only pays for the loadHTMLString of its own content in `render()`.
+            webView = ReaderWebViewPool.shared.dequeue()
             adoptedWarmedView = false
         }
         // Each page registers its own (weakly held) link message handler on the shared controller.

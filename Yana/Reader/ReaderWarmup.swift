@@ -45,6 +45,12 @@ enum ReaderWarmup {
     /// Kicked from the scene `.task` before `articleStore.start()`. Returns immediately after
     /// kicking off the async web-view load; the WebKit work proceeds on its own.
     static func start() {
+        // Warm a small reserve of blank web views (NNW's WebViewProvider) so neighbor prewarming and
+        // swipes dequeue an already-spun-up view instead of cold-allocating. Deferred off the launch
+        // frame — these are only needed after the first page paints, and the anchor warm below gives
+        // the first page its own fully-rendered view.
+        DispatchQueue.main.async { ReaderWebViewPool.shared.preload() }
+
         let context = AppContainer.shared.mainContext
         let settings = AppSettings()
         guard let article = StartupTrace.measure("ReaderWarmup.anchorFetch", {

@@ -391,6 +391,8 @@ final class ReaderArticleViewController: UIViewController,
         let live = PrewarmPlan.indices(current: index, count: articles.count, radius: 1, direction: .none) + [index]
         let keep = Set(live.filter { articles.indices.contains($0) }.map { articles[$0].identifier })
         _ = pageCache.trim(toKeep: keep)
+        // Drop the blank-warmed reserve too; it rebuilds lazily on the next dequeue.
+        ReaderWebViewPool.shared.drain()
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
