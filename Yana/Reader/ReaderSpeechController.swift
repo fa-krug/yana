@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import MediaPlayer
 import NaturalLanguage
 import SwiftSoup
 
@@ -8,8 +9,13 @@ import SwiftSoup
 ///
 /// State is a simple three-way machine — `idle → speaking ⇄ paused` — surfaced to the pager via
 /// `onStateChange` so it can keep the play/pause toolbar button in sync. The spoken voice is picked
-/// to match the article's detected language (German articles read in a German voice, etc.), falling
-/// back to the user's preferred locale.
+/// to match the article's detected language (German articles read in a German voice, etc.), preferring
+/// the most natural (Premium → Enhanced → default) voice the user has installed for that language.
+///
+/// Playback continues while the app is backgrounded or the screen is locked: the `audio`
+/// `UIBackgroundMode` keeps the synthesizer running, and a `MPNowPlayingInfoCenter` /
+/// `MPRemoteCommandCenter` registration surfaces the article on the lock screen with working
+/// play/pause/stop controls.
 @MainActor
 final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
@@ -20,10 +26,14 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
     var onStateChange: (() -> Void)?
 
     private let synthesizer = AVSpeechSynthesizer()
+    /// Title of the article currently being read, kept for the lock-screen Now Playing info.
+    private var nowPlayingTitle = ""
+    private var nowPlayingArtist = ""
 
     override init() {
         super.init()
         synthesizer.delegate = self
+        configureRemoteCommands()
     }
 
     /// Begin reading `article` aloud from the start. No-op when there is nothing to speak.
@@ -32,11 +42,14 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         guard !text.isEmpty else { return }
         // Replace any in-flight utterance so re-tapping play always restarts cleanly.
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+        nowPlayingTitle = article.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        nowPlayingArtist = article.author.trimmingCharacters(in: .whitespacesAndNewlines)
         activateAudioSession()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.voice(for: text)
         synthesizer.speak(utterance)
         setState(.speaking)
+        updateNowPlaying(playing: true)
     }
 
     /// Pause while speaking, resume while paused. No effect when idle.
@@ -45,9 +58,11 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         case .speaking:
             synthesizer.pauseSpeaking(at: .word)
             setState(.paused)
+            updateNowPlaying(playing: false)
         case .paused:
             synthesizer.continueSpeaking()
             setState(.speaking)
+            updateNowPlaying(playing: true)
         case .idle:
             break
         }
@@ -60,6 +75,7 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         // `stopSpeaking` does not fire `didCancel` synchronously; settle the state here so callers
         // (e.g. a page swipe) see `idle` immediately.
         setState(.idle)
+        clearNowPlaying()
         deactivateAudioSession()
     }
 
@@ -75,6 +91,7 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
                                        didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
             self.setState(.idle)
+            self.clearNowPlaying()
             self.deactivateAudioSession()
         }
     }
@@ -83,14 +100,69 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
     private func activateAudioSession() {
         let session = AVAudioSession.sharedInstance()
-        // `.playback`/`.spokenAudio` keeps reading audible even with the ringer silenced and pauses
-        // (ducks) other audio while the article is read; deactivating on stop restores it.
-        try? session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        // `.playback`/`.spokenAudio` keeps reading audible even with the ringer silenced and lets the
+        // synthesizer keep running while the app is backgrounded or the screen is locked (paired with
+        // the `audio` UIBackgroundMode). It also makes Yana the system "Now Playing" app, so the
+        // lock-screen transport controls drive this controller.
+        try? session.setCategory(.playback, mode: .spokenAudio)
         try? session.setActive(true)
     }
 
     private func deactivateAudioSession() {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    // MARK: - Lock-screen Now Playing
+
+    /// Wire the lock-screen / Control Center transport buttons to this controller once. Targets are
+    /// no-ops while idle, so they can stay registered for the controller's lifetime.
+    private func configureRemoteCommands() {
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.state == .paused else { return .commandFailed }
+                self.togglePauseResume()
+                return .success
+            }
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.state == .speaking else { return .commandFailed }
+                self.togglePauseResume()
+                return .success
+            }
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.state != .idle else { return .commandFailed }
+                self.togglePauseResume()
+                return .success
+            }
+        }
+        center.stopCommand.addTarget { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.state != .idle else { return .commandFailed }
+                self.stop()
+                return .success
+            }
+        }
+    }
+
+    private func updateNowPlaying(playing: Bool) {
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: nowPlayingTitle,
+            MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
+        ]
+        if !nowPlayingArtist.isEmpty { info[MPMediaItemPropertyArtist] = nowPlayingArtist }
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        center.playbackState = playing ? .playing : .paused
+    }
+
+    private func clearNowPlaying() {
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = nil
+        center.playbackState = .stopped
     }
 
     // MARK: - Text + voice
@@ -127,14 +199,31 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         return nil
     }
 
-    /// First installed voice whose language matches `code` (e.g. "de" → "de-DE"), preferring an exact
-    /// match before a language-prefix match.
+    /// The most natural installed voice whose language matches `code` (e.g. "de" → "de-DE").
+    /// Among the matches it prefers higher synthesis quality (Premium → Enhanced → default) and,
+    /// at equal quality, an exact language match over a language-prefix match — so the reader uses
+    /// a downloaded natural voice when one is available instead of the robotic compact default.
     private static func installedVoice(for code: String) -> AVSpeechSynthesisVoice? {
         let code = code.lowercased()
-        let voices = AVSpeechSynthesisVoice.speechVoices()
-        let match = voices.first { $0.language.lowercased() == code }
-            ?? voices.first { $0.language.lowercased().hasPrefix(code + "-") }
-        guard let match else { return nil }
-        return AVSpeechSynthesisVoice(identifier: match.identifier)
+        let matches = AVSpeechSynthesisVoice.speechVoices().filter {
+            let lang = $0.language.lowercased()
+            return lang == code || lang.hasPrefix(code + "-")
+        }
+        guard let best = matches.max(by: { score($0, code: code) < score($1, code: code) }) else {
+            return nil
+        }
+        return AVSpeechSynthesisVoice(identifier: best.identifier)
+    }
+
+    /// Ranking key for `installedVoice`: quality dominates, exact-language match breaks ties.
+    private static func score(_ voice: AVSpeechSynthesisVoice, code: String) -> Int {
+        let qualityRank: Int
+        switch voice.quality {
+        case .premium: qualityRank = 2
+        case .enhanced: qualityRank = 1
+        default: qualityRank = 0
+        }
+        let exactMatch = voice.language.lowercased() == code ? 1 : 0
+        return qualityRank * 2 + exactMatch
     }
 }

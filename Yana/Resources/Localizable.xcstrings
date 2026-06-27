@@ -1316,6 +1316,17 @@
         }
       }
     },
+    "Read-aloud uses the most natural voice installed for the article's language and keeps playing when the screen is locked or you switch apps. Download additional natural voices in Settings → Accessibility → Spoken Content → Voices.": {
+      "comment": "Footer in the Reader settings section explaining read-aloud voice quality and background playback.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Vorlesen verwendet die natürlichste installierte Stimme für die Sprache des Artikels und läuft weiter, wenn der Bildschirm gesperrt ist oder die App gewechselt wird. Zusätzliche natürliche Stimmen lassen sich unter „Einstellungen“ → „Bedienungshilfen“ → „Gesprochene Inhalte“ → „Stimmen“ laden."
+          }
+        }
+      }
+    },
     "Reader": {
       "localizations": {
         "de": {
