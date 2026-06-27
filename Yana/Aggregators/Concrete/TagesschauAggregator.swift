@@ -84,21 +84,30 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     override func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle {
         var article = article
+        // RSS-provided content captured before extraction, used as the fallback below.
+        let rssContent = article.content
         do {
             let raw = try await fetchArticleHTML(article.url)
             article.rawContent = raw
             let extracted = try Self.extractTagesschauContent(raw)
             let mediaHeader = try? Self.extractMediaHeader(raw)
+            // Some Tagesschau pages are interactive widgets (e.g. the DWD weather warnings page)
+            // that carry no textabsatz paragraphs and no media player. Importing the empty page
+            // extraction would yield a blank article, so fall back to the RSS content instead.
+            guard !extracted.isEmpty || mediaHeader != nil else {
+                article.content = try await processContent(rssContent, article: article, headerHTML: nil)
+                return article
+            }
             // Standard processing without a generic header (media header handled separately).
             let body = try await processContent(extracted, article: article, headerHTML: nil)
             article.content = (mediaHeader ?? "") + body
             return article
         } catch let error as AggregatorError {
             if case .articleSkip = error { throw error }
-            article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
+            article.content = (try? await processContent(rssContent, article: article, headerHTML: nil)) ?? ""
             return article
         } catch {
-            article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
+            article.content = (try? await processContent(rssContent, article: article, headerHTML: nil)) ?? ""
             return article
         }
     }
