@@ -337,7 +337,11 @@ final class ReaderArticleViewController: UIViewController,
         settings.articleFullscreenEnabled = hidden
         navigationController?.setNavigationBarHidden(hidden, animated: animated)
         navigationController?.setToolbarHidden(hidden, animated: animated)
-        displayedWebVC?.hideBarsTapZonesActive(hidden)
+        // Apply to every cached page, not just the visible one: neighbors are prewarmed ahead of the
+        // swipe and bake in the tap-zone state from when they were created. If a neighbor was warmed
+        // before fullscreen was toggled, it would otherwise keep stale (hidden) tap zones, so after
+        // swiping to it the tap-to-exit area beside the notch is gone.
+        for page in pageCache.values { page.hideBarsTapZonesActive(hidden) }
         setNeedsStatusBarAppearanceUpdate()
     }
 
