@@ -130,3 +130,168 @@ enum AggregatorOptions: Codable, Sendable, Equatable {
         }
     }
 }
+
+// MARK: - Forward/backward-compatible decoding
+//
+// These options structs are persisted inside `Feed.options` (a Codable composite
+// attribute in SwiftData). When a new field is added to one of them, rows written by
+// an older build lack that key. Swift's *synthesized* `Decodable` requires every
+// non-optional key to be present, and SwiftData's `CompositeKeyedDecoding` traps
+// (EXC_BREAKPOINT) — not throws — on a missing key, which crashed existing users on
+// the first feed update after a field was added (e.g. `MeinMmoOptions.includeComments`).
+//
+// Each custom `init(from:)` below decodes every field with `decodeIfPresent`, falling
+// back to the struct's default value, so missing keys (older data) and extra keys
+// (newer data) both decode cleanly. They live in extensions so the synthesized default
+// `init()`, `CodingKeys`, and `encode(to:)` are all preserved.
+
+extension AIOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        summarize = try c.decodeIfPresent(Bool.self, forKey: .summarize) ?? summarize
+        improveWriting = try c.decodeIfPresent(Bool.self, forKey: .improveWriting) ?? improveWriting
+        translate = try c.decodeIfPresent(Bool.self, forKey: .translate) ?? translate
+        translateLanguage = try c.decodeIfPresent(String.self, forKey: .translateLanguage) ?? translateLanguage
+    }
+}
+
+extension WebsiteOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        useFullContent = try c.decodeIfPresent(Bool.self, forKey: .useFullContent) ?? useFullContent
+        customContentSelector = try c.decodeIfPresent(String.self, forKey: .customContentSelector) ?? customContentSelector
+        customSelectorsToRemove = try c.decodeIfPresent(String.self, forKey: .customSelectorsToRemove) ?? customSelectorsToRemove
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension FeedContentOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension RedditOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        subredditSort = try c.decodeIfPresent(String.self, forKey: .subredditSort) ?? subredditSort
+        minComments = try c.decodeIfPresent(Int.self, forKey: .minComments) ?? minComments
+        commentLimit = try c.decodeIfPresent(Int.self, forKey: .commentLimit) ?? commentLimit
+        includeHeaderImage = try c.decodeIfPresent(Bool.self, forKey: .includeHeaderImage) ?? includeHeaderImage
+        minAgeHours = try c.decodeIfPresent(Int.self, forKey: .minAgeHours) ?? minAgeHours
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension YouTubeOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        commentLimit = try c.decodeIfPresent(Int.self, forKey: .commentLimit) ?? commentLimit
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension PodcastOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        includePlayer = try c.decodeIfPresent(Bool.self, forKey: .includePlayer) ?? includePlayer
+        includeDownloadLink = try c.decodeIfPresent(Bool.self, forKey: .includeDownloadLink) ?? includeDownloadLink
+        artworkSize = try c.decodeIfPresent(Int.self, forKey: .artworkSize) ?? artworkSize
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension HeiseOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        includeComments = try c.decodeIfPresent(Bool.self, forKey: .includeComments) ?? includeComments
+        maxComments = try c.decodeIfPresent(Int.self, forKey: .maxComments) ?? maxComments
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension MerkurOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        removeEmptyElements = try c.decodeIfPresent(Bool.self, forKey: .removeEmptyElements) ?? removeEmptyElements
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension TagesschauOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        skipLivestreams = try c.decodeIfPresent(Bool.self, forKey: .skipLivestreams) ?? skipLivestreams
+        skipVideos = try c.decodeIfPresent(Bool.self, forKey: .skipVideos) ?? skipVideos
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension ExplosmOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        showAltText = try c.decodeIfPresent(Bool.self, forKey: .showAltText) ?? showAltText
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension DarkLegacyOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        showAltText = try c.decodeIfPresent(Bool.self, forKey: .showAltText) ?? showAltText
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension CaschysBlogOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        skipAds = try c.decodeIfPresent(Bool.self, forKey: .skipAds) ?? skipAds
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension MactechnewsOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        combinePages = try c.decodeIfPresent(Bool.self, forKey: .combinePages) ?? combinePages
+        includeComments = try c.decodeIfPresent(Bool.self, forKey: .includeComments) ?? includeComments
+        maxComments = try c.decodeIfPresent(Int.self, forKey: .maxComments) ?? maxComments
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension OglafOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        showAltText = try c.decodeIfPresent(Bool.self, forKey: .showAltText) ?? showAltText
+        convertToBase64 = try c.decodeIfPresent(Bool.self, forKey: .convertToBase64) ?? convertToBase64
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension MeinMmoOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        combinePages = try c.decodeIfPresent(Bool.self, forKey: .combinePages) ?? combinePages
+        includeComments = try c.decodeIfPresent(Bool.self, forKey: .includeComments) ?? includeComments
+        maxComments = try c.decodeIfPresent(Int.self, forKey: .maxComments) ?? maxComments
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
