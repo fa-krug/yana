@@ -193,7 +193,7 @@ struct AggregationServiceTests {
                 try await aggregate { collected.append($0) }
                 return collected
             }
-            func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
+            func aggregate(_ sink: sending (AggregatedArticle) async throws -> Void) async throws {
                 for article in yield { try await sink(article) }
                 throw URLError(.cancelled)        // window expired after handing off `yield`
             }
