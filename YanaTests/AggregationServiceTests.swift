@@ -116,7 +116,8 @@ struct AggregationServiceTests {
 
     /// Fake processor: records what it received and returns a scripted transform.
     private final class FakeAIProcessor: AIProcessing, @unchecked Sendable {
-        var received: [AggregatedArticle] = []
+        var received: [AggregatedArticle] = []       // last call's input
+        var receivedAll: [AggregatedArticle] = []    // every article seen across calls (per-article pipeline)
         var receivedAI: AIOptions?
         let transform: @Sendable ([AggregatedArticle]) -> [AggregatedArticle]
         init(transform: @escaping @Sendable ([AggregatedArticle]) -> [AggregatedArticle] = { $0 }) {
@@ -124,6 +125,7 @@ struct AggregationServiceTests {
         }
         func process(_ input: [AggregatedArticle], ai: AIOptions) async -> [AggregatedArticle] {
             received = input
+            receivedAll.append(contentsOf: input)
             receivedAI = ai
             return transform(input)
         }
@@ -145,8 +147,10 @@ struct AggregationServiceTests {
         )
         await service.update(feed: feed)
 
-        #expect(fake.received.count == 2)                       // saw the capped list, not 3
-        #expect(fake.received.map { $0.identifier } == ["1", "2"])
+        // Per-article pipeline: the processor is invoked once per article (not one batch), and the
+        // cap stops the run after 2 — so article "3" is never fetched, processed, or upserted.
+        #expect(fake.receivedAll.count == 2)                    // processed the capped 2, not 3
+        #expect(fake.receivedAll.map { $0.identifier } == ["1", "2"])
         #expect(feed.articles.count == 2)
     }
 
@@ -175,6 +179,39 @@ struct AggregationServiceTests {
 
         #expect(feed.articles.map { $0.identifier } == ["keep"])    // dropped article never upserted
         #expect(feed.articles.first?.title == "AI:keep")        // AI transform persisted
+    }
+
+    /// Per-article durability: an aggregator that hands two articles to the sink and is then
+    /// interrupted (the run errors out) must keep those two — they were each saved before the next
+    /// was collected — rather than losing the whole batch.
+    @Test func interruptedRunKeepsArticlesSavedBeforeFailure() async throws {
+        struct InterruptedAggregator: Aggregator {
+            let yield: [AggregatedArticle]
+            func validate() throws {}
+            func aggregate() async throws -> [AggregatedArticle] {
+                var collected: [AggregatedArticle] = []
+                try await aggregate { collected.append($0) }
+                return collected
+            }
+            func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
+                for article in yield { try await sink(article) }
+                throw URLError(.cancelled)        // window expired after handing off `yield`
+            }
+        }
+
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 10)
+        context.insert(feed)
+        let service = AggregationService(
+            context: context,
+            makeAggregator: { _, _ in InterruptedAggregator(yield: [self.aggregated("a1"), self.aggregated("a2")]) }
+        )
+
+        let inserted = await service.update(feed: feed)
+
+        #expect(inserted == 2)
+        #expect(feed.articles.map(\.identifier).sorted() == ["a1", "a2"])   // saved despite the failure
+        #expect(feed.lastError == nil)                                       // cancellation isn't a failure
     }
 
     @Test func aiProcessorReceivesFeedsAIOptions() async throws {

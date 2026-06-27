@@ -29,6 +29,12 @@ protocol Aggregator: Sendable {
     /// Fetch and return articles for the feed.
     func aggregate() async throws -> [AggregatedArticle]
 
+    /// Fetch articles incrementally, invoking `sink` for each one the moment it is fully
+    /// fetched/enriched — so the caller can AI-process and persist it before the next is collected.
+    /// This keeps every completed article when a run is interrupted (e.g. an expired
+    /// background-refresh window): work already handed to `sink` is never lost.
+    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws
+
     /// Re-fetch a single, already-known article's content from its source. Returns `nil` when
     /// the aggregator cannot meaningfully re-fetch one item in isolation (the caller then falls
     /// back to a forced full-feed reload).
@@ -42,6 +48,13 @@ protocol Aggregator: Sendable {
 extension Aggregator {
     func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? { nil }
     func logoImageURL() async -> String? { nil }
+
+    /// Default streaming bridge for aggregators that only produce a batch: collect the whole array,
+    /// then hand each article to `sink`. Aggregators that fetch incrementally override this so each
+    /// article reaches `sink` as soon as it is ready.
+    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
+        for article in try await aggregate() { try await sink(article) }
+    }
 }
 
 extension Error {

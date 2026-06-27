@@ -34,6 +34,15 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
     }
 
     func aggregate() async throws -> [AggregatedArticle] {
+        var result: [AggregatedArticle] = []
+        try await aggregate { result.append($0) }
+        return result
+    }
+
+    /// Streaming form: build one post at a time and hand each finished article to `sink` before
+    /// fetching the next, so the caller can persist it immediately. An interrupted run keeps every
+    /// post already handed off instead of throwing the whole feed away. (`aggregate()` collects it.)
+    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
         try validate()
         let client = try await makeClient()
         let opts = options
@@ -47,28 +56,29 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         let cutoff = Date().addingTimeInterval(-Double(opts.minAgeHours) * 3600)
         let twoMonths = Date().addingTimeInterval(-60 * 24 * 3600)
 
-        var result: [AggregatedArticle] = []
+        var built = 0
         for post in posts {
-            if Task.isCancelled { break }                 // cancelled run: return what we have, don't drop it all
+            if Task.isCancelled { break }                 // cancelled run: stop, keeping handed-off posts
             let original = post.crosspostParentList?.first ?? post
             let date = Date(timeIntervalSince1970: original.createdUTC)
             if date < twoMonths { continue }
             if opts.minAgeHours > 0 && date > cutoff { continue }
             if post.author == "AutoModerator" { continue }
             if opts.minComments > 0 && post.numComments < opts.minComments { continue }
-            if result.count >= limit { break }
+            if built >= limit { break }
 
             let isCrossPost = post.crosspostParentList?.isEmpty == false
             do {
-                result.append(try await buildArticle(from: original, outer: post, isCrossPost: isCrossPost, client: client))
+                let article = try await buildArticle(from: original, outer: post, isCrossPost: isCrossPost, client: client)
+                try await sink(article)
+                built += 1
             } catch {
                 // A cancelled run (e.g. an expired background-refresh window) would otherwise throw
-                // out of the whole feed and persist nothing; keep the posts already built instead.
+                // out of the whole feed; stop instead, keeping the posts already handed off.
                 if error.isCancellationError || Task.isCancelled { break }
                 throw error
             }
         }
-        return result
     }
 
     /// Build one article from a (possibly crosspost-resolved) Reddit post. Shared by `aggregate()`
