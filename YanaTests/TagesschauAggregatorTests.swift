@@ -114,6 +114,21 @@ struct TagesschauAggregatorTests {
         #expect(titles == ["Keeper"])
     }
 
+    @Test func fallsBackToRSSContentWhenPageHasNoExtractableContent() async throws {
+        // Interactive pages like the DWD weather-warnings page carry no textabsatz paragraphs
+        // and no media player. Rather than import a blank article, the RSS content is kept.
+        let rss = "<p>Der Deutsche Wetterdienst warnt vor Hitze.</p>"
+        let entry = FeedEntry(
+            title: "Aktuelle Warnungen des Deutschen Wetterdienstes",
+            link: "https://www.tagesschau.de/wetter/deutschland/warnungen-wetterdienst-100.html",
+            content: rss, summary: rss, entryDescription: nil, published: .now, author: "",
+            enclosures: [], itunesDuration: nil, itunesImage: nil, mediaThumbnails: [])
+        let page = "<html><body><div class=\"externalcontent\"></div><p class=\"other\">Nav</p></body></html>"
+        let agg = StubTS(entries: [entry], page: page, options: TagesschauOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Der Deutsche Wetterdienst warnt vor Hitze."))
+    }
+
     @Test func identifierChoicesMatchServerList() {
         #expect(TagesschauAggregator.identifierChoices.count == 42)
     }
