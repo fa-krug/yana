@@ -84,9 +84,11 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
             return article
         } catch let error as AggregatorError {
             if case .articleSkip = error { throw error }
+            if Task.isCancelled { throw CancellationError() }   // cancelled run: don't persist feed-only content
             article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
             return article
         } catch {
+            if error.isCancellationError || Task.isCancelled { throw CancellationError() }
             article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
             return article
         }

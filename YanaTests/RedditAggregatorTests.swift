@@ -74,6 +74,28 @@ struct RedditAggregatorTests {
         #expect(!a.content.contains("https://i.redd.it/pic.png"))     // remote url removed
     }
 
+    /// A cancelled run (expired background-refresh window) surfaces as `URLError.cancelled` from a
+    /// per-post comment fetch. The old `try?` swallowed it and persisted a comment-less post;
+    /// now cancellation propagates so the partial build is dropped and the run stops cleanly,
+    /// returning only fully-fetched posts (here, none) instead of degraded content.
+    @Test func cancellationMidBuildDropsPartialPost() async throws {
+        var opts = RedditOptions()
+        opts.minComments = 0
+        opts.minAgeHours = 0
+        let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { throw URLError(.cancelled) }   // cancelled mid-build
+            return Data(self.listingJSON.utf8)
+        }
+        let agg = RedditAggregator(config: config, credentials: creds, store: tempStore(), client: client)
+        let articles = try await agg.aggregate()
+        #expect(articles.isEmpty)                                          // no comment-less post persisted
+    }
+
     @Test func missingCredentialsThrows() async {
         let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
                                 options: .reddit(RedditOptions()), collectedToday: 0)

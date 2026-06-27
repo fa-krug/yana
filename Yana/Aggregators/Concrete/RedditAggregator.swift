@@ -49,6 +49,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
 
         var result: [AggregatedArticle] = []
         for post in posts {
+            if Task.isCancelled { break }                 // cancelled run: return what we have, don't drop it all
             let original = post.crosspostParentList?.first ?? post
             let date = Date(timeIntervalSince1970: original.createdUTC)
             if date < twoMonths { continue }
@@ -58,7 +59,14 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             if result.count >= limit { break }
 
             let isCrossPost = post.crosspostParentList?.isEmpty == false
-            result.append(try await buildArticle(from: original, outer: post, isCrossPost: isCrossPost, client: client))
+            do {
+                result.append(try await buildArticle(from: original, outer: post, isCrossPost: isCrossPost, client: client))
+            } catch {
+                // A cancelled run (e.g. an expired background-refresh window) would otherwise throw
+                // out of the whole feed and persist nothing; keep the posts already built instead.
+                if error.isCancellationError || Task.isCancelled { break }
+                throw error
+            }
         }
         return result
     }
@@ -172,7 +180,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         var section = ["<h3><a href=\"\(permalink)\" target=\"_blank\" rel=\"noopener\">Comments</a></h3>"]
         let limit = options.commentLimit
         if limit > 0 {
-            let comments = (try? await client.fetchComments(subreddit: normalizedSubreddit, postID: post.id)) ?? []
+            let comments = try await fetchCommentsTolerantly(post: post, client: client)
             if comments.isEmpty {
                 section.append("<p><em>No comments yet.</em></p>")
             } else {
@@ -182,6 +190,19 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             section.append("<p><em>Comments disabled.</em></p>")
         }
         parts.append("<section>\(section.joined())</section>")
+    }
+
+    /// Fetch comments, tolerating a missing/failed comment listing (→ empty) but *propagating*
+    /// cancellation. Swallowing a cancelled fetch (the old `try?`) would persist a comment-less
+    /// post during an expired background run; instead the cancellation bubbles up so the caller
+    /// drops the partial build and keeps only fully-fetched posts.
+    private func fetchCommentsTolerantly(post: RedditPostData, client: RedditClient) async throws -> [RedditComment] {
+        do {
+            return try await client.fetchComments(subreddit: normalizedSubreddit, postID: post.id)
+        } catch {
+            if error.isCancellationError || Task.isCancelled { throw CancellationError() }
+            return []
+        }
     }
 
     private func commentHTML(_ comment: RedditComment) -> String {

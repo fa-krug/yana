@@ -26,6 +26,7 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
         let limited = Array(entries.prefix(max(config.dailyLimit, 1)))
         var result: [AggregatedArticle] = []
         for entry in limited {
+            if Task.isCancelled { break }                 // cancelled run: stop before degrading more entries
             let base = makeArticle(from: entry)
             guard shouldInclude(base) else { continue }
             do {
@@ -34,6 +35,11 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
                 result.append(enriched)
             } catch AggregatorError.articleSkip {
                 continue                                  // 4xx / explicit skip → omit article
+            } catch {
+                // A cancelled run stops here with the fully-enriched items gathered so far,
+                // rather than persisting feed-only fallbacks for the remaining entries.
+                if error.isCancellationError || Task.isCancelled { break }
+                throw error
             }
         }
         return try await finalize(result)

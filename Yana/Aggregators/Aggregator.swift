@@ -44,6 +44,16 @@ extension Aggregator {
     func logoImageURL() async -> String? { nil }
 }
 
+extension Error {
+    /// True when this error represents cooperative task cancellation — either Swift's
+    /// `CancellationError` or `URLError(.cancelled)` (which `URLSession` throws when its task is
+    /// cancelled). A cancelled run — most commonly an expired `BGAppRefreshTask` window — must
+    /// stop cleanly rather than persist half-fetched or degraded (feed-only) content.
+    var isCancellationError: Bool {
+        self is CancellationError || (self as? URLError)?.code == .cancelled
+    }
+}
+
 enum AggregatorError: Error, LocalizedError {
     case missingIdentifier
     case missingAPIKey(AggregatorAPIKey)
