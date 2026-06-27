@@ -75,6 +75,13 @@ struct AIProcessor: AIProcessing {
             }
         }
 
+        // A cancelled run (e.g. an expired background-refresh window) is NOT an AI rejection: any
+        // article that wasn't processed in time falls back to its original (un-AI'd) form, so
+        // already-fetched content is saved rather than silently dropped. (Without this, a cancelled
+        // run leaves every slot nil and returns [], discarding entries that were fully fetched.)
+        if Task.isCancelled {
+            return zip(input, results).map { original, processed in processed ?? original }
+        }
         return results.compactMap { $0 }
     }
 

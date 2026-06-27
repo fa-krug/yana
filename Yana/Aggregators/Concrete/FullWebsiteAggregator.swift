@@ -49,10 +49,16 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
             return article
         } catch let error as AggregatorError {
             if case .articleSkip = error { throw error }   // propagate 4xx skip to caller
+            if Task.isCancelled { throw CancellationError() }   // cancelled run: don't persist degraded content
             // Other errors: fall back to RSS content, but still localize images (decision 3).
             article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
             return article
         } catch {
+            // A cancelled run (e.g. an expired background-refresh window) surfaces here as
+            // URLError.cancelled / CancellationError. Falling back to RSS feed content would
+            // persist a feed-only article masquerading as the full scrape (the user then sees
+            // "just the feed content" until a manual reload); rethrow so the run stops cleanly.
+            if error.isCancellationError || Task.isCancelled { throw CancellationError() }
             article.content = (try? await processContent(article.content, article: article, headerHTML: nil)) ?? ""
             return article
         }

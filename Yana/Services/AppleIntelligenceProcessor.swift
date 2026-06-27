@@ -29,8 +29,13 @@ struct AppleIntelligenceProcessor: AIProcessing {
         guard generator.availability == .available else { return input }
 
         var output: [AggregatedArticle] = []
-        for article in input {
-            if Task.isCancelled { break }
+        for (i, article) in input.enumerated() {
+            // A cancelled run is not an AI rejection: keep the remaining un-AI'd articles instead of
+            // dropping them, so already-fetched content (e.g. an interrupted background run) is saved.
+            if Task.isCancelled {
+                output.append(contentsOf: input[i...])
+                break
+            }
             guard !article.content.isEmpty else { output.append(article); continue }
             do {
                 output.append(try await processOne(article, ai: ai))

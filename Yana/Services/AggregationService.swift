@@ -312,14 +312,27 @@ final class AggregationService {
             return 0
         }
 
+        // Per-article pipeline: each article is fully processed (intake filter → AI → upsert →
+        // save) before the next is collected. An interrupted run (cancelled mid-feed) therefore
+        // keeps every article already saved, instead of losing the whole batch.
+        let processor = currentAIProcessor()
+        let starred = starredTag()
+        let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
+        var inserted = 0
+        var kept = 0
+
         do {
             try aggregator.validate()
-            let fetched = try await aggregator.aggregate()
-            let fresh = force ? fetched : fetched.filter { AggregationLogic.isWithinIntakeWindow($0.date, now: runNow) }
-            let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
-            let capped = Array(fresh.prefix(cap))
-            let processed = await currentAIProcessor().process(capped, ai: config.options.ai)
-            let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: runNow)
+            do {
+                try await aggregator.aggregate { article in
+                    guard kept < cap else { throw CapReached() }        // run cap reached → stop fetching more
+                    guard force || AggregationLogic.isWithinIntakeWindow(article.date, now: runNow) else { return }
+                    let processed = await processor.process([article], ai: config.options.ai)
+                    inserted += ArticleUpsert.apply(processed, to: feed, starredTag: starred, context: context, now: runNow)
+                    kept += 1
+                    try? context.save()                                // persist now so an interrupt keeps it
+                }
+            } catch is CapReached { /* normal stop: everything kept is already saved */ }
             feed.lastFetchedAt = runNow
             feed.lastError = nil
             if feed.logoHash == nil, let hash = await logoResolver(config, aggregator) {
@@ -327,15 +340,19 @@ final class AggregationService {
             }
             return inserted
         } catch {
-            // A cancelled run (the user triggered a newer update) is not a feed failure:
-            // leave the existing error/state untouched so no spurious "Update Failed" surfaces.
-            if Task.isCancelled { return 0 }
+            // A cancelled run (the user triggered a newer update, or a background window expired) is
+            // not a feed failure: leave the existing error/state untouched so no spurious "Update
+            // Failed" surfaces. Articles already saved above are kept.
+            if Task.isCancelled || error.isCancellationError { return inserted }
             let message = Self.userFacingMessage(for: error)
             feed.lastError = message
             lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
-            return 0
+            return inserted
         }
     }
+
+    /// Thrown by the per-article sink to stop the aggregator once the run cap is reached.
+    private struct CapReached: Error {}
 
     // MARK: - Helpers
 

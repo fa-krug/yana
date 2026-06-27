@@ -30,6 +30,15 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
     }
 
     func aggregate() async throws -> [AggregatedArticle] {
+        var result: [AggregatedArticle] = []
+        try await aggregate { result.append($0) }
+        return result
+    }
+
+    /// Streaming form: build one video at a time (comments + content) and hand each finished
+    /// article to `sink` before fetching the next, so the caller can persist it immediately.
+    /// An interrupted run keeps every video already handed off. (`aggregate()` collects it.)
+    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
         try validate()
         let client = try makeClient()
         let limit = max(config.dailyLimit, 1)
@@ -42,20 +51,19 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
 
         let videos = try await client.fetchVideos(playlistID: uploads, max: limit)
         let author = channel.customURL ?? channel.title
-        var result: [AggregatedArticle] = []
         for video in videos {
+            if Task.isCancelled { break }                 // cancelled run: stop, keeping handed-off videos
             let url = "https://www.youtube.com/watch?v=\(video.id)"
             let comments = (try? await client.fetchVideoComments(videoID: video.id, max: options.commentLimit)) ?? []
             let body = buildContentHTML(video: video, videoID: video.id, comments: comments)
             let embed = EmbedRewriter.youTubeEmbedHTML(videoID: video.id)
             let content = ContentFormatter.format(content: embed + body, title: video.title, url: url,
                                                   headerHTML: nil, commentsHTML: nil)
-            result.append(AggregatedArticle(
+            try await sink(AggregatedArticle(
                 title: video.title, identifier: url, url: url,
                 rawContent: body, content: content,
                 date: video.publishedAt ?? Date(), author: author, iconURL: video.thumbnailURL))
         }
-        return result
     }
 
     func refetch(_ seed: AggregatedArticle) async throws -> AggregatedArticle? {

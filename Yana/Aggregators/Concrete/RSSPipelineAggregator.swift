@@ -21,22 +21,34 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
     }
 
     func aggregate() async throws -> [AggregatedArticle] {
+        var result: [AggregatedArticle] = []
+        try await aggregate { result.append($0) }
+        return try await finalize(result)
+    }
+
+    /// Streaming form: enrich one entry at a time and hand each finished article to `sink` before
+    /// moving on, so the caller can persist it immediately. (`aggregate()` collects this stream.)
+    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
         try validate()
         let entries = try await fetchEntries()
         let limited = Array(entries.prefix(max(config.dailyLimit, 1)))
-        var result: [AggregatedArticle] = []
         for entry in limited {
+            if Task.isCancelled { break }                 // cancelled run: stop before degrading more entries
             let base = makeArticle(from: entry)
             guard shouldInclude(base) else { continue }
             do {
                 let enriched = try await enrich(base, entry: entry)
                 guard postFilter(enriched) else { continue }
-                result.append(enriched)
+                try await sink(enriched)
             } catch AggregatorError.articleSkip {
                 continue                                  // 4xx / explicit skip → omit article
+            } catch {
+                // A cancelled run stops here with the fully-enriched items handed off so far,
+                // rather than persisting feed-only fallbacks for the remaining entries.
+                if error.isCancellationError || Task.isCancelled { break }
+                throw error
             }
         }
-        return try await finalize(result)
     }
 
     /// Re-fetch one known article by re-downloading the feed and enriching only the entry whose
