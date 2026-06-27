@@ -43,9 +43,7 @@ struct AggregatorOptionsForm: View {
             case .oglaf(let o):
                 oglafSection(o)
             case .meinMmo(let o):
-                toggleSection(isOn: o.combinePages, label: "Combine Multi-page Articles") {
-                    var n = o; n.combinePages = $0; options = .meinMmo(n)
-                }
+                meinMmoSection(o)
             }
 
             aiSection
@@ -184,6 +182,20 @@ struct AggregatorOptionsForm: View {
             Stepper("Max Comments: \(o.maxComments)", value: Binding(
                 get: { o.maxComments },
                 set: { var n = o; n.maxComments = $0; options = .mactechnews(n) }), in: 0...50)
+        }
+    }
+
+    private func meinMmoSection(_ o: MeinMmoOptions) -> some View {
+        Section("Options") {
+            Toggle("Combine Multi-page Articles", isOn: Binding(
+                get: { o.combinePages },
+                set: { var n = o; n.combinePages = $0; options = .meinMmo(n) }))
+            Toggle("Include Comments", isOn: Binding(
+                get: { o.includeComments },
+                set: { var n = o; n.includeComments = $0; options = .meinMmo(n) }))
+            Stepper("Max Comments: \(o.maxComments)", value: Binding(
+                get: { o.maxComments },
+                set: { var n = o; n.maxComments = $0; options = .meinMmo(n) }), in: 0...50)
         }
     }
 

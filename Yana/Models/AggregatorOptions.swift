@@ -88,6 +88,8 @@ struct OglafOptions: Codable, Sendable, Equatable {
 
 struct MeinMmoOptions: Codable, Sendable, Equatable {
     var combinePages = true
+    var includeComments = true
+    var maxComments = 5
     var ai = AIOptions()
 }
 
