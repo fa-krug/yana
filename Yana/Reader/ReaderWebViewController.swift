@@ -25,6 +25,10 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
 
     private var topTapZone: UIView!
     private var bottomTapZone: UIView!
+    /// Desired full-screen tap-zone state, remembered so it survives `viewDidLoad`. `makePage` can
+    /// set this before the view (and thus the tap zones) exist — e.g. when prewarming a neighbor —
+    /// so `configureTapZones` reads it instead of always starting hidden.
+    private var tapZonesActive = false
 
     var scrollView: UIScrollView? { webView?.scrollView }
 
@@ -153,6 +157,7 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
     // MARK: - Full-screen tap zones
 
     func hideBarsTapZonesActive(_ active: Bool) {
+        tapZonesActive = active
         topTapZone?.isHidden = !active
         bottomTapZone?.isHidden = !active
     }
@@ -170,8 +175,8 @@ final class ReaderWebViewController: UIViewController, WKNavigationDelegate, WKU
             bottomTapZone.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             bottomTapZone.heightAnchor.constraint(equalToConstant: 44)
         ])
-        topTapZone.isHidden = true
-        bottomTapZone.isHidden = true
+        topTapZone.isHidden = !tapZonesActive
+        bottomTapZone.isHidden = !tapZonesActive
     }
 
     private func makeTapZone() -> UIView {

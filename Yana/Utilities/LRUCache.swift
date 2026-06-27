@@ -15,6 +15,7 @@ final class LRUCache<Key: Hashable, Value> {
 
     var count: Int { store.count }
     var keys: [Key] { order }
+    var values: [Value] { order.compactMap { store[$0] } }
 
     /// Returns the value and promotes the key to most-recently-used.
     func value(for key: Key) -> Value? {
