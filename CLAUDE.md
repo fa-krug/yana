@@ -78,7 +78,9 @@ designed for privacy-conscious users who want their feeds without any backend.
   ordered by import date (`Article.createdAt`), swiped both directions, with the position remembered
   across launches. The full lightweight index is loaded upfront from `ArticleStore` and kept in sync
   with SwiftData saves; the reader renders each page's HTML lazily. Re-fetched articles keep their
-  original `createdAt`, so updates don't jump the timeline.
+  original `createdAt`, so updates don't jump the timeline. Newly imported articles get their
+  `createdAt` back-dated by a small random offset (`ArticleUpsert.importJitterWindow`) so a run's
+  inserts scatter across a few minutes and feeds interleave instead of clustering into per-feed blocks.
 - **Tags, not groups:** feeds carry tags, which are **snapshotted onto each article at import
   time** (not retroactive). **Starred is a built-in tag** applied per-article. The timeline is
   filtered by toggling tags (all on by default; an "Untagged" entry covers tagless articles).
