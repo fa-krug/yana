@@ -87,7 +87,7 @@ struct SettingsScreenView: View {
     // MARK: Reader
 
     private var readerSection: some View {
-        Section(String(localized: "Reader")) {
+        Section("Reader") {
             Picker(selection: Binding(
                 get: { settings.readerThemeName },
                 set: { newValue in
