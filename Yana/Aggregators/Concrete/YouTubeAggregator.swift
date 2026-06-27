@@ -38,7 +38,7 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
     /// Streaming form: build one video at a time (comments + content) and hand each finished
     /// article to `sink` before fetching the next, so the caller can persist it immediately.
     /// An interrupted run keeps every video already handed off. (`aggregate()` collects it.)
-    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
+    func aggregate(_ sink: sending (AggregatedArticle) async throws -> Void) async throws {
         try validate()
         let client = try makeClient()
         let limit = max(config.dailyLimit, 1)

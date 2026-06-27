@@ -42,7 +42,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
     /// Streaming form: build one post at a time and hand each finished article to `sink` before
     /// fetching the next, so the caller can persist it immediately. An interrupted run keeps every
     /// post already handed off instead of throwing the whole feed away. (`aggregate()` collects it.)
-    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
+    func aggregate(_ sink: sending (AggregatedArticle) async throws -> Void) async throws {
         try validate()
         let client = try await makeClient()
         let opts = options

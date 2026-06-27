@@ -28,7 +28,7 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
 
     /// Streaming form: enrich one entry at a time and hand each finished article to `sink` before
     /// moving on, so the caller can persist it immediately. (`aggregate()` collects this stream.)
-    func aggregate(_ sink: (AggregatedArticle) async throws -> Void) async throws {
+    func aggregate(_ sink: sending (AggregatedArticle) async throws -> Void) async throws {
         try validate()
         let entries = try await fetchEntries()
         let limited = Array(entries.prefix(max(config.dailyLimit, 1)))
