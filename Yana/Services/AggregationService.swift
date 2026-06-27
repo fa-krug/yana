@@ -316,21 +316,23 @@ final class AggregationService {
         // save) before the next is collected. An interrupted run (cancelled mid-feed) therefore
         // keeps every article already saved, instead of losing the whole batch.
         let processor = currentAIProcessor()
-        let starred = starredTag()
         let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
+        let feedID = feed.persistentModelID
         var inserted = 0
         var kept = 0
 
         do {
             try aggregator.validate()
             do {
+                // The sink runs in the aggregator's (non–main-actor) region, so the SwiftData
+                // upsert/save — which is `@MainActor` and touches the non-Sendable `context` —
+                // is hopped onto the main actor via `persist`, passing only Sendable values.
                 try await aggregator.aggregate { article in
                     guard kept < cap else { throw CapReached() }        // run cap reached → stop fetching more
                     guard force || AggregationLogic.isWithinIntakeWindow(article.date, now: runNow) else { return }
                     let processed = await processor.process([article], ai: config.options.ai)
-                    inserted += ArticleUpsert.apply(processed, to: feed, starredTag: starred, context: context, now: runNow)
+                    inserted += await self.persist(processed, feedID: feedID, now: runNow)
                     kept += 1
-                    try? context.save()                                // persist now so an interrupt keeps it
                 }
             } catch is CapReached { /* normal stop: everything kept is already saved */ }
             feed.lastFetchedAt = runNow
@@ -349,6 +351,18 @@ final class AggregationService {
             lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
             return inserted
         }
+    }
+
+    /// Upsert one run's processed article(s) and persist immediately so an interrupted run keeps
+    /// everything already saved. Runs on the main actor (the SwiftData `context` is non-Sendable
+    /// and main-actor-isolated); takes only Sendable values so the streaming sink can call it
+    /// across the actor boundary. Returns the number of newly inserted articles.
+    @MainActor
+    private func persist(_ processed: [AggregatedArticle], feedID: PersistentIdentifier, now: Date) -> Int {
+        guard let feed = self[feedID, as: Feed.self] else { return 0 }
+        let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: now)
+        try? context.save()
+        return inserted
     }
 
     /// Thrown by the per-article sink to stop the aggregator once the run cap is reached.
