@@ -127,6 +127,8 @@ struct SettingsScreenView: View {
                 Label(String(localized: "Use System Browser"), systemImage: "safari")
                     .labelStyle(.tintedIcon(.indigo))
             }
+        } footer: {
+            Text("Read-aloud uses the most natural voice installed for the article's language and keeps playing when the screen is locked or you switch apps. Download additional natural voices in Settings → Accessibility → Spoken Content → Voices.")
         }
     }
 
