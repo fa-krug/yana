@@ -19,6 +19,15 @@ enum ReaderWeb {
     /// Name of the `WKScriptMessageHandler` the link-interception script posts to.
     static let linkClickedHandler = "linkClicked"
 
+    /// Minimal transparent document the reader's web-view pool (`ReaderWebViewPool`) preloads so a
+    /// view's Web Content process is spawned and its first layout is done before any article HTML is
+    /// loaded. Transparent so the parked view never flashes white before its article is rendered.
+    static let blankHTML = """
+    <!doctype html><html><head>\
+    <meta name="viewport" content="width=device-width, initial-scale=1">\
+    </head><body style="background:transparent"></body></html>
+    """
+
     /// Injected at document start to capture link taps at the DOM level. WebKit does not reliably
     /// report tapped links inside a `loadHTMLString`-rendered document as `.linkActivated`, so the
     /// navigation delegate can't be trusted to catch them. A capturing click listener finds the
