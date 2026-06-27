@@ -73,6 +73,7 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
         let url = article.url
         let opts = tagesschauOptions
         if opts.skipLivestreams, title.contains("Livestream:") { return false }
+        if title.hasPrefix("Bilder:") { return false }   // photo-gallery articles, no readable text
         if Self.titleSkipList.contains(where: { title.contains($0) }) { return false }
         if url.contains("bilder/blickpunkte") { return false }
         if opts.skipVideos, url.lowercased().contains("video") { return false }

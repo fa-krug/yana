@@ -102,10 +102,11 @@ struct TagesschauAggregatorTests {
         #expect(a.content.contains("poster=\"https://images.tagesschau.de/poster.jpg\""))
     }
 
-    @Test func skipsLivestreamAndPodcastTitlesAndVideoURLs() async throws {
+    @Test func skipsLivestreamPodcastBilderTitlesAndVideoURLs() async throws {
         let agg = StubTS(entries: [
             entry("Livestream: Pressekonferenz"),
             entry("11KM-Podcast: Thema"),
+            entry("Bilder: Der Tag in Fotos"),
             entry("Bericht", link: "https://www.tagesschau.de/multimedia/video/video-99.html"),
             entry("Keeper"),
         ], page: "<p class=\"textabsatz\">x</p>", options: TagesschauOptions(), store: tempStore())
