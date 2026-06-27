@@ -4,6 +4,13 @@ import SwiftData
 /// Inserts or updates `Article`s from aggregated results, deduping by `(feed, identifier)`.
 /// Tags are snapshotted from the feed at import; the user's Starred tag survives re-imports.
 enum ArticleUpsert {
+    /// Width of the random window used to back-date a newly inserted article's `createdAt`.
+    /// Each insert is shifted earlier by a random offset in `0..<importJitterWindow`, scattering a
+    /// single run's inserts across a few minutes so articles from different feeds interleave on the
+    /// timeline instead of clustering into per-feed blocks. The window stays well under the minimum
+    /// refresh cadence (300s) so separate runs never reorder relative to each other.
+    static let importJitterWindow: TimeInterval = 180
+
     @discardableResult
     @MainActor
     static func apply(
@@ -11,7 +18,8 @@ enum ArticleUpsert {
         to feed: Feed,
         starredTag: Tag?,
         context: ModelContext,
-        now: Date
+        now: Date,
+        jitter: () -> TimeInterval = { .random(in: 0..<importJitterWindow) }
     ) -> Int {
         // Build the dedup index once (O(n)) instead of scanning the relationship per item.
         var byIdentifier: [String: Article] = [:]
@@ -50,7 +58,9 @@ enum ArticleUpsert {
                     iconURL: item.iconURL,
                     summary: item.summary
                 )
-                article.createdAt = now
+                // Back-date by a small random offset so a run's inserts scatter across the
+                // jitter window, interleaving feeds on the timeline rather than clustering.
+                article.createdAt = now.addingTimeInterval(-jitter())
                 article.feed = feed
                 context.insert(article)
                 article.tags = feed.tags

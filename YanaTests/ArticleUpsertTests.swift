@@ -67,6 +67,46 @@ struct ArticleUpsertTests {
         #expect(article.date == published)
     }
 
+    @Test func backDatesInsertsWithinJitterWindow() throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "f")
+        context.insert(feed)
+
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        // Deterministic per-article offsets so we can assert exact positions.
+        var offsets = [30.0, 90.0, 150.0]
+        ArticleUpsert.apply(
+            [aggregated("x1"), aggregated("x2"), aggregated("x3")],
+            to: feed, starredTag: nil, context: context, now: now,
+            jitter: { offsets.removeFirst() }
+        )
+
+        let byId = Dictionary(uniqueKeysWithValues: feed.articles.map { ($0.identifier, $0) })
+        #expect(byId["x1"]?.createdAt == now.addingTimeInterval(-30))
+        #expect(byId["x2"]?.createdAt == now.addingTimeInterval(-90))
+        #expect(byId["x3"]?.createdAt == now.addingTimeInterval(-150))
+    }
+
+    @Test func jitterInterleavesTwoFeedsImportedAtSameInstant() throws {
+        let context = try makeContext()
+        let feedA = Feed(name: "A", aggregatorType: .feedContent, identifier: "fa")
+        let feedB = Feed(name: "B", aggregatorType: .feedContent, identifier: "fb")
+        context.insert(feedA); context.insert(feedB)
+
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        // Both feeds import at the same `now`; jitter is what mixes them.
+        var aOffsets = [20.0, 100.0]
+        ArticleUpsert.apply([aggregated("a1"), aggregated("a2")], to: feedA,
+                            starredTag: nil, context: context, now: now, jitter: { aOffsets.removeFirst() })
+        var bOffsets = [60.0, 140.0]
+        ArticleUpsert.apply([aggregated("b1"), aggregated("b2")], to: feedB,
+                            starredTag: nil, context: context, now: now, jitter: { bOffsets.removeFirst() })
+
+        // Newest → oldest by createdAt: a1(-20), b1(-60), a2(-100), b2(-140) — feeds interleave.
+        let all = (feedA.articles + feedB.articles).sorted { $0.createdAt > $1.createdAt }
+        #expect(all.map(\.identifier) == ["a1", "b1", "a2", "b2"])
+    }
+
     @Test func returnsCountOfNewlyInsertedOnly() throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "f")
