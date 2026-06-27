@@ -29,10 +29,14 @@ final class ReaderArticleViewController: UIViewController,
     private var isTransitioning = false
 
     /// Reader prewarm/cache tuning. Constants so they can be profiled and dialed on-device.
-    /// Radius covers a 5-swipe burst in one direction; capacity holds ±radius on both sides
-    /// plus a little recent history, bounding live WKWebViews.
-    private static let prewarmRadius = 5
-    private static let pageCacheCapacity = 25
+    /// Each prewarmed neighbor spins up a `WKWebView` (Web Content process) and renders its HTML
+    /// off-screen, and each cached page keeps one alive — so both numbers are direct battery/energy
+    /// levers. The radius is kept small (warm 2 ahead + 2 behind) so a normal swipe lands on
+    /// already-rendered HTML without paying to render up to 2*radius views on every transition; the
+    /// capacity holds that ±radius window plus a little recent history, then evicts (tearing down the
+    /// off-window web views) to bound live processes and CPU/GPU work.
+    private static let prewarmRadius = 2
+    private static let pageCacheCapacity = 11
 
     /// Reused page controllers keyed by article identifier; revisiting a recent article is then
     /// instant (no re-render). LRU eviction tears down off-window web views to bound memory.

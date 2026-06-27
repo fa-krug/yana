@@ -16,9 +16,11 @@ import WebKit
 final class ReaderWebViewPool {
     static let shared = ReaderWebViewPool()
 
-    /// NetNewsWire keeps 3 ready. The reader prewarms a ±radius burst around the current page, so a
-    /// few warm views in reserve absorb a swipe run before the pool falls back to cold allocation.
-    static let minimumDepth = 3
+    /// The reader prewarms a ±radius burst around the current page, so a small warm reserve absorbs
+    /// a swipe run before the pool falls back to cold allocation. Each reserved view holds a live,
+    /// idle Web Content process, so the reserve is kept lean (2) to avoid resident processes burning
+    /// energy while the user is just reading; it refills lazily after each dequeue.
+    static let minimumDepth = 2
 
     private var reserve: [WKWebView] = []
 
