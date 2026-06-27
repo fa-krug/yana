@@ -48,7 +48,11 @@ final class ReaderArticleViewController: UIViewController,
     private var indicatorItem: UIBarButtonItem!
     private var starItem: UIBarButtonItem!
     private var shareItem: UIBarButtonItem!
+    private var speakItem: UIBarButtonItem!
     private var menuItem: UIBarButtonItem!
+
+    /// Reads the current article aloud; lives at the pager level so one synthesizer survives swipes.
+    private let speech = ReaderSpeechController()
 
     private var isFullscreenAvailable: Bool { traitCollection.userInterfaceIdiom == .phone }
     private var displayedWebVC: ReaderWebViewController? {
@@ -99,6 +103,12 @@ final class ReaderArticleViewController: UIViewController,
         displayedWebVC?.reload()
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Don't keep reading after the reader is left.
+        speech.stop()
+    }
+
     // MARK: - Chrome
 
     private func configureNavigationItems() {
@@ -140,9 +150,22 @@ final class ReaderArticleViewController: UIViewController,
     private func configureToolbar() {
         shareItem = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareArticle))
         let browser = UIBarButtonItem(image: UIImage(systemName: "safari"), style: .plain, target: self, action: #selector(openInBrowser))
+        speakItem = UIBarButtonItem(image: UIImage(systemName: "play.circle"), style: .plain, target: self, action: #selector(toggleSpeech))
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
-        // Share + Open-in-Browser grouped together at the right edge.
-        toolbarItems = [flex(), shareItem, browser]
+        // Read-aloud + Share + Open-in-Browser grouped together at the right edge, with the
+        // read-aloud (play/pause) button left-most of the group.
+        toolbarItems = [flex(), speakItem, shareItem, browser]
+        updateSpeakItem()
+        // Reflect synthesizer state transitions (pause, finish) back onto the toolbar button.
+        speech.onStateChange = { [weak self] in self?.updateSpeakItem() }
+    }
+
+    private func updateSpeakItem() {
+        let speaking = speech.state == .speaking
+        speakItem.image = UIImage(systemName: speaking ? "pause.circle" : "play.circle")
+        speakItem.accessibilityLabel = speaking
+            ? String(localized: "Pause reading")
+            : String(localized: "Read article aloud")
     }
 
     func setRefreshing(_ isRefreshing: Bool) {
@@ -203,6 +226,7 @@ final class ReaderArticleViewController: UIViewController,
         let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
         self.index = target
         guard displayedID != targetID, let page = makePage(for: target) else { updateStarItem(); return }
+        speech.stop()
         pageController.setViewControllers([page], direction: .forward, animated: false)
         updateStarItem()
     }
@@ -252,6 +276,16 @@ final class ReaderArticleViewController: UIViewController,
         guard let article = currentArticle() else { return }
         onToggleStar?(article)
         updateStarItem()
+    }
+
+    /// Start reading the current article when idle; otherwise pause/resume the in-flight reading.
+    @objc private func toggleSpeech() {
+        if speech.state == .idle {
+            guard let article = currentArticle() else { return }
+            speech.speak(article)
+        } else {
+            speech.togglePauseResume()
+        }
     }
 
     private func buildMenuActions() -> [UIMenuElement] {
@@ -382,6 +416,9 @@ final class ReaderArticleViewController: UIViewController,
         isTransitioning = false
         guard completed, let vc = displayedWebVC,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles) else { return }
+        // Reading aloud is tied to the article that was visible when it started; a new page means a
+        // new article, so stop rather than keep narrating the one the user swiped away from.
+        speech.stop()
         index = i
         updateStarItem()
         onIndexChange?(i)
