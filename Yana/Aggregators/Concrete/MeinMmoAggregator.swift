@@ -3,6 +3,8 @@ import SwiftSoup
 
 /// Mein-MMO.de gaming news. Ports core/aggregators/mein_mmo/: page-combining, embed strategies
 /// (YouTube/Twitter/Reddit/Bluesky/TikTok), Dailymotion conversion, pagination-marker + recirculation removal.
+/// Adds wpDiscuz reader-comment extraction (server-rendered on the article page) rendered as blockquotes,
+/// mirroring the Heise/Mactechnews comment-extraction shape.
 class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
     static let defaultFeed = "https://mein-mmo.de/feed/"
 
@@ -160,8 +162,81 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         try HTMLUtils.sanitizeClassNames(doc)
         try HTMLUtils.removeComments(doc)
         let body = try HTMLUtils.bodyHTML(doc)
+
+        // wpDiscuz reader comments are server-rendered on the article page itself (not inside the
+        // content div), so they survive selectorsToRemove and are read from the raw first-page HTML.
+        var commentsHTML: String?
+        let opts = meinMmoOptions
+        if opts.includeComments {
+            commentsHTML = extractComments(pageHTML: article.rawContent,
+                                           articleURL: article.url,
+                                           maxComments: opts.maxComments)
+        }
+
         return ContentFormatter.format(content: body, title: article.title, url: article.url,
-                                       headerHTML: header?.html, commentsHTML: nil)
+                                       headerHTML: header?.html, commentsHTML: commentsHTML)
+    }
+
+    // MARK: - Comment extraction (wpDiscuz)
+
+    /// Extracts up to `maxComments` wpDiscuz comments from the article page HTML.
+    /// Thread container `div.wpd-thread-list`; each comment (including nested replies) is a
+    /// `div.wpd-comment`. Returns an HTML `<section>` mirroring the Heise/Mactechnews comment
+    /// output shape, or nil if none are present.
+    func extractComments(pageHTML: String, articleURL: String, maxComments: Int) -> String? {
+        guard maxComments > 0 else { return nil }
+        guard let doc = try? HTMLUtils.parse(pageHTML),
+              let thread = try? doc.select("div.wpd-thread-list").first() else { return nil }
+        let comments = (try? thread.select("div.wpd-comment").array()) ?? []
+        guard !comments.isEmpty else { return nil }
+
+        var parts: [String] = []
+        for el in comments.prefix(maxComments) {
+            if let html = processCommentElement(el, articleURL: articleURL) { parts.append(html) }
+        }
+        guard !parts.isEmpty else { return nil }
+
+        let commentsURL = "\(articleURL)#comments"
+        let header = "<h3><a href=\"\(commentsURL)\">Comments</a></h3>"
+        return "<section>\(header)\(parts.joined())</section>"
+    }
+
+    private func processCommentElement(_ el: Element, articleURL: String) -> String? {
+        // Each field is the comment's OWN element: in document order a parent's fields precede any
+        // nested reply's, so `.first()` within `el` always resolves to this comment, not a child.
+
+        // Author: the linked display name, falling back to the author container's text.
+        var author = "Unknown"
+        if let authorEl = try? el.select("div.wpd-comment-author").first() {
+            if let link = try? authorEl.select("a").first(), let text = try? link.text(), !text.isEmpty {
+                author = text
+            } else if let text = try? authorEl.text(), !text.isEmpty {
+                author = text
+            }
+        }
+
+        // Timestamp: prefer the absolute date in the `title` attribute, fall back to the relative text.
+        var timestamp = ""
+        if let dateEl = try? el.select("div.wpd-comment-date").first() {
+            let title = (try? dateEl.attr("title")) ?? ""
+            timestamp = title.isEmpty ? ((try? dateEl.text()) ?? "") : title
+        }
+
+        guard let textEl = try? el.select("div.wpd-comment-text").first(),
+              let commentText = try? textEl.html(), !commentText.isEmpty else { return nil }
+
+        // Anchor: the inner div.wpd-comment-right carries id="comment-<id>".
+        var anchorURL = "\(articleURL)#comments"
+        if let rightEl = try? el.select("div.wpd-comment-right").first(),
+           let id = try? rightEl.attr("id"), !id.isEmpty {
+            anchorURL = "\(articleURL)#\(id)"
+        }
+
+        let tsDisplay = timestamp.isEmpty ? "" : " (\(timestamp))"
+        return "<blockquote>"
+            + "<p><strong>\(author)</strong>\(tsDisplay) | <a href=\"\(anchorURL)\">source</a></p>"
+            + "<div>\(commentText)</div>"
+            + "</blockquote>"
     }
 
     // Converts div.wp-block-mmo-video (Dailymotion player, dmVideoId in an inline script) into a

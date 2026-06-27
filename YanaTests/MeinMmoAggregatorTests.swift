@@ -267,6 +267,84 @@ struct MeinMmoAggregatorTests {
         #expect(a.content.contains("Article text"))
     }
 
+    // MARK: - wpDiscuz comment extraction
+
+    /// Wraps article body + a wpDiscuz thread (two comments, the second a nested reply) into a page.
+    private func pageWithComments() -> String {
+        """
+        <html><body>
+        <div class="entry-content"><p>Article body text</p></div>
+        <div id="wpdcom" class="wpdiscuz_unauth"><div class="wpd-thread-list">
+          <div id='wpd-comm-1_0' class='comment wpd-comment wpd_comment_level-1'><div class="wpd-comment-wrap">
+            <div id="comment-1" class="wpd-comment-right">
+              <div class="wpd-comment-header">
+                <div class="wpd-comment-author "><a href="https://mein-mmo.de/user/alice/">Alice</a><span class="wpd-user-nicename">(@alice)</span></div>
+                <div class="wpd-comment-date" title="27. Juni 2026 12:45"><i class="far fa-clock"></i> vor 2 Stunden</div>
+              </div>
+              <div class="wpd-comment-text"><p>First comment body</p></div>
+            </div>
+            <div class="wpd-comment wpd_comment_level-2"><div class="wpd-comment-wrap">
+              <div id="comment-2" class="wpd-comment-right">
+                <div class="wpd-comment-author "><a href="https://mein-mmo.de/user/bob/">Bob</a></div>
+                <div class="wpd-comment-date" title="27. Juni 2026 13:00">vor 1 Stunde</div>
+                <div class="wpd-comment-text"><p>A nested reply</p></div>
+              </div>
+            </div></div>
+          </div></div>
+        </div></div>
+        </body></html>
+        """
+    }
+
+    @Test func extractsWpDiscuzComments() async throws {
+        let agg = StubMmo(first: pageWithComments(), extraPages: [:],
+                          options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        // A comments section is emitted with both the top-level comment and the nested reply.
+        #expect(a.content.contains("article-comments"))
+        #expect(a.content.contains("Alice"))
+        #expect(a.content.contains("First comment body"))
+        #expect(a.content.contains("Bob"))
+        #expect(a.content.contains("A nested reply"))
+        // The absolute date from the `title` attribute is preferred over the relative text.
+        #expect(a.content.contains("27. Juni 2026 12:45"))
+        #expect(!a.content.contains("vor 2 Stunden"))
+        // Each comment anchors to its own #comment-<id>.
+        #expect(a.content.contains("#comment-1"))
+        #expect(a.content.contains("#comment-2"))
+        // The article body is still present.
+        #expect(a.content.contains("Article body text"))
+    }
+
+    @Test func respectsMaxComments() async throws {
+        let agg = StubMmo(first: pageWithComments(), extraPages: [:],
+                          options: { var o = MeinMmoOptions(); o.maxComments = 1; return o }(),
+                          store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(a.content.contains("First comment body"))
+        #expect(!a.content.contains("A nested reply"))
+    }
+
+    @Test func disablingCommentsOmitsSection() async throws {
+        let agg = StubMmo(first: pageWithComments(), extraPages: [:],
+                          options: { var o = MeinMmoOptions(); o.includeComments = false; return o }(),
+                          store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(!a.content.contains("article-comments"))
+        #expect(!a.content.contains("First comment body"))
+        #expect(a.content.contains("Article body text"))
+    }
+
+    @Test func noCommentSectionWhenThreadAbsent() async throws {
+        let first = """
+        <html><body><div class="entry-content"><p>Body without comments</p></div></body></html>
+        """
+        let agg = StubMmo(first: first, extraPages: [:], options: MeinMmoOptions(), store: tempStore())
+        let a = try await enrichOne(agg)
+        #expect(!a.content.contains("article-comments"))
+        #expect(a.content.contains("Body without comments"))
+    }
+
     @Test func removesHubBox() async throws {
         // server commit cbc0ad1: div.wp-block-mmo-hub-box must be stripped
         let first = """
