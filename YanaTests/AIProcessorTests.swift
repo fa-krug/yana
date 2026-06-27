@@ -272,4 +272,21 @@ struct AIProcessorConcurrencyTests {
         let out = await processor.process(input, ai: ai())
         #expect(out.map(\.identifier) == ["a", "c"]) // order preserved, "b" dropped
     }
+
+    /// A cancelled run (e.g. an expired background-refresh window) must NOT discard already-fetched
+    /// articles. Cancellation is not an AI rejection: unprocessed entries pass through unchanged so
+    /// they still reach the upsert and get saved. (`@MainActor` guarantees `cancel()` runs before
+    /// the task body, so `process()` sees `Task.isCancelled` from the start — no request is made.)
+    @MainActor
+    @Test func cancelledRunKeepsUnprocessedArticlesInsteadOfDropping() async {
+        let processor = AIProcessor(config: config(), requestDelay: 0) { _, _ in
+            throw AggregatorError.contentFetch("AI must not be called on a cancelled run")
+        }
+        let input = [article("a", content: "one"), article("b", content: "two")]
+        let task = Task { await processor.process(input, ai: ai(summarize: true)) }
+        task.cancel()
+        let out = await task.value
+        #expect(out.count == 2)                          // both kept, not dropped to []
+        #expect(out.map(\.identifier) == ["a", "b"])     // original (un-AI'd) articles preserved
+    }
 }
