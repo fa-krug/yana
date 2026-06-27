@@ -83,7 +83,7 @@ final class AppSettings {
         self.defaults = defaults
         defaults.register(defaults: [
             Key.retentionDays: 30,
-            Key.backgroundInterval: 1800.0,
+            Key.backgroundInterval: 3600.0,
             Key.redditUserAgent: "Yana/1.0",
             Key.openaiAPIURL: "https://api.openai.com/v1",
             Key.openaiModel: "gpt-4o-mini",
