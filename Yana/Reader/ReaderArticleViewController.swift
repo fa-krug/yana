@@ -152,9 +152,9 @@ final class ReaderArticleViewController: UIViewController,
         let browser = UIBarButtonItem(image: UIImage(systemName: "safari"), style: .plain, target: self, action: #selector(openInBrowser))
         speakItem = UIBarButtonItem(image: UIImage(systemName: "play.circle"), style: .plain, target: self, action: #selector(toggleSpeech))
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
-        // Share + Open-in-Browser + Read-aloud grouped together at the right edge, with the
-        // read-aloud (play/pause) button furthest right.
-        toolbarItems = [flex(), shareItem, browser, speakItem]
+        // Read-aloud + Share + Open-in-Browser grouped together at the right edge, with the
+        // read-aloud (play/pause) button left-most of the group.
+        toolbarItems = [flex(), speakItem, shareItem, browser]
         updateSpeakItem()
         // Reflect synthesizer state transitions (pause, finish) back onto the toolbar button.
         speech.onStateChange = { [weak self] in self?.updateSpeakItem() }
