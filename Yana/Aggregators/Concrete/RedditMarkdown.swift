@@ -11,6 +11,7 @@ enum RedditMarkdown {
         t = protectBackslashEscapes(t)            // hide `\`-escaped punctuation from markdown + escaping
         t = escape(t)          // escape user-generated text before emitting any HTML tags
 
+        t = replaceGiphyEmbeds(t)
         t = replacePreviewImages(t)
         t = applyInline(t)                        // superscript / strikethrough / spoiler
         var html = blocksToHTML(t)                // paragraphs / lists / blockquotes / inline emphasis+links
@@ -70,6 +71,17 @@ enum RedditMarkdown {
             }
         }
         return out
+    }
+
+    // MARK: - Reddit Giphy embeds
+
+    /// Reddit encodes Giphy GIFs/Clips as `![gif](giphy|<id>[|<size>])` rather than a real
+    /// image URL. Turn them into an `<img>` pointing at Giphy's media CDN so the GIF renders
+    /// inline instead of leaking the raw markdown as visible text.
+    private static func replaceGiphyEmbeds(_ text: String) -> String {
+        regexReplace(text, #"!\[[^\]]*\]\(giphy\|([A-Za-z0-9_-]{1,100})(?:\|[^)]{0,100})?\)"#) { groups in
+            "<img src=\"https://media.giphy.com/media/\(groups[1])/giphy.gif\" alt=\"Giphy\">"
+        }
     }
 
     // MARK: - Reddit preview images
