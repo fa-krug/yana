@@ -28,6 +28,13 @@ final class ReaderArticleViewController: UIViewController,
     private var index = 0
     private var isTransitioning = false
 
+    /// Identifiers of the pages adjacent to the displayed article the last time the pager's
+    /// neighbors were wired up. `UIPageViewController` caches its before/after pages and only
+    /// re-queries the data source on a `setViewControllers` call or a completed swipe — so a
+    /// timeline mutation that changes these (a refresh appending new articles next to the current
+    /// page) needs a forced re-query. We compare against this snapshot to decide when one is due.
+    private var wiredNeighborIDs: (before: String?, after: String?) = (nil, nil)
+
     /// Reader prewarm/cache tuning. Constants so they can be profiled and dialed on-device.
     /// Each prewarmed neighbor spins up a `WKWebView` (Web Content process) and renders its HTML
     /// off-screen, and each cached page keeps one alive — so both numbers are direct battery/energy
@@ -206,6 +213,7 @@ final class ReaderArticleViewController: UIViewController,
         loadViewIfNeeded()
         if let page = makePage(for: self.index) {
             pageController.setViewControllers([page], direction: .forward, animated: false)
+            recordWiredNeighbors()
         }
         // Release any launch-warmed web view the first page did not adopt (e.g. the saved anchor
         // was filtered out of the current tag filter and a different article opened first).
@@ -229,10 +237,40 @@ final class ReaderArticleViewController: UIViewController,
         let displayedID = displayedWebVC?.article.identifier
         let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
         self.index = target
-        guard displayedID != targetID, let page = makePage(for: target) else { updateStarItem(); return }
+
+        if displayedID == targetID {
+            // The displayed article is unchanged, but the timeline may have mutated around it: a
+            // refresh appends newly fetched articles next to the current page (when parked on the
+            // newest article they land right after it). `UIPageViewController` cached its adjacent
+            // pages when this article was set and won't re-query until the displayed page changes,
+            // so those new neighbors stay unswipeable — the user is stuck until they navigate away
+            // and back. Re-assert the current page when its neighbors changed to force the re-query.
+            if let displayed = displayedWebVC, neighborIDs(of: displayedID) != wiredNeighborIDs {
+                pageController.setViewControllers([displayed], direction: .forward, animated: false)
+                recordWiredNeighbors()
+            }
+            updateStarItem()
+            return
+        }
+
+        guard let page = makePage(for: target) else { updateStarItem(); return }
         speech.stop()
         pageController.setViewControllers([page], direction: .forward, animated: false)
+        recordWiredNeighbors()
         updateStarItem()
+    }
+
+    /// Identifiers immediately before/after the page for `identifier` in the current timeline.
+    private func neighborIDs(of identifier: String?) -> (before: String?, after: String?) {
+        guard let i = TimelinePageIndex.index(of: identifier, in: articles) else { return (nil, nil) }
+        let before = i > 0 ? articles[i - 1].identifier : nil
+        let after = i < articles.count - 1 ? articles[i + 1].identifier : nil
+        return (before, after)
+    }
+
+    /// Snapshot the displayed article's neighbors after the pager has (re)wired its adjacent pages.
+    private func recordWiredNeighbors() {
+        wiredNeighborIDs = neighborIDs(of: displayedWebVC?.article.identifier)
     }
 
     private func clamp(_ i: Int) -> Int { min(max(i, 0), max(0, articles.count - 1)) }
@@ -424,6 +462,7 @@ final class ReaderArticleViewController: UIViewController,
         // new article, so stop rather than keep narrating the one the user swiped away from.
         speech.stop()
         index = i
+        recordWiredNeighbors()
         updateStarItem()
         onIndexChange?(i)
         prewarmNeighbors(around: i)
