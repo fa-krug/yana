@@ -1,4 +1,6 @@
+import AVFoundation
 import SwiftUI
+import UIKit
 
 /// Per-section credential-test state shown in Settings.
 enum TestStatus: Equatable {
@@ -127,11 +129,50 @@ struct SettingsScreenView: View {
                 Label(String(localized: "Use System Browser"), systemImage: "safari")
                     .labelStyle(.tintedIcon(.indigo))
             }
+
+            Picker(selection: Binding(
+                get: { settings.preferredVoiceIdentifier },
+                set: { settings.preferredVoiceIdentifier = $0 }
+            )) {
+                Text("Automatic").tag(String?.none)
+                ForEach(installedVoices, id: \.identifier) { voice in
+                    Text(voiceLabel(voice)).tag(String?.some(voice.identifier))
+                }
+            } label: {
+                Label(String(localized: "Read-Aloud Voice"), systemImage: "waveform")
+                    .labelStyle(.tintedIcon(.indigo))
+            }
+
+            Button(action: openSpokenContentSettings) {
+                Label(String(localized: "Download More Voices"), systemImage: "arrow.down.circle")
+                    .labelStyle(.tintedIcon(.indigo))
+            }
         } header: {
             Text("Reader")
         } footer: {
-            Text("Read-aloud uses the most natural voice installed for the article's language and keeps playing when the screen is locked or you switch apps. Download additional natural voices in Settings → Accessibility → Spoken Content → Voices.")
+            Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. Tap “Download More Voices” to add natural voices under Accessibility → Spoken Content → Voices.")
         }
+    }
+
+    /// Installed speech voices, sorted by language then name, for the read-aloud voice picker.
+    private var installedVoices: [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices().sorted {
+            $0.language == $1.language ? $0.name < $1.name : $0.language < $1.language
+        }
+    }
+
+    /// Picker label for a voice: name plus its localized language, e.g. "Anna · German (Germany)".
+    private func voiceLabel(_ voice: AVSpeechSynthesisVoice) -> String {
+        let language = Locale.current.localizedString(forIdentifier: voice.language) ?? voice.language
+        return "\(voice.name) · \(language)"
+    }
+
+    /// Open the Settings app so the user can download additional read-aloud voices. iOS exposes no
+    /// public deep link to Accessibility → Spoken Content → Voices, so this opens Yana's settings
+    /// page — one tap into Settings, from where the footer points the rest of the way.
+    private func openSpokenContentSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
     }
 
     // MARK: Sources
