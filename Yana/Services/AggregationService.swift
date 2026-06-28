@@ -312,9 +312,15 @@ final class AggregationService {
             return 0
         }
 
-        // Per-article pipeline: each article is fully processed (intake filter → AI → upsert →
-        // save) before the next is collected. An interrupted run (cancelled mid-feed) therefore
-        // keeps every article already saved, instead of losing the whole batch.
+        // Per-article pipeline: each article is processed (intake filter → AI → upsert) and
+        // inserted into the context before the next is collected, but the context is *saved once
+        // per feed* rather than once per article. Saving after every article flushed SQLite and
+        // fired a `ModelContext.didSave` on the main thread N times per feed — and each didSave
+        // kicks a full timeline-index reload + re-filter + reader re-render. That O(articles)
+        // storm of main-thread work is what made the reader lag and stutter during a refresh.
+        // Collapsing to one save per feed keeps it O(feeds). Durability is preserved: the save in
+        // the catch below flushes whatever was collected before an interruption, so a
+        // cancelled/failed feed never loses the articles it already handed over.
         let processor = currentAIProcessor()
         let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
         let feedID = feed.persistentModelID
@@ -325,44 +331,54 @@ final class AggregationService {
             try aggregator.validate()
             do {
                 // The sink runs in the aggregator's (non–main-actor) region, so the SwiftData
-                // upsert/save — which is `@MainActor` and touches the non-Sendable `context` —
-                // is hopped onto the main actor via `persist`, passing only Sendable values.
+                // upsert — which is `@MainActor` and touches the non-Sendable `context` — is
+                // hopped onto the main actor via `upsert`, passing only Sendable values.
                 try await aggregator.aggregate { article in
                     guard kept < cap else { throw CapReached() }        // run cap reached → stop fetching more
                     guard force || AggregationLogic.isWithinIntakeWindow(article.date, now: runNow) else { return }
                     let processed = await processor.process([article], ai: config.options.ai)
-                    inserted += await self.persist(processed, feedID: feedID, now: runNow)
+                    inserted += await self.upsert(processed, feedID: feedID, now: runNow)
                     kept += 1
                 }
-            } catch is CapReached { /* normal stop: everything kept is already saved */ }
+            } catch is CapReached { /* normal stop: everything kept is upserted */ }
             feed.lastFetchedAt = runNow
             feed.lastError = nil
             if feed.logoHash == nil, let hash = await logoResolver(config, aggregator) {
                 feed.logoHash = hash
             }
+            save()                              // one save per feed: the upserted articles + feed state
             return inserted
         } catch {
             // A cancelled run (the user triggered a newer update, or a background window expired) is
             // not a feed failure: leave the existing error/state untouched so no spurious "Update
-            // Failed" surfaces. Articles already saved above are kept.
-            if Task.isCancelled || error.isCancellationError { return inserted }
+            // Failed" surfaces. Persist whatever was collected before the interruption so it isn't lost.
+            if Task.isCancelled || error.isCancellationError {
+                save()
+                return inserted
+            }
             let message = Self.userFacingMessage(for: error)
             feed.lastError = message
             lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
+            save()                              // persist the partial batch + the recorded error
             return inserted
         }
     }
 
-    /// Upsert one run's processed article(s) and persist immediately so an interrupted run keeps
-    /// everything already saved. Runs on the main actor (the SwiftData `context` is non-Sendable
-    /// and main-actor-isolated); takes only Sendable values so the streaming sink can call it
-    /// across the actor boundary. Returns the number of newly inserted articles.
+    /// Upsert one run's processed article(s) into the context, *without* saving — the owning
+    /// `aggregate(feed:)` saves once per feed (see its comment). Runs on the main actor (the
+    /// SwiftData `context` is non-Sendable and main-actor-isolated); takes only Sendable values so
+    /// the streaming sink can call it across the actor boundary. Returns the number of newly
+    /// inserted articles.
     @MainActor
-    private func persist(_ processed: [AggregatedArticle], feedID: PersistentIdentifier, now: Date) -> Int {
+    private func upsert(_ processed: [AggregatedArticle], feedID: PersistentIdentifier, now: Date) -> Int {
         guard let feed = self[feedID, as: Feed.self] else { return 0 }
-        let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: now)
+        return ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: now)
+    }
+
+    /// Persist pending context changes, ignoring the error — a failed save leaves the run's
+    /// in-memory inserts intact for the next save attempt.
+    private func save() {
         try? context.save()
-        return inserted
     }
 
     /// Thrown by the per-article sink to stop the aggregator once the run cap is reached.
