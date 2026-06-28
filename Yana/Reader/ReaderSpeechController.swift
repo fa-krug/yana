@@ -183,9 +183,14 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         return parts.joined(separator: ".\n\n")
     }
 
-    /// Pick a voice matching the text's dominant language, falling back to the user's preferred
+    /// Pick a voice for `text`. A voice the user explicitly chose in Settings wins (when it is still
+    /// installed); otherwise match the text's dominant language, falling back to the user's preferred
     /// locale and finally the system default.
     private static func voice(for text: String) -> AVSpeechSynthesisVoice? {
+        if let identifier = AppSettings().preferredVoiceIdentifier,
+           let voice = AVSpeechSynthesisVoice(identifier: identifier) {
+            return voice
+        }
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(text)
         if let code = recognizer.dominantLanguage?.rawValue, let voice = installedVoice(for: code) {

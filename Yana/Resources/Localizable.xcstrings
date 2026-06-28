@@ -1316,13 +1316,35 @@
         }
       }
     },
-    "Read-aloud uses the most natural voice installed for the article's language and keeps playing when the screen is locked or you switch apps. Download additional natural voices in Settings → Accessibility → Spoken Content → Voices.": {
-      "comment": "Footer in the Reader settings section explaining read-aloud voice quality and background playback.",
+    "Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. To add more natural voices, open Settings → Accessibility → Live Speech → Add Preferred Voice…": {
+      "comment": "Footer in the Reader settings section explaining read-aloud voice selection and background playback.",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das Vorlesen verwendet die natürlichste installierte Stimme für die Sprache des Artikels und läuft weiter, wenn der Bildschirm gesperrt ist oder die App gewechselt wird. Zusätzliche natürliche Stimmen lassen sich unter „Einstellungen“ → „Bedienungshilfen“ → „Gesprochene Inhalte“ → „Stimmen“ laden."
+            "value": "Das Vorlesen verwendet die hier gewählte Stimme oder – bei „Automatisch“ – die natürlichste installierte Stimme für die Sprache des Artikels und läuft weiter, wenn der Bildschirm gesperrt ist oder die App gewechselt wird. Um weitere natürliche Stimmen hinzuzufügen: „Einstellungen“ → „Bedienungshilfen“ → „Live-Sprachausgabe“ → „Bevorzugte Stimme hinzufügen …“."
+          }
+        }
+      }
+    },
+    "Automatic": {
+      "comment": "Read-aloud voice picker option: pick the voice automatically by article language.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisch"
+          }
+        }
+      }
+    },
+    "Read-Aloud Voice": {
+      "comment": "Label for the picker that selects the read-aloud (text-to-speech) voice.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorlesestimme"
           }
         }
       }

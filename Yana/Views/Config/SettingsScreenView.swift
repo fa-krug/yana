@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 /// Per-section credential-test state shown in Settings.
@@ -127,11 +128,37 @@ struct SettingsScreenView: View {
                 Label(String(localized: "Use System Browser"), systemImage: "safari")
                     .labelStyle(.tintedIcon(.indigo))
             }
+
+            Picker(selection: Binding(
+                get: { settings.preferredVoiceIdentifier },
+                set: { settings.preferredVoiceIdentifier = $0 }
+            )) {
+                Text("Automatic").tag(String?.none)
+                ForEach(installedVoices, id: \.identifier) { voice in
+                    Text(voiceLabel(voice)).tag(String?.some(voice.identifier))
+                }
+            } label: {
+                Label(String(localized: "Read-Aloud Voice"), systemImage: "waveform")
+                    .labelStyle(.tintedIcon(.indigo))
+            }
         } header: {
             Text("Reader")
         } footer: {
-            Text("Read-aloud uses the most natural voice installed for the article's language and keeps playing when the screen is locked or you switch apps. Download additional natural voices in Settings → Accessibility → Spoken Content → Voices.")
+            Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. To add more natural voices, open Settings → Accessibility → Live Speech → Add Preferred Voice…")
         }
+    }
+
+    /// Installed speech voices, sorted by language then name, for the read-aloud voice picker.
+    private var installedVoices: [AVSpeechSynthesisVoice] {
+        AVSpeechSynthesisVoice.speechVoices().sorted {
+            $0.language == $1.language ? $0.name < $1.name : $0.language < $1.language
+        }
+    }
+
+    /// Picker label for a voice: name plus its localized language, e.g. "Anna · German (Germany)".
+    private func voiceLabel(_ voice: AVSpeechSynthesisVoice) -> String {
+        let language = Locale.current.localizedString(forIdentifier: voice.language) ?? voice.language
+        return "\(voice.name) · \(language)"
     }
 
     // MARK: Sources

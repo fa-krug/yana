@@ -142,6 +142,7 @@ final class AppSettings {
         // Reader
         static let readerThemeName = "settings.readerThemeName"
         static let articleTextSize = "settings.articleTextSize"
+        static let preferredVoiceIdentifier = "settings.preferredVoiceIdentifier"
         static let useSystemBrowser = "settings.useSystemBrowser"
         static let articleFullscreenEnabled = "settings.articleFullscreenEnabled"
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
@@ -298,6 +299,12 @@ final class AppSettings {
             withMutation(keyPath: \.articleTextSize) { defaults.set(newValue.rawValue, forKey: Key.articleTextSize) }
             if changed { NotificationCenter.default.post(name: Self.articleTextSizeDidChange, object: self) }
         }
+    }
+    /// Identifier of the `AVSpeechSynthesisVoice` the user picked for read-aloud, or `nil` to let
+    /// the reader pick automatically by matching the article's language.
+    var preferredVoiceIdentifier: String? {
+        get { access(keyPath: \.preferredVoiceIdentifier); return defaults.string(forKey: Key.preferredVoiceIdentifier) }
+        set { withMutation(keyPath: \.preferredVoiceIdentifier) { defaults.set(newValue, forKey: Key.preferredVoiceIdentifier) } }
     }
     var useSystemBrowser: Bool {
         get { access(keyPath: \.useSystemBrowser); return defaults.bool(forKey: Key.useSystemBrowser) }
