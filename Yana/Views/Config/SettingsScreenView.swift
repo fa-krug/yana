@@ -87,7 +87,7 @@ struct SettingsScreenView: View {
     // MARK: Reader
 
     private var readerSection: some View {
-        Section("Reader") {
+        Section {
             Picker(selection: Binding(
                 get: { settings.readerThemeName },
                 set: { newValue in
@@ -127,6 +127,8 @@ struct SettingsScreenView: View {
                 Label(String(localized: "Use System Browser"), systemImage: "safari")
                     .labelStyle(.tintedIcon(.indigo))
             }
+        } header: {
+            Text("Reader")
         } footer: {
             Text("Read-aloud uses the most natural voice installed for the article's language and keeps playing when the screen is locked or you switch apps. Download additional natural voices in Settings → Accessibility → Spoken Content → Voices.")
         }
