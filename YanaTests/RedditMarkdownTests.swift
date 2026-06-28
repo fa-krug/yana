@@ -69,6 +69,20 @@ struct RedditMarkdownTests {
         #expect(html.contains("alt=\"Werbung für AppleCare-Abdeckung in der macOS-Einstellungen-App\""))
     }
 
+    @Test func giphyEmbedBecomesImage() {
+        let html = RedditMarkdown.toHTML("![gif](giphy|Vy9bLZxNutIlLuNXOZ)")
+        #expect(html.contains("<img"))
+        #expect(html.contains("media.giphy.com/media/Vy9bLZxNutIlLuNXOZ/giphy.gif"))
+        #expect(!html.contains("![gif]"))
+        #expect(!html.contains("giphy|"))
+    }
+
+    @Test func giphyEmbedWithSizeSuffixBecomesImage() {
+        let html = RedditMarkdown.toHTML("![gif](giphy|Vy9bLZxNutIlLuNXOZ|downsized)")
+        #expect(html.contains("media.giphy.com/media/Vy9bLZxNutIlLuNXOZ/giphy.gif"))
+        #expect(!html.contains("downsized"))
+    }
+
     @Test func escapesRawHTMLInBody() {
         let html = RedditMarkdown.toHTML("Hello <script>alert(1)</script> world")
         #expect(html.contains("&lt;script&gt;"))
