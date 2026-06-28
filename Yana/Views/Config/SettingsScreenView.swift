@@ -1,6 +1,5 @@
 import AVFoundation
 import SwiftUI
-import UIKit
 
 /// Per-section credential-test state shown in Settings.
 enum TestStatus: Equatable {
@@ -142,15 +141,10 @@ struct SettingsScreenView: View {
                 Label(String(localized: "Read-Aloud Voice"), systemImage: "waveform")
                     .labelStyle(.tintedIcon(.indigo))
             }
-
-            Button(action: openSpokenContentSettings) {
-                Label(String(localized: "Download More Voices"), systemImage: "arrow.down.circle")
-                    .labelStyle(.tintedIcon(.indigo))
-            }
         } header: {
             Text("Reader")
         } footer: {
-            Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. Tap “Download More Voices” to add natural voices under Accessibility → Spoken Content → Voices.")
+            Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. To add more natural voices, open Settings → Accessibility → Live Speech → Add Preferred Voice…")
         }
     }
 
@@ -165,14 +159,6 @@ struct SettingsScreenView: View {
     private func voiceLabel(_ voice: AVSpeechSynthesisVoice) -> String {
         let language = Locale.current.localizedString(forIdentifier: voice.language) ?? voice.language
         return "\(voice.name) · \(language)"
-    }
-
-    /// Open the Settings app so the user can download additional read-aloud voices. iOS exposes no
-    /// public deep link to Accessibility → Spoken Content → Voices, so this opens Yana's settings
-    /// page — one tap into Settings, from where the footer points the rest of the way.
-    private func openSpokenContentSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
     }
 
     // MARK: Sources
