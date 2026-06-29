@@ -75,13 +75,14 @@ struct AIProcessor: AIProcessing {
             }
         }
 
-        // A cancelled run (e.g. an expired background-refresh window) is NOT an AI rejection: any
-        // article that wasn't processed in time falls back to its original (un-AI'd) form, so
-        // already-fetched content is saved rather than silently dropped. (Without this, a cancelled
-        // run leaves every slot nil and returns [], discarding entries that were fully fetched.)
-        if Task.isCancelled {
-            return zip(input, results).map { original, processed in processed ?? original }
-        }
+        // On cancellation (e.g. a newer update superseding this one via `UpdateActivity.restart`,
+        // or an expired background-refresh window) only articles whose AI request actually
+        // completed are emitted; any that didn't finish are dropped — exactly like the per-article
+        // failure path. We deliberately do NOT fall back to the original un-AI'd form here: doing so
+        // persisted degraded content (e.g. an untranslated article) that then stuck in the timeline,
+        // because a normal "Update" only fetches *new* items and rarely re-touched it. Dropping is
+        // safe — the article stays in its source feed and within the 60-day intake window, so the
+        // next (non-cancelled) run re-fetches and fully AI-processes it.
         return results.compactMap { $0 }
     }
 

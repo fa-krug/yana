@@ -273,12 +273,15 @@ struct AIProcessorConcurrencyTests {
         #expect(out.map(\.identifier) == ["a", "c"]) // order preserved, "b" dropped
     }
 
-    /// A cancelled run (e.g. an expired background-refresh window) must NOT discard already-fetched
-    /// articles. Cancellation is not an AI rejection: unprocessed entries pass through unchanged so
-    /// they still reach the upsert and get saved. (`@MainActor` guarantees `cancel()` runs before
-    /// the task body, so `process()` sees `Task.isCancelled` from the start — no request is made.)
+    /// A cancelled run (e.g. a newer update superseding this one, or an expired background-refresh
+    /// window) must DROP articles whose AI request didn't complete rather than fall back to their
+    /// original un-AI'd form. Persisting un-AI'd content (e.g. an untranslated article) let it stick
+    /// in the timeline, since a normal "Update" only fetches new items and rarely re-touched it.
+    /// Dropping is safe: the article stays in its source feed and is re-fetched + fully processed on
+    /// the next run. (`@MainActor` guarantees `cancel()` runs before the task body, so `process()`
+    /// sees `Task.isCancelled` from the start — no request completes.)
     @MainActor
-    @Test func cancelledRunKeepsUnprocessedArticlesInsteadOfDropping() async {
+    @Test func cancelledRunDropsUnprocessedArticles() async {
         let processor = AIProcessor(config: config(), requestDelay: 0) { _, _ in
             throw AggregatorError.contentFetch("AI must not be called on a cancelled run")
         }
@@ -286,7 +289,6 @@ struct AIProcessorConcurrencyTests {
         let task = Task { await processor.process(input, ai: ai(summarize: true)) }
         task.cancel()
         let out = await task.value
-        #expect(out.count == 2)                          // both kept, not dropped to []
-        #expect(out.map(\.identifier) == ["a", "b"])     // original (un-AI'd) articles preserved
+        #expect(out.isEmpty)                             // un-AI'd articles dropped, not persisted degraded
     }
 }
