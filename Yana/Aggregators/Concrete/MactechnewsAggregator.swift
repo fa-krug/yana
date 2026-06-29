@@ -24,6 +24,11 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
         return MactechnewsOptions()
     }
 
+    /// Skip the recurring "TechTicker:" link-roundup posts.
+    override func shouldInclude(_ article: AggregatedArticle) -> Bool {
+        !article.title.hasPrefix("TechTicker:")
+    }
+
     /// Overridable seam for tests to inject feed data.
     func fetchFeedData(_ url: String) async throws -> Data {
         guard let u = URL(string: url) else { throw AggregatorError.missingIdentifier }
