@@ -57,8 +57,7 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
             let comments = (try? await client.fetchVideoComments(videoID: video.id, max: options.commentLimit)) ?? []
             let body = buildContentHTML(video: video, videoID: video.id, comments: comments)
             let embed = EmbedRewriter.youTubeEmbedHTML(videoID: video.id)
-            let content = ContentFormatter.format(content: embed + body, title: video.title, url: url,
-                                                  headerHTML: nil, commentsHTML: nil)
+            let content = formatContent(embed: embed, body: body, title: video.title, url: url)
             try await sink(AggregatedArticle(
                 title: video.title, identifier: url, url: url,
                 rawContent: body, content: content,
@@ -74,8 +73,7 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
         let comments = (try? await client.fetchVideoComments(videoID: video.id, max: options.commentLimit)) ?? []
         let body = buildContentHTML(video: video, videoID: video.id, comments: comments)
         let embed = EmbedRewriter.youTubeEmbedHTML(videoID: video.id)
-        let content = ContentFormatter.format(content: embed + body, title: video.title, url: url,
-                                              headerHTML: nil, commentsHTML: nil)
+        let content = formatContent(embed: embed, body: body, title: video.title, url: url)
         return AggregatedArticle(
             title: video.title, identifier: url, url: url,
             rawContent: body, content: content,
@@ -91,6 +89,25 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
     }
 
     // MARK: - Content building
+
+    /// Wrap the assembled embed + body, running it through the shared sanitization tail first
+    /// (mirroring the RSS pipeline's `processContent`). `finishSanitization` stamps the YouTube
+    /// facade's classes into `data-sanitized-class`, which is what `BlockParser.embedFacade` keys
+    /// on to render a tappable, playable poster — without it the facade degrades to a bare,
+    /// inert thumbnail image (no play button, no tap). On a parse failure we fall back to the
+    /// unsanitized markup so an article is never dropped.
+    private func formatContent(embed: String, body: String, title: String, url: String) -> String {
+        let merged = embed + body
+        let sanitized: String
+        if let doc = try? HTMLUtils.parse(merged), (try? HTMLUtils.finishSanitization(doc)) != nil,
+           let html = try? HTMLUtils.bodyHTML(doc) {
+            sanitized = html
+        } else {
+            sanitized = merged
+        }
+        return ContentFormatter.format(content: sanitized, title: title, url: url,
+                                       headerHTML: nil, commentsHTML: nil)
+    }
 
     private func buildContentHTML(video: YouTubeVideo, videoID: String, comments: [YouTubeComment]) -> String {
         var parts: [String] = []
