@@ -38,12 +38,15 @@ final class ReaderArticleViewController: UIViewController,
     /// Reader prewarm/cache tuning. Constants so they can be profiled and dialed on-device.
     /// Each prewarmed neighbor spins up a `WKWebView` (Web Content process) and renders its HTML
     /// off-screen, and each cached page keeps one alive — so both numbers are direct battery/energy
-    /// levers. The radius is kept small (warm 2 ahead + 2 behind) so a normal swipe lands on
+    /// levers. The radius is kept small (warm 1 ahead + 1 behind) so a normal swipe lands on
     /// already-rendered HTML without paying to render up to 2*radius views on every transition; the
     /// capacity holds that ±radius window plus a little recent history, then evicts (tearing down the
-    /// off-window web views) to bound live processes and CPU/GPU work.
-    private static let prewarmRadius = 2
-    private static let pageCacheCapacity = 11
+    /// off-window web views) to bound live processes and CPU/GPU work. Both were halved (radius 2→1,
+    /// capacity 11→6) after on-screen WebKit rendering churn was found to dominate the app's battery
+    /// use: a smaller warm window renders far fewer off-screen pages per swipe with little perceptible
+    /// loss (the pager only ever shows ±1), and fewer cached pages keep fewer live web views resident.
+    private static let prewarmRadius = 1
+    private static let pageCacheCapacity = 6
 
     /// Reused page controllers keyed by article identifier; revisiting a recent article is then
     /// instant (no re-render). LRU eviction tears down off-window web views to bound memory.
@@ -447,8 +450,11 @@ final class ReaderArticleViewController: UIViewController,
                             willTransitionTo pendingViewControllers: [UIViewController]) {
         if let next = pendingViewControllers.first as? ReaderWebViewController,
            let target = TimelinePageIndex.index(of: next.article.identifier, in: articles) {
+            // Only record the travel direction here. Prewarming is deferred to `didFinishAnimating`
+            // (once per swipe, not also mid-swipe) — the redundant mid-swipe warm doubled the
+            // off-screen render bursts that dominate on-screen battery use, for a paint the pager's
+            // own ±1 neighbor request already covers.
             lastDirection = target > index ? .forward : .backward
-            prewarmNeighbors(around: target)   // warm mid-swipe, not only after it finishes
         }
         isTransitioning = true
     }

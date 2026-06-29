@@ -154,14 +154,22 @@ a.footnote {
 	margin-bottom: 0.35em;
 }
 
-/* Pending-summary skeleton: subtle pulsing lines while an on-demand summary is generated. */
+/* Pending-summary skeleton: subtle pulsing lines while an on-demand summary is generated.
+   The pulse is bounded so the WebView compositor never runs indefinitely on a reader page: it
+   is disabled entirely under reduced-motion, and otherwise capped to a finite run (~1 min, which
+   comfortably covers a normal generation window including AI retries) before settling to a static
+   dim line. An unbounded `infinite` animation here composited every frame for the whole wait. */
 .yana-summary-pending .yana-skel-line {
   height: 0.9em;
   margin: 0.5em 0;
   border-radius: 4px;
   background: currentColor;
   opacity: 0.12;
-  animation: yana-skel-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .yana-summary-pending .yana-skel-line {
+    animation: yana-skel-pulse 1.2s ease-in-out 50;
+  }
 }
 .yana-summary-pending .yana-skel-line.short { width: 60%; }
 @keyframes yana-skel-pulse {
