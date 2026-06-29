@@ -64,6 +64,7 @@ struct ArticleBlockView: View {
             return .handled
         })
         .modifier(RefreshableIfAvailable(onRefresh: onRefresh))
+        .modifier(LeadImageReveal(leadImageRef: leadImageRef))
     }
 
     // MARK: - Header / summary / lead image ordering
@@ -402,6 +403,36 @@ private struct EmbedCardView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Holds the page invisible (but fully laid out) until its lead image is decoded, then fades the
+/// whole article in at once — so the reader never shows the body text first and visibly jumps when
+/// the header image pops in afterwards (the "flash"). When the lead image is already in
+/// `ReaderImageCache` — the common case, since the pager prewarms neighbors' and the displayed
+/// page's lead images — the page starts visible, so there is no fade and no blank frame. Pages with
+/// no lead image are visible from the first frame.
+private struct LeadImageReveal: ViewModifier {
+    let leadImageRef: String?
+    @State private var ready: Bool
+
+    init(leadImageRef: String?) {
+        self.leadImageRef = leadImageRef
+        // Seed synchronously from the cache so an already-decoded lead image (prewarmed/revisited)
+        // shows on the first frame with no fade — only a cold image waits for the reveal.
+        _ready = State(initialValue: leadImageRef == nil
+            || ReaderImageCache.shared.cached(leadImageRef!) != nil)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(ready ? 1 : 0)
+            .animation(.easeIn(duration: 0.2), value: ready)
+            .task(id: leadImageRef) {
+                guard !ready, let leadImageRef else { return }
+                _ = await ReaderImageCache.shared.image(for: leadImageRef)
+                ready = true
+            }
     }
 }
 
