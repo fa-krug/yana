@@ -2,7 +2,6 @@ import AVFoundation
 import Foundation
 import MediaPlayer
 import NaturalLanguage
-import SwiftSoup
 
 /// Reads an article's text aloud with `AVSpeechSynthesizer`. Owned by the reader's pager so a single
 /// synthesizer survives page swipes; the pager stops it whenever the visible article changes.
@@ -167,18 +166,17 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - Text + voice
 
-    /// Plain, speakable text for an article: title, then AI summary (if any), then the body with all
-    /// HTML stripped. Mirrors what the reader renders so the spoken text matches the page.
+    /// Plain, speakable text for an article: title, then AI summary (if any), then the body text.
+    /// Reads the article's `plainText` (its blocks flattened to visible text), so the spoken text
+    /// matches what the reader renders.
     static func spokenText(for article: Article) -> String {
         var parts: [String] = []
         let title = article.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !title.isEmpty { parts.append(title) }
         let summary = article.summary.trimmingCharacters(in: .whitespacesAndNewlines)
         if !summary.isEmpty { parts.append(summary) }
-        if let body = try? SwiftSoup.parse(article.content).text(),
-           !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            parts.append(body)
-        }
+        let body = article.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !body.isEmpty { parts.append(body) }
         // A sentence break between sections gives the synthesizer a natural pause after the title.
         return parts.joined(separator: ".\n\n")
     }

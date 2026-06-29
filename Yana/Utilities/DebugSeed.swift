@@ -4,8 +4,8 @@ import SwiftData
 
 /// Debug-only fixture seeding for startup measurement. Triggered by the `YANA_SEED_ARTICLES`
 /// environment variable (set to a count, e.g. `100`). Inserts a feed + that many articles with
-/// realistic HTML bodies, spreads their `createdAt` across recent days, and parks a timeline
-/// anchor on a middle article so `ReaderWarmup` exercises its render path on the next launch.
+/// realistic block bodies, spreads their `createdAt` across recent days, and parks a timeline
+/// anchor on a middle article so the reader exercises its render path on the next launch.
 ///
 /// Intended workflow: launch once with the env var set to seed, then launch normally to measure.
 enum DebugSeed {
@@ -24,11 +24,10 @@ enum DebugSeed {
                 title: "Seeded Article \(i): The Quick Brown Fox",
                 identifier: identifier,
                 url: "https://example.com/seed/\(i)",
-                rawContent: body(i),
-                content: body(i),
                 date: .now,
                 author: "Author \(i % 7)"
             )
+            article.blocks = BlockParser.blocks(fromHTML: body(i))
             // Spread across the last `count` hours so the timeline/anchor logic is realistic.
             article.createdAt = Date(timeIntervalSinceNow: -Double(count - i) * 3600)
             article.feed = feed

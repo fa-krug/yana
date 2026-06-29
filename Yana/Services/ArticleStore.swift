@@ -9,7 +9,8 @@ actor ArticleSummaryLoader {
         var descriptor = FetchDescriptor<Article>(
             sortBy: [SortDescriptor(\.createdAt, order: .forward)]
         )
-        // Only the light columns; HTML (`content`/`rawContent`/`summary`) stays unfetched.
+        // Only the light columns; the heavy body fields (`blockData`/`plainText`/`summary`) and the
+        // legacy `content` stay unfetched.
         descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         let rows = try StartupTrace.measure("fullLoad.fetch") { try modelContext.fetch(descriptor) }

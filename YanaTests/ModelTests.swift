@@ -62,7 +62,7 @@ struct ModelTests {
         let feed = Feed(name: "F", aggregatorType: .feedContent, identifier: "https://x.com/feed")
         let article = Article(
             title: "Post", identifier: "https://x.com/1", url: "https://x.com/1",
-            rawContent: "<p>r</p>", content: "<p>c</p>", date: .now, author: "A"
+            date: .now, author: "A"
         )
         article.feed = feed
         context.insert(feed)

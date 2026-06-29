@@ -37,10 +37,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
         StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
-        // Warm WebKit with the anchor article as early as possible: ModelContainer is already
-        // forced (by backgroundRefresh), and starting the document load here — before the scene
-        // connects — front-loads the parse/paint vs. kicking it from the scene `.task`.
-        ReaderWarmup.start()
 
         // Tag bootstrap is idempotent and not needed before first paint (the Starred tag is only
         // consulted on a user star action, by the tag-filter list, and on upsert — all reached
@@ -69,11 +65,12 @@ struct YanaApp: App {
         WindowGroup {
             ContentView(appState: appState)
                 .environment(articleStore)
-                // Warm WebKit with the anchor article before the store bootstrap, so the Web Content
-                // process spawn + first-document parse/paint precede the reader's first page.
                 .task {
                     StartupTrace.event("scene.task.begin")
                     articleStore.start()
+                    // Convert any pre-migration articles still holding legacy HTML into native
+                    // blocks, off the launch/render path. No-op once the backlog is cleared.
+                    BlockMigration.run(container: AppContainer.shared)
                 }
         }
         .modelContainer(AppContainer.shared)
