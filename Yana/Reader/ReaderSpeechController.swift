@@ -168,7 +168,9 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
     /// Plain, speakable text for an article: title, then AI summary (if any), then the body text.
     /// Reads the article's `plainText` (its blocks flattened to visible text), so the spoken text
-    /// matches what the reader renders.
+    /// matches what the reader renders. URLs are stripped first — a synthesizer reads a link out as
+    /// an unintelligible run of characters ("h-t-t-p-colon-slash-slash…"), so we drop them rather
+    /// than read them aloud.
     static func spokenText(for article: Article) -> String {
         var parts: [String] = []
         let title = article.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -178,7 +180,37 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         let body = article.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !body.isEmpty { parts.append(body) }
         // A sentence break between sections gives the synthesizer a natural pause after the title.
-        return parts.joined(separator: ".\n\n")
+        return strippingURLs(from: parts.joined(separator: ".\n\n"))
+    }
+
+    /// Remove URLs (and bare web addresses like `www.example.com`) from text destined for the
+    /// synthesizer so they aren't read aloud. Uses `NSDataDetector` so it catches the same links the
+    /// system recognizes; the gaps left behind are collapsed so no stray double spaces remain.
+    static func strippingURLs(from text: String) -> String {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return text
+        }
+        let full = NSRange(text.startIndex..., in: text)
+        let matches = detector.matches(in: text, options: [], range: full)
+        guard !matches.isEmpty else { return text }
+        var result = text
+        // Remove from the end backwards so earlier ranges stay valid as we mutate.
+        for match in matches.reversed() {
+            guard let range = Range(match.range, in: result) else { continue }
+            result.removeSubrange(range)
+        }
+        return collapseWhitespace(result)
+    }
+
+    /// Collapse the runs of spaces/blank lines left where URLs were removed: horizontal whitespace
+    /// folds to a single space and stray spaces around line breaks are trimmed, so the synthesizer
+    /// doesn't pause awkwardly in the gaps.
+    private static func collapseWhitespace(_ text: String) -> String {
+        let collapsed = text
+            .replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: " *\\n *", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
+        return collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Pick a voice for `text`. A voice the user explicitly chose in Settings wins (when it is still
