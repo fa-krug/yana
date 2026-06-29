@@ -302,6 +302,18 @@ final class ReaderArticleViewController: UIViewController,
         for i in targets {
             let vc = makePage(for: i)         // inserts into cache
             vc?.loadViewIfNeeded()            // force viewDidLoad → build the hosting view off-screen
+            // Decode the neighbor's lead image into the shared cache now, so when the user swipes to
+            // it the header image is already in memory and renders on the first frame instead of
+            // popping in after an async disk read. Building the hosting view off-screen does not run
+            // SwiftUI's `.task`, so the image must be warmed imperatively here.
+            if let vc { preloadLeadImage(of: vc.article) }
+        }
+    }
+
+    /// Warm the article's lead image (the first block, when it is an image) into `ReaderImageCache`.
+    private func preloadLeadImage(of article: Article) {
+        if case let .image(ref, _)? = article.blocks.first {
+            ReaderImageCache.shared.preload(ref)
         }
     }
 
