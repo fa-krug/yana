@@ -130,6 +130,20 @@ This reuses all existing sanitization/image/embed work; only the final emit is n
 The same parser runs on AI "improve writing"/"translate" output (still returned as
 HTML — see §6).
 
+**On parser choice (SwiftSoup).** The block walk does **not** add a parse — it reuses
+the SwiftSoup `Document` the sanitization pipeline already built, so this redesign adds
+no SwiftSoup cost. Dropping SwiftSoup to speed extraction is therefore **out of scope
+here**: it is load-bearing across ~17 files (all of `HTMLUtils`, `EmbedRewriter`,
+`ImageStore`, `ArticleAIText`, and every CSS-selector-driven scraper — Heise, Merkur,
+Mactechnews, MeinMmo, …), and its leniency with malformed real-world HTML is a
+correctness feature. If import-time throughput later proves a bottleneck, the real
+lever is a **separate, pipeline-wide** migration to a libxml2-backed parser
+(Kanna/Fuzi) — meaningfully faster (C vs pure Swift) but behaviorally different on
+broken markup and touching every scraper's selectors. Orthogonal lever: **API-driven
+sources** (Reddit, YouTube, podcasts) build their HTML from structured data, so they
+could emit `[Block]` directly and skip the HTML round-trip entirely — a targeted win
+that needs no parser swap.
+
 ### 4. Native renderer (`Yana/Reader/ArticleBlockView.swift`)
 
 A SwiftUI `View` that renders `[Block]` top-to-bottom in a `ScrollView`/`LazyVStack`:
@@ -167,11 +181,23 @@ before storage — the same single conversion point. `summary` remains plain tex
 ### 7. Migration of existing data
 
 `content` changes type (HTML `String` → blocks `Data`) and `rawContent` is removed.
-Existing stored articles hold HTML. Approach: a **one-time lazy reconversion** —
-on first read of an article whose body is not yet block-encoded, run the stored HTML
-through `BlockParser` and persist the result (idempotent; `rawContent` simply drops).
-A background sweep can convert the rest opportunistically. Retention (~1 month) bounds
-the set, so the cost is small and self-clearing.
+Existing stored articles hold HTML and must be reconverted through `BlockParser`.
+
+**Conversion stays off the cold-start critical path** — this is a hard requirement,
+not an optimization. `BlockParser` runs a SwiftSoup parse, which is the exact cost
+this redesign removes from the reader; reconverting lazily on first *read* would drag
+that parse back onto the anchor's launch path and give the cold-start win back.
+Therefore:
+
+- **New articles** are converted at **import time**, in the aggregation pipeline,
+  where a SwiftSoup `Document` already exists (the block walk reuses it — no second
+  parse). Nothing render-time.
+- **Existing articles** are converted by a **one-time background migration sweep**
+  (off the launch path), persisting blocks per article; `rawContent` simply drops.
+  Retention (~1 month) bounds the set, so the sweep is small and self-clearing.
+- The reader's render path **only decodes already-stored `[Block]` JSON** — it never
+  parses HTML. An article not yet converted when the reader reaches it renders empty
+  (or a lightweight placeholder) until the sweep lands it, rather than parsing inline.
 
 ### 8. Retirements
 
