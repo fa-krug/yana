@@ -76,6 +76,8 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
 final class AppSettings {
     /// Posted when `articleTextSize` changes so the reader can re-render live (no app restart).
     static let articleTextSizeDidChange = Notification.Name("YanaArticleTextSizeDidChange")
+    /// Posted when `articleFont` changes so the reader can re-render live (no app restart).
+    static let articleFontDidChange = Notification.Name("YanaArticleFontDidChange")
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -103,6 +105,7 @@ final class AppSettings {
             Key.aiRequestDelay: 2,
             Key.includeUntagged: true,
             Key.articleTextSize: ArticleTextSize.medium.rawValue,
+            Key.articleFont: ArticleFont.system.rawValue,
         ])
     }
 
@@ -141,6 +144,7 @@ final class AppSettings {
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
         // Reader
         static let articleTextSize = "settings.articleTextSize"
+        static let articleFont = "settings.articleFont"
         static let preferredVoiceIdentifier = "settings.preferredVoiceIdentifier"
         static let useSystemBrowser = "settings.useSystemBrowser"
         static let articleFullscreenEnabled = "settings.articleFullscreenEnabled"
@@ -293,6 +297,14 @@ final class AppSettings {
             let changed = newValue != articleTextSize
             withMutation(keyPath: \.articleTextSize) { defaults.set(newValue.rawValue, forKey: Key.articleTextSize) }
             if changed { NotificationCenter.default.post(name: Self.articleTextSizeDidChange, object: self) }
+        }
+    }
+    var articleFont: ArticleFont {
+        get { access(keyPath: \.articleFont); return ArticleFont(rawValue: defaults.integer(forKey: Key.articleFont)) ?? .system }
+        set {
+            let changed = newValue != articleFont
+            withMutation(keyPath: \.articleFont) { defaults.set(newValue.rawValue, forKey: Key.articleFont) }
+            if changed { NotificationCenter.default.post(name: Self.articleFontDidChange, object: self) }
         }
     }
     /// Identifier of the `AVSpeechSynthesisVoice` the user picked for read-aloud, or `nil` to let

@@ -101,8 +101,21 @@ struct SettingsScreenView: View {
                     .labelStyle(.tintedIcon(.indigo))
             }
 
+            Picker(selection: Binding(
+                get: { settings.articleFont },
+                set: { settings.articleFont = $0 }
+            )) {
+                ForEach(ArticleFont.allCases) { font in
+                    Text(font.displayName).tag(font)
+                }
+            } label: {
+                Label(String(localized: "Font"), systemImage: "textformat")
+                    .labelStyle(.tintedIcon(.indigo))
+            }
+
             Text("The quick brown fox jumps over the lazy dog.")
                 .font(.system(size: CGFloat(settings.articleTextSize.pointSize)))
+                .fontDesign(settings.articleFont.design)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(Text("Text size preview"))
 

@@ -1755,6 +1755,56 @@
         }
       }
     },
+    "Font": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schrift"
+          }
+        }
+      }
+    },
+    "System": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
+    "Serif": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serif"
+          }
+        }
+      }
+    },
+    "Rounded": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rund"
+          }
+        }
+      }
+    },
+    "Monospaced": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Monospace"
+          }
+        }
+      }
+    },
     "Text Size": {
       "localizations": {
         "de": {
