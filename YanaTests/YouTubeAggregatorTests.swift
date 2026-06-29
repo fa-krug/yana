@@ -58,7 +58,31 @@ struct YouTubeAggregatorTests {
         #expect(a.author == "@mychan")                                  // customURL preferred over title
         #expect(a.iconURL == "https://img/m.jpg")                       // per-video thumbnail
         #expect(a.content.contains("youtube-comments"))                 // comments wrapper class
-        #expect(a.content.contains("watch?v=vid111aaaaa&lc=cm1"))      // comment source link (URL not entity-encoded)
+        // After the sanitization tail (SwiftSoup parse → serialize) the `&` in the comment link is
+        // HTML-entity-encoded; `BlockParser` decodes it back, so the rendered link is unchanged.
+        #expect(a.content.contains("watch?v=vid111aaaaa&amp;lc=cm1"))   // comment source link
+    }
+
+    @Test func contentParsesIntoPlayableEmbedBlock() async throws {
+        // The reported bug: the poster rendered but with no play button and no tap target, because
+        // the facade reached `BlockParser` with a raw `class` (not `data-sanitized-class`) and so
+        // fell through to a bare image block. Running the content through `finishSanitization` makes
+        // `embedFacade` recognize it as a playable YouTube embed.
+        let a = try #require(try await makeAggregator(key: "K").aggregate().first)
+        let blocks = BlockParser.blocks(fromHTML: a.content, baseURL: URL(string: a.url))
+        func embeds(_ blocks: [Block]) -> [Embed] {
+            blocks.flatMap { block -> [Embed] in
+                switch block {
+                case .embed(let e): return [e]
+                case .blockquote(let inner): return embeds(inner)
+                case .list(_, let items): return items.flatMap(embeds)
+                default: return []
+                }
+            }
+        }
+        let videoEmbed = try #require(embeds(blocks).first { $0.provider == .youtube })
+        #expect(videoEmbed.externalURL == "https://www.youtube.com/watch?v=vid111aaaaa")
+        #expect(videoEmbed.thumbnailRef?.contains("hqdefault.jpg") == true)
     }
 
     @Test func missingKeyThrows() async throws {
