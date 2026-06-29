@@ -23,7 +23,7 @@ final class ReaderArticleViewController: UIViewController,
 
     private let pageController = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
     private var articles: [ArticleSummary] = []
-    /// Resolves a summary to its full `Article` (with HTML) on demand, set by the host.
+    /// Resolves a summary to its full `Article` (with body blocks) on demand, set by the host.
     var resolveArticle: ((ArticleSummary) -> Article?)?
     private var index = 0
     private var isTransitioning = false
@@ -36,18 +36,16 @@ final class ReaderArticleViewController: UIViewController,
     private var wiredNeighborIDs: (before: String?, after: String?) = (nil, nil)
 
     /// Reader prewarm/cache tuning. Constants so they can be profiled and dialed on-device.
-    /// Each prewarmed neighbor spins up a `WKWebView` (Web Content process) and renders its HTML
-    /// off-screen, and each cached page keeps one alive — so both numbers are direct battery/energy
-    /// levers. The radius is kept small (warm 2 ahead + 2 behind) so a normal swipe lands on
-    /// already-rendered HTML without paying to render up to 2*radius views on every transition; the
-    /// capacity holds that ±radius window plus a little recent history, then evicts (tearing down the
-    /// off-window web views) to bound live processes and CPU/GPU work.
+    /// Each prewarmed neighbor builds a native hosting page off-screen and each cached page keeps
+    /// one alive. The radius is kept small (warm 2 ahead + 2 behind) so a normal swipe lands on an
+    /// already-built page without paying to build up to 2*radius views on every transition; the
+    /// capacity holds that ±radius window plus a little recent history, then evicts to bound memory.
     private static let prewarmRadius = 2
     private static let pageCacheCapacity = 11
 
     /// Reused page controllers keyed by article identifier; revisiting a recent article is then
-    /// instant (no re-render). LRU eviction tears down off-window web views to bound memory.
-    private let pageCache = LRUCache<String, ReaderWebViewController>(capacity: pageCacheCapacity)
+    /// instant (no re-render). LRU eviction bounds the number of live hosting controllers.
+    private let pageCache = LRUCache<String, ReaderBlockViewController>(capacity: pageCacheCapacity)
 
     /// Last observed travel direction, used to bias prewarming toward where the user is going.
     private var lastDirection: PrewarmPlan.Direction = .none
@@ -66,8 +64,8 @@ final class ReaderArticleViewController: UIViewController,
     private let speech = ReaderSpeechController()
 
     private var isFullscreenAvailable: Bool { traitCollection.userInterfaceIdiom == .phone }
-    private var displayedWebVC: ReaderWebViewController? {
-        pageController.viewControllers?.first as? ReaderWebViewController
+    private var displayedPage: ReaderBlockViewController? {
+        pageController.viewControllers?.first as? ReaderBlockViewController
     }
 
     override func viewDidLoad() {
@@ -111,7 +109,7 @@ final class ReaderArticleViewController: UIViewController,
         super.viewWillAppear(animated)
         navigationController?.setToolbarHidden(false, animated: false)
         applyFullscreen(settings.articleFullscreenEnabled && isFullscreenAvailable, animated: false)
-        displayedWebVC?.reload()
+        displayedPage?.reload()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -215,9 +213,6 @@ final class ReaderArticleViewController: UIViewController,
             pageController.setViewControllers([page], direction: .forward, animated: false)
             recordWiredNeighbors()
         }
-        // Release any launch-warmed web view the first page did not adopt (e.g. the saved anchor
-        // was filtered out of the current tag filter and a different article opened first).
-        ReaderWarmupStore.shared.discardUnused()
         updateStarItem()
         // Defer neighbor prewarming off the launch path. `configure` runs synchronously inside
         // `makeUIViewController`, before the first frame is presented; prewarming here would build
@@ -234,7 +229,7 @@ final class ReaderArticleViewController: UIViewController,
         self.articles = articles
         guard !isTransitioning else { return }
         let target = clamp(index)
-        let displayedID = displayedWebVC?.article.identifier
+        let displayedID = displayedPage?.article.identifier
         let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
         self.index = target
 
@@ -245,7 +240,7 @@ final class ReaderArticleViewController: UIViewController,
             // pages when this article was set and won't re-query until the displayed page changes,
             // so those new neighbors stay unswipeable — the user is stuck until they navigate away
             // and back. Re-assert the current page when its neighbors changed to force the re-query.
-            if let displayed = displayedWebVC, neighborIDs(of: displayedID) != wiredNeighborIDs {
+            if let displayed = displayedPage, neighborIDs(of: displayedID) != wiredNeighborIDs {
                 pageController.setViewControllers([displayed], direction: .forward, animated: false)
                 recordWiredNeighbors()
             }
@@ -270,21 +265,21 @@ final class ReaderArticleViewController: UIViewController,
 
     /// Snapshot the displayed article's neighbors after the pager has (re)wired its adjacent pages.
     private func recordWiredNeighbors() {
-        wiredNeighborIDs = neighborIDs(of: displayedWebVC?.article.identifier)
+        wiredNeighborIDs = neighborIDs(of: displayedPage?.article.identifier)
     }
 
     private func clamp(_ i: Int) -> Int { min(max(i, 0), max(0, articles.count - 1)) }
 
     private func currentArticle() -> Article? {
-        displayedWebVC?.article
+        displayedPage?.article
     }
 
-    private func makePage(for index: Int) -> ReaderWebViewController? {
+    private func makePage(for index: Int) -> ReaderBlockViewController? {
         guard articles.indices.contains(index) else { return nil }
         let summary = articles[index]
         if let cached = pageCache.value(for: summary.identifier) { return cached }
         guard let article = resolveArticle?(summary) else { return nil }
-        let vc = ReaderWebViewController(
+        let vc = ReaderBlockViewController(
             article: article,
             allowsFullscreen: isFullscreenAvailable,
             onRefresh: onRefresh,
@@ -295,16 +290,16 @@ final class ReaderArticleViewController: UIViewController,
         return vc
     }
 
-    /// Instantiate (and thus begin loading) the neighbors around `index`, biased toward the last
-    /// travel direction, so a burst of swipes lands on already-rendered HTML.
+    /// Instantiate the neighbors around `index`, biased toward the last travel direction, so a
+    /// burst of swipes lands on already-built pages.
     private func prewarmNeighbors(around index: Int) {
         let targets = PrewarmPlan.indices(
             current: index, count: articles.count,
             radius: Self.prewarmRadius, direction: lastDirection
         )
         for i in targets {
-            let vc = makePage(for: i)         // inserts into cache + triggers loadHTMLString
-            vc?.loadViewIfNeeded()            // force viewDidLoad → render() now, off-screen
+            let vc = makePage(for: i)         // inserts into cache
+            vc?.loadViewIfNeeded()            // force viewDidLoad → build the hosting view off-screen
         }
     }
 
@@ -368,12 +363,12 @@ final class ReaderArticleViewController: UIViewController,
     }
 
     func reloadCurrentPage() {
-        displayedWebVC?.reload()
+        displayedPage?.reload()
     }
 
     /// Toggle the pending-summary placeholder on the visible page (the only one being summarized).
     func setSummarizing(_ summarizing: Bool) {
-        displayedWebVC?.summaryPending = summarizing
+        displayedPage?.summaryPending = summarizing
     }
 
     @objc private func shareArticle() {
@@ -385,7 +380,7 @@ final class ReaderArticleViewController: UIViewController,
     }
 
     /// The deepest currently-presented controller reachable from this scene's root, or nil if
-    /// the view is not yet in a window. Mirrors ReaderWebViewController.topmostPresenter.
+    /// the view is not yet in a window. Mirrors ReaderBlockViewController.topmostPresenter.
     private var topmostPresenter: UIViewController? {
         guard var top = view.window?.rootViewController else { return nil }
         while let presented = top.presentedViewController { top = presented }
@@ -429,14 +424,14 @@ final class ReaderArticleViewController: UIViewController,
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             viewControllerBefore viewController: UIViewController) -> UIViewController? {
-        guard let vc = viewController as? ReaderWebViewController,
+        guard let vc = viewController as? ReaderBlockViewController,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles), i > 0 else { return nil }
         return makePage(for: i - 1)
     }
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             viewControllerAfter viewController: UIViewController) -> UIViewController? {
-        guard let vc = viewController as? ReaderWebViewController,
+        guard let vc = viewController as? ReaderBlockViewController,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles), i < articles.count - 1 else { return nil }
         return makePage(for: i + 1)
     }
@@ -445,7 +440,7 @@ final class ReaderArticleViewController: UIViewController,
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             willTransitionTo pendingViewControllers: [UIViewController]) {
-        if let next = pendingViewControllers.first as? ReaderWebViewController,
+        if let next = pendingViewControllers.first as? ReaderBlockViewController,
            let target = TimelinePageIndex.index(of: next.article.identifier, in: articles) {
             lastDirection = target > index ? .forward : .backward
             prewarmNeighbors(around: target)   // warm mid-swipe, not only after it finishes
@@ -456,7 +451,7 @@ final class ReaderArticleViewController: UIViewController,
     func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool,
                             previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
         isTransitioning = false
-        guard completed, let vc = displayedWebVC,
+        guard completed, let vc = displayedPage,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles) else { return }
         // Reading aloud is tied to the article that was visible when it started; a new page means a
         // new article, so stop rather than keep narrating the one the user swiped away from.
@@ -475,8 +470,6 @@ final class ReaderArticleViewController: UIViewController,
         let live = PrewarmPlan.indices(current: index, count: articles.count, radius: 1, direction: .none) + [index]
         let keep = Set(live.filter { articles.indices.contains($0) }.map { articles[$0].identifier })
         _ = pageCache.trim(toKeep: keep)
-        // Drop the blank-warmed reserve too; it rebuilds lazily on the next dequeue.
-        ReaderWebViewPool.shared.drain()
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
