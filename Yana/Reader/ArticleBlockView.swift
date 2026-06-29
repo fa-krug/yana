@@ -44,7 +44,8 @@ struct ArticleBlockView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 ForEach(Array(bodyBlocks.enumerated()), id: \.offset) { _, block in
-                    blockView(block)
+                    BlockNodeView(block: block, bodySize: bodySize,
+                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink)
                 }
             }
             .padding(.horizontal, 20)
@@ -66,6 +67,13 @@ struct ArticleBlockView: View {
     /// (the lead media) so it sits between the image and the body — matching the prior reader.
     private var bodyBlocks: [Block] { article.blocks }
 
+    /// Ref of the lead image (when the first block is an image), so `BlockNodeView` can skip it in
+    /// the body — the header renders it once, between the title and the summary.
+    private var leadImageRef: String? {
+        if case let .image(ref, _)? = bodyBlocks.first { return ref }
+        return nil
+    }
+
     @ViewBuilder private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !article.title.isEmpty {
@@ -76,7 +84,7 @@ struct ArticleBlockView: View {
             dateline
             // Lead image (if the first block is an image) renders before the summary.
             if case let .image(ref, caption)? = bodyBlocks.first {
-                imageView(ref: ref, caption: caption)
+                BlockImageView(ref: ref, caption: caption, bodySize: bodySize)
             }
             summaryCard
         }
@@ -136,16 +144,27 @@ struct ArticleBlockView: View {
         .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - Blocks
+}
 
-    @ViewBuilder private func blockView(_ block: Block) -> some View {
+/// Renders a single `Block`, recursing into list items and blockquote contents. This is a nominal
+/// `View` (not a `@ViewBuilder` function) on purpose: a `some View`-returning function that calls
+/// itself yields "opaque return type defined in terms of itself". Recursing through a named type
+/// breaks that cycle — `body`'s opaque type only ever references `BlockNodeView` (nominal), never
+/// its own opaque type. The lead image is skipped here (the header renders it once).
+private struct BlockNodeView: View {
+    let block: Block
+    let bodySize: CGFloat
+    let leadImageRef: String?
+    let onOpenLink: (URL) -> Void
+
+    var body: some View {
         switch block {
         case .paragraph(let runs):
-            Text(attributed(runs))
+            Text(attributedString(from: runs))
                 .font(.system(size: bodySize))
                 .fixedSize(horizontal: false, vertical: true)
         case .heading(let level, let runs):
-            Text(attributed(runs))
+            Text(attributedString(from: runs))
                 .font(.system(size: headingSize(level), weight: .bold))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
@@ -155,7 +174,9 @@ struct ArticleBlockView: View {
             blockquoteView(inner)
         case .image(let ref, let caption):
             // The lead image is rendered in the header; skip it here to avoid a duplicate.
-            if !isLeadImage(ref) { imageView(ref: ref, caption: caption) }
+            if ref != leadImageRef {
+                BlockImageView(ref: ref, caption: caption, bodySize: bodySize)
+            }
         case .embed(let embed):
             EmbedCardView(embed: embed, baseSize: bodySize, onOpen: openExternal)
         case .codeBlock(let text, _):
@@ -169,11 +190,6 @@ struct ArticleBlockView: View {
         }
     }
 
-    private func isLeadImage(_ ref: String) -> Bool {
-        if case let .image(leadRef, _)? = bodyBlocks.first { return leadRef == ref }
-        return false
-    }
-
     @ViewBuilder private func listView(ordered: Bool, items: [[Block]]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, itemBlocks in
@@ -183,7 +199,8 @@ struct ArticleBlockView: View {
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(itemBlocks.enumerated()), id: \.offset) { _, b in
-                            blockView(b)
+                            BlockNodeView(block: b, bodySize: bodySize,
+                                          leadImageRef: leadImageRef, onOpenLink: onOpenLink)
                         }
                     }
                 }
@@ -197,7 +214,8 @@ struct ArticleBlockView: View {
             Rectangle().fill(Color.accentColor.opacity(0.6)).frame(width: 3)
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(inner.enumerated()), id: \.offset) { _, b in
-                    blockView(b)
+                    BlockNodeView(block: b, bodySize: bodySize,
+                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink)
                 }
             }
             .padding(.leading, 12)
@@ -205,23 +223,9 @@ struct ArticleBlockView: View {
         }
     }
 
-    @ViewBuilder private func imageView(ref: String, caption: [InlineRun]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ReaderImageView(ref: ref)
-            let captionRuns = caption.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            if !captionRuns.isEmpty {
-                Text(attributed(captionRuns))
-                    .font(.system(size: bodySize * 0.8))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
     private func openExternal(_ urlString: String) {
         if let url = URL(string: urlString) { onOpenLink(url) }
     }
-
-    // MARK: - Fonts / attributed text
 
     private func headingSize(_ level: Int) -> CGFloat {
         switch level {
@@ -231,31 +235,51 @@ struct ArticleBlockView: View {
         default: return bodySize * 1.05
         }
     }
+}
 
-    /// Build an `AttributedString` from inline runs using only Foundation-scope attributes
-    /// (`inlinePresentationIntent` + `.link`) so it stays unambiguous with both SwiftUI and UIKit
-    /// attribute scopes in view. Bold/italic/code/strikethrough relayer the surrounding `Text`'s base
-    /// font; links carry a `.link` so the `openURL` override routes the tap externally (tinted by the
-    /// view's `.tint`).
-    private func attributed(_ runs: [InlineRun]) -> AttributedString {
-        var result = AttributedString()
-        for run in runs {
-            var piece = AttributedString(run.text)
+/// An image block: the image scaled to fit, with an optional caption. Shared by the header (lead
+/// image) and `BlockNodeView` so there's one image impl.
+private struct BlockImageView: View {
+    let ref: String
+    let caption: [InlineRun]
+    let bodySize: CGFloat
 
-            var intent: InlinePresentationIntent = []
-            if run.styles.contains(.bold) { intent.insert(.stronglyEmphasized) }
-            if run.styles.contains(.italic) { intent.insert(.emphasized) }
-            if run.styles.contains(.code) { intent.insert(.code) }
-            if run.styles.contains(.strikethrough) { intent.insert(.strikethrough) }
-            if !intent.isEmpty { piece.inlinePresentationIntent = intent }
-
-            if let link = run.link, let url = URL(string: link) {
-                piece.link = url
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ReaderImageView(ref: ref)
+            let captionRuns = caption.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            if !captionRuns.isEmpty {
+                Text(attributedString(from: captionRuns))
+                    .font(.system(size: bodySize * 0.8))
+                    .foregroundStyle(.secondary)
             }
-            result += piece
         }
-        return result
     }
+}
+
+/// Build an `AttributedString` from inline runs using only Foundation-scope attributes
+/// (`inlinePresentationIntent` + `.link`) so it stays unambiguous with both SwiftUI and UIKit
+/// attribute scopes in view. Bold/italic/code/strikethrough relayer the surrounding `Text`'s base
+/// font; links carry a `.link` so the `openURL` override routes the tap externally (tinted by the
+/// view's `.tint`).
+private func attributedString(from runs: [InlineRun]) -> AttributedString {
+    var result = AttributedString()
+    for run in runs {
+        var piece = AttributedString(run.text)
+
+        var intent: InlinePresentationIntent = []
+        if run.styles.contains(.bold) { intent.insert(.stronglyEmphasized) }
+        if run.styles.contains(.italic) { intent.insert(.emphasized) }
+        if run.styles.contains(.code) { intent.insert(.code) }
+        if run.styles.contains(.strikethrough) { intent.insert(.strikethrough) }
+        if !intent.isEmpty { piece.inlinePresentationIntent = intent }
+
+        if let link = run.link, let url = URL(string: link) {
+            piece.link = url
+        }
+        result += piece
+    }
+    return result
 }
 
 /// Loads a `yana-img://<hash>` (or remote URL fallback) image from the local `ImageStore` and
