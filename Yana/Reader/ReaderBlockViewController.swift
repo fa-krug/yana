@@ -50,10 +50,14 @@ final class ReaderBlockViewController: UIViewController {
         ])
         host.didMove(toParent: self)
 
-        // Re-render live (no app restart) when the article text size changes.
+        // Re-render live (no app restart) when the article text size or font changes.
         NotificationCenter.default.addObserver(
             self, selector: #selector(rebuild),
             name: AppSettings.articleTextSizeDidChange, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(rebuild),
+            name: AppSettings.articleFontDidChange, object: nil
         )
 
         configureTapZones()
@@ -69,6 +73,7 @@ final class ReaderBlockViewController: UIViewController {
         ArticleBlockView(
             article: ReaderArticle(article),
             textSize: settings.articleTextSize,
+            font: settings.articleFont,
             summaryPending: summaryPending,
             onOpenLink: { [weak self] url in self?.openExternally(url) },
             onRefresh: onRefresh

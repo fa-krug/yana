@@ -33,6 +33,7 @@ struct ReaderArticle: Equatable {
 struct ArticleBlockView: View {
     let article: ReaderArticle
     let textSize: ArticleTextSize
+    var font: ArticleFont = .system
     var summaryPending: Bool = false
     var onOpenLink: (URL) -> Void = { _ in }
     var onRefresh: (() -> Void)?
@@ -51,6 +52,7 @@ struct ArticleBlockView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .fontDesign(font.design)   // applies the chosen typeface to all text (code blocks pin their own monospaced design)
             .textSelection(.enabled)
             .tint(.accentColor)   // colors tappable links in the rendered AttributedString
         }
