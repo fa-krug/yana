@@ -288,11 +288,21 @@ private func attributedString(from runs: [InlineRun]) -> AttributedString {
     return result
 }
 
-/// Loads a `yana-img://<hash>` (or remote URL fallback) image from the local `ImageStore` and
-/// renders it scaled to fit. No network for cached refs — the file is read directly off disk.
+/// Loads a `yana-img://<hash>` (or remote URL fallback) image and renders it scaled to fit. Resolves
+/// against `ReaderImageCache`: if the image is already decoded (a revisited page, or a neighbor the
+/// pager preloaded ahead of the swipe) it is taken synchronously at build time so the image is on
+/// screen from the first frame — no empty placeholder, no pop-in. Otherwise it loads off the main
+/// actor and fills in.
 private struct ReaderImageView: View {
     let ref: String
     @State private var image: UIImage?
+
+    init(ref: String) {
+        self.ref = ref
+        // Seed from the cache synchronously so an already-decoded image renders on the first frame
+        // (the common case for prewarmed neighbors and revisited pages) instead of popping in.
+        _image = State(initialValue: ReaderImageCache.shared.cached(ref))
+    }
 
     var body: some View {
         Group {
@@ -306,21 +316,9 @@ private struct ReaderImageView: View {
                 Color.clear.frame(height: 1)
             }
         }
-        .task(id: ref) { image = await Self.load(ref) }
-    }
-
-    static func load(_ ref: String) async -> UIImage? {
-        let prefix = "\(ReaderWeb.imageScheme)://"
-        if ref.hasPrefix(prefix) {
-            let hash = String(ref.dropFirst(prefix.count))
-            let url = await ImageStore.shared.fileURL(forHash: hash)
-            return await Task.detached { UIImage(contentsOfFile: url.path) }.value
+        .task(id: ref) {
+            if image == nil { image = await ReaderImageCache.shared.image(for: ref) }
         }
-        // Remote fallback (rare — pipeline localizes images): fetch off the main actor.
-        guard let url = URL(string: ref) else { return nil }
-        return await Task.detached {
-            (try? Data(contentsOf: url)).flatMap(UIImage.init)
-        }.value
     }
 }
 
