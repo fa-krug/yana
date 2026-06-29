@@ -37,11 +37,13 @@ final class ReaderArticleViewController: UIViewController,
 
     /// Reader prewarm/cache tuning. Constants so they can be profiled and dialed on-device.
     /// Each prewarmed neighbor builds a native hosting page off-screen and each cached page keeps
-    /// one alive. The radius is kept small (warm 2 ahead + 2 behind) so a normal swipe lands on an
+    /// one alive. The radius is kept small (warm 1 ahead + 1 behind) so a normal swipe lands on an
     /// already-built page without paying to build up to 2*radius views on every transition; the
     /// capacity holds that ±radius window plus a little recent history, then evicts to bound memory.
-    private static let prewarmRadius = 2
-    private static let pageCacheCapacity = 11
+    /// Kept small (radius 1, capacity 6) to minimize off-screen work per swipe — the pager only ever
+    /// shows ±1.
+    private static let prewarmRadius = 1
+    private static let pageCacheCapacity = 6
 
     /// Reused page controllers keyed by article identifier; revisiting a recent article is then
     /// instant (no re-render). LRU eviction bounds the number of live hosting controllers.
@@ -442,8 +444,11 @@ final class ReaderArticleViewController: UIViewController,
                             willTransitionTo pendingViewControllers: [UIViewController]) {
         if let next = pendingViewControllers.first as? ReaderBlockViewController,
            let target = TimelinePageIndex.index(of: next.article.identifier, in: articles) {
+            // Only record the travel direction here. Prewarming is deferred to `didFinishAnimating`
+            // (once per swipe, not also mid-swipe) — the redundant mid-swipe warm doubled the
+            // off-screen render bursts that dominate on-screen battery use, for a paint the pager's
+            // own ±1 neighbor request already covers.
             lastDirection = target > index ? .forward : .backward
-            prewarmNeighbors(around: target)   // warm mid-swipe, not only after it finishes
         }
         isTransitioning = true
     }
