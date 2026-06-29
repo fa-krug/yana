@@ -17,7 +17,7 @@ struct ArticleSummaryTests {
         let starred = Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true)
         let news = Yana.Tag(name: "News")
         let feed = Feed(name: "Acme", aggregatorType: .feedContent, identifier: "f")
-        let article = Article(title: "Hello", identifier: "a1", url: "u", content: "<p>body</p>",
+        let article = Article(title: "Hello", identifier: "a1", url: "u",
                               date: .now, author: "Ada")
         article.feed = feed
         article.tags = [news, starred]

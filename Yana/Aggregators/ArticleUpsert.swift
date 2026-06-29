@@ -27,13 +27,17 @@ enum ArticleUpsert {
 
         var inserted = 0
         for item in aggregated {
+            // The pipeline's sanitized HTML is converted to native blocks here — the single
+            // import-time conversion point (also covers AI improve/translate output, which arrives
+            // as HTML in `item.content`). Conversion runs off the reader's render path.
+            let blocks = BlockParser.blocks(fromHTML: item.content, baseURL: URL(string: item.url))
             if let existing = byIdentifier[item.identifier] {
                 // Update: refresh content; re-snapshot feed tags; preserve Starred.
                 let wasStarred = existing.isStarred
                 existing.title = item.title
                 existing.url = item.url
-                existing.rawContent = item.rawContent
-                existing.content = item.content
+                existing.blocks = blocks          // updates blockData + plainText
+                existing.content = ""             // drop any legacy HTML once converted
                 existing.author = item.author
                 existing.iconURL = item.iconURL
                 existing.summary = item.summary
@@ -51,13 +55,12 @@ enum ArticleUpsert {
                     title: item.title,
                     identifier: item.identifier,
                     url: item.url,
-                    rawContent: item.rawContent,
-                    content: item.content,
                     date: item.date,
                     author: item.author,
                     iconURL: item.iconURL,
                     summary: item.summary
                 )
+                article.blocks = blocks           // sets blockData + plainText
                 // Back-date by a small random offset so a run's inserts scatter across the
                 // jitter window, interleaving feeds on the timeline rather than clustering.
                 article.createdAt = now.addingTimeInterval(-jitter())

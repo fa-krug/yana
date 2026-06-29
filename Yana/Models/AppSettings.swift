@@ -140,7 +140,6 @@ final class AppSettings {
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
         // Reader
-        static let readerThemeName = "settings.readerThemeName"
         static let articleTextSize = "settings.articleTextSize"
         static let preferredVoiceIdentifier = "settings.preferredVoiceIdentifier"
         static let useSystemBrowser = "settings.useSystemBrowser"
@@ -288,10 +287,6 @@ final class AppSettings {
     }
 
     // MARK: Reader
-    var readerThemeName: String {
-        get { access(keyPath: \.readerThemeName); return defaults.string(forKey: Key.readerThemeName) ?? ArticleTheme.defaultThemeName }
-        set { withMutation(keyPath: \.readerThemeName) { defaults.set(newValue, forKey: Key.readerThemeName) } }
-    }
     var articleTextSize: ArticleTextSize {
         get { access(keyPath: \.articleTextSize); return ArticleTextSize(rawValue: defaults.integer(forKey: Key.articleTextSize)) ?? .medium }
         set {

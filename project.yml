@@ -42,9 +42,6 @@ targets:
       - path: Yana
         excludes:
           - "Info-iOS.plist"
-          - "Resources/Themes/**"
-      - path: Yana/Resources/Themes
-        type: folder
     dependencies:
       - package: SwiftSoup
     settings:

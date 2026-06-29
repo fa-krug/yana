@@ -47,7 +47,7 @@ struct ArticleUpsertTests {
         ArticleUpsert.apply([aggregated("x1", content: "new")], to: feed, starredTag: starred, context: context, now: .now.addingTimeInterval(60))
 
         #expect(feed.articles.count == 1)                 // no duplicate
-        #expect(article.content == "new")                 // content refreshed
+        #expect(article.plainText == "new")               // content refreshed (now native blocks)
         #expect(article.isStarred)                         // star survived re-import
         #expect(article.tags.contains { $0.name == "News" })
         #expect(article.createdAt == originalCreatedAt)    // timeline position preserved

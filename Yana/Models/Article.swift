@@ -12,8 +12,17 @@ final class Article {
     /// URL or external id; dedup key within a feed.
     var identifier: String = ""
     var url: String = ""
-    var rawContent: String = ""
+    /// Legacy pre-migration HTML body. Retained ONLY so the one-time `BlockMigration` sweep can
+    /// convert existing articles into `blockData`; the sweep clears it once converted, and newly
+    /// imported articles never populate it (they store blocks directly). Not rendered. Kept as a
+    /// stored `String` so the SwiftData migration is lightweight (no in-place type change) and the
+    /// existing HTML survives the upgrade for conversion.
     var content: String = ""
+    /// JSON-encoded `[Block]` — the native reader body. Empty until imported/converted.
+    var blockData: Data = Data()
+    /// The body flattened to visible text: the search surface (`ArticleSearch`/`ArticleListSearch`)
+    /// and the read-aloud surface. Derived once at import / conversion from the blocks.
+    var plainText: String = ""
     var date: Date = Date.now
     var author: String = ""
     var iconURL: String?
@@ -31,8 +40,6 @@ final class Article {
         title: String,
         identifier: String,
         url: String,
-        rawContent: String = "",
-        content: String = "",
         date: Date = .now,
         author: String = "",
         iconURL: String? = nil,
@@ -41,13 +48,21 @@ final class Article {
         self.title = title
         self.identifier = identifier
         self.url = url
-        self.rawContent = rawContent
-        self.content = content
         self.date = date
         self.author = author
         self.iconURL = iconURL
         self.summary = summary
         self.createdAt = .now
+    }
+
+    /// The decoded native body blocks. Decoding is cheap (JSON), so the reader resolves these on
+    /// demand per page; the setter keeps `blockData` and `plainText` in sync.
+    var blocks: [Block] {
+        get { (try? JSONDecoder().decode([Block].self, from: blockData)) ?? [] }
+        set {
+            blockData = (try? JSONEncoder().encode(newValue)) ?? Data()
+            plainText = BlockParser.plainText(newValue)
+        }
     }
 
     /// Starred state is expressed purely as membership of the built-in tag.

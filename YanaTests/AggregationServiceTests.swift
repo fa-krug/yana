@@ -450,7 +450,7 @@ struct AggregationServiceTests {
         let feed = Feed(name: "A", aggregatorType: .fullWebsite, identifier: "a")
         context.insert(feed)
         let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
-                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil,
+                              date: .now, author: "", iconURL: nil,
                               summary: "STALE SUMMARY")
         article.feed = feed
         context.insert(article)
@@ -462,7 +462,7 @@ struct AggregationServiceTests {
         }, aiProcessor: FakeAIProcessor())
         await service.forceReload(article: article)
 
-        #expect(article.content == "REFRESHED")   // content refreshed via refetch
+        #expect(article.plainText == "REFRESHED")   // content refreshed via refetch (now native blocks)
         #expect(article.summary == "")             // derived AI summary cleared, not carried over
     }
 
@@ -472,7 +472,7 @@ struct AggregationServiceTests {
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
         let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
-                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+                              date: .now, author: "", iconURL: nil)
         article.feed = feed
         let pinnedCreatedAt = Date.now.addingTimeInterval(-90 * 24 * 3600)
         article.createdAt = pinnedCreatedAt
@@ -485,7 +485,7 @@ struct AggregationServiceTests {
         }, aiProcessor: FakeAIProcessor())
         await service.forceReload(article: article)
 
-        #expect(article.content == "c")                 // content refreshed
+        #expect(article.plainText == "c")               // content refreshed (now native blocks)
         #expect(article.createdAt == pinnedCreatedAt)    // timeline position preserved
         #expect(article.isStarred)                       // Starred preserved
         #expect(feed.articles.count == 1)                // updated, not duplicated
@@ -496,7 +496,7 @@ struct AggregationServiceTests {
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
         let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
-                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+                              date: .now, author: "", iconURL: nil)
         article.feed = feed
         context.insert(article)
 
@@ -509,7 +509,7 @@ struct AggregationServiceTests {
         let inserted = await service.forceReload(article: article)
 
         #expect(inserted == 0)                       // nothing reloaded
-        #expect(article.content == "OLD")            // current article untouched (no feed reload)
+        #expect(article.plainText.isEmpty)           // current article untouched (no feed reload)
         #expect(feed.articles.count == 1)            // no extra articles imported
     }
 
@@ -518,7 +518,7 @@ struct AggregationServiceTests {
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
         let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
-                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+                              date: .now, author: "", iconURL: nil)
         article.feed = feed
         context.insert(article)
 
@@ -527,7 +527,7 @@ struct AggregationServiceTests {
         let inserted = await service.forceReload(article: article)
 
         #expect(inserted == 0)
-        #expect(article.content == "OLD")
+        #expect(article.plainText.isEmpty)
     }
 
     @Test func forceReloadDoesNotRetentionCleanupRefreshedArticles() async throws {
@@ -536,7 +536,7 @@ struct AggregationServiceTests {
         context.insert(feed)
         // Un-starred article discovered far beyond the default 30-day retention window.
         let article = Article(title: "Old", identifier: "id1", url: "https://x/1",
-                              rawContent: "", content: "OLD", date: .now, author: "", iconURL: nil)
+                              date: .now, author: "", iconURL: nil)
         article.feed = feed
         article.createdAt = Date.now.addingTimeInterval(-40 * 24 * 3600)
         context.insert(article)
@@ -547,13 +547,13 @@ struct AggregationServiceTests {
         await service.forceReload(feed: feed)
 
         #expect(feed.articles.map(\.identifier) == ["id1"])   // survived retention cleanup
-        #expect(feed.articles.first?.content == "c")          // and was refreshed
+        #expect(feed.articles.first?.plainText == "c")        // and was refreshed (now native blocks)
     }
 
     @Test func forceReloadArticleReturnsZeroWithoutFeed() async throws {
         let context = try makeContext()
         let article = Article(title: "Orphan", identifier: "id1", url: "u",
-                              rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
+                              date: .now, author: "", iconURL: nil)
         context.insert(article)
         let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: []) }
         let inserted = await service.forceReload(article: article)

@@ -29,7 +29,8 @@ struct AggregationSummarizeTests {
 
     @Test func writesSummaryAndReturnsTrue() async throws {
         let context = try makeContext()
-        let article = Article(title: "T", identifier: "i", url: "https://x", content: "<p>body</p>")
+        let article = Article(title: "T", identifier: "i", url: "https://x")
+        article.plainText = "body"   // summarize seeds the AI from the article's visible text
         context.insert(article)
 
         let service = AggregationService(context: context, aiProcessor: StubSummarizer(summary: "Short summary."))
@@ -41,7 +42,8 @@ struct AggregationSummarizeTests {
 
     @Test func failureLeavesArticleUnchanged() async throws {
         let context = try makeContext()
-        let article = Article(title: "T", identifier: "i", url: "https://x", content: "<p>body</p>", summary: "old")
+        let article = Article(title: "T", identifier: "i", url: "https://x", summary: "old")
+        article.plainText = "body"
         context.insert(article)
 
         let service = AggregationService(context: context, aiProcessor: DroppingProcessor())

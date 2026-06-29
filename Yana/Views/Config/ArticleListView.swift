@@ -1,9 +1,9 @@
 import SwiftData
 import SwiftUI
 
-/// Full-text search over title / content / author / feed name, case- & diacritic-insensitive.
-/// The fetch projects only scalar fields (never `content`), so article HTML is never materialized;
-/// the compound predicate is evaluated in Swift over those projected rows.
+/// Full-text search over title / body text / author / feed name, case- & diacritic-insensitive.
+/// Matches against `plainText` (the body flattened to visible text), evaluated over rows that
+/// project only scalar fields.
 enum ArticleListSearch {
     // NOTE: The #Predicate macro cannot type-check the full four-field expression in one block
     // (type-check timeout). Split into two complementary predicates: one for the article's own
@@ -12,7 +12,7 @@ enum ArticleListSearch {
         let q = query
         return #Predicate<Article> { article in
             article.title.localizedStandardContains(q)
-                || article.content.localizedStandardContains(q)
+                || article.plainText.localizedStandardContains(q)
                 || article.author.localizedStandardContains(q)
         }
     }

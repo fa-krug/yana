@@ -90,21 +90,6 @@ struct SettingsScreenView: View {
     private var readerSection: some View {
         Section {
             Picker(selection: Binding(
-                get: { settings.readerThemeName },
-                set: { newValue in
-                    settings.readerThemeName = newValue
-                    ArticleThemesManager.shared.currentThemeName = newValue
-                }
-            )) {
-                ForEach(ArticleThemesManager.shared.themeNames, id: \.self) { name in
-                    Text(name).tag(name)
-                }
-            } label: {
-                Label(String(localized: "Theme"), systemImage: "paintbrush")
-                    .labelStyle(.tintedIcon(.indigo))
-            }
-
-            Picker(selection: Binding(
                 get: { settings.articleTextSize },
                 set: { settings.articleTextSize = $0 }
             )) {

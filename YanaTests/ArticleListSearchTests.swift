@@ -13,7 +13,8 @@ struct ArticleListSearchTests {
     }
 
     private func insert(_ context: ModelContext, id: String, title: String, content: String, author: String) {
-        let a = Article(title: title, identifier: id, url: id, content: content, author: author)
+        let a = Article(title: title, identifier: id, url: id, author: author)
+        a.plainText = content   // search now matches the body's flattened text
         context.insert(a)
     }
 
@@ -44,10 +45,10 @@ struct ArticleListSearchTests {
         let context = try makeContext()
         let feed = Feed(name: "TechRadar", aggregatorType: .feedContent, identifier: "f1")
         context.insert(feed)
-        let matched = Article(title: "Some Title", identifier: "a1", url: "https://example.com/a1", content: "x", author: "Ed")
+        let matched = Article(title: "Some Title", identifier: "a1", url: "https://example.com/a1", author: "Ed")
         matched.feed = feed
         context.insert(matched)
-        let unmatched = Article(title: "Other Title", identifier: "a2", url: "https://example.com/a2", content: "y", author: "Fay")
+        let unmatched = Article(title: "Other Title", identifier: "a2", url: "https://example.com/a2", author: "Fay")
         context.insert(unmatched)
         try context.save()
 
