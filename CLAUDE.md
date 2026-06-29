@@ -57,8 +57,8 @@ designed for privacy-conscious users who want their feeds without any backend.
   whole library's lightweight `ArticleSummary` metadata once at launch via an `@ModelActor`
   background loader, then stays in sync via a coalesced `ModelContext.didSave` observer;
   consumed by both the reader and `ArticleListView` in place of per-view `@Query`s; the reader
-  resolves each page's full `Article` with HTML on demand by `persistentID`).
-- **Reader** (`Yana/Reader/`): a UIKit port of NetNewsWire's reader. `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderWebViewController` (per-article `WKWebView`, pull-to-refresh, native-browser links); each page's full `Article` (with HTML) is resolved lazily by `persistentID` when the page is rendered. Cold start is front-loaded two ways: `ReaderWarmup` pre-renders the saved anchor article into an off-screen `WKWebView` during launch (the first page adopts it on an HTML match), and `ReaderWebViewPool` (a port of NNW's `WebViewProvider`) keeps a small reserve of blank-warmed `WKWebView`s so every other page — and any anchor warm that misses — dequeues an already-spun-up view instead of cold-allocating. Article HTML is rendered by `ArticleRenderer` + `MacroProcessor` driving NNW's `.nnwtheme` themes via `ArticleThemesManager` (8 bundled themes under `Yana/Resources/Themes/`, with CSS/templates under `Yana/Resources/ArticleRendering/`) and `ArticleTextSize`. Links open in `SFSafariViewController` or the system browser when the "Use System Browser" setting is on. A dedicated **Reader** settings section exposes theme, text size, and system-browser preference.
+  resolves each page's full `Article` (with its `[Block]` body) on demand by `persistentID`).
+- **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref; video/tweet embeds shown as tappable poster/text cards that open externally). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. A dedicated **Reader** settings section exposes text size and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
 - **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
@@ -77,7 +77,7 @@ designed for privacy-conscious users who want their feeds without any backend.
 - **No read/unread state:** the home surface is a single **endless timeline** of all articles
   ordered by import date (`Article.createdAt`), swiped both directions, with the position remembered
   across launches. The full lightweight index is loaded upfront from `ArticleStore` and kept in sync
-  with SwiftData saves; the reader renders each page's HTML lazily. Re-fetched articles keep their
+  with SwiftData saves; the reader decodes each page's `[Block]` body lazily. Re-fetched articles keep their
   original `createdAt`, so updates don't jump the timeline. Newly imported articles get their
   `createdAt` back-dated by a small random offset (`ArticleUpsert.importJitterWindow`) so a run's
   inserts scatter across a few minutes and feeds interleave instead of clustering into per-feed blocks.
@@ -132,7 +132,7 @@ before use, with Apple Intelligence checked for on-device availability instead.
 3. **Local aggregation** — fetch & parse feeds on-device, store articles in SwiftData (tags snapshotted per article at import)
 4. **Endless timeline** — single stream of all articles ordered by import date, swiped both directions, position remembered
 5. **Tag filter** — filter the timeline by toggling tags (all on by default; includes an "Untagged" entry)
-6. **Article detail** — render article HTML content in the swipe reader
+6. **Article detail** — render the article's native `[Block]` body in the swipe reader
 7. **Starred** — star/unstar an article (adds/removes the built-in Starred tag); starred articles are exempt from cleanup
 8. **Force update** — pull-down on the reader (current article + whole timeline); per-feed / all-feeds from the config hub
 9. **Retention** — keep ~one month of articles; delete older ones (except Starred)
