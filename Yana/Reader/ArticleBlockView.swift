@@ -83,7 +83,14 @@ struct ArticleBlockView: View {
         VStack(alignment: .leading, spacing: 10) {
             if !article.title.isEmpty {
                 Text(article.title)
-                    .font(.system(size: bodySize * 1.7, weight: .bold))
+                    .font(.system(size: bodySize * 1.5, weight: .bold))
+                    // Long headlines (especially German compounds like "niedersächsischen") used to
+                    // balloon to 4+ huge lines. Cap the line count and let the font scale down to fit
+                    // so a long title shrinks gracefully instead of dominating the screen; tightening
+                    // lets words pack closer rather than stranding short words on their own line.
+                    .lineLimit(4)
+                    .minimumScaleFactor(0.6)
+                    .allowsTightening(true)
                     .fixedSize(horizontal: false, vertical: true)
             }
             dateline
