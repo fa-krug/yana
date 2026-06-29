@@ -212,6 +212,10 @@ final class ReaderArticleViewController: UIViewController,
         self.index = clamp(index)
         loadViewIfNeeded()
         if let page = makePage(for: self.index) {
+            // Warm the visible page's lead image before it is shown so its header renders on the
+            // first frame instead of popping in after the page appears (the reveal gate in
+            // ArticleBlockView waits on this).
+            preloadLeadImage(of: page.article)
             pageController.setViewControllers([page], direction: .forward, animated: false)
             recordWiredNeighbors()
         }
@@ -252,6 +256,7 @@ final class ReaderArticleViewController: UIViewController,
 
         guard let page = makePage(for: target) else { updateStarItem(); return }
         speech.stop()
+        preloadLeadImage(of: page.article)
         pageController.setViewControllers([page], direction: .forward, animated: false)
         recordWiredNeighbors()
         updateStarItem()
@@ -456,6 +461,9 @@ final class ReaderArticleViewController: UIViewController,
                             willTransitionTo pendingViewControllers: [UIViewController]) {
         if let next = pendingViewControllers.first as? ReaderBlockViewController,
            let target = TimelinePageIndex.index(of: next.article.identifier, in: articles) {
+            // Warm the lead image of the page being swiped to, in case a fast swipe outran the
+            // ±1 prewarm — so its header is ready by the time the swipe settles.
+            preloadLeadImage(of: next.article)
             // Only record the travel direction here. Prewarming is deferred to `didFinishAnimating`
             // (once per swipe, not also mid-swipe) — the redundant mid-swipe warm doubled the
             // off-screen render bursts that dominate on-screen battery use, for a paint the pager's

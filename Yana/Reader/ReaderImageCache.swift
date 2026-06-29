@@ -1,4 +1,5 @@
 import UIKit
+import ImageIO
 
 /// In-memory cache of decoded reader images, keyed by their `yana-img://<hash>` (or remote URL)
 /// ref. Exists so a page that has already been seen — or whose lead image was preloaded ahead of a
@@ -21,11 +22,20 @@ final class ReaderImageCache: @unchecked Sendable {
     /// runs) share one disk read instead of decoding the same file twice.
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
+    /// Cap for the decoded in-memory copy. Reader images never render wider than the content column,
+    /// so decoding to ~1600px (rather than the on-disk ≤2000px original) cuts decode time and memory
+    /// while staying sharp at every iPhone content width and visually indistinguishable on iPad.
+    /// A constant so it can be profiled and dialed on-device.
+    private static let maxPixelSize = 1600
+
     init() {
         // Decoded reader images are large; bound the count so a long browsing session can't grow the
         // cache without limit. The pager only keeps a handful of pages alive, so a small window of
         // recently decoded images is plenty.
         cache.countLimit = 32
+        // Also bound by decoded bytes — now that images are force-decoded into bitmaps (not held as
+        // lazy file-backed images), a window of large headers could otherwise dominate memory.
+        cache.totalCostLimit = 192 * 1024 * 1024
     }
 
     /// Synchronous lookup — returns the decoded image if it is already in memory, else nil.
@@ -46,7 +56,7 @@ final class ReaderImageCache: @unchecked Sendable {
         }
 
         let image = await task.value
-        if let image { cache.setObject(image, forKey: ref as NSString) }
+        if let image { cache.setObject(image, forKey: ref as NSString, cost: Self.cost(of: image)) }
         lock.withLock { _ = inFlight.removeValue(forKey: ref) }
         return image
     }
@@ -64,11 +74,46 @@ final class ReaderImageCache: @unchecked Sendable {
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
             let url = await ImageStore.shared.fileURL(forHash: hash)
-            return await Task.detached { UIImage(contentsOfFile: url.path) }.value
+            return await Task.detached { decodedImage(at: url) }.value
         }
         guard let url = URL(string: ref) else { return nil }
         return await Task.detached {
-            (try? Data(contentsOf: url)).flatMap(UIImage.init)
+            (try? Data(contentsOf: url)).flatMap { decodedImage(from: $0) }
         }.value
+    }
+
+    /// Decodes (and downsamples) the image at `url` into a draw-ready bitmap, fully realized on the
+    /// calling background thread so the first on-screen draw doesn't pay a synchronous decode — the
+    /// hitch behind the image "pop-in". Falls back to a plain file load if ImageIO can't open it.
+    private static func decodedImage(at url: URL) -> UIImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return UIImage(contentsOfFile: url.path)
+        }
+        return decodedImage(from: source) ?? UIImage(contentsOfFile: url.path)
+    }
+
+    private static func decodedImage(from data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return UIImage(data: data)
+        }
+        return decodedImage(from: source) ?? UIImage(data: data)
+    }
+
+    private static func decodedImage(from source: CGImageSource) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,   // bake in EXIF orientation
+            // Decode the bitmap now, on this background thread, instead of lazily on first draw.
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,  // never upscales smaller images
+        ]
+        guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    /// Approximate decoded byte size, used as the `NSCache` cost so `totalCostLimit` bounds memory.
+    private static func cost(of image: UIImage) -> Int {
+        guard let cg = image.cgImage else { return 0 }
+        return cg.bytesPerRow * cg.height
     }
 }
