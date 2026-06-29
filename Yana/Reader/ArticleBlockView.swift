@@ -163,6 +163,8 @@ private struct BlockNodeView: View {
     let onOpenLink: (URL) -> Void
     let onPlayVideo: (Embed) -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         switch block {
         case .paragraph(let runs):
@@ -227,7 +229,9 @@ private struct BlockNodeView: View {
                 }
             }
             .padding(.leading, 12)
-            .foregroundStyle(.secondary)
+            // `.secondary` is too dim to read comfortably against a dark background, so lift
+            // blockquote text (e.g. Reddit comments) toward primary in dark mode.
+            .foregroundStyle(colorScheme == .dark ? Color.primary.opacity(0.82) : Color.secondary)
         }
     }
 
