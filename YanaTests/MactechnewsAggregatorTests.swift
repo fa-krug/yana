@@ -157,6 +157,21 @@ struct MactechnewsAggregatorTests {
         #expect(imgCount == 2, "lazy-loaded image with matching numeric ID should be deduped; expected 2 imgs (header + Other), got \(imgCount)")
     }
 
+    // MARK: - Title filtering
+
+    @Test func filtersOutTechTickerTitles() {
+        let agg = StubMactechnews(firstPage: "", store: tempStore())
+        func article(_ title: String) -> AggregatedArticle {
+            agg.makeArticle(from: FeedEntry(
+                title: title, link: "https://www.mactechnews.de/news/a.html", content: "<p>s</p>",
+                summary: nil, entryDescription: nil, published: .now, author: "", enclosures: [],
+                itunesDuration: nil, itunesImage: nil, mediaThumbnails: []))
+        }
+        #expect(!agg.shouldInclude(article("TechTicker: Some roundup")))
+        #expect(agg.shouldInclude(article("Regular news story")))
+        #expect(agg.shouldInclude(article("A TechTicker: in the middle")))   // only a leading prefix is filtered
+    }
+
     // MARK: - Pagination detection
 
     @Test func detectsPaginationFromQueryParamLinks() {
