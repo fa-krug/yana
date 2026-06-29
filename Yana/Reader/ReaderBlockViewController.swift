@@ -71,8 +71,20 @@ final class ReaderBlockViewController: UIViewController {
             textSize: settings.articleTextSize,
             summaryPending: summaryPending,
             onOpenLink: { [weak self] url in self?.openExternally(url) },
+            onPlayVideo: { [weak self] embed in self?.playVideo(embed) },
             onRefresh: onRefresh
         )
+    }
+
+    /// Play a video embed full-screen in-app. Falls back to opening the embed's URL externally when
+    /// it isn't an inline-playable video (the card already routes those through `onOpenLink`, so this
+    /// is just a safety net).
+    private func playVideo(_ embed: Embed) {
+        if let player = ReaderVideoPlayerViewController.make(for: embed) {
+            (topmostPresenter ?? self).present(player, animated: true)
+        } else if let url = URL(string: embed.externalURL) {
+            openExternally(url)
+        }
     }
 
     private func openExternally(_ url: URL) {

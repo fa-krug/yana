@@ -1,0 +1,126 @@
+import UIKit
+import WebKit
+
+/// A modal, full-screen video player for the reader's video embeds. Instead of leaving the app to
+/// open the provider's website, a tapped YouTube/Dailymotion poster card plays the video inline in
+/// a `WKWebView` that fills the screen (autoplay enabled, native fullscreen controls available).
+///
+/// Playback uses the provider's privacy-mode embed player (`youtube-nocookie` / Dailymotion's geo
+/// player) — the same players `EmbedRewriter` targets — loaded into a black, edge-to-edge web view
+/// with a single close button overlaid. Only providers we can map to an embeddable player are
+/// handled here; anything else falls back to opening externally (see `EmbedCardView`).
+@MainActor
+final class ReaderVideoPlayerViewController: UIViewController {
+
+    private let embedURL: URL
+    private var webView: WKWebView!
+
+    /// Builds a player for the embed, or returns `nil` when the embed isn't a playable video (e.g.
+    /// a tweet, or a video whose id couldn't be resolved) — the caller then opens it externally.
+    static func make(for embed: Embed) -> ReaderVideoPlayerViewController? {
+        guard let url = playerURL(for: embed) else { return nil }
+        return ReaderVideoPlayerViewController(embedURL: url)
+    }
+
+    /// Maps an embed to its inline-playable embed-player URL, or `nil` when it isn't a video we can
+    /// play in place.
+    static func playerURL(for embed: Embed) -> URL? {
+        switch embed.provider {
+        case .youtube:
+            guard let id = EmbedRewriter.extractYouTubeID(from: embed.externalURL) else { return nil }
+            let params = "autoplay=1&playsinline=1&controls=1&rel=0&modestbranding=1&fs=1&origin=\(ReaderWeb.baseOrigin)"
+            return URL(string: "https://www.youtube-nocookie.com/embed/\(id)?\(params)")
+        case .dailymotion:
+            guard let id = dailymotionID(from: embed.externalURL) else { return nil }
+            return URL(string: "https://geo.dailymotion.com/player.html?video=\(id)&autoplay=1")
+        case .tweet, .generic:
+            return nil
+        }
+    }
+
+    private static func dailymotionID(from url: String) -> String? {
+        guard let range = url.range(of: #"video/([A-Za-z0-9]+)"#, options: .regularExpression) else { return nil }
+        return String(url[range]).replacingOccurrences(of: "video/", with: "")
+    }
+
+    private init(embedURL: URL) {
+        self.embedURL = embedURL
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+        modalTransitionStyle = .crossDissolve
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var prefersStatusBarHidden: Bool { true }
+    override var prefersHomeIndicatorAutoHidden: Bool { true }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []   // let the embed player autoplay
+
+        webView = WKWebView(frame: .zero, configuration: config)
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.backgroundColor = .black
+        webView.isOpaque = false
+        webView.scrollView.isScrollEnabled = false
+        view.addSubview(webView)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        addCloseButton()
+        webView.loadHTMLString(Self.html(embedURL: embedURL), baseURL: URL(string: ReaderWeb.baseOrigin))
+    }
+
+    private func addCloseButton() {
+        var config = UIButton.Configuration.filled()
+        config.image = UIImage(systemName: "xmark")
+        config.baseBackgroundColor = .black.withAlphaComponent(0.55)
+        config.baseForegroundColor = .white
+        config.cornerStyle = .capsule
+        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10)
+
+        let button = UIButton(configuration: config)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.accessibilityLabel = String(localized: "Close")
+        button.addTarget(self, action: #selector(close), for: .touchUpInside)
+        view.addSubview(button)
+        NSLayoutConstraint.activate([
+            button.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            button.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+        ])
+    }
+
+    @objc private func close() {
+        // Tear down the web view first so playback (and audio) stops immediately on dismiss.
+        webView.loadHTMLString("", baseURL: nil)
+        dismiss(animated: true)
+    }
+
+    /// A self-contained page that paints the embed player edge-to-edge on black. The iframe carries
+    /// the same `allow`/`allowfullscreen` capabilities the providers expect for autoplay + fullscreen.
+    private static func html(embedURL: URL) -> String {
+        let src = embedURL.absoluteString
+        let allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+        return """
+        <!DOCTYPE html><html><head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <style>
+        html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden}
+        .wrap{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center}
+        iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
+        </style></head>
+        <body><div class="wrap">
+        <iframe src="\(src)" allow="\(allow)" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        </div></body></html>
+        """
+    }
+}

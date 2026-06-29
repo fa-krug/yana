@@ -35,6 +35,8 @@ struct ArticleBlockView: View {
     let textSize: ArticleTextSize
     var summaryPending: Bool = false
     var onOpenLink: (URL) -> Void = { _ in }
+    /// Tapping a video embed plays it full-screen in-app rather than opening the website.
+    var onPlayVideo: (Embed) -> Void = { _ in }
     var onRefresh: (() -> Void)?
 
     private var bodySize: CGFloat { CGFloat(textSize.pointSize) }
@@ -45,7 +47,8 @@ struct ArticleBlockView: View {
                 header
                 ForEach(Array(bodyBlocks.enumerated()), id: \.offset) { _, block in
                     BlockNodeView(block: block, bodySize: bodySize,
-                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink)
+                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink,
+                                  onPlayVideo: onPlayVideo)
                 }
             }
             .padding(.horizontal, 20)
@@ -156,6 +159,7 @@ private struct BlockNodeView: View {
     let bodySize: CGFloat
     let leadImageRef: String?
     let onOpenLink: (URL) -> Void
+    let onPlayVideo: (Embed) -> Void
 
     var body: some View {
         switch block {
@@ -178,7 +182,7 @@ private struct BlockNodeView: View {
                 BlockImageView(ref: ref, caption: caption, bodySize: bodySize)
             }
         case .embed(let embed):
-            EmbedCardView(embed: embed, baseSize: bodySize, onOpen: openExternal)
+            EmbedCardView(embed: embed, baseSize: bodySize, onOpen: openExternal, onPlayVideo: onPlayVideo)
         case .codeBlock(let text, _):
             Text(text)
                 .font(.system(size: bodySize * 0.9, design: .monospaced))
@@ -200,7 +204,8 @@ private struct BlockNodeView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(itemBlocks.enumerated()), id: \.offset) { _, b in
                             BlockNodeView(block: b, bodySize: bodySize,
-                                          leadImageRef: leadImageRef, onOpenLink: onOpenLink)
+                                          leadImageRef: leadImageRef, onOpenLink: onOpenLink,
+                                          onPlayVideo: onPlayVideo)
                         }
                     }
                 }
@@ -215,7 +220,8 @@ private struct BlockNodeView: View {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(inner.enumerated()), id: \.offset) { _, b in
                     BlockNodeView(block: b, bodySize: bodySize,
-                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink)
+                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink,
+                                  onPlayVideo: onPlayVideo)
                 }
             }
             .padding(.leading, 12)
@@ -319,14 +325,28 @@ private struct ReaderImageView: View {
 }
 
 /// A tappable embed card: a 16:9 poster with a play glyph for videos, or a text card for tweets.
-/// A tap opens the embed's external URL via the reader's link policy.
+/// Tapping a video poster plays it full-screen in-app (`onPlayVideo`); a tweet card — and any video
+/// we can't play in place — opens its external URL via the reader's link policy (`onOpen`).
 private struct EmbedCardView: View {
     let embed: Embed
     let baseSize: CGFloat
     let onOpen: (String) -> Void
+    let onPlayVideo: (Embed) -> Void
+
+    /// True for video embeds we can play inline (their player URL resolves); a tweet, or a video
+    /// whose id can't be parsed, stays a link-out.
+    private var isPlayableVideo: Bool {
+        ReaderVideoPlayerViewController.playerURL(for: embed) != nil
+    }
 
     var body: some View {
-        Button { onOpen(embed.externalURL) } label: {
+        Button {
+            if isPlayableVideo {
+                onPlayVideo(embed)
+            } else {
+                onOpen(embed.externalURL)
+            }
+        } label: {
             switch embed.provider {
             case .tweet:
                 textCard
