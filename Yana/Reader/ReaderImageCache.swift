@@ -38,19 +38,16 @@ final class ReaderImageCache: @unchecked Sendable {
     func image(for ref: String) async -> UIImage? {
         if let hit = cached(ref) { return hit }
 
-        let task: Task<UIImage?, Never>
-        lock.lock()
-        if let existing = inFlight[ref] {
-            task = existing
-        } else {
-            task = Task { await Self.load(ref) }
+        let task: Task<UIImage?, Never> = lock.withLock {
+            if let existing = inFlight[ref] { return existing }
+            let task = Task { await Self.load(ref) }
             inFlight[ref] = task
+            return task
         }
-        lock.unlock()
 
         let image = await task.value
         if let image { cache.setObject(image, forKey: ref as NSString) }
-        lock.lock(); inFlight.removeValue(forKey: ref); lock.unlock()
+        lock.withLock { _ = inFlight.removeValue(forKey: ref) }
         return image
     }
 
