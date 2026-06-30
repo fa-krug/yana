@@ -28,6 +28,35 @@ final class ReaderArticleViewController: UIViewController,
     private var index = 0
     private var isTransitioning = false
 
+    /// The pager's internal gesture scroll view (`UIPageViewController` hosts a private
+    /// `_UIQueuingScrollView`), located by scanning the page controller's subviews. Used to detect
+    /// an in-flight user swipe so a programmatic `setViewControllers` never lands mid-gesture.
+    private weak var cachedPagerScrollView: UIScrollView?
+    private var pagerScrollView: UIScrollView? {
+        if let cachedPagerScrollView { return cachedPagerScrollView }
+        let found = pageController.view.subviews.compactMap { $0 as? UIScrollView }.first
+        cachedPagerScrollView = found
+        return found
+    }
+
+    /// True whenever the pager is animating a transition or the user is touching / dragging /
+    /// settling the page scroll view. Mutating the pager (`setViewControllers`) in any of these
+    /// states corrupts its queuing scroll view and trips an assertion when the manual scroll ends
+    /// (`-[UIPageViewController queuingScrollView:didEndManualScroll:…]`). `isTransitioning` alone
+    /// is not enough: it flips true only at `willTransitionTo`, which fires *after* a drag has
+    /// already begun, leaving an early-drag window in which a SwiftUI-driven `update` could slip a
+    /// `setViewControllers` in mid-gesture.
+    private var isPagerBusy: Bool {
+        if isTransitioning { return true }
+        guard let sv = pagerScrollView else { return false }
+        return sv.isTracking || sv.isDragging || sv.isDecelerating
+    }
+
+    /// Set when a timeline `update` arrives while the pager is busy, so the deferred reconciliation
+    /// runs once the swipe settles (covers a drag that bounces back without completing a transition,
+    /// which fires no `didFinishAnimating`).
+    private var needsReconcileAfterInteraction = false
+
     /// Identifiers of the pages adjacent to the displayed article the last time the pager's
     /// neighbors were wired up. `UIPageViewController` caches its before/after pages and only
     /// re-queries the data source on a `setViewControllers` call or a completed swipe — so a
@@ -90,6 +119,11 @@ final class ReaderArticleViewController: UIViewController,
         pageController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(pageController.view)
         pageController.didMove(toParent: self)
+
+        // Observe the pager's own pan gesture so a reconciliation we skipped mid-swipe (see
+        // `update`) is recovered the moment the gesture settles — including a drag that bounces
+        // back without completing a transition.
+        pagerScrollView?.panGestureRecognizer.addTarget(self, action: #selector(pagerPanGestureChanged))
 
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleMemoryWarning),
@@ -232,8 +266,22 @@ final class ReaderArticleViewController: UIViewController,
     }
 
     func update(articles: [ArticleSummary], index: Int) {
+        // Keep the data source's backing array current even mid-swipe (it only feeds neighbor
+        // lookups; no pager mutation), but never run `setViewControllers` while the user is
+        // interacting with the pager — doing so corrupts its queuing scroll view and crashes when
+        // the swipe ends. Defer the reconciliation to `reconcileIfIdle` once the gesture settles.
         self.articles = articles
-        guard !isTransitioning else { return }
+        guard !isPagerBusy else {
+            needsReconcileAfterInteraction = true
+            return
+        }
+        reconcile(toIndex: index)
+    }
+
+    /// Bring the displayed page in line with `index` and the current timeline. Only ever called
+    /// when `isPagerBusy` is false, so the `setViewControllers` calls here are safe.
+    private func reconcile(toIndex index: Int) {
+        needsReconcileAfterInteraction = false
         let target = clamp(index)
         let displayedID = displayedPage?.article.identifier
         let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
@@ -260,6 +308,31 @@ final class ReaderArticleViewController: UIViewController,
         pageController.setViewControllers([page], direction: .forward, animated: false)
         recordWiredNeighbors()
         updateStarItem()
+    }
+
+    /// Re-run a reconciliation deferred while the pager was busy. Re-checks `isPagerBusy` (a swipe
+    /// may still be decelerating after the gesture lifts) and retries on the next runloop until the
+    /// pager is idle. Reconciles against the pager's own settled `index`, so it never fights the
+    /// page the user just landed on — it only re-asserts changed neighbors / picks up a timeline
+    /// mutation that arrived mid-swipe.
+    private func reconcileIfIdle() {
+        guard needsReconcileAfterInteraction else { return }
+        guard !isPagerBusy else {
+            DispatchQueue.main.async { [weak self] in self?.reconcileIfIdle() }
+            return
+        }
+        reconcile(toIndex: index)
+    }
+
+    @objc private func pagerPanGestureChanged(_ recognizer: UIPanGestureRecognizer) {
+        switch recognizer.state {
+        case .ended, .cancelled, .failed:
+            // The gesture lifted; deceleration may still be running, so hop to the next runloop and
+            // let `reconcileIfIdle` wait it out before touching the pager.
+            DispatchQueue.main.async { [weak self] in self?.reconcileIfIdle() }
+        default:
+            break
+        }
     }
 
     /// Identifiers immediately before/after the page for `identifier` in the current timeline.
@@ -476,6 +549,11 @@ final class ReaderArticleViewController: UIViewController,
     func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool,
                             previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
         isTransitioning = false
+        // Flush any reconciliation that arrived mid-swipe — deferred to the next runloop so it never
+        // runs inside the `didEndManualScroll` call stack that triggered this callback.
+        if needsReconcileAfterInteraction {
+            DispatchQueue.main.async { [weak self] in self?.reconcileIfIdle() }
+        }
         guard completed, let vc = displayedPage,
               let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles) else { return }
         // Reading aloud is tied to the article that was visible when it started; a new page means a
