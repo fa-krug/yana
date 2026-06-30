@@ -10,12 +10,25 @@ final class BackgroundRefreshManager {
     /// Must match `BGTaskSchedulerPermittedIdentifiers` in `Info-iOS.plist`.
     static let taskIdentifier = "de.fa-krug.Yana.background-refresh"
 
+    /// A `BGProcessingTask` identifier (also in `BGTaskSchedulerPermittedIdentifiers`). Processing
+    /// tasks get minutes of runtime instead of the ~30s an app-refresh task is granted, so an
+    /// AI-heavy feed (e.g. Reddit with translation) can finish its AI pass before expiration.
+    /// Without it the window expires mid-request, the run is cancelled, and `AIProcessor` drops
+    /// every still-in-flight article — so those articles never get imported in the background.
+    static let processingTaskIdentifier = "de.fa-krug.Yana.background-processing"
+
     /// iOS will not honour an earliest-begin sooner than a few minutes; clamp to a safe floor.
     static let minimumInterval: TimeInterval = 60
 
     private let container: ModelContainer
     private let intervalProvider: @MainActor () -> TimeInterval
     private let now: () -> Date
+
+    /// Guards against the refresh and processing tasks both firing close together: the first to
+    /// run does the aggregation; the other just re-arms. Each handler builds its own
+    /// `AggregationService`, so that service's `isUpdating` flag can't coordinate the two — the
+    /// guard has to live on the (main-actor) manager.
+    private var isRunning = false
 
     init(
         container: ModelContainer,
@@ -65,8 +78,15 @@ final class BackgroundRefreshManager {
     /// so isolation is inferred from the enclosing context), and the synthesized main-actor
     /// precondition traps (EXC_BREAKPOINT) the moment iOS runs the task off the main thread.
     func register() {
+        registerHandler(for: Self.taskIdentifier)
+        registerHandler(for: Self.processingTaskIdentifier)
+    }
+
+    /// Register one launch handler. Both the app-refresh and processing tasks run the same work;
+    /// only their scheduling and the runtime the system grants differ.
+    private func registerHandler(for identifier: String) {
         BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: Self.taskIdentifier,
+            forTaskWithIdentifier: identifier,
             using: nil
         ) { @Sendable task in
             // `BGTask` is non-Sendable, but iOS hands it to this handler exactly once and we
@@ -74,34 +94,51 @@ final class BackgroundRefreshManager {
             // can't prove that across an escaping closure, hence `nonisolated(unsafe)`.
             nonisolated(unsafe) let task = task
             Task { @MainActor [weak self] in
-                guard let refreshTask = task as? BGAppRefreshTask else {
+                guard let self else {
                     task.setTaskCompleted(success: false)
                     return
                 }
-                guard let self else {
-                    refreshTask.setTaskCompleted(success: false)
-                    return
-                }
-                self.handle(task: refreshTask)
+                self.handle(task: task)
             }
         }
     }
 
-    /// Submit the next refresh request. Best-effort: submission failures are ignored
-    /// (e.g. when running in the simulator or when the system declines).
+    /// Submit the next requests. Best-effort: submission failures are ignored (e.g. when running
+    /// in the simulator or when the system declines). Both task kinds are re-armed every run:
+    /// the app-refresh task keeps lightweight feeds current frequently, while the processing task
+    /// is the long window that lets AI-heavy feeds finish their AI pass instead of being dropped.
     func schedule() {
-        let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
-        request.earliestBeginDate = Self.nextBeginDate(from: now(), interval: intervalProvider())
-        try? BGTaskScheduler.shared.submit(request)
+        let begin = Self.nextBeginDate(from: now(), interval: intervalProvider())
+
+        let refresh = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
+        refresh.earliestBeginDate = begin
+        try? BGTaskScheduler.shared.submit(refresh)
+
+        let processing = BGProcessingTaskRequest(identifier: Self.processingTaskIdentifier)
+        processing.earliestBeginDate = begin
+        // The run needs the network (feed fetch + AI calls); don't gate on power so updates can
+        // still land through the day.
+        processing.requiresNetworkConnectivity = true
+        processing.requiresExternalPower = false
+        try? BGTaskScheduler.shared.submit(processing)
     }
 
     /// Run one background refresh, then reschedule. Always completes the task and never
     /// throws out — a background failure must be silent (spec §6).
-    func handle(task: BGAppRefreshTask) {
+    func handle(task: BGTask) {
         // Re-arm immediately so the chain continues even if this run is cut short.
         schedule()
 
+        // If the sibling task already kicked off a run, this one just re-arms and completes:
+        // a second concurrent `updateAll()` on the same context would be wasted (or racy) work.
+        guard !isRunning else {
+            task.setTaskCompleted(success: true)
+            return
+        }
+        isRunning = true
+
         let work = Task { @MainActor in
+            defer { isRunning = false }
             let service = AggregationService(context: container.mainContext)
             await Self.runRefresh(service: service)
             task.setTaskCompleted(success: true)

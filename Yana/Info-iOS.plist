@@ -23,6 +23,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>de.fa-krug.Yana.background-refresh</string>
+		<string>de.fa-krug.Yana.background-processing</string>
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Yana uses Face ID to protect your reading data.</string>
