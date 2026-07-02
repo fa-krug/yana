@@ -23,7 +23,7 @@ class PodcastAggregator: RSSPipelineAggregator, @unchecked Sendable {
            let hash = await store.store(remoteURL: remote, isHeader: true) {
             parts.append("""
             <div data-sanitized-class="podcast-artwork" style="margin-bottom: 1em;">\
-            <img src="\(ReaderWeb.imageScheme)://\(hash)" alt="Episode artwork" \
+            <img src="\(ReaderWeb.imageScheme)://\(hash)" alt="\(String(localized: "Episode artwork"))" \
             style="max-width: \(opts.artworkSize)px; height: auto; border-radius: 8px;"></div>
             """)
         }
@@ -41,10 +41,10 @@ class PodcastAggregator: RSSPipelineAggregator, @unchecked Sendable {
         // Duration + download meta.
         var meta: [String] = []
         if let seconds = parseDuration(entry.itunesDuration) {
-            meta.append("<span data-sanitized-class=\"podcast-duration\">Duration: \(formatDuration(seconds))</span>")
+            meta.append("<span data-sanitized-class=\"podcast-duration\">\(String(localized: "Duration:")) \(formatDuration(seconds))</span>")
         }
         if opts.includeDownloadLink {
-            meta.append("<a href=\"\(mediaURL)\" data-sanitized-class=\"podcast-download\" download>Download Episode</a>")
+            meta.append("<a href=\"\(mediaURL)\" data-sanitized-class=\"podcast-download\" download>\(String(localized: "Download Episode"))</a>")
         }
         if (opts.includePlayer || opts.includeDownloadLink) && !meta.isEmpty {
             parts.append("<div style=\"margin-top: 0.5em; font-size: 0.9em; color: #666;\">\(meta.joined(separator: " | "))</div>")
@@ -54,7 +54,7 @@ class PodcastAggregator: RSSPipelineAggregator, @unchecked Sendable {
         // Show notes.
         let notes = entry.summary ?? entry.entryDescription ?? entry.content ?? ""
         if !notes.isEmpty {
-            parts.append("<div data-sanitized-class=\"podcast-description\"><h4>Show Notes</h4>\(notes)</div>")
+            parts.append("<div data-sanitized-class=\"podcast-description\"><h4>\(String(localized: "Show Notes"))</h4>\(notes)</div>")
         }
 
         var article = article

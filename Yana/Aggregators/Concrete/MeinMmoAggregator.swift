@@ -199,7 +199,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         guard !parts.isEmpty else { return nil }
 
         let commentsURL = "\(articleURL)#comments"
-        let header = "<h3><a href=\"\(commentsURL)\">Comments</a></h3>"
+        let header = "<h3><a href=\"\(commentsURL)\">\(String(localized: "Comments"))</a></h3>"
         return "<section>\(header)\(parts.joined())</section>"
     }
 
@@ -208,7 +208,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         // nested reply's, so `.first()` within `el` always resolves to this comment, not a child.
 
         // Author: the linked display name, falling back to the author container's text.
-        var author = "Unknown"
+        var author = String(localized: "Unknown")
         if let authorEl = try? el.select("div.wpd-comment-author").first() {
             if let link = try? authorEl.select("a").first(), let text = try? link.text(), !text.isEmpty {
                 author = text
@@ -236,7 +236,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
         let tsDisplay = timestamp.isEmpty ? "" : " (\(timestamp))"
         return "<blockquote>"
-            + "<p><strong>\(author)</strong>\(tsDisplay) | <a href=\"\(anchorURL)\">source</a></p>"
+            + "<p><strong>\(author)</strong>\(tsDisplay) | <a href=\"\(anchorURL)\">\(String(localized: "source"))</a></p>"
             + "<div>\(commentText)</div>"
             + "</blockquote>"
     }
@@ -281,13 +281,13 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
             if let twitter = linkMatching(figure, hosts: ["twitter.com", "x.com"]) {
                 let clean = twitter.split(separator: "?").first.map(String.init) ?? twitter
                 let link = "<p><a href=\"\(clean)\" target=\"_blank\" rel=\"noopener\">"
-                    + "View on X/Twitter: \(clean)</a></p>"
+                    + "\(String(localized: "View on X/Twitter:")) \(clean)</a></p>"
                 try figure.replaceWith(parse(link)); continue
             }
             if classStr.contains("provider-reddit") || classStr.contains("embed-reddit"),
                let reddit = linkMatching(figure, hosts: ["reddit.com"]) {
                 let clean = reddit.split(separator: "?").first.map(String.init) ?? reddit
-                try figure.replaceWith(parse("<p><a href=\"\(clean)\" target=\"_blank\" rel=\"noopener\">View on Reddit</a></p>")); continue
+                try figure.replaceWith(parse("<p><a href=\"\(clean)\" target=\"_blank\" rel=\"noopener\">\(String(localized: "View on Reddit"))</a></p>")); continue
             }
             if let bsky = linkMatching(figure, hosts: ["bsky.app"]) {
                 if let html = await BlueskyEmbed.buildEmbedHTML(for: bsky, fetchJSON: fetchJSONForBluesky) {
