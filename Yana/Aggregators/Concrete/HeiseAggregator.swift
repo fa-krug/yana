@@ -137,7 +137,7 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
             if let html = try processCommentElement(el) { parts.append(html) }
         }
         guard !parts.isEmpty else { return nil }
-        let header = "<h3><a href=\"\(forumURL)\">Comments</a></h3>"
+        let header = "<h3><a href=\"\(forumURL)\">\(String(localized: "Comments"))</a></h3>"
         return "<section>\(header)\(parts.joined())</section>"
     }
 
@@ -179,7 +179,7 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
     }
 
     private func processListItemComment(_ el: Element) throws -> String? {
-        var author = "Unknown"
+        var author = String(localized: "Unknown")
         if let a = try el.select(".tree_thread_list--written_by_user, .pseudonym").first() {
             author = try a.text()
         }
@@ -187,12 +187,12 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
         let title = try link.text()
         let href = try link.attr("href")
         let commentURL = URL(string: href, relativeTo: URL(string: Self.heiseURL))?.absoluteString ?? href
-        return "<blockquote><p><strong>\(author)</strong> | <a href=\"\(commentURL)\">source</a></p>"
+        return "<blockquote><p><strong>\(author)</strong> | <a href=\"\(commentURL)\">\(String(localized: "source"))</a></p>"
             + "<div><p>\(title)</p></div></blockquote>"
     }
 
     private func processFullViewComment(_ el: Element) throws -> String? {
-        var author = "Unknown"
+        var author = String(localized: "Unknown")
         for selector in ["a[href*=/forum/heise-online/Meinungen]", ".pseudonym", ".username", "strong"] {
             if let a = try el.select(selector).first() {
                 let text = try a.text()
@@ -206,7 +206,7 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
         guard !content.isEmpty else { return nil }
         let id = (try? el.attr("id")) ?? ""
         let anchor = id.isEmpty ? "comment" : id
-        return "<blockquote><p><strong>\(author)</strong> | <a href=\"#\(anchor)\">source</a></p>"
+        return "<blockquote><p><strong>\(author)</strong> | <a href=\"#\(anchor)\">\(String(localized: "source"))</a></p>"
             + "<div>\(content)</div></blockquote>"
     }
 }

@@ -147,7 +147,7 @@ enum BlueskyEmbed {
         parts.append(
             "<p style=\"margin: 0 0 8px 0;\">"
             + "<strong>\(escapeHTML(authorDisplay))</strong>\(escapeHTML(handleSuffix)) · "
-            + "<a href=\"\(cleanURL)\" target=\"_blank\" rel=\"noopener\">View on Bluesky</a>"
+            + "<a href=\"\(cleanURL)\" target=\"_blank\" rel=\"noopener\">\(String(localized: "View on Bluesky"))</a>"
             + "</p>"
         )
 

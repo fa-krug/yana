@@ -177,7 +177,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         }
         if lower.contains("v.redd.it") { return }            // handled in header
         if lower.contains("youtube.com") || lower.contains("youtu.be") {
-            parts.append("<p><a href=\"\(url)\" target=\"_blank\" rel=\"noopener\">▶ View Video on YouTube</a></p>"); return
+            parts.append("<p><a href=\"\(url)\" target=\"_blank\" rel=\"noopener\">▶ \(String(localized: "View Video on YouTube"))</a></p>"); return
         }
         if lower.contains("twitter.com") || lower.contains("x.com") { return }   // header embed
         if !isCrossPost && !post.isSelf {
@@ -187,17 +187,17 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
 
     private func addComments(_ post: RedditPostData, _ parts: inout [String], client: RedditClient) async throws {
         let permalink = "https://reddit.com\(RedditMarkdown.decodeEntities(post.permalink))"
-        var section = ["<h3><a href=\"\(permalink)\" target=\"_blank\" rel=\"noopener\">Comments</a></h3>"]
+        var section = ["<h3><a href=\"\(permalink)\" target=\"_blank\" rel=\"noopener\">\(String(localized: "Comments"))</a></h3>"]
         let limit = options.commentLimit
         if limit > 0 {
             let comments = try await fetchCommentsTolerantly(post: post, client: client)
             if comments.isEmpty {
-                section.append("<p><em>No comments yet.</em></p>")
+                section.append("<p><em>\(String(localized: "No comments yet."))</em></p>")
             } else {
                 section.append(comments.prefix(limit).map(commentHTML).joined())
             }
         } else {
-            section.append("<p><em>Comments disabled.</em></p>")
+            section.append("<p><em>\(String(localized: "Comments disabled."))</em></p>")
         }
         parts.append("<section>\(section.joined())</section>")
     }
@@ -221,7 +221,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         let url = "https://reddit.com\(comment.permalink)"
         return """
         <blockquote>
-        <p><strong>\(RedditMarkdown.escape(author))</strong> | <a href="\(url)" target="_blank" rel="noopener">source</a></p>
+        <p><strong>\(RedditMarkdown.escape(author))</strong> | <a href="\(url)" target="_blank" rel="noopener">\(String(localized: "source"))</a></p>
         <div>\(body)</div>
         </blockquote>
         """

@@ -97,7 +97,7 @@ enum EmbedRewriter {
         let author = escapeHTML((tweet["author"] as? [String: Any])?["screen_name"] as? String ?? "")
         let style = "border-left: 3px solid #1d9bf0; padding: 12px 16px; margin: 1em 0; background: #f7f9fa;"
         return "<blockquote style=\"\(style)\"><p><strong>@\(author)</strong> · "
-            + "<a href=\"\(url)\">View on X</a></p><p>\(text)</p></blockquote>"
+            + "<a href=\"\(url)\">\(String(localized: "View on X"))</a></p><p>\(text)</p></blockquote>"
     }
 
     private static func escapeHTML(_ s: String) -> String {

@@ -82,7 +82,7 @@ final class YouTubeClient: @unchecked Sendable {
         return resp.items.compactMap { thread in
             let s = thread.snippet.topLevelComment.snippet
             guard let text = s.textDisplay, text != "[deleted]", text != "[removed]" else { return nil }
-            return YouTubeComment(id: thread.id, author: s.authorDisplayName ?? "Unknown", textHTML: text)
+            return YouTubeComment(id: thread.id, author: s.authorDisplayName ?? String(localized: "Unknown"), textHTML: text)
         }.prefix(max).map { $0 }
     }
 

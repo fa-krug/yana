@@ -124,7 +124,7 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
         var html = parts.joined()
 
         if !comments.isEmpty {
-            html += "<div class=\"youtube-comments\"><h3>Comments</h3>"
+            html += "<div class=\"youtube-comments\"><h3>\(String(localized: "Comments"))</h3>"
             for c in comments {
                 // c.textHTML comes from the API with textFormat=html and is server-side
                 // sanitized by YouTube (safe tags only: <br>, <a>, <b>). Insert as trusted raw
@@ -132,7 +132,7 @@ final class YouTubeAggregator: Aggregator, @unchecked Sendable {
                 let url = "https://www.youtube.com/watch?v=\(videoID)&lc=\(c.id)"
                 html += """
                 <blockquote>
-                <p><strong>\(escape(c.author))</strong> | <a href="\(url)" target="_blank" rel="noopener">source</a></p>
+                <p><strong>\(escape(c.author))</strong> | <a href="\(url)" target="_blank" rel="noopener">\(String(localized: "source"))</a></p>
                 <div>\(c.textHTML)</div>
                 </blockquote>
                 """

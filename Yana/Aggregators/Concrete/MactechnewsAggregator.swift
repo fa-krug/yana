@@ -226,7 +226,7 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
         guard !parts.isEmpty else { return nil }
 
         let commentsURL = "\(articleURL)#comments"
-        let header = "<h3><a href=\"\(commentsURL)\">Comments</a></h3>"
+        let header = "<h3><a href=\"\(commentsURL)\">\(String(localized: "Comments"))</a></h3>"
         return "<section>\(header)\(parts.joined())</section>"
     }
 
@@ -235,7 +235,7 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
         if let a = try? el.select("span.MtnCommentAccountName").first(), let text = try? a.text(), !text.isEmpty {
             author = text
         } else {
-            author = "Unknown"
+            author = String(localized: "Unknown")
         }
 
         // Timestamp: join all nested spans.
@@ -257,7 +257,7 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
         let tsDisplay = timestamp.isEmpty ? "" : " (\(timestamp))"
 
         return "<blockquote>"
-            + "<p><strong>\(author)</strong>\(tsDisplay) | <a href=\"\(anchorURL)\">source</a></p>"
+            + "<p><strong>\(author)</strong>\(tsDisplay) | <a href=\"\(anchorURL)\">\(String(localized: "source"))</a></p>"
             + "<div>\(commentText)</div>"
             + "</blockquote>"
     }
