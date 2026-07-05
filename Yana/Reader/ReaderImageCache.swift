@@ -1,5 +1,6 @@
 import UIKit
 import ImageIO
+import UniformTypeIdentifiers
 
 /// In-memory cache of decoded reader images, keyed by their `yana-img://<hash>` (or remote URL)
 /// ref. Exists so a page that has already been seen — or whose lead image was preloaded ahead of a
@@ -100,6 +101,9 @@ final class ReaderImageCache: @unchecked Sendable {
     }
 
     private static func decodedImage(from source: CGImageSource) -> UIImage? {
+        // Animated GIFs (e.g. Giphy) decode into a playable multi-frame image; anything else takes
+        // the single-frame thumbnail path.
+        if let animated = animatedImage(from: source) { return animated }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,   // bake in EXIF orientation
@@ -111,9 +115,53 @@ final class ReaderImageCache: @unchecked Sendable {
         return UIImage(cgImage: cg)
     }
 
+    /// Frames of an animated GIF are held in memory decoded, so cap them below the still-image
+    /// budget — reader GIFs are small and a large canvas × many frames would balloon memory.
+    private static let maxAnimatedPixelSize = 600
+    /// Never keep more than this many frames; a runaway GIF plays truncated rather than exhausting memory.
+    private static let maxAnimatedFrames = 240
+
+    /// Builds a playable animated `UIImage` from a multi-frame GIF source, downsampling each frame.
+    /// Returns nil for still images (single frame or non-GIF) so the caller falls back to the
+    /// still-image thumbnail path.
+    private static func animatedImage(from source: CGImageSource) -> UIImage? {
+        guard let type = CGImageSourceGetType(source), UTType(type as String) == .gif else { return nil }
+        let count = min(CGImageSourceGetCount(source), maxAnimatedFrames)
+        guard count > 1 else { return nil }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxAnimatedPixelSize,
+        ]
+        var frames: [UIImage] = []
+        frames.reserveCapacity(count)
+        var totalDuration = 0.0
+        for index in 0..<count {
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary)
+                ?? CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
+            frames.append(UIImage(cgImage: cg))
+            totalDuration += frameDelay(source, index)
+        }
+        guard frames.count > 1 else { return nil }
+        if totalDuration <= 0 { totalDuration = Double(frames.count) * 0.1 }
+        return UIImage.animatedImage(with: frames, duration: totalDuration)
+    }
+
+    /// Per-frame delay for a GIF frame (seconds). Browsers clamp very short delays to ~0.1s, so we
+    /// match that to keep fast GIFs from playing unnaturally quickly.
+    private static func frameDelay(_ source: CGImageSource, _ index: Int) -> Double {
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let gif = props[kCGImagePropertyGIFDictionary] as? [CFString: Any] else { return 0.1 }
+        let delay = (gif[kCGImagePropertyGIFUnclampedDelayTime] as? Double)
+            ?? (gif[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1
+        return delay < 0.011 ? 0.1 : delay
+    }
+
     /// Approximate decoded byte size, used as the `NSCache` cost so `totalCostLimit` bounds memory.
+    /// For animated images all frames are resident, so scale the single-frame estimate by the count.
     private static func cost(of image: UIImage) -> Int {
         guard let cg = image.cgImage else { return 0 }
-        return cg.bytesPerRow * cg.height
+        return cg.bytesPerRow * cg.height * max(1, image.images?.count ?? 1)
     }
 }

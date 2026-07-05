@@ -321,9 +321,7 @@ private struct ReaderImageView: View {
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
+                content(for: image)
                     .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
@@ -333,6 +331,41 @@ private struct ReaderImageView: View {
         .task(id: ref) {
             if image == nil { image = await ReaderImageCache.shared.image(for: ref) }
         }
+    }
+
+    /// Animated images (GIFs) play in a `UIImageView`-backed view — SwiftUI's `Image` shows only the
+    /// first frame. Still images use the plain resizable `Image`.
+    @ViewBuilder private func content(for image: UIImage) -> some View {
+        if image.images != nil, image.size.width > 0, image.size.height > 0 {
+            AnimatedImageView(image: image)
+                .aspectRatio(image.size.width / image.size.height, contentMode: .fit)
+        } else {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+        }
+    }
+}
+
+/// Plays an animated `UIImage` (a GIF decoded into frames) — a `UIImageView` auto-animates such an
+/// image, whereas SwiftUI's `Image` renders only the first frame.
+private struct AnimatedImageView: UIViewRepresentable {
+    let image: UIImage
+
+    func makeUIView(context: Context) -> UIImageView {
+        let view = UIImageView()
+        view.contentMode = .scaleAspectFit
+        view.clipsToBounds = true
+        // Let SwiftUI's frame/aspectRatio drive the size rather than the image's intrinsic size.
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIImageView, context: Context) {
+        uiView.image = image
     }
 }
 

@@ -12,6 +12,15 @@ enum ImageCompressor {
                          removeWhiteBackground: Bool = false) -> (data: Data, ext: String)? {
         guard data.count >= 100, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
 
+        // Animated GIFs (e.g. Giphy) must survive as GIFs — the single-frame downscale below would
+        // freeze them into a still image. Preserve the original bytes so the reader can play them.
+        // `removeWhiteBackground` (feed logos) never applies to GIFs, and a size cap keeps a
+        // pathological multi-megabyte GIF from bloating the cache (past it we fall through and store
+        // the first frame as a still image).
+        if !removeWhiteBackground, data.count <= maxAnimatedGIFBytes, isAnimatedGIF(source) {
+            return (data, "gif")
+        }
+
         let maxDimension = isHeader ? 1200 : 2000
         // Decode-and-downscale in one step: avoids fully decoding huge source images into memory.
         let thumbOptions: [CFString: Any] = [
@@ -37,5 +46,15 @@ enum ImageCompressor {
         CGImageDestinationAddImage(dest, cgImage, options as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { return nil }
         return (out as Data, ext)
+    }
+
+    /// Ceiling on a preserved animated GIF; larger GIFs fall through to a static first frame so a
+    /// runaway file can't dominate the on-disk image cache.
+    private static let maxAnimatedGIFBytes = 25 * 1024 * 1024
+
+    /// True when the source is a GIF carrying more than one frame (i.e. actually animated).
+    private static func isAnimatedGIF(_ source: CGImageSource) -> Bool {
+        guard let type = CGImageSourceGetType(source), UTType(type as String) == .gif else { return false }
+        return CGImageSourceGetCount(source) > 1
     }
 }
