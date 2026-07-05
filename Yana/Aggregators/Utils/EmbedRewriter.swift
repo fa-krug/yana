@@ -73,12 +73,30 @@ enum EmbedRewriter {
             + "<div class=\"dailymotion-play\" aria-hidden=\"true\"></div></div></div>"
     }
 
+    /// Compiled once: matches a Giphy embed/watch URL and captures the GIF id.
+    private static let giphyPattern = try? NSRegularExpression(pattern: #"giphy\.com/(?:embed|gifs)/(?:[A-Za-z0-9-]*-)?([A-Za-z0-9]+)"#)
+
+    /// The Giphy media-CDN GIF URL for an embed/watch URL, or nil. Giphy delivers embeds as an
+    /// `<iframe>` (dropped by the sanitizer) — rewriting it to the direct GIF lets it render inline.
+    static func giphyGIFURL(from url: String) -> String? {
+        guard let regex = giphyPattern else { return nil }
+        let range = NSRange(url.startIndex..<url.endIndex, in: url)
+        guard let match = regex.firstMatch(in: url, range: range), match.numberOfRanges >= 2,
+              let captured = Range(match.range(at: 1), in: url) else { return nil }
+        return "https://media.giphy.com/media/\(String(url[captured]))/giphy.gif"
+    }
+
     static func rewriteEmbeds(in doc: Document) throws {
         for iframe in try doc.select("iframe") {
             let src = try iframe.attr("src")
             if let id = extractYouTubeID(from: src) {
                 let replacement = try SwiftSoup.parseBodyFragment(youTubeEmbedHTML(videoID: id)).body()!.child(0)
                 try iframe.replaceWith(replacement)
+            } else if let gifURL = giphyGIFURL(from: src) {
+                // Replace the Giphy iframe with a direct <img> so `rewriteImages` (which runs next)
+                // localizes it and the reader plays the animated GIF.
+                let img = try SwiftSoup.parseBodyFragment("<img src=\"\(gifURL)\" alt=\"Giphy\">").body()!.child(0)
+                try iframe.replaceWith(img)
             }
         }
     }

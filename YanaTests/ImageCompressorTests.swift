@@ -1,5 +1,7 @@
 import Foundation
 import UIKit
+import ImageIO
+import UniformTypeIdentifiers
 import Testing
 @testable import Yana
 
@@ -61,5 +63,39 @@ struct ImageCompressorTests {
     @Test func keepsWhiteBackgroundWhenNotRequested() throws {
         let out = try #require(ImageCompressor.compress(blackCircleOnWhite(200), contentType: "image/png", isHeader: false))
         #expect(alpha(out.data, x: 2, y: 2) == 255)   // corner background untouched (opaque)
+    }
+
+    /// A multi-frame GIF (alternating colored squares).
+    private func animatedGIF(side: Int, frames: Int) -> Data {
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(out, UTType.gif.identifier as CFString, frames, nil)!
+        CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        let s = CGFloat(side)
+        for i in 0..<frames {
+            let frame = UIGraphicsImageRenderer(size: CGSize(width: s, height: s)).image { ctx in
+                (i % 2 == 0 ? UIColor.red : UIColor.blue).setFill()
+                ctx.fill(CGRect(x: 0, y: 0, width: s, height: s))
+            }.cgImage!
+            CGImageDestinationAddImage(dest, frame,
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.1]] as CFDictionary)
+        }
+        _ = CGImageDestinationFinalize(dest)
+        return out as Data
+    }
+
+    @Test func preservesAnimatedGIFByteForByte() throws {
+        let gif = animatedGIF(side: 40, frames: 3)
+        let out = try #require(ImageCompressor.compress(gif, contentType: "image/gif", isHeader: false))
+        #expect(out.ext == "gif")
+        #expect(out.data == gif)   // original bytes preserved, not flattened to a still frame
+        let source = try #require(CGImageSourceCreateWithData(out.data as CFData, nil))
+        #expect(CGImageSourceGetCount(source) == 3)   // still multi-frame after "compression"
+    }
+
+    @Test func flattensSingleFrameGIF() throws {
+        let gif = animatedGIF(side: 40, frames: 1)
+        let out = try #require(ImageCompressor.compress(gif, contentType: "image/gif", isHeader: false))
+        // A one-frame GIF is not animated, so it takes the normal still-image re-encode path.
+        #expect(out.ext != "gif")
     }
 }

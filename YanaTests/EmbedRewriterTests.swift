@@ -40,4 +40,22 @@ struct EmbedRewriterTests {
         #expect(html.contains("youtube-nocookie.com/embed/abc12345678"))
         #expect(html.contains("youtube-embed-container"))
     }
+
+    @Test func giphyGIFURLFromEmbedAndWatchURLs() {
+        #expect(EmbedRewriter.giphyGIFURL(from: "https://giphy.com/embed/l0MYt5jPR6QX5pnqM")
+            == "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif")
+        // A watch URL carries a human slug; the id is the final dash-delimited segment.
+        #expect(EmbedRewriter.giphyGIFURL(from: "https://giphy.com/gifs/funny-cat-l0MYt5jPR6QX5pnqM")
+            == "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif")
+        #expect(EmbedRewriter.giphyGIFURL(from: "https://www.youtube.com/embed/abc12345678") == nil)
+    }
+
+    @Test func rewriteEmbedsReplacesGiphyIframeWithImage() throws {
+        let doc = try SwiftSoup.parse("<iframe src=\"https://giphy.com/embed/l0MYt5jPR6QX5pnqM\"></iframe>")
+        try EmbedRewriter.rewriteEmbeds(in: doc)
+        let html = try doc.body()!.html()
+        #expect(html.contains("<img"))
+        #expect(html.contains("media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif"))
+        #expect(!html.contains("<iframe"))
+    }
 }
