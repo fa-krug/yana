@@ -1,0 +1,14 @@
+{
+  "default": {
+    "background": "background.png",
+    "padding": 80,
+    "title": {
+      "font": "OpenSans-Bold.ttf",
+      "color": "#FFFFFF",
+      "font_size": 96
+    },
+    "show_complete_frame": false,
+    "title_below_image": false
+  },
+  "data": []
+}

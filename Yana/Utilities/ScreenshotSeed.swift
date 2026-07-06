@@ -40,13 +40,17 @@ enum ScreenshotSeed {
             ("Weather roundup: a calm week ahead nationwide", "Redaktion",
              "Sunshine returns after a stormy weekend across most regions."),
         ]),
-        FeedSpec(name: "Marques on YouTube", type: .youtube, tagName: "Video", tagColorHex: "#7A2ED0", articles: [
+        // The YouTube/Reddit sources are credential-gated in the real app and render an
+        // "off" badge when no API key is configured. A screenshot fixture has no keys, so
+        // these use `.feedContent` to avoid the "off" badge — the feed name and tag still
+        // convey the aggregator variety the caption promises.
+        FeedSpec(name: "Marques on YouTube", type: .feedContent, tagName: "Video", tagColorHex: "#7A2ED0", articles: [
             ("The best phone for reading in 2026", "MKBHD",
              "Screen, battery, and the underrated joy of a great reading app."),
             ("I replaced my news apps with one RSS reader", "MKBHD",
              "A week living entirely inside a self-contained feed aggregator."),
         ]),
-        FeedSpec(name: "r/apple", type: .reddit, tagName: "Community", tagColorHex: "#D07A2E", articles: [
+        FeedSpec(name: "r/apple", type: .feedContent, tagName: "Community", tagColorHex: "#D07A2E", articles: [
             ("What feed reader are you using in 2026?", "u/feedfan",
              "The community weighs in on native, privacy-first readers."),
             ("PSA: OPML import makes switching painless", "u/switcher",
@@ -118,13 +122,15 @@ enum ScreenshotSeed {
     }
 
     private static func body(imageRef: String, item: (title: String, author: String, summary: String)) -> String {
-        // Lead image first (becomes the reader lead image + timeline thumbnail), then a couple
-        // of body paragraphs. The summary itself is rendered separately by the reader as its
-        // own SUMMARY block (from `Article.summary`), so it must not be duplicated here.
+        // Lead image first (becomes the reader lead image + timeline thumbnail), then a few
+        // distinct, natural-reading paragraphs. The summary itself is rendered separately by
+        // the reader as its own SUMMARY block (from `Article.summary`), so it is not repeated
+        // here. Copy is generic enough to sit under any of the curated titles.
         """
         <img src="\(imageRef)" alt="">
-        <p>\(String(repeating: "This is curated screenshot copy that reads like a real article without depending on any network fetch. ", count: 3))</p>
-        <p>\(String(repeating: "Feeds are aggregated on-device, organized with tags, and read in a clean native reader. ", count: 3))</p>
+        <p>For years I bounced between half a dozen apps to keep up — one for news, another for videos, a third for podcasts. Each had its own account, its own algorithm, and its own idea of what I should see next.</p>
+        <p>Switching to a single on-device aggregator changed that. Every source I care about lands in one timeline, in the order it arrived, with nothing injected and nothing tracked. The feeds are mine, and they stay on my phone.</p>
+        <p>Tags keep everything organized without folders to babysit, and the reader strips each article down to just the words and images. No cookie banners, no pop-ups, no browser chrome — just the story.</p>
         """
     }
 }

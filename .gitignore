@@ -52,3 +52,7 @@ Pods/
 fastlane/screenshots/**/*.png
 fastlane/screenshots/**/screenshots.html
 fastlane/test_output/
+fastlane/report.xml
+fastlane/README.md
+# ...but keep the solid framing background (a source asset, not a capture)
+!fastlane/screenshots/background.png
