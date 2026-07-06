@@ -185,7 +185,12 @@ enum ScreenshotFixtureCollector {
     /// covers lead images, inline images, and embed poster images uniformly, without needing to
     /// walk the recursive `Block` enum case-by-case.
     private static func imageHashes(in blocks: [Block]) -> Set<String> {
-        guard let data = try? JSONEncoder().encode(blocks),
+        // `.withoutEscapingSlashes` is essential: the default encoder writes `yana-img:\/\/…`,
+        // which the literal `//` in the pattern below would never match — silently dropping every
+        // body image from the export.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        guard let data = try? encoder.encode(blocks),
               let json = String(data: data, encoding: .utf8) else { return [] }
 
         let pattern = #"yana-img://([0-9a-fA-F]+)"#
@@ -230,10 +235,41 @@ enum ScreenshotFixtureCollector {
             return
         }
 
+        // Resolve every referenced image by scanning the on-disk cache directory for a file whose
+        // content-hash stem matches. This is deliberately NOT `ImageStore.shared.fileURL(forHash:)`:
+        // body images are written by the aggregation pipeline's own `ImageStore` instance, so
+        // `.shared`'s in-memory extension map doesn't know their extension. Those writes can also
+        // still be flushing when we reach here, so we settle briefly and retry the scan for any
+        // hash not yet present.
+        let cachesImagesDir = (try? FileManager.default.url(
+            for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+        ))?.appendingPathComponent("images")
+
+        func indexCache() -> [String: URL] {
+            guard let dir = cachesImagesDir,
+                  let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            else { return [:] }
+            return Dictionary(files.map { ($0.deletingPathExtension().lastPathComponent, $0) },
+                              uniquingKeysWith: { first, _ in first })
+        }
+
+        // The aggregation pipeline's body-image downloads are not fully awaited by
+        // `forceReload`, so they can still be landing on disk when we get here. Poll the cache
+        // directory until every referenced hash is present (or a generous timeout), re-scanning
+        // each second.
+        var cachedFilesByHash = indexCache()
+        for _ in 0..<60 where !imageHashes.isSubset(of: Set(cachedFilesByHash.keys)) {
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            cachedFilesByHash = indexCache()
+        }
+        let stillMissing = imageHashes.subtracting(Set(cachedFilesByHash.keys))
+        if !stillMissing.isEmpty {
+            NSLog("ScreenshotFixtureCollector: \(stillMissing.count) image(s) never appeared on disk after polling")
+        }
+
         var collectedImages: [ScreenshotFixture.Image] = []
         for hash in imageHashes.sorted() {
-            let sourceURL = await ImageStore.shared.fileURL(forHash: hash)
-            guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            guard let sourceURL = cachedFilesByHash[hash] else {
                 NSLog("ScreenshotFixtureCollector: WARNING image missing for hash \(hash), skipping")
                 continue
             }
