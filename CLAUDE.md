@@ -33,6 +33,11 @@ designed for privacy-conscious users who want their feeds without any backend.
   content committed at `Yana/Resources/ScreenshotFixture/manifest.json` (+ `images/<hash>.<ext>`,
   bundled at the app root), originally captured live by `ScreenshotFixtureCollector`
   (`-COLLECT_SCREENSHOT_FIXTURE`) and re-inserted into `ImageStore` at seed time.
+- To refresh the frozen content: launch the app once with `-COLLECT_SCREENSHOT_FIXTURE` (hits the
+  network, feeds listed in `ScreenshotFixtureCollector.specs`), copy `Documents/ScreenshotFixture/`
+  out of the app container into `Yana/Resources/ScreenshotFixture/`, then re-run `fastlane screenshots`
+  (erase the sim first). See README → "App Store Screenshots" for the exact commands. The seed decodes
+  HTML entities in titles because the generic RSS `FeedParser` does not (see the standalone task).
 - Framing: `fastlane/screenshots/Framefile.json` frames on a solid `background.png` sized to exactly
   1320×2868 (so framed output stays App-Store-valid) with captions from
   `fastlane/screenshots/en-US/title.strings`, rendered in the bundled `OpenSans-Bold.ttf` (SIL OFL —

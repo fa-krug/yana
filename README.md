@@ -121,6 +121,30 @@ This runs the `ScreenshotUITests` capture flow against an offline content fixtur
 background sized to exactly 1320×2868 so the output stays App-Store-valid. Captions live in
 `fastlane/screenshots/en-US/title.strings`; framed output lands in `fastlane/screenshots/en-US/`.
 
+### Real content, collected once
+
+The fixture is a frozen snapshot of **real feed content** (The Verge, Ars Technica, a YouTube
+channel, r/apple, a podcast), committed at `Yana/Resources/ScreenshotFixture/`
+(`manifest.json` + `images/`). `ScreenshotSeed` replays it offline. To refresh it with
+newer content, run the collector once against the live feeds and re-commit the snapshot:
+
+```bash
+# 1. Build + install, then launch with the collector launch argument (hits the network once)
+xcrun simctl boot "iPhone 17 Pro Max"
+xcrun simctl launch booted de.fa-krug.Yana -COLLECT_SCREENSHOT_FIXTURE
+# 2. Copy the freshly collected snapshot out of the app container into the repo
+DIR="$(xcrun simctl get_app_container booted de.fa-krug.Yana data)/Documents/ScreenshotFixture"
+cp "$DIR/manifest.json" Yana/Resources/ScreenshotFixture/
+cp "$DIR"/images/* Yana/Resources/ScreenshotFixture/images/
+# 3. Re-generate screenshots (erase first so the fixture re-seeds fresh)
+xcrun simctl shutdown all && xcrun simctl erase all
+fastlane screenshots
+```
+
+The feed list lives in `ScreenshotFixtureCollector.specs`. If you change which feeds/articles
+appear, also check the `03_Search` query in `YanaUITests/ScreenshotUITests.swift` still matches
+some article.
+
 Notes:
 - The `screenshots` lane sets `LANG/LC_ALL=en_US.UTF-8` for you (fastlane crashes on a bare
   `C`/US-ASCII shell locale).
@@ -129,6 +153,8 @@ Notes:
   `xcrun simctl shutdown all && xcrun simctl erase all`.
 - The caption font (`OpenSans-Bold.ttf`, SIL OFL) is bundled under `fastlane/screenshots/`
   because frameit resolves the title font relative to that directory.
+- The snapshot bundles a few real third-party thumbnails/logos (~1 MB) and currently ships in
+  all build configs; the DEBUG-only seed/collector are the only code that reads it.
 
 ## Architecture
 
