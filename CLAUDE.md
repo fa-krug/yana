@@ -108,7 +108,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 
 `AggregatorType` covers these aggregators: `fullWebsite`, `feedContent`
 (RSS/Atom), the managed scrapers (`heise`, `merkur`, `tagesschau`, `explosm`, `darkLegacy`,
-`caschysBlog`, `mactechnews`, `oglaf`, `meinMmo`), and the social/media sources (`youtube`,
+`caschysBlog`, `mactechnews`, `oglaf`, `meinMmo`, `theVerge`, `arsTechnica`), and the social/media sources (`youtube`,
 `reddit`, `podcast`). Reddit and YouTube require user-supplied API keys (stored in Keychain);
 a **Test** button in Settings validates these (and each AI provider key) via a minimal auth probe
 before use, with Apple Intelligence checked for on-device availability instead.
