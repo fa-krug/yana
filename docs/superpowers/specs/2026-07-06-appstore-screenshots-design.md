@@ -1,7 +1,18 @@
 # App Store Screenshot Automation — Design
 
 **Date:** 2026-07-06
-**Status:** Approved (pending spec review)
+**Status:** Implemented
+
+> **Implementation deltas** (this doc is the original design; the following changed during
+> build): (1) **iPhone-only** — iPad was dropped and the app target set to
+> `TARGETED_DEVICE_FAMILY = 1`, so output is 4 framed PNGs on the 6.9″ iPhone, not 8 across
+> two devices. (2) Lead images are **generated at runtime** by `ScreenshotImageFactory`
+> (Core Graphics gradients), not bundled in the asset catalog as the "Content Fixture"
+> section below describes — this keeps the fixture fully offline with no committed image
+> binaries. (3) The frameit caption font (`OpenSans-Bold.ttf`, SIL OFL) is bundled under
+> `fastlane/screenshots/`, and the framing background is a solid image sized to 1320×2868.
+> Sections below reflect the original plan; see `CLAUDE.md` / `README.md` for the shipped
+> behavior.
 
 ## Goal
 
@@ -121,8 +132,8 @@ device (still store-valid) and note it — framing is cosmetic, not a validity r
 ## Verification (acceptance)
 
 The pipeline is the deliverable; acceptance = a clean end-to-end run producing:
-- 8 framed PNGs (4 shots × 2 devices) at the valid resolutions above (or documented
-  unframed fallback if a frame is missing).
+- 4 framed PNGs (4 shots × 1 device, iPhone-only) at 1320×2868 (the framing background is
+  sized to that resolution so framed output stays App-Store-valid).
 - Each UITest step asserts its screen rendered non-empty (identifier exists) before
   snapping, so an empty/blank screenshot fails the run rather than shipping silently.
 - `xcodegen generate` still succeeds and the normal build/test remain green
