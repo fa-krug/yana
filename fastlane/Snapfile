@@ -1,0 +1,22 @@
+# Devices: 6.9" iPhone (1320x2868) and 13" iPad (2064x2752).
+# Confirm names against `xcrun simctl list devices available`.
+devices([
+  "iPhone 17 Pro Max",
+  "iPad Pro 13-inch (M5)"
+])
+
+languages(["en-US"])
+
+scheme("Yana")
+
+# Only run the screenshot UITest, not the whole UI suite.
+only_testing(["YanaUITests/ScreenshotUITests"])
+
+output_directory("./fastlane/screenshots")
+clear_previous_screenshots(true)
+
+# The fixture launch argument is set inside the UITest (launchArguments), so no extra
+# launch_arguments needed here.
+
+concurrent_simulators(false)
+stop_after_first_error(true)

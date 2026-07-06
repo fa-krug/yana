@@ -47,3 +47,8 @@ Pods/
 
 # Superpowers
 .superpowers
+
+# fastlane screenshot output (regenerated on demand)
+fastlane/screenshots/**/*.png
+fastlane/screenshots/**/screenshots.html
+fastlane/test_output/
