@@ -38,6 +38,8 @@ struct AggregatorOptionsForm: View {
                 toggleSection(isOn: o.skipAds, label: "Skip Advertisements") {
                     var n = o; n.skipAds = $0; options = .caschysBlog(n)
                 }
+            case .theVerge:
+                EmptyView()
             case .mactechnews(let o):
                 mactechnewsSection(o)
             case .oglaf(let o):
@@ -81,6 +83,7 @@ struct AggregatorOptionsForm: View {
                 case .explosm(var o): o.ai = newAI; options = .explosm(o)
                 case .darkLegacy(var o): o.ai = newAI; options = .darkLegacy(o)
                 case .caschysBlog(var o): o.ai = newAI; options = .caschysBlog(o)
+                case .theVerge(var o): o.ai = newAI; options = .theVerge(o)
                 case .mactechnews(var o): o.ai = newAI; options = .mactechnews(o)
                 case .oglaf(var o): o.ai = newAI; options = .oglaf(o)
                 case .meinMmo(var o): o.ai = newAI; options = .meinMmo(o)

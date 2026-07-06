@@ -12,7 +12,7 @@ final class AggregatorRegistry: Sendable {
         switch config.type {
         case .feedContent: return FeedContentAggregator(config: config, credentials: credentials)
         case .fullWebsite: return FullWebsiteAggregator(config: config, credentials: credentials)
-        case .heise, .merkur, .tagesschau, .caschysBlog, .mactechnews, .meinMmo:
+        case .heise, .merkur, .tagesschau, .caschysBlog, .mactechnews, .meinMmo, .theVerge:
             return makeNewsScraper(config.type, config: config, credentials: credentials)
         case .explosm, .darkLegacy, .oglaf:
             return makeComicScraper(config.type, config: config, credentials: credentials)
@@ -31,6 +31,7 @@ final class AggregatorRegistry: Sendable {
         case .caschysBlog: return CaschysBlogAggregator(config: config, credentials: credentials)
         case .mactechnews: return MactechnewsAggregator(config: config, credentials: credentials)
         case .meinMmo: return MeinMmoAggregator(config: config, credentials: credentials)
+        case .theVerge: return TheVergeAggregator(config: config, credentials: credentials)
         default: return nil
         }
     }

@@ -3,8 +3,8 @@ import Testing
 
 @Suite("AggregatorType")
 struct AggregatorTypeTests {
-    @Test func hasAllFourteenCases() {
-        #expect(AggregatorType.allCases.count == 14)
+    @Test func hasFifteenCases() {
+        #expect(AggregatorType.allCases.count == 15)
     }
 
     @Test func rawValuesMatchYanaServer() {
@@ -30,5 +30,7 @@ struct AggregatorTypeTests {
     @Test func displayNameIsHumanReadable() {
         #expect(AggregatorType.feedContent.displayName == "Feed Content (RSS/Atom)")
         #expect(AggregatorType.fullWebsite.displayName == "Full Website")
+        #expect(AggregatorType.theVerge.displayName == "The Verge")
+        #expect(AggregatorType.theVerge.rawValue == "the_verge")
     }
 }
