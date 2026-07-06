@@ -286,7 +286,7 @@ struct AIProcessorConcurrencyTests {
             throw AggregatorError.contentFetch("AI must not be called on a cancelled run")
         }
         let input = [article("a", content: "one"), article("b", content: "two")]
-        let task = Task { await processor.process(input, ai: ai(summarize: true)) }
+        let task = Task { await processor.process(input, ai: ai()) }
         task.cancel()
         let out = await task.value
         #expect(out.isEmpty)                             // un-AI'd articles dropped, not persisted degraded
