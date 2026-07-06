@@ -167,6 +167,13 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         guard !post.url.isEmpty, !post.isGallery else { return }
         let url = RedditMarkdown.decodeEntities(post.url)
         let lower = url.lowercased()
+        // A Giphy watch/embed link (giphy.com/gifs|embed/…) carries no file extension, so it would
+        // otherwise fall through to a bare anchor — or, for crossposts/self-posts, be dropped
+        // entirely (the reported "nothing renders" bug). Rewrite it to the direct media-CDN GIF so
+        // localizeImages caches it and the reader plays the animation.
+        if let gifURL = EmbedRewriter.giphyGIFURL(from: url) {
+            parts.append("<p><img src=\"\(gifURL)\" alt=\"Giphy\"></p>"); return
+        }
         if lower.hasSuffix(".gif") || lower.hasSuffix(".gifv") {
             let gif = lower.hasSuffix(".gifv") ? String(url.dropLast()) : url
             parts.append("<p><img src=\"\(gif)\" alt=\"Animated GIF\"></p>"); return

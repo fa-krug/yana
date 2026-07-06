@@ -45,6 +45,19 @@ struct RedditMarkdownTests {
         #expect(list.contains("<li>two</li>"))
     }
 
+    /// Reddit (and CommonMark) allow a blockquote marker with no space after `>`. The `>` must not
+    /// leak as literal text — regression: `>Fable 5 …` rendered as a paragraph starting with `>`.
+    @Test func blockquoteWithoutSpaceAfterMarker() {
+        let quote = RedditMarkdown.toHTML(">Fable 5 is available")
+        #expect(quote.contains("<blockquote>"))
+        #expect(quote.contains("Fable 5 is available"))
+        #expect(!quote.contains("&gt;Fable"))   // marker consumed, not shown as literal text
+        // Multi-line quote mixing spaced and unspaced markers stays a single blockquote.
+        let multi = RedditMarkdown.toHTML(">line one\n> line two")
+        #expect(multi.contains("<blockquote>"))
+        #expect(multi.contains("line one<br>line two"))
+    }
+
     @Test func bareURLGetsLinkified() {
         let html = RedditMarkdown.toHTML("visit https://example.com now")
         #expect(html.contains("<a href=\"https://example.com\""))

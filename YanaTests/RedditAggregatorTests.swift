@@ -470,6 +470,53 @@ struct RedditAggregatorTests {
                 "the poster must fall back to the outer wrapper's preview image")
     }
 
+    // MARK: - Giphy link posts
+
+    /// A Giphy *link post* — `url` is a giphy.com watch page (no file extension) — must render as
+    /// the animated GIF, not a bare link. The watch URL is rewritten to the media-CDN GIF and
+    /// localized like every other inline image.
+    @Test func giphyLinkPostRendersAsImage() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"gp1","title":"Funny gif","selftext":"",
+                   "url":"https://giphy.com/gifs/funny-cat-l0MYt5jPR6QX5pnqM",
+                   "permalink":"/r/funny/comments/gp1/funny_gif/",
+                   "created_utc":\(recentUTC),"author":"gina","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":false,"is_video":false,"thumbnail":"default"}}
+        ]}}
+        """
+        let a = try #require(try await aggregator(listing: listing, store: recordingStore(rec)).aggregate().first)
+        #expect(rec.urls.contains("https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif"),
+                "the Giphy watch URL must be rewritten to the media-CDN GIF and downloaded")
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "the Giphy GIF must be localized")
+        #expect(!a.content.contains("giphy.com/gifs/"), "the bare watch link must not survive")
+    }
+
+    /// A *crosspost* of a Giphy link post is the reported "nothing renders" case: the old
+    /// `addLinkMedia` appended nothing for crossposts, so the GIF vanished entirely. It must now
+    /// render the animated GIF from the crosspost parent's URL.
+    @Test func giphyCrosspostRendersAsImage() async throws {
+        let rec = FetchRecorder()
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"xg1","title":"Shared gif","selftext":"",
+                   "url":"https://giphy.com/gifs/lol-l0MYt5jPR6QX5pnqM","permalink":"/r/funny/comments/xg1/shared_gif/",
+                   "created_utc":\(recentUTC),"author":"sharer","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":false,"is_video":false,"thumbnail":"default",
+                   "crosspost_parent_list":[
+                     {"id":"orig","title":"Original gif","selftext":"",
+                      "url":"https://giphy.com/gifs/lol-l0MYt5jPR6QX5pnqM","permalink":"/r/gifs/comments/orig/original_gif/",
+                      "created_utc":\(recentUTC),"author":"maker","score":99,"num_comments":50,
+                      "is_self":false,"is_gallery":false,"is_video":false,"thumbnail":"default"}]}}
+        ]}}
+        """
+        let a = try #require(try await aggregator(listing: listing, store: recordingStore(rec)).aggregate().first)
+        #expect(rec.urls.contains("https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif"),
+                "a crossposted Giphy link must still render as the media-CDN GIF")
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "the crossposted Giphy GIF must be localized")
+    }
+
     // MARK: - Inline image localization
 
     /// Inline body images (here, an image inside a comment) must be downloaded and rewritten to
