@@ -107,6 +107,13 @@ enum BlockParser {
                 flush()
                 let runs = trimmed(inlineRuns(element, baseURL: baseURL))
                 if !runs.isEmpty { blocks.append(.paragraph(runs)) }
+                // `inlineRuns` drops images (they can't live inside a text run), so a paragraph
+                // that wraps media — Reddit emits Giphy, gallery, and inline images as
+                // `<p><img></p>` — would otherwise vanish. Split any images out as their own
+                // image blocks after the text (a pure-image `<p>` yields just the image).
+                for img in (try? element.select("img").array()) ?? [] {
+                    if let image = imageBlock(img) { blocks.append(image) }
+                }
             case "h1", "h2", "h3", "h4", "h5", "h6":
                 flush()
                 let level = Int(String(tag.dropFirst())) ?? 1
@@ -201,8 +208,8 @@ enum BlockParser {
                 continue
             }
             if tag == "img" {
-                // An inline image inside text: keep its alt text if any, otherwise skip (the block
-                // walk splits standalone images out as their own blocks).
+                // Images can't live inside a text run; skip here. The block walk re-extracts them
+                // as standalone image blocks (see the `<p>`/`figure` cases in `convert`).
                 continue
             }
 

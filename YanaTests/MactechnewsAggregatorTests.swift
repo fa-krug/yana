@@ -312,7 +312,7 @@ struct MactechnewsAggregatorTests {
         #expect(a.content.contains("Bob"))
         #expect(a.content.contains("Great article!"))
         #expect(a.content.contains("I agree."))
-        #expect(a.content.contains("Comments"))
+        #expect(a.content.contains(String(localized: "Comments")))   // locale-independent
     }
 
     @Test func respectsMaxComments() async throws {

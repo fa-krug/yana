@@ -287,6 +287,15 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         if !post.url.isEmpty, EmbedRewriter.extractYouTubeID(from: post.url) != nil {
             return RedditMarkdown.decodeEntities(post.url)
         }
+        // A Giphy watch/embed link post carries no file extension, so it would otherwise fall
+        // through to Reddit's static preview image (Priority 4) — leaving a frozen poster as the
+        // lead while `addLinkMedia` also puts the animated GIF in the body (the reported duplicate).
+        // Surface the animated media-CDN GIF as the lead (matching direct .gif link posts);
+        // `buildArticle` then strips the body's duplicate copy by URL.
+        if !post.url.isEmpty,
+           let gifURL = EmbedRewriter.giphyGIFURL(from: RedditMarkdown.decodeEntities(post.url)) {
+            return gifURL
+        }
         // Priority 0.5: Twitter/X *link* post — the post URL itself is a tweet (header embed).
         if !post.url.isEmpty {
             let decoded = RedditMarkdown.decodeEntities(post.url)

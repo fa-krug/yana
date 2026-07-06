@@ -517,6 +517,30 @@ struct RedditAggregatorTests {
         #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "the crossposted Giphy GIF must be localized")
     }
 
+    /// A Giphy link post that also carries Reddit's static `preview` image must render the animated
+    /// GIF exactly once — as the lead — never a frozen preview poster on top of the body GIF (the
+    /// reported duplicate). The static preview URL must not be fetched at all.
+    @Test func giphyLinkPostRendersGifOnceNotDuplicatedWithPreview() async throws {
+        let rec = FetchRecorder()
+        let preview = "https://external-preview.redd.it/abc123.gif?format=png8&s=deadbeef"
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"gp2","title":"Funny gif","selftext":"",
+                   "url":"https://giphy.com/gifs/funny-cat-l0MYt5jPR6QX5pnqM",
+                   "permalink":"/r/funny/comments/gp2/funny_gif/",
+                   "created_utc":\(recentUTC),"author":"gina","score":50,"num_comments":10,
+                   "is_self":false,"is_gallery":false,"is_video":false,"thumbnail":"default",
+                   "preview":{"images":[{"source":{"url":"\(preview)"}}],"enabled":true}}}
+        ]}}
+        """
+        let a = try #require(try await aggregator(listing: listing, store: recordingStore(rec)).aggregate().first)
+        let gif = "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif"
+        #expect(rec.urls.contains(gif), "the animated Giphy GIF must be the lead media")
+        #expect(!rec.urls.contains(preview), "the static preview poster must not be fetched")
+        let refCount = a.content.components(separatedBy: "\(ReaderWeb.imageScheme)://").count - 1
+        #expect(refCount == 1, "the Giphy GIF must appear exactly once, got \(refCount)")
+    }
+
     // MARK: - Inline image localization
 
     /// Inline body images (here, an image inside a comment) must be downloaded and rewritten to
