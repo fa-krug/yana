@@ -161,13 +161,8 @@ a:hover {
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-ink));
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-size: 0.95rem;
-  font-weight: 700;
-  font-family: var(--sans);
+  display: block;
+  object-fit: cover;
 }
 
 .nav {

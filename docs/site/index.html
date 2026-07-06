@@ -8,6 +8,27 @@
       name="description"
       content="Yana is a private, on-device RSS and content aggregator for iOS. No account, no server. RSS, YouTube, Reddit, podcasts and more in one fast, native reader."
     />
+    <link rel="icon" href="assets/img/app-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/img/app-icon.svg" />
+    <!-- Open Graph / Twitter. Absolute URLs assume the default Pages host; update if you set a custom domain. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Yana" />
+    <meta property="og:title" content="Yana — your feeds, on your phone, and nowhere else" />
+    <meta
+      property="og:description"
+      content="A private, on-device RSS and content aggregator for iOS. No account, no server — RSS, YouTube, Reddit, podcasts and more in one fast, native reader."
+    />
+    <meta property="og:url" content="https://fa-krug.github.io/yana/" />
+    <meta property="og:image" content="https://fa-krug.github.io/yana/assets/img/social-preview.png" />
+    <meta property="og:image:width" content="2560" />
+    <meta property="og:image:height" content="1280" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Yana — your feeds, on your phone, and nowhere else" />
+    <meta
+      name="twitter:description"
+      content="A private, on-device feed reader for iOS. No account, no server."
+    />
+    <meta name="twitter:image" content="https://fa-krug.github.io/yana/assets/img/social-preview.png" />
     <link rel="stylesheet" href="assets/styles.css" />
     <!-- Set language before first paint to avoid a flash. -->
     <script>
@@ -26,8 +47,7 @@
     <header class="site-header">
       <div class="wrap">
         <a class="brand" href="index.html">
-          <!-- Placeholder app icon; swap with assets/img/app-icon.png later. -->
-          <span class="brand-mark">Y</span>
+          <img class="brand-mark" src="assets/img/app-icon.svg" alt="Yana app icon" />
           Yana
         </a>
         <nav class="nav">
@@ -213,12 +233,14 @@
               </a>
             </div>
           </div>
-          <div>
-            <!-- Placeholder: replace with assets/img/app-icon-large.png -->
-            <div class="ph" style="aspect-ratio: 4 / 3; min-height: 260px;">
-              <span class="lang-en">Image: App icon</span>
-              <span class="lang-de">Bild: App-Icon</span>
-            </div>
+          <div style="display: grid; place-items: center;">
+            <img
+              src="assets/img/app-icon.svg"
+              alt="Yana app icon"
+              width="240"
+              height="240"
+              style="width: 240px; height: 240px; border-radius: 52px; box-shadow: var(--shadow);"
+            />
           </div>
         </div>
       </section>
@@ -228,7 +250,7 @@
       <div class="wrap">
         <div class="footer-cols">
           <div>
-            <a class="brand" href="index.html"><span class="brand-mark">Y</span> Yana</a>
+            <a class="brand" href="index.html"><img class="brand-mark" src="assets/img/app-icon.svg" alt="Yana app icon" /> Yana</a>
             <p style="margin-top: 12px; max-width: 34ch;">
               <span class="lang-en">A private, on-device feed reader for iOS.</span>
               <span class="lang-de">Ein privater Feed-Reader für iOS, komplett auf dem Gerät.</span>
