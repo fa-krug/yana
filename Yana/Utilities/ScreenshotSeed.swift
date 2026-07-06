@@ -118,11 +118,11 @@ enum ScreenshotSeed {
     }
 
     private static func body(imageRef: String, item: (title: String, author: String, summary: String)) -> String {
-        // Lead image first (becomes the reader lead image + timeline thumbnail), then the
-        // summary as an emphasized lead paragraph, then a couple of body paragraphs.
+        // Lead image first (becomes the reader lead image + timeline thumbnail), then a couple
+        // of body paragraphs. The summary itself is rendered separately by the reader as its
+        // own SUMMARY block (from `Article.summary`), so it must not be duplicated here.
         """
         <img src="\(imageRef)" alt="">
-        <p><strong>\(item.summary)</strong></p>
         <p>\(String(repeating: "This is curated screenshot copy that reads like a real article without depending on any network fetch. ", count: 3))</p>
         <p>\(String(repeating: "Feeds are aggregated on-device, organized with tags, and read in a clean native reader. ", count: 3))</p>
         """

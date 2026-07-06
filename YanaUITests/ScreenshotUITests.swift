@@ -34,6 +34,10 @@ final class ScreenshotUITests: XCTestCase {
         searchField.typeText("reader")
         // Let results settle (250ms debounce in ArticleListView).
         Thread.sleep(forTimeInterval: 1.0)
+        // Assert the search actually produced rendered rows before snapping — rows are
+        // Buttons inside a native List (ArticleListView -> ManagedList), which XCUITest
+        // exposes with the "cell" trait.
+        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 5), "search produced no results")
         snapshot("03_Search")
 
         // Dismiss the article-list sheet.

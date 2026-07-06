@@ -20,3 +20,14 @@ clear_previous_screenshots(true)
 
 concurrent_simulators(false)
 stop_after_first_error(true)
+
+# Force a clean, neutral 9:41 / full-signal status bar on all shots instead of the
+# simulator's localized clock (which otherwise shows a German date on this machine).
+override_status_bar(true)
+
+# simctl's status bar override only controls the time (fastlane never sets a date
+# component; see `xcrun simctl status_bar --help`), and iPadOS's status bar renders a
+# locale-formatted date next to it regardless. Force the simulator's system locale to
+# match `languages` above so that date renders in English instead of the host Mac's
+# German region.
+localize_simulator(true)
