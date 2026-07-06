@@ -22,14 +22,37 @@ MKBHD was considered but **dropped from scope**.
 |---|---|---|
 | Integration style | Dedicated `AggregatorType` cases | Consistent with the existing curated scraper catalog; each appears by name in the feed-type picker. |
 | Content depth | Full-article scraping | Both feeds carry only summaries/excerpts; scraping gives complete bodies. |
-| Per-type options | **AI-only** (no extra toggle) | Simplest surface. Empty-element cleanup and page-combining are always-on, not user-configurable. |
-| Ars pagination | **Port multi-page combining** | Ars long-form features paginate; page-1-only would truncate them. |
-| The Verge pagination | Single-page | The Verge articles are single-page. |
+| Per-type options | **AI-only** (no extra toggle) | Simplest surface. Empty-element cleanup and block-merging are always-on, not user-configurable. |
+| Ars multi-block body | **Merge all in-page `.post-content` blocks** | See correction below — Ars renders the whole article (all "pages") in one fetch as multiple sibling `.post-content` blocks; no extra HTTP fetches needed. |
+| The Verge body | First `article-body-component` block only | See correction below — the page embeds many related/stream article bodies; only the first is the main article. |
+
+## Research correction (supersedes the original pagination plan)
+
+The approved design assumed Ars paginates across separate URLs (`?page=N`) and The Verge is a
+single body block. Fetching real pages showed otherwise:
+
+- **The Verge** (`verge.html`): the article prose *is* server-rendered, but the page contains
+  ~22 `.duet--article--article-body-component` divs — the main article **plus embedded
+  related/"stream" article bodies**. `HTMLUtils.extractMainContent` already takes `.first()`,
+  which is the main article. **Merging would be wrong** (it would splice in unrelated articles).
+  → The Verge is a plain single-block Merkur-style subclass; no special extraction.
+- **Ars Technica** (`ars.html`, `feat.html`): appending `/N/` to an article redirects to a
+  `#page-N` **anchor on the same URL**. The page's own metadata (`pagination_pages_tot: 3`)
+  confirms multi-page features, but **every "page" is present in the single fetched HTML** as
+  sibling `div.post-content.post-content-double` blocks separated by `<a data-page="N">`
+  trackers. Even a single-page news article splits into 2 genuine (non-duplicate) `.post-content`
+  blocks. `extractMainContent` takes only `.first()` → it would **truncate** the article.
+  → Ars overrides extraction to **select and merge all `div.post-content` blocks from the one
+  fetched page**. No `fetchAdditionalPage`, no `detectPagination`, no extra network calls.
+
+This is strictly simpler than the originally-specced MacTechNews multi-fetch port, needs no
+pagination-markup guessing, and still yields complete long-form article bodies.
 
 ## Archetype
 
-`MerkurAggregator` (single-page) is the template for **The Verge**.
-`MactechnewsAggregator` (multi-page combining) is the template for **Ars Technica**.
+`MerkurAggregator` (single-block extraction) is the template for **The Verge** and the base shape
+for **Ars Technica**; Ars additionally overrides extraction to merge all in-page `.post-content`
+blocks (see the research correction above).
 Both subclass `FullWebsiteAggregator`, which already provides the fetch → extract-by-selector →
 header-hoist → image-download → sanitize pipeline. A scraper only overrides
 `contentSelector`, `selectorsToRemove`, `fetchEntries()`, and (for cleanup/pagination)
@@ -58,7 +81,8 @@ Subclass of `FullWebsiteAggregator`, modeled on `MerkurAggregator`.
 
 ### 2. `ArsTechnicaAggregator` (new — `Yana/Aggregators/Concrete/ArsTechnicaAggregator.swift`)
 
-Subclass of `FullWebsiteAggregator`, modeled on `MactechnewsAggregator` (multi-page).
+Subclass of `FullWebsiteAggregator`, modeled on `MerkurAggregator` but with a custom
+**in-page multi-block merge** (no extra HTTP fetches).
 
 - `static let defaultFeed = "https://arstechnica.com/feed/"`
 - `identifierChoices` (all verified 200):
@@ -66,16 +90,18 @@ Subclass of `FullWebsiteAggregator`, modeled on `MactechnewsAggregator` (multi-p
   - `https://arstechnica.com/gadgets/feed/` — "Gadgets"
   - `https://arstechnica.com/science/feed/` — "Science"
   - `https://arstechnica.com/gaming/feed/` — "Gaming"
-- `contentSelector = ".post-content"` (verified on a live article page).
+- `contentSelector = ".post-content"` (verified on live article pages).
 - `selectorsToRemove` (starting set, refined against fixture): `.ad`, `[class*='ad-wrapper']`,
   `.ad--mid-content`, `.ad--rail`, `aside`, `script`, `style`, `.social-share`, non-YouTube iframes.
 - `fetchEntries()` — identifier-or-`defaultFeed` RSS parse.
-- **Multi-page combining** — port the MacTechNews `enrich()` + `detectPagination()` +
-  `mergeContentDivs()` logic. Combining is **always on** (no toggle). `detectPagination()`
-  must handle whichever URL form Ars uses (`?page=N` query param and/or `/N/` path segment);
-  the exact markup will be confirmed against a real multi-page fixture during TDD.
-- `processFullContent()` — extract `.post-content`, strip noise, always-on empty-element removal,
-  embed/image rewrite, sanitize.
+- **In-page block merge** — override `enrich()` (or a `mergedContentHTML` extraction step) to
+  select **all** `div.post-content` blocks in the single fetched page and concatenate their inner
+  HTML in document order (wrapped in one container), *then* run `processFullContent`. This is
+  required because a single fetch already contains every "page" as sibling `.post-content` blocks,
+  and the base `extractMainContent` keeps only `.first()`. No `fetchAdditionalPage` /
+  `detectPagination`. Do not de-duplicate blocks — they are distinct article segments.
+- `processFullContent()` — strip noise, always-on empty-element removal, embed/image rewrite,
+  sanitize (Merkur-style).
 
 ### 3. `AggregatorType` (`Yana/Aggregators/AggregatorType.swift`)
 
@@ -118,15 +144,17 @@ Subclass of `FullWebsiteAggregator`, modeled on `MactechnewsAggregator` (multi-p
 Unchanged from existing scrapers: `AggregationService.update(feed:)` →
 `AggregatorRegistry.makeAggregator` → `TheVerge/ArsTechnicaAggregator.aggregate()` →
 `fetchEntries()` (RSS list) → per-entry `enrich()` (scrape page, extract `contentSelector`,
-strip `selectorsToRemove`, combine pages for Ars) → `processFullContent()` (sanitize + format to
-HTML) → `BlockParser` at import → `[Block]` body → upsert into SwiftData → timeline.
+strip `selectorsToRemove`; for Ars, merge all in-page `.post-content` blocks first) →
+`processFullContent()` (sanitize + format to HTML) → `BlockParser` at import → `[Block]` body →
+upsert into SwiftData → timeline.
 
 ## Error handling
 
 Inherited from `FullWebsiteAggregator.enrich`: on a page-fetch/parse failure it falls back to the
 RSS summary (still localizing images); on cancellation it rethrows so a partial run does not persist
-feed-only content masquerading as a full scrape. Ars's ported multi-page `enrich` keeps the same
-try/catch fallback shape as MacTechNews (missing additional pages degrade to the pages fetched).
+feed-only content masquerading as a full scrape. Ars's overridden `enrich` keeps the same
+try/catch fallback shape; the block-merge happens after the single page fetch, so there are no
+additional fetches that can partially fail.
 
 ## Testing
 
@@ -135,8 +163,9 @@ Swift Testing, inline HTML fixtures (no external fixture files), stubbing `fetch
 
 - `TheVergeAggregatorTests.swift` — extracts `.duet--article--article-body-component` body,
   strips a noise selector, `identifierChoices` count/first-value.
-- `ArsTechnicaAggregatorTests.swift` — extracts `.post-content`, strips an `.ad*` selector,
-  **combines two stubbed pages into one body**, `identifierChoices` = 4 with expected values.
+- `ArsTechnicaAggregatorTests.swift` — **merges two sibling `.post-content` blocks from one
+  fetched page into one body** (proves no truncation), strips an `.ad*` selector,
+  `identifierChoices` = 4 with expected values.
 - Bump `AggregatorTypeTests`: `AggregatorType.allCases.count == 14` → `16`; add `displayName` /
   `brandSiteURL` expectations for both.
 - Extend `AggregatorRegistryScrapersTests` — both types resolve to their concrete aggregator.
@@ -157,9 +186,12 @@ implementation; any label that turns out to be new gets a German (`de`) `"transl
 
 ## Known limitation
 
-The Verge is single-page (correct for that site). Ars page-combining relies on detecting Ars's
-current pagination markup; if Ars changes it, long features silently fall back to page 1 (same
-failure mode as the other multi-page scrapers). Combining is not user-toggleable.
+The Verge extraction keeps the first `article-body-component` block; if The Verge ever reorders
+the DOM so a related/stream body precedes the main article, extraction would grab the wrong one
+(low risk — the main article is first today). Ars merges all `.post-content` blocks in the fetched
+page; if Ars renders unrelated `.post-content` blocks (e.g. related-story teasers) outside the
+main article region, the merge would include them — mitigated by scoping the selector to the main
+article container during TDD if the fixture shows stray blocks. Neither behavior is user-toggleable.
 
 ## Out of scope
 
