@@ -55,6 +55,19 @@ struct ArsTechnicaAggregatorTests {
         #expect(!a.content.contains("ADCONTENT"))
     }
 
+    @Test func fallsBackToRSSContentWhenNoPostContentBlocks() async throws {
+        // A page with zero .post-content blocks → mergedContentHTML returns nil → RSS-content fallback.
+        let rssEntry = FeedEntry(title: "Ars story", link: "https://arstechnica.com/a/2026/07/x/",
+                                 content: "<p>RSSFALLBACKBODY</p>", summary: "<p>RSSFALLBACKBODY</p>",
+                                 entryDescription: nil, published: .now, author: "",
+                                 enclosures: [], itunesDuration: nil, itunesImage: nil, mediaThumbnails: [])
+        let page = "<html><body><article><p>UNSCRAPEDPAGEBODY</p></article></body></html>"
+        let agg = StubArs(entries: [rssEntry], page: page, store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("RSSFALLBACKBODY"))     // RSS feed content preserved on fallback
+        #expect(!a.content.contains("UNSCRAPEDPAGEBODY"))  // page had no .post-content, not scraped
+    }
+
     @Test func identifierChoicesHasFourSections() {
         #expect(ArsTechnicaAggregator.identifierChoices.count == 4)
         #expect(ArsTechnicaAggregator.identifierChoices.map(\.value) == [
