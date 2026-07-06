@@ -117,5 +117,6 @@ struct AggregatorOptionsTests {
         let mmo = try JSONDecoder().decode(MeinMmoOptions.self, from: empty)
         #expect(mmo == MeinMmoOptions())
         _ = try JSONDecoder().decode(TheVergeOptions.self, from: empty)
+        _ = try JSONDecoder().decode(ArsTechnicaOptions.self, from: empty)
     }
 }

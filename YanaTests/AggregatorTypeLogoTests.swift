@@ -14,6 +14,7 @@ struct AggregatorTypeLogoTests {
         #expect(AggregatorType.oglaf.brandSiteURL == "https://www.oglaf.com/")
         #expect(AggregatorType.meinMmo.brandSiteURL == "https://mein-mmo.de/")
         #expect(AggregatorType.theVerge.brandSiteURL == "https://www.theverge.com/")
+        #expect(AggregatorType.arsTechnica.brandSiteURL == "https://arstechnica.com/")
     }
 
     @Test func nonBrandTypesHaveNoSiteURL() {

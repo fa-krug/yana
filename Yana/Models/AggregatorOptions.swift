@@ -25,6 +25,11 @@ struct TheVergeOptions: Codable, Sendable, Equatable {
     var ai = AIOptions()
 }
 
+/// `ars_technica` has no extra options — AI only.
+struct ArsTechnicaOptions: Codable, Sendable, Equatable {
+    var ai = AIOptions()
+}
+
 struct RedditOptions: Codable, Sendable, Equatable {
     var subredditSort = "hot"   // hot | new | top | rising
     var minComments = 5
@@ -103,6 +108,7 @@ enum AggregatorOptions: Codable, Sendable, Equatable {
     case fullWebsite(WebsiteOptions)
     case feedContent(FeedContentOptions)
     case theVerge(TheVergeOptions)
+    case arsTechnica(ArsTechnicaOptions)
     case reddit(RedditOptions)
     case youtube(YouTubeOptions)
     case podcast(PodcastOptions)
@@ -122,6 +128,7 @@ enum AggregatorOptions: Codable, Sendable, Equatable {
         case .fullWebsite(let o): o.ai
         case .feedContent(let o): o.ai
         case .theVerge(let o): o.ai
+        case .arsTechnica(let o): o.ai
         case .reddit(let o): o.ai
         case .youtube(let o): o.ai
         case .podcast(let o): o.ai
@@ -183,6 +190,14 @@ extension FeedContentOptions {
 }
 
 extension TheVergeOptions {
+    init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+    }
+}
+
+extension ArsTechnicaOptions {
     init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)

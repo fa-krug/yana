@@ -17,5 +17,6 @@ struct AggregatorRegistryScrapersTests {
         #expect(r.makeAggregator(cfg(.mactechnews, .mactechnews(MactechnewsOptions())), credentials: .init()) is MactechnewsAggregator)
         #expect(r.makeAggregator(cfg(.meinMmo, .meinMmo(MeinMmoOptions())), credentials: .init()) is MeinMmoAggregator)
         #expect(r.makeAggregator(cfg(.theVerge, .theVerge(TheVergeOptions())), credentials: .init()) is TheVergeAggregator)
+        #expect(r.makeAggregator(cfg(.arsTechnica, .arsTechnica(ArsTechnicaOptions())), credentials: .init()) is ArsTechnicaAggregator)
     }
 }

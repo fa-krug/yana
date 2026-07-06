@@ -26,6 +26,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
     case darkLegacy = "dark_legacy"
     case caschysBlog = "caschys_blog"
     case theVerge = "the_verge"
+    case arsTechnica = "ars_technica"
     case mactechnews
     case oglaf
     case meinMmo = "mein_mmo"
@@ -46,6 +47,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .darkLegacy: "Dark Legacy Comics"
         case .caschysBlog: "Caschy's Blog"
         case .theVerge: "The Verge"
+        case .arsTechnica: "Ars Technica"
         case .mactechnews: "MacTechNews"
         case .oglaf: "Oglaf"
         case .meinMmo: "Mein-MMO"
@@ -67,6 +69,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .darkLegacy: "https://darklegacycomics.com/"
         case .caschysBlog: "https://stadt-bremerhaven.de/"
         case .theVerge: "https://www.theverge.com/"
+        case .arsTechnica: "https://arstechnica.com/"
         case .mactechnews: "https://www.mactechnews.de/"
         case .oglaf: "https://www.oglaf.com/"
         case .meinMmo: "https://mein-mmo.de/"
@@ -91,6 +94,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .tagesschau: TagesschauAggregator.identifierChoices
         case .caschysBlog: CaschysBlogAggregator.identifierChoices
         case .theVerge: TheVergeAggregator.identifierChoices
+        case .arsTechnica: ArsTechnicaAggregator.identifierChoices
         case .meinMmo: MeinMmoAggregator.identifierChoices
         default: []
         }
@@ -119,6 +123,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         case .darkLegacy: .darkLegacy(DarkLegacyOptions())
         case .caschysBlog: .caschysBlog(CaschysBlogOptions())
         case .theVerge: .theVerge(TheVergeOptions())
+        case .arsTechnica: .arsTechnica(ArsTechnicaOptions())
         case .mactechnews: .mactechnews(MactechnewsOptions())
         case .oglaf: .oglaf(OglafOptions())
         case .meinMmo: .meinMmo(MeinMmoOptions())
