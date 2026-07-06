@@ -5,6 +5,10 @@ import SwiftData
 /// Curated, network-free library for App Store screenshots. Gated by the
 /// `-UITEST_SCREENSHOTS` launch argument so it never runs on a normal launch or on the
 /// `YANA_SEED_ARTICLES` performance path. Idempotent: bails if any Feed already exists.
+///
+/// Replays a frozen `ScreenshotFixture` snapshot of REAL feed content — collected once, offline,
+/// by `ScreenshotFixtureCollector` — bundled at `Resources/ScreenshotFixture/manifest.json` (+
+/// `images/<hash>.<ext>`, flattened to the bundle root at build time).
 enum ScreenshotSeed {
     static let launchArgument = "-UITEST_SCREENSHOTS"
 
@@ -14,124 +18,92 @@ enum ScreenshotSeed {
         await seed(into: context)
     }
 
-    /// One curated feed per aggregator flavor, each contributing a few articles.
-    private struct FeedSpec {
-        let name: String
-        let type: AggregatorType
-        let tagName: String
-        let tagColorHex: String
-        let articles: [(title: String, author: String, summary: String)]
-    }
-
-    private static let specs: [FeedSpec] = [
-        FeedSpec(name: "Heise Online", type: .feedContent, tagName: "Tech", tagColorHex: "#2E77D0", articles: [
-            ("Apple ships on-device RSS: privacy without a server", "Jantje Cordes",
-             "A new wave of local-first readers keeps your feeds entirely on the phone — no account, no cloud sync, no tracking."),
-            ("Swift 6 concurrency lands across the ecosystem", "Malte Kuhr",
-             "Strict concurrency checking is now the default, and libraries are racing to adopt @MainActor and Sendable."),
-            ("The quiet return of the personal feed reader", "Hanna Vogt",
-             "RSS never died. Here's why a focused, on-device reader beats an algorithmic timeline."),
-        ]),
-        FeedSpec(name: "Tagesschau", type: .feedContent, tagName: "News", tagColorHex: "#D0392E", articles: [
-            ("Morning briefing: everything you missed overnight", "Redaktion",
-             "The stories shaping the day, gathered while you slept."),
-            ("Explainer: how aggregation keeps you in control", "Redaktion",
-             "You choose the sources. The app just fetches and organizes."),
-            ("Weather roundup: a calm week ahead nationwide", "Redaktion",
-             "Sunshine returns after a stormy weekend across most regions."),
-        ]),
-        // The YouTube/Reddit sources are credential-gated in the real app and render an
-        // "off" badge when no API key is configured. A screenshot fixture has no keys, so
-        // these use `.feedContent` to avoid the "off" badge — the feed name and tag still
-        // convey the aggregator variety the caption promises.
-        FeedSpec(name: "Marques on YouTube", type: .feedContent, tagName: "Video", tagColorHex: "#7A2ED0", articles: [
-            ("The best phone for reading in 2026", "MKBHD",
-             "Screen, battery, and the underrated joy of a great reading app."),
-            ("I replaced my news apps with one RSS reader", "MKBHD",
-             "A week living entirely inside a self-contained feed aggregator."),
-        ]),
-        FeedSpec(name: "r/apple", type: .feedContent, tagName: "Community", tagColorHex: "#D07A2E", articles: [
-            ("What feed reader are you using in 2026?", "u/feedfan",
-             "The community weighs in on native, privacy-first readers."),
-            ("PSA: OPML import makes switching painless", "u/switcher",
-             "Bring every subscription over in one file."),
-        ]),
-        FeedSpec(name: "Accidental Tech Podcast", type: .podcast, tagName: "Audio", tagColorHex: "#2EB8D0", articles: [
-            ("Episode 612: The local-first renaissance", "ATP",
-             "Why on-device processing is the story of the year."),
-            ("Episode 611: Feeds, tags, and taste", "ATP",
-             "Organizing information without an algorithm deciding for you."),
-        ]),
-    ]
-
     @MainActor
     static func seed(into context: ModelContext) async {
         // Idempotency guard.
         if let existing = try? context.fetch(FetchDescriptor<Feed>()), !existing.isEmpty { return }
 
+        guard let manifestURL = Bundle.main.url(forResource: "manifest", withExtension: "json") else {
+            NSLog("ScreenshotSeed: manifest.json not found in bundle")
+            return
+        }
+        let fixture: ScreenshotFixture
+        do {
+            let data = try Data(contentsOf: manifestURL)
+            fixture = try JSONDecoder().decode(ScreenshotFixture.self, from: data)
+        } catch {
+            NSLog("ScreenshotSeed: failed to load/decode manifest: \(error)")
+            return
+        }
+
+        // Re-insert every image. Content-addressed storage means re-storing the same bytes
+        // reproduces the same hash the fixture's `yana-img://<hash>` refs already point at.
+        for image in fixture.images {
+            guard let imageURL = Bundle.main.url(forResource: image.hash, withExtension: image.ext) else {
+                NSLog("ScreenshotSeed: image \(image.hash).\(image.ext) not found in bundle, skipping")
+                continue
+            }
+            do {
+                let data = try Data(contentsOf: imageURL)
+                _ = await ImageStore.shared.storeData(data, ext: image.ext)
+            } catch {
+                NSLog("ScreenshotSeed: failed to load image \(image.hash).\(image.ext): \(error)")
+            }
+        }
+
         var globalIndex = 0
         var articleIdentifiers: [String] = []
+        var anchorIdentifier: String?
+        var tagsByName: [String: Tag] = [:]
 
-        for spec in specs {
-            let feed = Feed(name: spec.name, aggregatorType: spec.type,
-                            identifier: "screenshot://\(spec.name)")
+        for (feedIndex, fixtureFeed) in fixture.feeds.enumerated() {
+            let feed = Feed(name: fixtureFeed.name, aggregatorType: .feedContent,
+                            identifier: fixtureFeed.identifier)
+            feed.logoHash = fixtureFeed.logoHash
             context.insert(feed)
 
-            let tag = Tag(name: spec.tagName, colorHex: spec.tagColorHex)
-            context.insert(tag)
+            let tag: Tag
+            if let existingTag = tagsByName[fixtureFeed.tagName] {
+                tag = existingTag
+            } else {
+                tag = Tag(name: fixtureFeed.tagName, colorHex: fixtureFeed.tagColorHex)
+                context.insert(tag)
+                tagsByName[fixtureFeed.tagName] = tag
+            }
             feed.tags = [tag]
 
-            for item in spec.articles {
-                let identifier = "screenshot://article/\(globalIndex)"
+            for (articleIndex, fixtureArticle) in fixtureFeed.articles.enumerated() {
+                let identifier = "screenshot://\(feedIndex)/\(articleIndex)"
                 let article = Article(
-                    title: item.title,
+                    title: fixtureArticle.title,
                     identifier: identifier,
-                    url: "https://example.com/screenshot/\(globalIndex)",
-                    date: .now,
-                    author: item.author,
-                    summary: item.summary
+                    url: fixtureArticle.url,
+                    date: fixtureArticle.date,
+                    author: fixtureArticle.author,
+                    summary: fixtureArticle.summary
                 )
-                let imageRef = await leadImageRef(for: globalIndex)
-                article.blocks = BlockParser.blocks(fromHTML: body(imageRef: imageRef, item: item))
+                article.blocks = fixtureArticle.blocks
                 article.createdAt = Date(timeIntervalSinceNow: -Double(globalIndex) * 5400)
                 article.feed = feed
                 article.tags = [tag]
                 context.insert(article)
                 articleIdentifiers.append(identifier)
+
+                if feedIndex == fixture.anchorFeedIndex && articleIndex == fixture.anchorArticleIndex {
+                    anchorIdentifier = identifier
+                }
                 globalIndex += 1
             }
         }
 
         do {
             try context.save()
-            // Park the anchor on the first article of the third feed (a visually rich one)
-            // so the reader opens on a good hero shot.
-            let anchor = articleIdentifiers.indices.contains(6)
-                ? articleIdentifiers[6] : articleIdentifiers.first
+            let anchor = anchorIdentifier ?? articleIdentifiers.first
             AppSettings().timelineAnchorIdentifier = anchor
             NSLog("ScreenshotSeed: inserted \(articleIdentifiers.count) articles, anchor=\(anchor ?? "nil")")
         } catch {
             NSLog("ScreenshotSeed: save failed: \(error)")
         }
-    }
-
-    private static func leadImageRef(for index: Int) async -> String {
-        let data = ScreenshotImageFactory.jpeg(index: index)
-        let hash = await ImageStore.shared.storeData(data, ext: "jpg")
-        return "\(ReaderWeb.imageScheme)://\(hash)"
-    }
-
-    private static func body(imageRef: String, item: (title: String, author: String, summary: String)) -> String {
-        // Lead image first (becomes the reader lead image + timeline thumbnail), then a few
-        // distinct, natural-reading paragraphs. The summary itself is rendered separately by
-        // the reader as its own SUMMARY block (from `Article.summary`), so it is not repeated
-        // here. Copy is generic enough to sit under any of the curated titles.
-        """
-        <img src="\(imageRef)" alt="">
-        <p>For years I bounced between half a dozen apps to keep up — one for news, another for videos, a third for podcasts. Each had its own account, its own algorithm, and its own idea of what I should see next.</p>
-        <p>Switching to a single on-device aggregator changed that. Every source I care about lands in one timeline, in the order it arrived, with nothing injected and nothing tracked. The feeds are mine, and they stay on my phone.</p>
-        <p>Tags keep everything organized without folders to babysit, and the reader strips each article down to just the words and images. No cookie banners, no pop-ups, no browser chrome — just the story.</p>
-        """
     }
 }
 #endif

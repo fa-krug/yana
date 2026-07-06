@@ -29,7 +29,10 @@ designed for privacy-conscious users who want their feeds without any backend.
   6.9″ `iPhone 17 Pro Max`, 1320×2868). Requires `brew install fastlane`.
 - Content is a DEBUG-only offline fixture (`ScreenshotSeed`, `Yana/Utilities/ScreenshotSeed.swift`)
   triggered by the `-UITEST_SCREENSHOTS` launch argument that the `ScreenshotUITests` capture flow
-  passes — no network, fully reproducible. `ScreenshotImageFactory` generates the lead images.
+  passes — no network, fully reproducible. `ScreenshotSeed` replays a frozen snapshot of REAL feed
+  content committed at `Yana/Resources/ScreenshotFixture/manifest.json` (+ `images/<hash>.<ext>`,
+  bundled at the app root), originally captured live by `ScreenshotFixtureCollector`
+  (`-COLLECT_SCREENSHOT_FIXTURE`) and re-inserted into `ImageStore` at seed time.
 - Framing: `fastlane/screenshots/Framefile.json` frames on a solid `background.png` sized to exactly
   1320×2868 (so framed output stays App-Store-valid) with captions from
   `fastlane/screenshots/en-US/title.strings`, rendered in the bundled `OpenSans-Bold.ttf` (SIL OFL —

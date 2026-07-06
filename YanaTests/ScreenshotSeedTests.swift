@@ -18,19 +18,27 @@ struct ScreenshotSeedTests {
         #expect(articles.isEmpty)
     }
 
-    @Test func seedInsertsCuratedLibrary() async throws {
+    @Test func seedReplaysBundledFixture() async throws {
         let context = try inMemoryContext()
-        // Call the internal seeding routine directly, bypassing the launch-arg gate.
+        // Call the internal seeding routine directly, bypassing the launch-arg gate. The test
+        // host bundle includes the committed ScreenshotFixture snapshot (manifest.json + images),
+        // so this genuinely exercises loading it — it would fail if the manifest were absent or
+        // undecodable.
         await ScreenshotSeed.seed(into: context)
 
-        let articles = try context.fetch(FetchDescriptor<Article>())
-        #expect(articles.count >= 12)
-        // Every article has a block body and a createdAt spread across recent time.
-        #expect(articles.allSatisfy { !$0.blocks.isEmpty })
-        // Multiple distinct feeds (aggregator variety).
         let feeds = try context.fetch(FetchDescriptor<Feed>())
         #expect(feeds.count >= 4)
-        // An anchor was parked on one of the seeded articles.
+
+        let articles = try context.fetch(FetchDescriptor<Article>())
+        #expect(articles.count >= 8)
+
+        // Every feed contributed at least one article.
+        for feed in feeds {
+            #expect(!feed.articles.isEmpty, "feed \(feed.name) has no articles")
+        }
+
+        // An anchor was parked on one of the seeded articles. Not every article has a non-empty
+        // body (YouTube/Reddit articles legitimately have empty blocks), so we don't assert that.
         let anchor = AppSettings().timelineAnchorIdentifier
         #expect(anchor != nil)
         #expect(articles.contains { $0.identifier == anchor })
