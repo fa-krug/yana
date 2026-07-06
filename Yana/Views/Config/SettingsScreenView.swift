@@ -74,6 +74,7 @@ struct SettingsScreenView: View {
                 Label("Feeds", systemImage: "list.bullet.rectangle")
                     .labelStyle(.tintedIcon(.orange))
             }
+            .accessibilityIdentifier("settings.feeds")
             NavigationLink {
                 TagsView()
             } label: {
