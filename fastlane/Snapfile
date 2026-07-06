@@ -1,8 +1,7 @@
-# Devices: 6.9" iPhone (1320x2868) and 13" iPad (2064x2752).
-# Confirm names against `xcrun simctl list devices available`.
+# Device: 6.9" iPhone (1320x2868). iPhone-only release — no iPad.
+# Confirm the name against `xcrun simctl list devices available`.
 devices([
-  "iPhone 17 Pro Max",
-  "iPad Pro 13-inch (M5)"
+  "iPhone 17 Pro Max"
 ])
 
 languages(["en-US"])
@@ -22,12 +21,9 @@ concurrent_simulators(false)
 stop_after_first_error(true)
 
 # Force a clean, neutral 9:41 / full-signal status bar on all shots instead of the
-# simulator's localized clock (which otherwise shows a German date on this machine).
+# simulator's localized clock.
 override_status_bar(true)
 
-# simctl's status bar override only controls the time (fastlane never sets a date
-# component; see `xcrun simctl status_bar --help`), and iPadOS's status bar renders a
-# locale-formatted date next to it regardless. Force the simulator's system locale to
-# match `languages` above so that date renders in English instead of the host Mac's
-# German region.
+# Force the simulator's system locale to match `languages` above, so any locale-formatted
+# system chrome renders in English rather than the host Mac's German region.
 localize_simulator(true)
