@@ -2,9 +2,11 @@
 
 A native SwiftUI iOS app that is a fully **self-contained RSS/content aggregator**. It
 fetches, parses, and processes feeds **on-device** and stores everything locally with
-SwiftData. There is **no server and no login** — it mirrors the aggregation model of the
-[Yana server](https://github.com/fa-krug/Yana) but runs entirely on the phone, for
+SwiftData. There is **no server and no login** — everything runs entirely on the phone, for
 privacy-conscious users who want their feeds without any backend.
+
+Yana is **free and open source** under the [MIT License](LICENSE). Browse the code, file a
+bug, or request a new source at [github.com/fa-krug/yana](https://github.com/fa-krug/yana).
 
 ## Requirements
 
@@ -48,6 +50,8 @@ privacy-conscious users who want their feeds without any backend.
   all on by default. **Starred** is itself a built-in tag.
 - **Refresh.** Pull down on the reader to force-update the current article and the whole
   timeline. Per-feed and all-feeds updates are available in the config hub.
+- **Read aloud.** Play any article as speech in a voice that matches its language; playback
+  keeps going from the lock screen and Control Center. Pick a preferred voice in **Settings › Reader**.
 - **Keys.** Reddit and YouTube require user-supplied API keys; AI post-processing
   (summarize / improve / translate) uses your own OpenAI / Anthropic / Gemini / Mistral /
   Qwen / DeepSeek key. Settings shows config fields for the selected provider only (API key,
@@ -55,6 +59,8 @@ privacy-conscious users who want their feeds without any backend.
   its own block between the article header and body. Secrets are stored in the Keychain.
   A **Test** button in Settings checks each key with a minimal auth call and tells you
   whether it's valid before you rely on it.
+- **Contribute.** **Settings › About** links straight to the source and the issue board —
+  the built-in source list grows from what people request there.
 
 ## Features
 
@@ -64,21 +70,41 @@ privacy-conscious users who want their feeds without any backend.
 - On-device aggregation into SwiftData
 - Endless date-ordered timeline with remembered position
 - Tag-based filtering (all on by default; includes "Untagged")
-- HTML article rendering in the swipe reader
+- Native `[Block]` article rendering in the swipe reader
+- Read articles aloud in a language-matched voice with lock-screen controls
 - Star / unstar; starred articles are exempt from cleanup
 - Force update via pull-down; per-feed / all-feeds updates
 - ~One-month retention (older non-starred articles are cleaned up)
 - Best-effort background refresh
 - Optional AI post-processing per feed
 
-### Enhanced (backlog)
-- Search across articles
+### Enhanced (shipped)
+- Search across articles (title / content / author / feed name)
+- OPML import / export with `yana:` extension attributes
+- New-article notifications after a background refresh (opt-in)
+- Credential validation (Test buttons for Reddit / YouTube / AI keys)
+
+### Backlog
 - Biometric authentication (Face ID / Touch ID)
+- Multiple local libraries
 - Offline article caching
 - Share extension to add feeds
 - iPad multi-column layout
 - Home screen widgets
-- New-article notifications after a background refresh
+
+## Requesting a New Source
+
+Yana ships with built-in aggregators for RSS/Atom, full websites, several site-specific
+scrapers, Reddit, YouTube, and podcasts, and the list grows from real requests. Two ways to
+ask for one:
+
+- **In the app:** **Settings › About › Suggest a Source or Report an Issue** opens the issue
+  board directly.
+- **On the web:** open a new issue at
+  [github.com/fa-krug/yana/issues](https://github.com/fa-krug/yana/issues).
+
+Include the site's URL and, if you have it, a link to its feed or the exact page you want
+followed. The more specific the request, the quicker it can be added.
 
 ## Project Structure
 
@@ -93,7 +119,9 @@ Yana/
   Utilities/                # Constants and extensions
   Resources/                # Asset catalogs, string catalog
   Entitlements/             # iOS entitlements
+docs/app-store/             # App Store listing copy (EN/DE descriptions + keyword files)
 project.yml                 # XcodeGen project definition
+LICENSE                     # MIT license
 ```
 
 ## Tests
@@ -117,3 +145,14 @@ xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' tes
   `UserDefaults` via `AppSettings`
 - **Project Generation:** XcodeGen (`project.yml`)
 - **Code Quality:** SwiftLint + SwiftFormat
+
+## License
+
+Yana is released under the [MIT License](LICENSE). Source and issue tracker:
+[github.com/fa-krug/yana](https://github.com/fa-krug/yana). Source and feature requests are
+welcome on the issue board.
+
+## Acknowledgements
+
+Thanks to the [NetNewsWire](https://netnewswire.com) team, whose clean reader view inspired
+Yana's article presentation.

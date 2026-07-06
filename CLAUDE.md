@@ -6,9 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Yana iOS is a **native SwiftUI iOS app** that is a fully **self-contained RSS/content
 aggregator**. It fetches, parses, and processes feeds on-device and stores everything
-locally with SwiftData. There is no server and no network authentication — it mirrors the
-aggregation model of the [Yana server](../Yana) but runs entirely on the phone. The app is
-designed for privacy-conscious users who want their feeds without any backend.
+locally with SwiftData. There is no server and no network authentication — everything runs
+entirely on the phone. The app is designed for privacy-conscious users who want their feeds
+without any backend. Yana is
+open source under the MIT license (`LICENSE`); the source and issue board live at
+[github.com/fa-krug/yana](https://github.com/fa-krug/yana).
 
 ## Commands
 
@@ -58,8 +60,8 @@ designed for privacy-conscious users who want their feeds without any backend.
   background loader, then stays in sync via a coalesced `ModelContext.didSave` observer;
   consumed by both the reader and `ArticleListView` in place of per-view `@Query`s; the reader
   resolves each page's full `Article` (with its `[Block]` body) on demand by `persistentID`).
-- **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref; video/tweet embeds shown as tappable poster/text cards that open externally). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. A dedicated **Reader** settings section exposes text size and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
-- **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings.
+- **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref; video/tweet embeds shown as tappable poster/text cards that open externally). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer; picks the most natural installed voice matching the article's detected language, keeps playing when the screen is locked or the app is backgrounded, and wires up Now Playing / remote play-pause controls). A dedicated **Reader** settings section exposes text size, font, the read-aloud voice, and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
+- **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings. The Settings screen (`SettingsScreenView`) ends with an **About** section (`aboutSection`) linking the source repo, the issue board (for source/bug requests), and a NetNewsWire credit for the reader view.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
@@ -70,6 +72,8 @@ designed for privacy-conscious users who want their feeds without any backend.
 - `Yana/ContentView.swift` — root view (opens directly into the reader; no auth gate)
 - `Yana/Models/AppState.swift` — thin observable UI state (timeline anchor, tag filter, errors)
 - `Yana/Utilities/Constants.swift` — app constants
+- `LICENSE` — MIT license
+- `docs/app-store/` — App Store listing copy: English + German descriptions (`description-*.md`, ≤4000 chars each) and keyword lines (`keywords-*.txt`, ≤100 chars each), plus a `README.md` documenting the field format
 
 ### Key patterns
 
@@ -102,7 +106,7 @@ designed for privacy-conscious users who want their feeds without any backend.
 
 ### Aggregator types
 
-`AggregatorType` mirrors the Yana server's aggregators: `fullWebsite`, `feedContent`
+`AggregatorType` covers these aggregators: `fullWebsite`, `feedContent`
 (RSS/Atom), the managed scrapers (`heise`, `merkur`, `tagesschau`, `explosm`, `darkLegacy`,
 `caschysBlog`, `mactechnews`, `oglaf`, `meinMmo`), and the social/media sources (`youtube`,
 `reddit`, `podcast`). Reddit and YouTube require user-supplied API keys (stored in Keychain);
@@ -144,6 +148,8 @@ before use, with Apple Intelligence checked for on-device availability instead.
 - **OPML import/export** ✅ — standard OPML with `yana:` extension attributes for full-fidelity round-trip, from the Feeds screen
 - **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background refresh
 - **Credential validation** ✅ — per-section **Test** buttons in Settings that verify Reddit, YouTube, and AI-provider keys (and Apple Intelligence availability) via a minimal auth probe, classifying failures as invalid credentials / network / unexpected response
+- **Read-aloud** ✅ — `ReaderSpeechController` reads articles aloud with a voice matching the article's language, continues from the lock screen / Control Center, and exposes a voice picker in the Reader settings section
+- **Open source** ✅ — MIT-licensed (`LICENSE`); Settings › About links the source repo and issue board, and credits NetNewsWire for the reader view; App Store copy lives under `docs/app-store/`
 - **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
 - **Multiple libraries** — support multiple independent local feed libraries/profiles
 - **Offline reading** — cache articles locally for offline access
