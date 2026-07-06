@@ -35,9 +35,9 @@ final class ScreenshotUITests: XCTestCase {
         snapshot("02_Timeline")
 
         // Shot 3 — Search. Query a term guaranteed to match the real-content fixture
-        // (the "r/apple" feed name plus several Apple/iOS article titles).
+        // ("battery" appears in two authored article titles — Byte Report + Overtake).
         searchField.tap()
-        searchField.typeText("Apple")
+        searchField.typeText("battery")
         // Let results settle (250ms debounce in ArticleListView).
         Thread.sleep(forTimeInterval: 1.0)
         // Assert the search actually produced rendered rows before snapping — rows are
