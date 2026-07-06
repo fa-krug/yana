@@ -29,9 +29,10 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 5), "article list did not open")
         snapshot("02_Timeline")
 
-        // Shot 3 — Search.
+        // Shot 3 — Search. Query a term guaranteed to match the real-content fixture
+        // (the "r/apple" feed name plus several Apple/iOS article titles).
         searchField.tap()
-        searchField.typeText("reader")
+        searchField.typeText("Apple")
         // Let results settle (250ms debounce in ArticleListView).
         Thread.sleep(forTimeInterval: 1.0)
         // Assert the search actually produced rendered rows before snapping — rows are

@@ -75,12 +75,12 @@ enum ScreenshotSeed {
             for (articleIndex, fixtureArticle) in fixtureFeed.articles.enumerated() {
                 let identifier = "screenshot://\(feedIndex)/\(articleIndex)"
                 let article = Article(
-                    title: fixtureArticle.title,
+                    title: Self.decodingEntities(fixtureArticle.title),
                     identifier: identifier,
                     url: fixtureArticle.url,
                     date: fixtureArticle.date,
-                    author: fixtureArticle.author,
-                    summary: fixtureArticle.summary
+                    author: Self.decodingEntities(fixtureArticle.author),
+                    summary: Self.decodingEntities(fixtureArticle.summary)
                 )
                 article.blocks = fixtureArticle.blocks
                 article.createdAt = Date(timeIntervalSinceNow: -Double(globalIndex) * 5400)
@@ -104,6 +104,39 @@ enum ScreenshotSeed {
         } catch {
             NSLog("ScreenshotSeed: save failed: \(error)")
         }
+    }
+
+    /// Decodes HTML entities in feed-supplied text. RSS/Atom titles arrive with entities like
+    /// `&#8217;` (right single quote) that the generic `FeedParser` does not decode, so the frozen
+    /// snapshot carries them verbatim — decode here so screenshots show clean text. Named entities
+    /// are resolved first so a double-encoded `&amp;#8217;` collapses correctly.
+    private static func decodingEntities(_ s: String) -> String {
+        guard s.contains("&") else { return s }
+        var result = s
+        let named: [(String, String)] = [
+            ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""),
+            ("&apos;", "'"), ("&nbsp;", "\u{00A0}"), ("&hellip;", "…"),
+            ("&mdash;", "—"), ("&ndash;", "–"),
+            ("&rsquo;", "\u{2019}"), ("&lsquo;", "\u{2018}"),
+            ("&rdquo;", "\u{201D}"), ("&ldquo;", "\u{201C}"),
+        ]
+        for (entity, replacement) in named {
+            result = result.replacingOccurrences(of: entity, with: replacement)
+        }
+        // Numeric entities: &#8217; (decimal) and &#x2019; (hex).
+        guard let regex = try? NSRegularExpression(pattern: #"&#(x?)([0-9A-Fa-f]+);"#) else { return result }
+        let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
+        for match in matches.reversed() {
+            guard let full = Range(match.range, in: result),
+                  let isHexRange = Range(match.range(at: 1), in: result),
+                  let digitsRange = Range(match.range(at: 2), in: result) else { continue }
+            let isHex = !result[isHexRange].isEmpty
+            let digits = String(result[digitsRange])
+            guard let code = UInt32(digits, radix: isHex ? 16 : 10),
+                  let scalar = Unicode.Scalar(code) else { continue }
+            result.replaceSubrange(full, with: String(scalar))
+        }
+        return result
     }
 }
 #endif
