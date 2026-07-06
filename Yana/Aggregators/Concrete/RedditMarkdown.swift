@@ -127,9 +127,14 @@ enum RedditMarkdown {
         var out: [String] = []
         for block in blocks {
             let lines = block.components(separatedBy: "\n")
-            if lines.allSatisfy({ $0.hasPrefix("&gt; ") || $0 == "&gt;" }) {
-                let inner = lines.map { line in
-                    emphasisAndLinks(String(line.dropFirst(line.hasPrefix("&gt; ") ? 5 : 4)))
+            if lines.allSatisfy({ $0.hasPrefix("&gt;") }) {
+                // A blockquote marker is `>` (escaped to `&gt;`) followed by an *optional* single
+                // space — Reddit/CommonMark accept `>text` as well as `> text`, so strip the marker
+                // and then one leading space if present, rather than requiring the space.
+                let inner = lines.map { line -> String in
+                    var rest = String(line.dropFirst(4))   // drop the "&gt;" marker
+                    if rest.hasPrefix(" ") { rest.removeFirst() }
+                    return emphasisAndLinks(rest)
                 }.joined(separator: "<br>")
                 out.append("<blockquote><p>\(inner)</p></blockquote>")
             } else if lines.allSatisfy({ isUnorderedItem($0) }) {
