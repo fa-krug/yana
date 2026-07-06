@@ -18,29 +18,32 @@ struct ScreenshotSeedTests {
         #expect(articles.isEmpty)
     }
 
-    @Test func seedReplaysBundledFixture() async throws {
+    @Test func seedAuthorsOriginalLibraryWithGeneratedImagery() async throws {
         let context = try inMemoryContext()
-        // Call the internal seeding routine directly, bypassing the launch-arg gate. The test
-        // host bundle includes the committed ScreenshotFixture snapshot (manifest.json + images),
-        // so this genuinely exercises loading it — it would fail if the manifest were absent or
-        // undecodable.
+        // Call the internal seeding routine directly, bypassing the launch-arg gate. This
+        // exercises authoring the in-code feeds/articles and generating every logo/lead image
+        // in-process (no bundled manifest, no network).
         await ScreenshotSeed.seed(into: context)
 
         let feeds = try context.fetch(FetchDescriptor<Feed>())
-        #expect(feeds.count >= 4)
+        #expect(feeds.count == 5)
 
         let articles = try context.fetch(FetchDescriptor<Article>())
-        #expect(articles.count >= 8)
+        #expect(articles.count == 11)
 
-        // Every feed contributed at least one article.
+        // Every feed got a generated logo.
         for feed in feeds {
-            #expect(!feed.articles.isEmpty, "feed \(feed.name) has no articles")
+            #expect(feed.logoHash != nil, "feed \(feed.name) has no logoHash")
         }
 
-        // An anchor was parked on one of the seeded articles. Not every article has a non-empty
-        // body (YouTube/Reddit articles legitimately have empty blocks), so we don't assert that.
+        // Every article got a generated lead image + authored body, so blocks are never empty.
+        for article in articles {
+            #expect(!article.blocks.isEmpty, "article \(article.identifier) has no blocks")
+        }
+
+        // The anchor was parked on the hero article.
         let anchor = AppSettings().timelineAnchorIdentifier
-        #expect(anchor != nil)
+        #expect(anchor == "screenshot://0/0")
         #expect(articles.contains { $0.identifier == anchor })
     }
 }

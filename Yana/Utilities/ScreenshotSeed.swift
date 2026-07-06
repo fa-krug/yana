@@ -6,11 +6,158 @@ import SwiftData
 /// `-UITEST_SCREENSHOTS` launch argument so it never runs on a normal launch or on the
 /// `YANA_SEED_ARTICLES` performance path. Idempotent: bails if any Feed already exists.
 ///
-/// Replays a frozen `ScreenshotFixture` snapshot of REAL feed content — collected once, offline,
-/// by `ScreenshotFixtureCollector` — bundled at `Resources/ScreenshotFixture/manifest.json` (+
-/// `images/<hash>.<ext>`, flattened to the bundle root at build time).
+/// Authors a small library of fully ORIGINAL feeds/articles in-code (no third-party content,
+/// no network) and generates every image in-process: `ScreenshotLogoFactory` for feed logos and
+/// `ScreenshotImageFactory` for article lead images, both stored content-addressed via
+/// `ImageStore` so the resulting `yana-img://<hash>` refs resolve like any real import.
 enum ScreenshotSeed {
     static let launchArgument = "-UITEST_SCREENSHOTS"
+
+    /// One authored article: title/author/summary plus the body paragraphs (rendered after the
+    /// generated lead image). Only the hero's body is ever visible in a screenshot; every other
+    /// article reuses `genericBodyParagraph` to keep its blocks non-empty and real.
+    private struct ArticleSpec {
+        let title: String
+        let author: String
+        let summary: String
+        let bodyParagraphs: [String]
+    }
+
+    /// One authored feed: name, tag, monogram/color for the generated logo, and its articles.
+    private struct FeedSpec {
+        let name: String
+        let identifier: String
+        let tagName: String
+        let tagColorHex: String
+        let monogram: String
+        let url: String
+        let articles: [ArticleSpec]
+    }
+
+    /// Reused for every non-hero article. Never shown in a screenshot, but keeps every body
+    /// genuinely non-empty rather than a placeholder.
+    private static let genericBodyParagraph =
+        "It's the kind of story that reads well on a phone: a clear headline, a few tight " +
+        "paragraphs, and nothing between you and the words. Aggregated on-device, organized " +
+        "with tags, and kept entirely on your phone."
+
+    private static let feedSpecs: [FeedSpec] = [
+        FeedSpec(
+            name: "Byte Report", identifier: "https://example.com/byte-report",
+            tagName: "Tech", tagColorHex: "#2E77D0", monogram: "BR",
+            url: "https://example.com/byte-report",
+            articles: [
+                ArticleSpec(
+                    title: "The new e-ink tablets are getting seriously fast",
+                    author: "Dana Whitfield",
+                    summary: "This year's color e-ink panels finally refresh quickly enough to " +
+                        "make note-taking feel instant — and the battery still lasts for weeks.",
+                    bodyParagraphs: [
+                        "For years the trade-off with e-ink was simple: gorgeous, easy-on-the-eyes " +
+                            "text in exchange for sluggish page turns and washed-out color. That " +
+                            "bargain is quietly falling apart.",
+                        "The latest panels refresh fast enough that scrolling a long article no " +
+                            "longer feels like a negotiation, and handwriting lands under the " +
+                            "stylus with almost no lag. Color is still muted next to an OLED, but " +
+                            "for reading and margin notes it is finally good enough to forget about.",
+                        "What hasn't changed is the part that mattered all along — days, sometimes " +
+                            "weeks, between charges, and a matte surface you can read in direct " +
+                            "sun. The result is a device that gets out of the way and just lets you read."
+                    ]
+                ),
+                ArticleSpec(
+                    title: "A field guide to squeezing more battery from your laptop",
+                    author: "Marcus Bell",
+                    summary: "Small habits around display, background sync, and a couple of " +
+                        "firmware toggles add up to real hours.",
+                    bodyParagraphs: [genericBodyParagraph]
+                ),
+                ArticleSpec(
+                    title: "Mechanical keyboards are quietly having another moment",
+                    author: "Dana Whitfield",
+                    summary: "Low-profile switches and wireless boards are pulling a niche hobby " +
+                        "back into the mainstream.",
+                    bodyParagraphs: [genericBodyParagraph]
+                )
+            ]
+        ),
+        FeedSpec(
+            name: "The Daily Brief", identifier: "https://example.com/daily-brief",
+            tagName: "News", tagColorHex: "#D0392E", monogram: "DB",
+            url: "https://example.com/daily-brief",
+            articles: [
+                ArticleSpec(
+                    title: "Morning briefing: the three stories shaping today",
+                    author: "Newsroom",
+                    summary: "Everything worth knowing before your first coffee, gathered overnight.",
+                    bodyParagraphs: [genericBodyParagraph]
+                ),
+                ArticleSpec(
+                    title: "New spectrum rules could reshape rural coverage",
+                    author: "Newsroom",
+                    summary: "Regulators opened a band that carriers have wanted for a decade.",
+                    bodyParagraphs: [genericBodyParagraph]
+                )
+            ]
+        ),
+        FeedSpec(
+            name: "Overtake", identifier: "https://example.com/overtake",
+            tagName: "Video", tagColorHex: "#7A2ED0", monogram: "OV",
+            url: "https://example.com/overtake",
+            articles: [
+                ArticleSpec(
+                    title: "I tested every budget e-reader so you don't have to",
+                    author: "Priya Nair",
+                    summary: "Six readers, one month, and a clear winner under $150.",
+                    bodyParagraphs: [genericBodyParagraph]
+                ),
+                ArticleSpec(
+                    title: "The truth about fast charging and battery health",
+                    author: "Priya Nair",
+                    summary: "We ran the cycles so you can stop worrying about charging overnight.",
+                    bodyParagraphs: [genericBodyParagraph]
+                )
+            ]
+        ),
+        FeedSpec(
+            name: "The Commons", identifier: "https://example.com/the-commons",
+            tagName: "Community", tagColorHex: "#D07A2E", monogram: "TC",
+            url: "https://example.com/the-commons",
+            articles: [
+                ArticleSpec(
+                    title: "What's your no-frills RSS setup in 2026?",
+                    author: "quietreader",
+                    summary: "The thread where everyone shares the boring, reliable tools they actually use.",
+                    bodyParagraphs: [genericBodyParagraph]
+                ),
+                ArticleSpec(
+                    title: "OPML import makes switching readers painless",
+                    author: "switcher",
+                    summary: "Move every subscription over in a single file.",
+                    bodyParagraphs: [genericBodyParagraph]
+                )
+            ]
+        ),
+        FeedSpec(
+            name: "Offline Hours", identifier: "https://example.com/offline-hours",
+            tagName: "Audio", tagColorHex: "#2EB8D0", monogram: "OH",
+            url: "https://example.com/offline-hours",
+            articles: [
+                ArticleSpec(
+                    title: "Episode 142: The local-first renaissance",
+                    author: "Offline Hours",
+                    summary: "Why keeping your data on your own device is the story of the year.",
+                    bodyParagraphs: [genericBodyParagraph]
+                ),
+                ArticleSpec(
+                    title: "Episode 141: Taste, tags, and timelines",
+                    author: "Offline Hours",
+                    summary: "Organizing information without an algorithm deciding for you.",
+                    bodyParagraphs: [genericBodyParagraph]
+                )
+            ]
+        )
+    ]
 
     @MainActor
     static func seedIfRequested(into context: ModelContext) async {
@@ -23,73 +170,56 @@ enum ScreenshotSeed {
         // Idempotency guard.
         if let existing = try? context.fetch(FetchDescriptor<Feed>()), !existing.isEmpty { return }
 
-        guard let manifestURL = Bundle.main.url(forResource: "manifest", withExtension: "json") else {
-            NSLog("ScreenshotSeed: manifest.json not found in bundle")
-            return
-        }
-        let fixture: ScreenshotFixture
-        do {
-            let data = try Data(contentsOf: manifestURL)
-            fixture = try JSONDecoder().decode(ScreenshotFixture.self, from: data)
-        } catch {
-            NSLog("ScreenshotSeed: failed to load/decode manifest: \(error)")
-            return
-        }
-
-        // Re-insert every image. Content-addressed storage means re-storing the same bytes
-        // reproduces the same hash the fixture's `yana-img://<hash>` refs already point at.
-        for image in fixture.images {
-            guard let imageURL = Bundle.main.url(forResource: image.hash, withExtension: image.ext) else {
-                NSLog("ScreenshotSeed: image \(image.hash).\(image.ext) not found in bundle, skipping")
-                continue
-            }
-            do {
-                let data = try Data(contentsOf: imageURL)
-                _ = await ImageStore.shared.storeData(data, ext: image.ext)
-            } catch {
-                NSLog("ScreenshotSeed: failed to load image \(image.hash).\(image.ext): \(error)")
-            }
-        }
-
         var globalIndex = 0
         var articleIdentifiers: [String] = []
         var anchorIdentifier: String?
         var tagsByName: [String: Tag] = [:]
 
-        for (feedIndex, fixtureFeed) in fixture.feeds.enumerated() {
-            let feed = Feed(name: fixtureFeed.name, aggregatorType: .feedContent,
-                            identifier: fixtureFeed.identifier)
-            feed.logoHash = fixtureFeed.logoHash
+        for (feedIndex, spec) in feedSpecs.enumerated() {
+            let feed = Feed(name: spec.name, aggregatorType: .feedContent, identifier: spec.identifier)
+
+            let logoData = ScreenshotLogoFactory.png(monogram: spec.monogram, colorHex: spec.tagColorHex)
+            feed.logoHash = await ImageStore.shared.storeData(logoData, ext: "png")
             context.insert(feed)
 
             let tag: Tag
-            if let existingTag = tagsByName[fixtureFeed.tagName] {
+            if let existingTag = tagsByName[spec.tagName] {
                 tag = existingTag
             } else {
-                tag = Tag(name: fixtureFeed.tagName, colorHex: fixtureFeed.tagColorHex)
+                tag = Tag(name: spec.tagName, colorHex: spec.tagColorHex)
                 context.insert(tag)
-                tagsByName[fixtureFeed.tagName] = tag
+                tagsByName[spec.tagName] = tag
             }
             feed.tags = [tag]
 
-            for (articleIndex, fixtureArticle) in fixtureFeed.articles.enumerated() {
+            for (articleIndex, articleSpec) in spec.articles.enumerated() {
                 let identifier = "screenshot://\(feedIndex)/\(articleIndex)"
+
+                let leadData = ScreenshotImageFactory.jpeg(index: globalIndex)
+                let leadHash = await ImageStore.shared.storeData(leadData, ext: "jpg")
+
+                var html = "<img src=\"yana-img://\(leadHash)\" alt=\"\">"
+                for paragraph in articleSpec.bodyParagraphs {
+                    html += "<p>\(paragraph)</p>"
+                }
+
+                let when = Date(timeIntervalSinceNow: -Double(globalIndex) * 5400)
                 let article = Article(
-                    title: Self.decodingEntities(fixtureArticle.title),
+                    title: articleSpec.title,
                     identifier: identifier,
-                    url: fixtureArticle.url,
-                    date: fixtureArticle.date,
-                    author: Self.decodingEntities(fixtureArticle.author),
-                    summary: Self.decodingEntities(fixtureArticle.summary)
+                    url: spec.url,
+                    date: when,
+                    author: articleSpec.author,
+                    summary: articleSpec.summary
                 )
-                article.blocks = fixtureArticle.blocks
-                article.createdAt = Date(timeIntervalSinceNow: -Double(globalIndex) * 5400)
+                article.blocks = BlockParser.blocks(fromHTML: html)
+                article.createdAt = when
                 article.feed = feed
                 article.tags = [tag]
                 context.insert(article)
                 articleIdentifiers.append(identifier)
 
-                if feedIndex == fixture.anchorFeedIndex && articleIndex == fixture.anchorArticleIndex {
+                if feedIndex == 0 && articleIndex == 0 {
                     anchorIdentifier = identifier
                 }
                 globalIndex += 1
@@ -104,39 +234,6 @@ enum ScreenshotSeed {
         } catch {
             NSLog("ScreenshotSeed: save failed: \(error)")
         }
-    }
-
-    /// Decodes HTML entities in feed-supplied text. RSS/Atom titles arrive with entities like
-    /// `&#8217;` (right single quote) that the generic `FeedParser` does not decode, so the frozen
-    /// snapshot carries them verbatim — decode here so screenshots show clean text. Named entities
-    /// are resolved first so a double-encoded `&amp;#8217;` collapses correctly.
-    private static func decodingEntities(_ s: String) -> String {
-        guard s.contains("&") else { return s }
-        var result = s
-        let named: [(String, String)] = [
-            ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""),
-            ("&apos;", "'"), ("&nbsp;", "\u{00A0}"), ("&hellip;", "…"),
-            ("&mdash;", "—"), ("&ndash;", "–"),
-            ("&rsquo;", "\u{2019}"), ("&lsquo;", "\u{2018}"),
-            ("&rdquo;", "\u{201D}"), ("&ldquo;", "\u{201C}"),
-        ]
-        for (entity, replacement) in named {
-            result = result.replacingOccurrences(of: entity, with: replacement)
-        }
-        // Numeric entities: &#8217; (decimal) and &#x2019; (hex).
-        guard let regex = try? NSRegularExpression(pattern: #"&#(x?)([0-9A-Fa-f]+);"#) else { return result }
-        let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
-        for match in matches.reversed() {
-            guard let full = Range(match.range, in: result),
-                  let isHexRange = Range(match.range(at: 1), in: result),
-                  let digitsRange = Range(match.range(at: 2), in: result) else { continue }
-            let isHex = !result[isHexRange].isEmpty
-            let digits = String(result[digitsRange])
-            guard let code = UInt32(digits, radix: isHex ? 16 : 10),
-                  let scalar = Unicode.Scalar(code) else { continue }
-            result.replaceSubrange(full, with: String(scalar))
-        }
-        return result
     }
 }
 #endif

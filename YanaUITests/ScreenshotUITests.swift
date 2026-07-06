@@ -16,6 +16,10 @@ final class ScreenshotUITests: XCTestCase {
         // on it. Wait for the article-list toolbar button (only present on the loaded reader).
         let articleList = app.buttons["reader.articleList"]
         XCTAssertTrue(articleList.waitForExistence(timeout: 20), "reader did not load")
+        // Feed logos load asynchronously per view (FeedLogoView has no cache), so let them
+        // settle before snapping any shot that shows one, otherwise they render as the globe
+        // placeholder.
+        Thread.sleep(forTimeInterval: 2.0)
         snapshot("01_Reader")
 
         // Shot 2 — Timeline / article list.
@@ -27,6 +31,7 @@ final class ScreenshotUITests: XCTestCase {
             app.collectionViews.firstMatch.swipeDown()
         }
         XCTAssertTrue(searchField.waitForExistence(timeout: 5), "article list did not open")
+        Thread.sleep(forTimeInterval: 2.0)   // let per-row feed logos load
         snapshot("02_Timeline")
 
         // Shot 3 — Search. Query a term guaranteed to match the real-content fixture
@@ -39,6 +44,7 @@ final class ScreenshotUITests: XCTestCase {
         // Buttons inside a native List (ArticleListView -> ManagedList), which XCUITest
         // exposes with the "cell" trait.
         XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 5), "search produced no results")
+        Thread.sleep(forTimeInterval: 2.0)   // let per-row feed logos load
         snapshot("03_Search")
 
         // Dismiss the article-list sheet.
@@ -66,6 +72,7 @@ final class ScreenshotUITests: XCTestCase {
         feeds.tap()
         // Feeds screen title confirms navigation.
         XCTAssertTrue(app.navigationBars["Feeds"].waitForExistence(timeout: 10), "Feeds screen missing")
+        Thread.sleep(forTimeInterval: 2.0)   // let per-row feed logos load
         snapshot("04_Feeds")
     }
 }

@@ -35,9 +35,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in
             await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)
         }
-        Task { @MainActor in
-            await ScreenshotFixtureCollector.collectIfRequested()
-        }
         #endif
         StartupTrace.event("didFinishLaunching.begin")
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
