@@ -1,0 +1,2392 @@
+{
+  "anchorArticleIndex" : 0,
+  "anchorFeedIndex" : 0,
+  "images" : [
+    {
+      "ext" : "jpg",
+      "hash" : "0ec1b4f12479883d9113a1b71cba961d91bd8b014354bebcfdbcd8ab0bd7abfa"
+    },
+    {
+      "ext" : "jpg",
+      "hash" : "0fc1d15a15b399eb9e8bd2c89a0311eaa49609fb8f39cceed3808b9f3232ed6d"
+    },
+    {
+      "ext" : "png",
+      "hash" : "19227e0ca7d3ab3695378a42e1639fbbb1c6d6eea7c39a3b45dcff12dc548d8a"
+    },
+    {
+      "ext" : "jpg",
+      "hash" : "366776037cf48ec10ace7c920fab49fe1866517d46c789648284c87066b6816f"
+    },
+    {
+      "ext" : "png",
+      "hash" : "3a9f5802d6c5a1793cfd2cbfe84e9b9fb8c9930a85d95de401729c81de670c46"
+    },
+    {
+      "ext" : "png",
+      "hash" : "686b8909643664a566e5a3687653da5773d5565016e61bf4cf6bef987363cf8a"
+    },
+    {
+      "ext" : "jpg",
+      "hash" : "731ffe22311312238afb1260064f5ff4fdbf33a290abdf11ac29d22b70bc0455"
+    },
+    {
+      "ext" : "jpg",
+      "hash" : "f9f49a62ed6249e8d5fc9d20d1e9fac589c78cf3a4ce3a11d7b2d57e3fdb054d"
+    }
+  ],
+  "feeds" : [
+    {
+      "tagName" : "Tech",
+      "logoHash" : "3a9f5802d6c5a1793cfd2cbfe84e9b9fb8c9930a85d95de401729c81de670c46",
+      "articles" : [
+        {
+          "author" : "Sheena Vasani",
+          "title" : "Hoto&#8217;s PixelDrive screwdriver is down to $60, matching its best price",
+          "summary" : "If your Prime Day purchases included a new desk, TV stand, bookshelf, or other furniture you still haven’t assembled, Hoto’s PixelDrive cordless screwdriver can help speed up the…",
+          "blocks" : [
+            {
+              "image" : {
+                "ref" : "yana-img:\/\/f9f49a62ed6249e8d5fc9d20d1e9fac589c78cf3a4ce3a11d7b2d57e3fdb054d",
+                "caption" : [
+
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "If your Prime Day purchases included a new desk, TV stand, bookshelf, or other furniture you still haven’t assembled, ",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : "Hoto’s PixelDrive cordless screwdriver",
+                    "styles" : 1
+                  },
+                  {
+                    "text" : " can help speed up the process. It’s currently on sale for $59.99 ($20 off) at ",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : "Amazon",
+                    "link" : "https:\/\/www.amazon.com\/dp\/B0FKBJL68H",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : ", matching its best price to date. ",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "heading" : {
+                "level" : 3,
+                "runs" : [
+                  {
+                    "styles" : 0,
+                    "text" : "Hoto PixelDrive Cordless Screwdriver"
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "Hoto’s latest electric screwdriver delivers an adjustable 6Nm of torque, along with a built-in pixelated display that lets you check the battery life and other info.",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "image" : {
+                "ref" : "yana-img:\/\/731ffe22311312238afb1260064f5ff4fdbf33a290abdf11ac29d22b70bc0455",
+                "caption" : [
+
+                ]
+              }
+            },
+            {
+              "heading" : {
+                "level" : 3,
+                "runs" : [
+                  {
+                    "text" : "Where to Buy:",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "list" : {
+                "items" : [
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "text" : "$79.99",
+                            "styles" : 8
+                          },
+                          {
+                            "text" : " $59.98 at ",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : "Amazon",
+                            "styles" : 1
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : " $79.99 at "
+                          },
+                          {
+                            "styles" : 1,
+                            "text" : "Hoto"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                ],
+                "ordered" : false
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "From tightening loose screws on furniture to repairing electronics, the PixelDrive is designed to handle a wide range of household projects. Hoto includes 30 screwdriver bits that cover many of the most common screw types, all neatly organized in a small cylindrical case. It also offers six adjustable torque settings, allowing you to use less power when working with fragile electronics or increase it when putting together a desk, bookshelf, TV stand, or other furniture. You can also switch between a slower 80RPM mode for more precise work and a faster 200RPM mode with the press of a button.",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "Hoto also added several features that make assembling projects a little easier. A built-in display lets you quickly check your current torque setting and remaining battery life, while an integrated LED light helps illuminate dim spaces, whether you’re working under a desk or inside a cabinet. The rechargeable 2,000mAh battery also charges over USB-C, so you won’t need to keep buying disposable batteries."
+                  }
+                ]
+              }
+            }
+          ],
+          "url" : "https:\/\/www.theverge.com\/gadgets\/961895\/hoto-pixeldrive-screwdriver-deal-sale",
+          "date" : 805062268
+        },
+        {
+          "author" : "TC. Sottek",
+          "title" : "America’s greatest idea is still under threat",
+          "summary" : "The Patrouille de France perform a flyover during the Sail4th 250 Tall Ships Parade along the Hudson River in New York on July 4th, 2026.",
+          "blocks" : [
+            {
+              "image" : {
+                "ref" : "yana-img:\/\/0ec1b4f12479883d9113a1b71cba961d91bd8b014354bebcfdbcd8ab0bd7abfa",
+                "caption" : [
+                  {
+                    "text" : " The Patrouille de France perform a flyover during the Sail4th 250 Tall Ships Parade along the Hudson River in New York on July 4th, 2026. | Photo by John Lamparski\/Bloomberg via Getty Images ",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "The United States of America recently turned 250 years old. What a spectacle! The fireworks were amazing, and millions of proud people celebrated across the nation - even around the world. France lit up the Eiffel Tower; Japan had fireworks. French fighter jets flew above New York City with trails of red, white, and blue - our first major ally streaking our shared colors through the sky. Meanwhile, shameful white nationalists ",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : "paraded through our nation's capital",
+                    "link" : "https:\/\/www.theguardian.com\/us-news\/2026\/jul\/04\/neo-fascist-patriot-front-washington-dc",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : ". This has always been a country of paradoxes.",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "Our 250th birthday counts back to the Declaration of Independence in 1776. The declaration was a radical and astonishing document that …",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "Read the full story at The Verge.",
+                    "styles" : 0,
+                    "link" : "https:\/\/www.theverge.com\/policy\/961802\/america-250-free-speech"
+                  }
+                ]
+              }
+            }
+          ],
+          "url" : "https:\/\/www.theverge.com\/policy\/961802\/america-250-free-speech",
+          "date" : 805055793
+        },
+        {
+          "author" : "TC. Sottek",
+          "url" : "https:\/\/www.theverge.com\/science\/961483\/doctor-zachary-rubin-md-interview",
+          "title" : "Five questions for Dr. Rubin, who’s armed with a mic and a bowtie",
+          "summary" : "Dr. Rubin’s feed\n\nBullshit is cheap but truth is expensive.",
+          "date" : 805050929,
+          "blocks" : [
+            {
+              "image" : {
+                "ref" : "yana-img:\/\/0fc1d15a15b399eb9e8bd2c89a0311eaa49609fb8f39cceed3808b9f3232ed6d",
+                "caption" : [
+                  {
+                    "styles" : 0,
+                    "text" : " Dr. Rubin’s feed "
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "Bullshit is cheap but truth is expensive. Anyone with half a brain cell can post wild misinformation that goes mega viral, which wastes the time and expertise of highly trained people who feel an obligation to inform others of the truth. Today I want you to meet one of those highly-trained people, Dr. Zachary Rubin, who works on the front lines against scientific and medical misinformation."
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "Rubin is a pediatric allergist and immunologist and author of the book ",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : "All About Allergies",
+                    "styles" : 2
+                  },
+                  {
+                    "text" : ". He likely came across my TikTok feed because I crave anti-misinformation content; one of my other favorite people doing this work ",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : "is Rubin's colleague Dr. Idrees …",
+                    "link" : "https:\/\/www.instagram.com\/dr_idz\/?hl=en",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "link" : "https:\/\/www.theverge.com\/science\/961483\/doctor-zachary-rubin-md-interview",
+                    "styles" : 0,
+                    "text" : "Read the full story at The Verge."
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "name" : "The Verge",
+      "identifier" : "https:\/\/www.theverge.com\/rss\/index.xml",
+      "tagColorHex" : "#2E77D0"
+    },
+    {
+      "articles" : [
+        {
+          "summary" : "Did you know that the space shuttle once launched the Statue of Liberty into space?\n\nIn fact, there were two \"Lady Liberties\" on board Discovery when it lifted off on its fourth…",
+          "title" : "What's the oldest Americana flown in space?",
+          "date" : 805060676,
+          "url" : "https:\/\/arstechnica.com\/space\/2026\/07\/whats-the-oldest-americana-flown-in-space\/",
+          "author" : "Robert Pearlman",
+          "blocks" : [
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "Did you know that the space shuttle once launched the Statue of Liberty into space?",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "In fact, there were two \"Lady Liberties\" on board "
+                  },
+                  {
+                    "styles" : 2,
+                    "text" : "Discovery"
+                  },
+                  {
+                    "styles" : 0,
+                    "text" : " when it lifted off on its fourth flight in April 1985. To be fair, each statue was only 15 inches tall (38.1 centimeters), but they were also each made of copper that was removed from the full-size statue during its then-still-ongoing restoration."
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "After the weeklong STS-51D mission was over, one of the space-flown statues was placed on display, and the other was melted down to create copper seals, which were then sold to the public by the Statue of Liberty Ellis Island Centennial Commission."
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "Read full article",
+                    "link" : "https:\/\/arstechnica.com\/space\/2026\/07\/whats-the-oldest-americana-flown-in-space\/"
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "link" : "https:\/\/arstechnica.com\/space\/2026\/07\/whats-the-oldest-americana-flown-in-space\/#comments",
+                    "styles" : 0,
+                    "text" : "Comments"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "blocks" : [
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "Last week, just before the US started its break for the July Fourth holiday, the Nuclear Regulatory Commission (NRC) ",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : "proposed a new rule",
+                    "link" : "https:\/\/www.nrc.gov\/sites\/default\/files\/cdn\/doc-collection-news\/2026\/26-070.pdf",
+                    "styles" : 0
+                  },
+                  {
+                    "text" : " that would change how it regulated exposure to radiation. The Trump administration has been pushing to restart construction of nuclear power plants in the US, and many pro-nuclear advocates have been complaining about the US's existing regulations, portraying them as the main barrier to the flourishing of the industry. So, it had seemed likely that major revisions were coming.",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "Instead, the NRC's proposed new rules endorse the science behind its current rules and suggest that any problems are largely in the vagueness of the terminology that it has been using. So, instead, it's endorsing standards that are meant to accomplish the same thing, but avoid using some of the language it had relied on. Probably the clearest indication of the evolutionary change at play is that the NRC estimates the changing rules will save industry—not just power, but also medical and research applications—only about $9.5 million a year."
+                  }
+                ]
+              }
+            },
+            {
+              "heading" : {
+                "runs" : [
+                  {
+                    "styles" : 0,
+                    "text" : "LNT and ALARA"
+                  }
+                ],
+                "level" : 2
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "There are two technical abbreviations at the center of US nuclear regulations. The first is LNT, which stands for \"linear non-threshold.\" It's in reference to the issue of whether there's any level of radiation that is so low that it no longer produces harmful biological effects—the \"threshold\" in LNT. The \"non-threshold\" implies that it doesn't, and that's in keeping with biology, which has demonstrated that even single particles or photons of radiation can damage DNA and that the mechanisms cells have for repairing that damage are inherently error-prone. The \"linear\" in LNT simply describes how the impact of radiation scales directly with the dose.",
+                    "styles" : 0
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "link" : "https:\/\/arstechnica.com\/science\/2026\/07\/nuclear-regulatory-commission-plans-really-minor-changes-to-safety-regs\/",
+                    "text" : "Read full article"
+                  }
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "link" : "https:\/\/arstechnica.com\/science\/2026\/07\/nuclear-regulatory-commission-plans-really-minor-changes-to-safety-regs\/#comments",
+                    "text" : "Comments",
+                    "styles" : 0
+                  }
+                ]
+              }
+            }
+          ],
+          "url" : "https:\/\/arstechnica.com\/science\/2026\/07\/nuclear-regulatory-commission-plans-really-minor-changes-to-safety-regs\/",
+          "author" : "John Timmer",
+          "date" : 805052925,
+          "summary" : "Last week, just before the US started its break for the July Fourth holiday, the Nuclear Regulatory Commission (NRC) proposed a new rule that would change how it regulated…",
+          "title" : "NRC is (sort of) getting rid of \"as low as reasonably achievable\" standard"
+        }
+      ],
+      "tagName" : "Tech",
+      "tagColorHex" : "#2E77D0",
+      "name" : "Ars Technica",
+      "identifier" : "https:\/\/feeds.arstechnica.com\/arstechnica\/index"
+    },
+    {
+      "tagColorHex" : "#7A2ED0",
+      "name" : "Marques Brownlee",
+      "identifier" : "https:\/\/www.youtube.com\/feeds\/videos.xml?channel_id=UCBJycsmduvYEL83R_U4JriQ",
+      "tagName" : "Video",
+      "logoHash" : "19227e0ca7d3ab3695378a42e1639fbbb1c6d6eea7c39a3b45dcff12dc548d8a",
+      "articles" : [
+        {
+          "blocks" : [
+
+          ],
+          "url" : "https:\/\/www.youtube.com\/watch?v=7KRabLH7jcE",
+          "author" : "Marques Brownlee",
+          "title" : "The Best Car I've Ever Driven: McLaren W1",
+          "summary" : "",
+          "date" : 804717765
+        },
+        {
+          "blocks" : [
+
+          ],
+          "url" : "https:\/\/www.youtube.com\/watch?v=ZpF6IE0rdxA",
+          "author" : "Marques Brownlee",
+          "title" : "Antigravity A1: A New Take on Drones!",
+          "summary" : "",
+          "date" : 804453740
+        }
+      ]
+    },
+    {
+      "tagColorHex" : "#D07A2E",
+      "name" : "r\/apple",
+      "identifier" : "https:\/\/www.reddit.com\/r\/apple\/.rss",
+      "tagName" : "Community",
+      "logoHash" : "686b8909643664a566e5a3687653da5773d5565016e61bf4cf6bef987363cf8a",
+      "articles" : [
+        {
+          "summary" : "",
+          "date" : 805065807,
+          "blocks" : [
+
+          ],
+          "title" : "Apple Intelligence Home Features Require 2TB iCloud+ Plan in iOS 27",
+          "url" : "https:\/\/www.reddit.com\/r\/apple\/comments\/1upaom5\/apple_intelligence_home_features_require_2tb\/",
+          "author" : "\/u\/favicondotico"
+        },
+        {
+          "summary" : "",
+          "date" : 805051506,
+          "blocks" : [
+
+          ],
+          "title" : "Apple Seeds Third iOS 27 and iPadOS 27 Betas to Developers",
+          "url" : "https:\/\/www.reddit.com\/r\/apple\/comments\/1up3z1r\/apple_seeds_third_ios_27_and_ipados_27_betas_to\/",
+          "author" : "\/u\/tomng"
+        }
+      ]
+    },
+    {
+      "logoHash" : "366776037cf48ec10ace7c920fab49fe1866517d46c789648284c87066b6816f",
+      "articles" : [
+        {
+          "summary" : "Pre-show: Who’s bored?\n\n🗣️ New Member’s Special: ATP Dev: Mac-assed Mac Apps\n\nFollow-up:\n\nNugs and Sonos\n\nAs the prophecy foretold… ☹️\n\nMythos is back, but Fable isn’t\n\nRumors about…",
+          "author" : "",
+          "title" : "698: And Do What?",
+          "url" : "https:\/\/atp.fm\/698",
+          "date" : 804554632,
+          "blocks" : [
+            {
+              "list" : {
+                "items" : [
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Pre-show: Who’s bored?"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "text" : "🗣️ New ",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : "Member",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : "’s Special: ",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : "ATP Dev: Mac-assed Mac Apps",
+                            "styles" : 0
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Follow-up: "
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Nugs",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : " and ",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : "Sonos",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "As the prophecy foretold… ☹️",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Mythos is back, but Fable isn’t",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Rumors about Siri AI indexing",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Corrections about 8TB SSDs (via Aaron Raimist)"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Price increases abound! ☹️ "
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "On the Apple TV price hike (via Chris Carley)",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Steam Machine",
+                                            "styles" : 0
+                                          },
+                                          {
+                                            "text" : " (",
+                                            "styles" : 0
+                                          },
+                                          {
+                                            "text" : "More",
+                                            "styles" : 0
+                                          },
+                                          {
+                                            "text" : ")",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Xbox"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Micron points fingers at Apple"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : " ("
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : "News+ Link"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : ") "
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "list" : {
+                                        "items" : [
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "text" : "Steve Troughton-Smith’s take",
+                                                    "styles" : 0
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            {
+                                              "list" : {
+                                                "ordered" : false,
+                                                "items" : [
+                                                  [
+                                                    {
+                                                      "paragraph" : {
+                                                        "_0" : [
+                                                          {
+                                                            "text" : "Previously, in Palm Pilots",
+                                                            "styles" : 0
+                                                          }
+                                                        ]
+                                                      }
+                                                    }
+                                                  ]
+                                                ]
+                                              }
+                                            }
+                                          ]
+                                        ],
+                                        "ordered" : false
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Apple asks Trump to save their 🥓"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Financial Times",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "No M6 Pro\/Max\/Ultra‽"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Touchscreen MacBook Pro"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Intel to fabricate the M7‽"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "GFHK",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : "?",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "More reporting",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "New Siri "
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Iconography",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Attraction Theory: The SiriAI Proposition"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Pepsi logo redesign brand manual from 2008"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : " (via "
+                                          },
+                                          {
+                                            "styles" : 4,
+                                            "text" : "budsNhops"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : " on Reddit"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : ")"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Joanna Stern’s review"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Gui Rambo’s experiment",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Dan Moren",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "John tries to get it to understand Perl (",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : "because",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : " of course ",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : "he did",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : " —Ed.) ",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Question 1"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Question 2",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "text" : "Ask ATP: ",
+                            "styles" : 0
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "ordered" : false,
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Why isn’t Apple on a reliable cadence for processor releases? (via Ammar)"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "If we "
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : "really"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : " embrace agentic coding, what would be the right choice of language for that? (via Matthew Southworth) "
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "3Blue1Brown"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Avoiding Copland 2010",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Do we collect vintage computers? (via "
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Phil Kim"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : ") "
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Casey: ",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "list" : {
+                                        "ordered" : false,
+                                        "items" : [
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "styles" : 0,
+                                                    "text" : "ThinkPad 701C"
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          ],
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "styles" : 0,
+                                                    "text" : "ThinkPad T30"
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          ]
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "John: "
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "list" : {
+                                        "ordered" : false,
+                                        "items" : [
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "styles" : 0,
+                                                    "text" : "eMate"
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          ],
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "text" : "Newton 2000",
+                                                    "styles" : 0
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          ],
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "styles" : 0,
+                                                    "text" : "Trashcan"
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          ]
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "text" : "Post-show: Casey asks for technical support",
+                            "styles" : 0
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Members-only"
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : " ATP Overtime: "
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : "Ubiquiti Enterprise NAS"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Announcement video"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "On the store",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "All Ubiquiti NAS offerings"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Xserve RAID"
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ]
+                ],
+                "ordered" : false
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "Sponsored by:"
+                  }
+                ]
+              }
+            },
+            {
+              "list" : {
+                "items" : [
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "text" : "Factor",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : ": Healthy Eating, Made Easy",
+                            "styles" : 0
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Quince"
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : ": Elevated essentials and staples that last"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                ],
+                "ordered" : false
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "text" : "Become a member",
+                    "styles" : 0,
+                    "link" : "https:\/\/atp.fm\/join"
+                  },
+                  {
+                    "text" : " for ATP Overtime, ad-free episodes, member specials, and our early-release, unedited “bootleg” feed!",
+                    "styles" : 0
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "summary" : "Pre-show:\n\nCasey has some fantastic news about nugs.net for Marco\n\nMarco’s trip report\n\nGucci Osteria\n\nFollow-up:\n\nJohn guested on a preview of Designed in California, published…",
+          "url" : "https:\/\/atp.fm\/697",
+          "title" : "697: The Chart Is Terrifying",
+          "date" : 804204254,
+          "blocks" : [
+            {
+              "list" : {
+                "items" : [
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Pre-show: "
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "ordered" : false,
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Casey has some ",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : "fantastic",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : " news about ",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : "nugs.net",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : " for Marco",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Marco’s trip report ",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Gucci Osteria",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Follow-up: "
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "John guested on a preview of "
+                                  },
+                                  {
+                                    "styles" : 2,
+                                    "text" : "Designed in California"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : ", published as part of "
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Upgrade #624"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : " (also "
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : "on YouTube"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : ")"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Apple Intelligence 🤝 external boot disks"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : " (via Doug Weinfield)"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Spotlight indexing in 𝑥OS 27 ",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Steve Riggins notes it takes a while"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Alex concurs",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Apple’s AI Tech Talk ",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "What will Siri be capable of? (via "
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Jochen Marschall"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : ")"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Bootleg video"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : " (via "
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : "sayrer"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : ")"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Is Spatial Reframing in 𝑥OS 27 geographically-aware? (via Kevin Buterbaugh)"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Tesla 🤝 CarPlay? "
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "New CarPlay features",
+                                            "styles" : 0
+                                          },
+                                          {
+                                            "text" : " (via Alec Hurdle) ",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "list" : {
+                                        "ordered" : false,
+                                        "items" : [
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "text" : "WWDC session on YouTube",
+                                                    "styles" : 0
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          ]
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "The US has approved a new sunscreen ingredient!"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Marco’s favorite: "
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Rohto Skin Aqua Super Moisture UV Gel"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Tracking "
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Apple’s environmental progress"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "TOSTracker"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : " (via "
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Andrew Leahey"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : ")"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Direct product comparisons ",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    {
+                                      "list" : {
+                                        "items" : [
+                                          [
+                                            {
+                                              "paragraph" : {
+                                                "_0" : [
+                                                  {
+                                                    "text" : "Example: ",
+                                                    "styles" : 0
+                                                  },
+                                                  {
+                                                    "text" : "M1 MacBook Air vs. M5 MacBook Air",
+                                                    "styles" : 0
+                                                  }
+                                                ]
+                                              }
+                                            }
+                                          ]
+                                        ],
+                                        "ordered" : false
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Apple’s AI server infrastructure (expanding on "
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : "ATP #680"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : ") "
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "General overview (via Gui Rambo)",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "cloudOS job listing"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "How to run PCC"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : " (via "
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Zoe Knox"
+                                          },
+                                          {
+                                            "styles" : 0,
+                                            "text" : ")"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Tim Cook takes one for the Ternus"
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : " ("
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : "News+ link"
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : ") (17 June) "
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "ordered" : false,
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Chart",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "South Korean chip company bonuses are creating inflation pressures",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Even ChatGPT is stupefied by RAM pricing",
+                                    "styles" : 0
+                                  },
+                                  {
+                                    "text" : " 🤭😭 ",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "We’re all trying to find the guy who did this!"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ],
+                                "ordered" : false
+                              }
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "25 June: "
+                          },
+                          {
+                            "text" : "Apple raises prices on Macs, iPads",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : " (",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : "News+ link",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : ") ",
+                            "styles" : 0
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Stephen’s tables"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Gruber’s tables"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "styles" : 0,
+                                    "text" : "Apple also raised "
+                                  },
+                                  {
+                                    "styles" : 2,
+                                    "text" : "refurbished"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : " prices"
+                                  },
+                                  {
+                                    "styles" : 0,
+                                    "text" : " 🤨"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Good timing: ",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "tmcgeary",
+                                            "styles" : 4
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Aaron"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "styles" : 0,
+                                            "text" : "Greg Pierce"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Ask ATP: "
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "list" : {
+                        "items" : [
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Why doesn’t Apple just… make its own RAM? (via Brian Webster) ",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "list" : {
+                                "ordered" : false,
+                                "items" : [
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Joe Lion",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ],
+                                  [
+                                    {
+                                      "paragraph" : {
+                                        "_0" : [
+                                          {
+                                            "text" : "Blake Patterson",
+                                            "styles" : 0
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                ]
+                              }
+                            }
+                          ],
+                          [
+                            {
+                              "paragraph" : {
+                                "_0" : [
+                                  {
+                                    "text" : "Is new Siri an attack vector for, say, TSA searches? (via Anonymous)",
+                                    "styles" : 0
+                                  }
+                                ]
+                              }
+                            }
+                          ]
+                        ],
+                        "ordered" : false
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Post-show: "
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : "Casey’s blog post about AI"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "text" : "Members-only",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : " ATP Overtime: ",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : "The Fable about… Anthropic Fable",
+                            "styles" : 0
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                ],
+                "ordered" : false
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "text" : "Sponsored by:"
+                  }
+                ]
+              }
+            },
+            {
+              "list" : {
+                "ordered" : false,
+                "items" : [
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "text" : "Squarespace",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : ": Save 10% off your first purchase of a website or domain using code ",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : "atp",
+                            "styles" : 0
+                          },
+                          {
+                            "text" : ".",
+                            "styles" : 0
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  [
+                    {
+                      "paragraph" : {
+                        "_0" : [
+                          {
+                            "styles" : 0,
+                            "text" : "Zocdoc"
+                          },
+                          {
+                            "styles" : 0,
+                            "text" : ": Find the right doctor, right now."
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "paragraph" : {
+                "_0" : [
+                  {
+                    "styles" : 0,
+                    "link" : "https:\/\/atp.fm\/join",
+                    "text" : "Become a member"
+                  },
+                  {
+                    "styles" : 0,
+                    "text" : " for ATP Overtime, ad-free episodes, member specials, and our early-release, unedited “bootleg” feed!"
+                  }
+                ]
+              }
+            }
+          ],
+          "author" : ""
+        }
+      ],
+      "identifier" : "https:\/\/atp.fm\/rss",
+      "tagName" : "Audio",
+      "name" : "Accidental Tech Podcast",
+      "tagColorHex" : "#2EB8D0"
+    }
+  ]
+}
