@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Platform floor: iOS 26.0+; Swift 6 strict concurrency; `@MainActor` where the codebase already annotates.
-- App Store target sizes: **6.9″ iPhone = 1320×2868** (sim: `iPhone 17 Pro Max`), **13″ iPad = 2064×2752** (sim: `iPad Pro 13-inch (M5)`). These are the installed simulators — confirm names with `xcrun simctl list devices available` before editing the Snapfile.
+- **iPhone-only release** (updated 2026-07-06): the app target is `TARGETED_DEVICE_FAMILY = 1` and screenshots are iPhone-only. App Store target size: **6.9″ iPhone = 1320×2868** (sim: `iPhone 17 Pro Max`). Confirm the name with `xcrun simctl list devices available` before editing the Snapfile. (iPad — `iPad Pro 13-inch (M5)`, 2064×2752 — was dropped; earlier tasks that reference it were superseded by this constraint.)
 - Languages: **English only** (`en-US`).
 - All new fixture code (`ScreenshotSeed`, `ScreenshotImageFactory`) is `#if DEBUG` and reachable ONLY via the `-UITEST_SCREENSHOTS` launch argument — it must never touch the normal launch or the `YANA_SEED_ARTICLES` perf path.
 - No new user-facing strings are added to the shipping app, so no `Localizable.xcstrings` changes are required. Caption copy lives in fastlane `title.strings`, not the app.

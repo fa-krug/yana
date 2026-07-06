@@ -15,11 +15,11 @@ fastlane lane.
 |----------|--------|
 | Deliverable | Framed + captioned marketing images |
 | Toolchain | fastlane `snapshot` (capture) + `frameit` (frame/caption) |
-| Devices | 6.9″ iPhone (iPhone 16/17 Pro Max class) + 13″ iPad Pro |
+| Devices | 6.9″ iPhone (`iPhone 17 Pro Max`) — **iPhone-only** (iPad dropped 2026-07-06; app is now `TARGETED_DEVICE_FAMILY = 1`) |
 | Languages | English only (`en-US`) |
 | Shots (ordered) | 1) Reader 2) Timeline/list 3) Search 4) Feeds & tags |
 
-Total output: **4 shots × 2 devices = 8 framed PNGs**, plus the raw (unframed) captures.
+Total output: **4 shots × 1 device = 4 framed PNGs**, plus the raw (unframed) captures.
 
 ## Content Fixture — `ScreenshotSeed`
 
