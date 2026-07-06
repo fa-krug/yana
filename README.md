@@ -143,7 +143,9 @@ fastlane screenshots
 
 The feed list lives in `ScreenshotFixtureCollector.specs`. If you change which feeds/articles
 appear, also check the `03_Search` query in `YanaUITests/ScreenshotUITests.swift` still matches
-some article.
+some article. Watch the collector's log: a non-zero "image(s) never appeared on disk" line means
+a referenced image didn't finish downloading — re-run the collection before committing, or that
+image will fall back to a placeholder in the reader.
 
 Notes:
 - The `screenshots` lane sets `LANG/LC_ALL=en_US.UTF-8` for you (fastlane crashes on a bare
