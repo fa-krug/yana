@@ -14,7 +14,7 @@ Ordnung nach eigenem Denken. Feeds mit Tags versehen und die Timeline per Tipp n
 
 Gut zu wissen:
 
-Yana ist kostenlos und quelloffen. Jede Zeile Code ist einsehbar, ebenso das, was die App mit den Daten tut, und Mitmachen ist erwünscht. Auch das Issue-Board ist offen: Wer sich eine neue Quelle wünscht oder auf einen Fehler stößt, sagt es genau dort. Den Link gibt es direkt in den Einstellungen und auf github.com/fa-krug/yana-ios.
+Yana ist kostenlos und quelloffen. Jede Zeile Code ist einsehbar, ebenso das, was die App mit den Daten tut, und Mitmachen ist erwünscht. Auch das Issue-Board ist offen: Wer sich eine neue Quelle wünscht oder auf einen Fehler stößt, sagt es genau dort. Den Link gibt es direkt in den Einstellungen und auf github.com/fa-krug/yana.
 
 Ein großes Dankeschön an das NetNewsWire-Team. Seine Leseansicht ist so aufgeräumt und lesbar, wie es nur geht, und hat geprägt, wie sich Artikel in Yana anfühlen. Ehre, wem Ehre gebührt.
 

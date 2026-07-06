@@ -464,11 +464,11 @@ struct SettingsScreenView: View {
 
     private var aboutSection: some View {
         Section {
-            Link(destination: URL(string: "https://github.com/fa-krug/yana-ios")!) {
+            Link(destination: URL(string: "https://github.com/fa-krug/yana")!) {
                 Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
                     .labelStyle(.tintedIcon(.gray))
             }
-            Link(destination: URL(string: "https://github.com/fa-krug/yana-ios/issues")!) {
+            Link(destination: URL(string: "https://github.com/fa-krug/yana/issues")!) {
                 Label("Suggest a Source or Report an Issue", systemImage: "exclamationmark.bubble")
                     .labelStyle(.tintedIcon(.green))
             }

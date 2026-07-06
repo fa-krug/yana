@@ -14,7 +14,7 @@ Organize the way you think. Tag your feeds, then filter your timeline by tag wit
 
 A few more things worth knowing:
 
-Yana is free and open source. You can read every line of code, see exactly what the app does with your data, and follow along or pitch in. The issue board is open too, so if you want a new source added or hit a bug, that is where to say so. You will find the link right inside Settings and on our page at github.com/fa-krug/yana-ios.
+Yana is free and open source. You can read every line of code, see exactly what the app does with your data, and follow along or pitch in. The issue board is open too, so if you want a new source added or hit a bug, that is where to say so. You will find the link right inside Settings and on our page at github.com/fa-krug/yana.
 
 A big thank you to the NetNewsWire team. Their reader view is about as clean and readable as it gets, and it shaped how articles look and feel in Yana. Credit where it is due.
 

@@ -10,7 +10,7 @@
 
 ```bash
 # Clone the repo
-git clone <repo-url> && cd yana-ios
+git clone <repo-url> && cd yana
 
 # Install XcodeGen
 brew install xcodegen
