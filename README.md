@@ -2,8 +2,7 @@
 
 A native SwiftUI iOS app that is a fully **self-contained RSS/content aggregator**. It
 fetches, parses, and processes feeds **on-device** and stores everything locally with
-SwiftData. There is **no server and no login** — it mirrors the aggregation model of the
-[Yana server](https://github.com/fa-krug/Yana) but runs entirely on the phone, for
+SwiftData. There is **no server and no login** — everything runs entirely on the phone, for
 privacy-conscious users who want their feeds without any backend.
 
 Yana is **free and open source** under the [MIT License](LICENSE). Browse the code, file a
@@ -92,6 +91,20 @@ bug, or request a new source at [github.com/fa-krug/yana](https://github.com/fa-
 - Share extension to add feeds
 - iPad multi-column layout
 - Home screen widgets
+
+## Requesting a New Source
+
+Yana ships with built-in aggregators for RSS/Atom, full websites, several site-specific
+scrapers, Reddit, YouTube, and podcasts, and the list grows from real requests. Two ways to
+ask for one:
+
+- **In the app:** **Settings › About › Suggest a Source or Report an Issue** opens the issue
+  board directly.
+- **On the web:** open a new issue at
+  [github.com/fa-krug/yana/issues](https://github.com/fa-krug/yana/issues).
+
+Include the site's URL and, if you have it, a link to its feed or the exact page you want
+followed. The more specific the request, the quicker it can be added.
 
 ## Project Structure
 

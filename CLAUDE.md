@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Yana iOS is a **native SwiftUI iOS app** that is a fully **self-contained RSS/content
 aggregator**. It fetches, parses, and processes feeds on-device and stores everything
-locally with SwiftData. There is no server and no network authentication — it mirrors the
-aggregation model of the [Yana server](../Yana) but runs entirely on the phone. The app is
-designed for privacy-conscious users who want their feeds without any backend. Yana is
+locally with SwiftData. There is no server and no network authentication — everything runs
+entirely on the phone. The app is designed for privacy-conscious users who want their feeds
+without any backend. Yana is
 open source under the MIT license (`LICENSE`); the source and issue board live at
 [github.com/fa-krug/yana](https://github.com/fa-krug/yana).
 
@@ -106,7 +106,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 
 ### Aggregator types
 
-`AggregatorType` mirrors the Yana server's aggregators: `fullWebsite`, `feedContent`
+`AggregatorType` covers these aggregators: `fullWebsite`, `feedContent`
 (RSS/Atom), the managed scrapers (`heise`, `merkur`, `tagesschau`, `explosm`, `darkLegacy`,
 `caschysBlog`, `mactechnews`, `oglaf`, `meinMmo`), and the social/media sources (`youtube`,
 `reddit`, `podcast`). Reddit and YouTube require user-supplied API keys (stored in Keychain);
