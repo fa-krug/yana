@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yana — your feeds, on your phone, and nowhere else</title>
+    <meta
+      name="description"
+      content="Yana is a private, on-device RSS and content aggregator for iOS. No account, no server. RSS, YouTube, Reddit, podcasts and more in one fast, native reader."
+    />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <!-- Set language before first paint to avoid a flash. -->
+    <script>
+      (function () {
+        try {
+          var l = localStorage.getItem("yana-lang") || navigator.language;
+          l = (l || "en").toLowerCase().slice(0, 2);
+          if (l !== "de") l = "en";
+          document.documentElement.setAttribute("data-lang", l);
+          document.documentElement.setAttribute("lang", l);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="index.html">
+          <!-- Placeholder app icon; swap with assets/img/app-icon.png later. -->
+          <span class="brand-mark">Y</span>
+          Yana
+        </a>
+        <nav class="nav">
+          <a href="#features"><span class="lang-en">Features</span><span class="lang-de">Funktionen</span></a>
+          <a href="#screens"><span class="lang-en">Screens</span><span class="lang-de">Screens</span></a>
+          <a href="#opensource"><span class="lang-en">Open source</span><span class="lang-de">Open Source</span></a>
+          <a href="https://github.com/fa-krug/yana">GitHub</a>
+        </nav>
+        <div class="header-tools">
+          <div class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-set="en">EN</button>
+            <button type="button" data-set="de">DE</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- Hero -->
+      <section class="hero">
+        <div class="wrap">
+          <div class="hero-copy">
+            <p class="eyebrow">
+              <span class="lang-en">Private feed reader for iOS</span>
+              <span class="lang-de">Privater Feed-Reader für iOS</span>
+            </p>
+            <h1>
+              <span class="lang-en">All your reading in one place, on your phone, and nowhere else.</span>
+              <span class="lang-de">Die gesamte Lektüre an einem Ort: auf dem Telefon und sonst nirgends.</span>
+            </h1>
+            <p class="lead">
+              <span class="lang-en">Yana fetches, cleans up, and stores your feeds entirely on your device. No account, no login, no server — RSS, YouTube, Reddit, podcasts and a growing list of hand-tuned sources, all in one fast, native reader.</span>
+              <span class="lang-de">Yana holt, bereinigt und speichert die Feeds komplett auf dem Gerät. Kein Konto, kein Login, kein Server — RSS, YouTube, Reddit, Podcasts und eine wachsende Liste handgepflegter Quellen, alles in einem schnellen, nativen Reader.</span>
+            </p>
+            <div class="hero-actions">
+              <!-- App Store link placeholder — replace href="#" with the App Store URL. -->
+              <a class="appstore-badge" href="#" aria-label="App Store">
+                <span class="apple"></span>
+                <span>
+                  <small><span class="lang-en">Coming soon to the</span><span class="lang-de">Bald im</span></small>
+                  App Store
+                </span>
+              </a>
+              <a class="btn-ghost" href="#features">
+                <span class="lang-en">See what it does</span><span class="lang-de">Funktionen ansehen</span>
+              </a>
+            </div>
+          </div>
+          <div class="hero-media">
+            <!-- Placeholder: replace with assets/img/hero.png -->
+            <div class="ph ph-hero">
+              <span class="lang-en">Screenshot: Timeline</span>
+              <span class="lang-de">Screenshot: Timeline</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section id="features" class="section-alt">
+        <div class="wrap">
+          <p class="eyebrow"><span class="lang-en">What it does</span><span class="lang-de">Was es kann</span></p>
+          <h2>
+            <span class="lang-en">Most feed readers stop at RSS. Yana goes further.</span>
+            <span class="lang-de">Die meisten Feed-Reader hören bei RSS auf. Yana geht weiter.</span>
+          </h2>
+          <p class="lead">
+            <span class="lang-en">You point Yana at what you want to read; it does the fetching, parsing, and cleanup for you — and turns everything into one consistent, fast article format.</span>
+            <span class="lang-de">Einfach angeben, was gelesen werden soll — Yana übernimmt Abruf, Parsen und Aufbereitung und bringt alles in ein einheitliches, schnelles Artikelformat.</span>
+          </p>
+
+          <div class="feature-grid">
+            <div class="card">
+              <span class="ico">📡</span>
+              <h3><span class="lang-en">Beyond RSS</span><span class="lang-de">Mehr als RSS</span></h3>
+              <p>
+                <span class="lang-en">Ready-made aggregators pull in sites that never offered a proper feed: YouTube channels, Reddit communities, podcasts, and hand-tuned sources like heise, Tagesschau, Merkur, MeinMMO, Caschys Blog and MacTechNews.</span>
+                <span class="lang-de">Fertige Aggregatoren holen auch Inhalte von Seiten ohne ordentlichen Feed: YouTube-Kanäle, Reddit-Communities, Podcasts und handgepflegte Quellen wie heise, Tagesschau, Merkur, MeinMMO, Caschys Blog und MacTechNews.</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <span class="ico">⚡️</span>
+              <h3><span class="lang-en">Fast, native reader</span><span class="lang-de">Schneller, nativer Reader</span></h3>
+              <p>
+                <span class="lang-en">No web view spinning up, no messy page rendering. Articles open instantly, scroll smoothly, and behave like they belong to the app — because they do. Open Yana and land straight in your timeline.</span>
+                <span class="lang-de">Keine Webansicht im Hintergrund, keine überladene Seite. Artikel öffnen sofort, scrollen flüssig und gehören zur App. Nach dem Öffnen geht es direkt in die Timeline.</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <span class="ico">✈️</span>
+              <h3><span class="lang-en">Ready offline</span><span class="lang-de">Offline bereit</span></h3>
+              <p>
+                <span class="lang-en">Yana stores the finished article, not just a link, so the full text and images already live on your phone. On a train, a plane, or with no signal — it's right there, no loading spinner.</span>
+                <span class="lang-de">Yana speichert den fertigen Artikel, nicht nur einen Link — Text und Bilder liegen bereits auf dem Telefon. Im Zug, im Flugzeug oder ohne Empfang ist alles sofort da.</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <span class="ico">✨</span>
+              <h3><span class="lang-en">Smarter reading with AI</span><span class="lang-de">Klüger lesen mit KI</span></h3>
+              <p>
+                <span class="lang-en">Turn on built-in Apple Intelligence for on-device summaries, translation, and cleanup — or bring your own key for OpenAI, Anthropic, Gemini, Mistral, Qwen, or DeepSeek. You decide which model touches your articles.</span>
+                <span class="lang-de">Die integrierte Apple Intelligence liefert Zusammenfassungen, Übersetzung und Aufbereitung auf dem Gerät — oder den eigenen Schlüssel für OpenAI, Anthropic, Gemini, Mistral, Qwen oder DeepSeek mitbringen.</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <span class="ico">🎧</span>
+              <h3><span class="lang-en">Read aloud</span><span class="lang-de">Vorlesen</span></h3>
+              <p>
+                <span class="lang-en">Yana reads any article out loud in a voice that matches its language — a German piece gets a German voice. Start it, pocket the phone, and keep going from the lock screen.</span>
+                <span class="lang-de">Yana liest jeden Artikel vor, mit einer Stimme, die zur Sprache des Textes passt. Starten, das Telefon einstecken und über den Sperrbildschirm weiterhören.</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <span class="ico">🏷️</span>
+              <h3><span class="lang-en">Tags & endless timeline</span><span class="lang-de">Tags & endlose Timeline</span></h3>
+              <p>
+                <span class="lang-en">Tag your feeds, then filter the timeline by tag with a tap. Star anything worth keeping and it stays safe from cleanup. One endless stream, ordered by arrival — and Yana always remembers where you left off.</span>
+                <span class="lang-de">Feeds mit Tags versehen und die Timeline per Tipp filtern. Aufhebenswertes mit Stern markieren, dann bleibt es verschont. Ein endloser Stream nach Eingang — Yana merkt sich die letzte Stelle.</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <span class="ico">🔒</span>
+              <h3><span class="lang-en">Private by design</span><span class="lang-de">Privat von Grund auf</span></h3>
+              <p>
+                <span class="lang-en">No account. No login. No server. Nothing about what you read ever leaves your device — unless you choose an outside AI provider yourself. Keys are stored in the Keychain.</span>
+                <span class="lang-de">Kein Konto. Kein Login. Kein Server. Nichts vom Gelesenen verlässt das Gerät — außer bei bewusst gewähltem externem KI-Anbieter. Schlüssel liegen im Schlüsselbund.</span>
+              </p>
+            </div>
+
+            <div class="card">
+              <span class="ico">🔁</span>
+              <h3><span class="lang-en">OPML, search & more</span><span class="lang-de">OPML, Suche & mehr</span></h3>
+              <p>
+                <span class="lang-en">Import and export subscriptions as OPML, search everything by title, text, author, or source, and let optional background refresh quietly pull in new articles. Old articles clean up after about a month; starred ones stay.</span>
+                <span class="lang-de">Abos als OPML importieren und exportieren, alles nach Titel, Text, Autor oder Quelle durchsuchen und optional im Hintergrund aktualisieren. Alte Artikel werden nach etwa einem Monat aufgeräumt, markierte bleiben.</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Screenshots gallery -->
+      <section id="screens">
+        <div class="wrap center">
+          <p class="eyebrow"><span class="lang-en">A look inside</span><span class="lang-de">Ein Blick hinein</span></p>
+          <h2><span class="lang-en">Built for reading</span><span class="lang-de">Fürs Lesen gemacht</span></h2>
+          <div class="gallery">
+            <!-- Replace each .ph with the matching screenshot in assets/img/. -->
+            <div class="ph"><span class="lang-en">Screenshot: Reader</span><span class="lang-de">Screenshot: Reader</span></div>
+            <div class="ph"><span class="lang-en">Screenshot: Timeline</span><span class="lang-de">Screenshot: Timeline</span></div>
+            <div class="ph"><span class="lang-en">Screenshot: Tag filter</span><span class="lang-de">Screenshot: Tag-Filter</span></div>
+            <div class="ph"><span class="lang-en">Screenshot: Settings</span><span class="lang-de">Screenshot: Einstellungen</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Open source -->
+      <section id="opensource" class="section-alt">
+        <div class="wrap split">
+          <div>
+            <p class="eyebrow"><span class="lang-en">Free & open source</span><span class="lang-de">Kostenlos & quelloffen</span></p>
+            <h2><span class="lang-en">Read every line of code</span><span class="lang-de">Jede Zeile Code einsehbar</span></h2>
+            <p>
+              <span class="lang-en">Yana is free and open source under the MIT License. You can see exactly what the app does with your data, follow along, or pitch in. Want a new source added or hit a bug? The issue board is open too — the built-in source list grows from what people actually ask for.</span>
+              <span class="lang-de">Yana ist kostenlos und quelloffen unter der MIT-Lizenz. Genau nachvollziehbar, was die App mit den Daten tut — Mitmachen erwünscht. Eine neue Quelle gewünscht oder ein Fehler gefunden? Das Issue-Board ist offen, und die integrierte Quellenliste wächst mit den Wünschen der Nutzer.</span>
+            </p>
+            <p>
+              <span class="lang-en">A big thank you to the NetNewsWire team, whose clean, readable reader view shaped how articles look and feel in Yana.</span>
+              <span class="lang-de">Ein großes Dankeschön an das NetNewsWire-Team, dessen aufgeräumte Leseansicht geprägt hat, wie sich Artikel in Yana anfühlen.</span>
+            </p>
+            <div class="pill-links">
+              <a class="btn-ghost" href="https://github.com/fa-krug/yana">
+                <span class="lang-en">View source on GitHub</span><span class="lang-de">Quellcode auf GitHub</span>
+              </a>
+              <a class="btn-ghost" href="https://github.com/fa-krug/yana/issues">
+                <span class="lang-en">Suggest a source</span><span class="lang-de">Quelle vorschlagen</span>
+              </a>
+            </div>
+          </div>
+          <div>
+            <!-- Placeholder: replace with assets/img/app-icon-large.png -->
+            <div class="ph" style="aspect-ratio: 4 / 3; min-height: 260px;">
+              <span class="lang-en">Image: App icon</span>
+              <span class="lang-de">Bild: App-Icon</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="footer-cols">
+          <div>
+            <a class="brand" href="index.html"><span class="brand-mark">Y</span> Yana</a>
+            <p style="margin-top: 12px; max-width: 34ch;">
+              <span class="lang-en">A private, on-device feed reader for iOS.</span>
+              <span class="lang-de">Ein privater Feed-Reader für iOS, komplett auf dem Gerät.</span>
+            </p>
+          </div>
+          <nav>
+            <strong><span class="lang-en">Project</span><span class="lang-de">Projekt</span></strong>
+            <a href="https://github.com/fa-krug/yana">GitHub</a>
+            <a href="https://github.com/fa-krug/yana/issues"><span class="lang-en">Issues & requests</span><span class="lang-de">Issues & Wünsche</span></a>
+            <a href="https://github.com/fa-krug/yana/blob/main/LICENSE"><span class="lang-en">MIT License</span><span class="lang-de">MIT-Lizenz</span></a>
+          </nav>
+          <nav>
+            <strong><span class="lang-en">Legal</span><span class="lang-de">Rechtliches</span></strong>
+            <a href="privacy.html"><span class="lang-en">Privacy Policy</span><span class="lang-de">Datenschutz</span></a>
+            <a href="impressum.html"><span class="lang-en">Imprint</span><span class="lang-de">Impressum</span></a>
+            <a href="terms.html"><span class="lang-en">Terms of Use</span><span class="lang-de">Nutzungsbedingungen</span></a>
+          </nav>
+        </div>
+        <div class="footer-note">
+          © 2026 Sascha Krug.
+          <span class="lang-en">Released under the MIT License. "Apple", "App Store", and "Apple Intelligence" are trademarks of Apple Inc.</span>
+          <span class="lang-de">Veröffentlicht unter der MIT-Lizenz. „Apple“, „App Store“ und „Apple Intelligence“ sind Marken von Apple Inc.</span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>

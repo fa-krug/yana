@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — Yana</title>
+    <meta name="description" content="Yana's privacy policy: everything runs on your device. No account, no server, no tracking." />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script>
+      (function () {
+        try {
+          var l = localStorage.getItem("yana-lang") || navigator.language;
+          l = (l || "en").toLowerCase().slice(0, 2);
+          if (l !== "de") l = "en";
+          document.documentElement.setAttribute("data-lang", l);
+          document.documentElement.setAttribute("lang", l);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="index.html"><span class="brand-mark">Y</span> Yana</a>
+        <div class="header-tools" style="margin-left: auto;">
+          <div class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-set="en">EN</button>
+            <button type="button" data-set="de">DE</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="legal">
+      <div class="wrap">
+        <a class="back-link" href="index.html">← <span class="lang-en">Back to home</span><span class="lang-de">Zurück zur Startseite</span></a>
+
+        <!-- English -->
+        <div class="lang-en">
+          <h1>Privacy Policy</h1>
+          <p class="updated">Last updated: 6 July 2026</p>
+
+          <p>Yana is built so that your reading stays yours. The app is a fully self-contained feed reader: it fetches, processes, and stores everything on your device. There is no Yana account, no login, and no Yana server. This policy explains what that means for your data.</p>
+
+          <h2>No account, no server</h2>
+          <p>Yana does not require an account and does not operate any backend server. Your feeds, articles, tags, and reading position are stored locally on your device using Apple's SwiftData and remain there. We never receive, collect, or see this information.</p>
+
+          <h2>Data that stays on your device</h2>
+          <ul>
+            <li>Your feed subscriptions, tags, and per-feed settings.</li>
+            <li>Downloaded articles, including their text and images.</li>
+            <li>Your reading position, starred articles, and app preferences.</li>
+            <li>API keys you enter for Reddit, YouTube, or an AI provider, which are stored in the device Keychain.</li>
+          </ul>
+
+          <h2>Connections the app makes</h2>
+          <p>To bring you content, Yana connects directly from your device to the sources you add — for example an RSS feed, a website, a YouTube channel, a subreddit, or a podcast. These requests go to those third parties, not to us, and are subject to their own privacy practices. Yana only contacts a source you have chosen to follow.</p>
+
+          <h2>Optional AI processing</h2>
+          <p>AI post-processing (summaries, translation, cleanup) is optional and off by default. If you enable Apple Intelligence, processing runs on your device. If you instead choose an external provider (OpenAI, Anthropic, Gemini, Mistral, Qwen, or DeepSeek) and supply your own key, the relevant article text is sent to that provider so it can be processed. That is the only case in which article content leaves your device, and it happens only because you configured it. Your use of an external provider is governed by that provider's own terms and privacy policy.</p>
+
+          <h2>Notifications</h2>
+          <p>Background refresh and new-article notifications are optional and off by default. When enabled, notifications are generated locally on your device after a refresh; no notification data is sent to us.</p>
+
+          <h2>No tracking or analytics</h2>
+          <p>Yana contains no analytics, no advertising, and no third-party tracking SDKs. This website itself loads no external fonts, scripts, or trackers.</p>
+
+          <h2>Data deletion</h2>
+          <p>Because all data lives on your device, deleting the app removes it. You can also remove individual feeds, articles, or keys from within the app at any time.</p>
+
+          <h2>Children</h2>
+          <p>Yana is a general-audience reading app and does not knowingly collect information from anyone, including children.</p>
+
+          <h2>Changes</h2>
+          <p>If this policy changes, the updated version will be posted on this page with a new date.</p>
+
+          <h2>Contact</h2>
+          <p>Questions about privacy? Reach the developer at <span class="placeholder-field">[contact email]</span>, or open an issue at <a href="https://github.com/fa-krug/yana/issues">github.com/fa-krug/yana/issues</a>.</p>
+        </div>
+
+        <!-- German -->
+        <div class="lang-de">
+          <h1>Datenschutzerklärung</h1>
+          <p class="updated">Zuletzt aktualisiert: 6. Juli 2026</p>
+
+          <p>Yana ist so gebaut, dass die eigene Lektüre privat bleibt. Die App ist ein vollständig eigenständiger Feed-Reader: Sie holt, verarbeitet und speichert alles auf dem Gerät. Es gibt kein Yana-Konto, keinen Login und keinen Yana-Server. Diese Erklärung beschreibt, was das für die Daten bedeutet.</p>
+
+          <h2>Kein Konto, kein Server</h2>
+          <p>Yana benötigt kein Konto und betreibt keinen Backend-Server. Feeds, Artikel, Tags und Leseposition werden lokal auf dem Gerät über Apples SwiftData gespeichert und bleiben dort. Diese Informationen werden von uns weder empfangen noch erfasst oder eingesehen.</p>
+
+          <h2>Daten, die auf dem Gerät bleiben</h2>
+          <ul>
+            <li>Feed-Abonnements, Tags und Einstellungen pro Feed.</li>
+            <li>Heruntergeladene Artikel samt Text und Bildern.</li>
+            <li>Leseposition, markierte Artikel und App-Einstellungen.</li>
+            <li>Eingegebene API-Schlüssel für Reddit, YouTube oder einen KI-Anbieter, gespeichert im Schlüsselbund des Geräts.</li>
+          </ul>
+
+          <h2>Verbindungen der App</h2>
+          <p>Um Inhalte zu laden, verbindet sich Yana direkt vom Gerät mit den hinzugefügten Quellen — etwa einem RSS-Feed, einer Website, einem YouTube-Kanal, einem Subreddit oder einem Podcast. Diese Anfragen gehen an diese Dritten, nicht an uns, und unterliegen deren eigenen Datenschutzpraktiken. Yana kontaktiert nur Quellen, die bewusst abonniert wurden.</p>
+
+          <h2>Optionale KI-Verarbeitung</h2>
+          <p>Die KI-Nachbearbeitung (Zusammenfassungen, Übersetzung, Aufbereitung) ist optional und standardmäßig deaktiviert. Bei aktivierter Apple Intelligence läuft die Verarbeitung auf dem Gerät. Wird stattdessen ein externer Anbieter gewählt (OpenAI, Anthropic, Gemini, Mistral, Qwen oder DeepSeek) und ein eigener Schlüssel hinterlegt, wird der betreffende Artikeltext zur Verarbeitung an diesen Anbieter gesendet. Nur in diesem Fall verlässt Artikelinhalt das Gerät, und nur, weil es so eingerichtet wurde. Die Nutzung eines externen Anbieters unterliegt dessen eigenen Bedingungen und Datenschutzbestimmungen.</p>
+
+          <h2>Benachrichtigungen</h2>
+          <p>Hintergrundaktualisierung und Benachrichtigungen über neue Artikel sind optional und standardmäßig deaktiviert. Wenn aktiviert, werden Benachrichtigungen nach einer Aktualisierung lokal auf dem Gerät erzeugt; es werden keine Benachrichtigungsdaten an uns gesendet.</p>
+
+          <h2>Kein Tracking, keine Analyse</h2>
+          <p>Yana enthält keine Analyse, keine Werbung und keine Tracking-SDKs von Dritten. Auch diese Website lädt keine externen Schriften, Skripte oder Tracker.</p>
+
+          <h2>Löschen von Daten</h2>
+          <p>Da alle Daten auf dem Gerät liegen, entfernt das Löschen der App auch die Daten. Einzelne Feeds, Artikel oder Schlüssel lassen sich jederzeit in der App entfernen.</p>
+
+          <h2>Kinder</h2>
+          <p>Yana ist eine Lese-App für ein allgemeines Publikum und erfasst wissentlich von niemandem Daten, auch nicht von Kindern.</p>
+
+          <h2>Änderungen</h2>
+          <p>Ändert sich diese Erklärung, wird die aktualisierte Fassung mit neuem Datum auf dieser Seite veröffentlicht.</p>
+
+          <h2>Kontakt</h2>
+          <p>Fragen zum Datenschutz? Den Entwickler erreichen Sie unter <span class="placeholder-field">[Kontakt-E-Mail]</span> oder über ein Issue auf <a href="https://github.com/fa-krug/yana/issues">github.com/fa-krug/yana/issues</a>.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="footer-note">
+          © 2026 Sascha Krug ·
+          <a href="index.html"><span class="lang-en">Home</span><span class="lang-de">Start</span></a> ·
+          <a href="impressum.html"><span class="lang-en">Imprint</span><span class="lang-de">Impressum</span></a> ·
+          <a href="terms.html"><span class="lang-en">Terms of Use</span><span class="lang-de">Nutzungsbedingungen</span></a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>

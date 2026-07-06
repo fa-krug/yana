@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Imprint — Yana</title>
+    <meta name="description" content="Legal notice / Impressum for the Yana app and website." />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script>
+      (function () {
+        try {
+          var l = localStorage.getItem("yana-lang") || navigator.language;
+          l = (l || "en").toLowerCase().slice(0, 2);
+          if (l !== "de") l = "en";
+          document.documentElement.setAttribute("data-lang", l);
+          document.documentElement.setAttribute("lang", l);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="index.html"><span class="brand-mark">Y</span> Yana</a>
+        <div class="header-tools" style="margin-left: auto;">
+          <div class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-set="en">EN</button>
+            <button type="button" data-set="de">DE</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="legal">
+      <div class="wrap">
+        <a class="back-link" href="index.html">← <span class="lang-en">Back to home</span><span class="lang-de">Zurück zur Startseite</span></a>
+
+        <!-- English -->
+        <div class="lang-en">
+          <h1>Imprint</h1>
+          <p class="updated">Legal notice pursuant to § 5 DDG (German Digital Services Act).</p>
+
+          <h2>Responsible for content</h2>
+          <p>
+            <span class="placeholder-field">[Full name]</span><br />
+            <span class="placeholder-field">[Street and number]</span><br />
+            <span class="placeholder-field">[Postal code and city]</span><br />
+            <span class="placeholder-field">[Country]</span>
+          </p>
+
+          <h2>Contact</h2>
+          <p>
+            Email: <span class="placeholder-field">[contact email]</span><br />
+            Phone: <span class="placeholder-field">[phone, optional]</span>
+          </p>
+
+          <h2>Responsible for content under § 18 (2) MStV</h2>
+          <p>
+            <span class="placeholder-field">[Full name]</span>, address as above.
+          </p>
+
+          <h2>Liability for content</h2>
+          <p>The contents of these pages were created with the greatest care. However, no guarantee can be given for the accuracy, completeness, or timeliness of the content. As a service provider we are responsible for our own content on these pages under general law, but we are not obliged to monitor transmitted or stored third-party information.</p>
+
+          <h2>Liability for links</h2>
+          <p>This site and the app contain links to external websites over whose content we have no influence. We therefore accept no liability for this external content. The respective provider or operator of the linked pages is always responsible for their content.</p>
+
+          <h2>Copyright</h2>
+          <p>The Yana app is released under the MIT License; see the <a href="https://github.com/fa-krug/yana/blob/main/LICENSE">LICENSE</a> file. Third-party trademarks, including "Apple", "App Store", and "Apple Intelligence", belong to their respective owners.</p>
+        </div>
+
+        <!-- German -->
+        <div class="lang-de">
+          <h1>Impressum</h1>
+          <p class="updated">Angaben gemäß § 5 DDG (Digitale-Dienste-Gesetz).</p>
+
+          <h2>Verantwortlich für den Inhalt</h2>
+          <p>
+            <span class="placeholder-field">[Vollständiger Name]</span><br />
+            <span class="placeholder-field">[Straße und Hausnummer]</span><br />
+            <span class="placeholder-field">[PLZ und Ort]</span><br />
+            <span class="placeholder-field">[Land]</span>
+          </p>
+
+          <h2>Kontakt</h2>
+          <p>
+            E-Mail: <span class="placeholder-field">[Kontakt-E-Mail]</span><br />
+            Telefon: <span class="placeholder-field">[Telefon, optional]</span>
+          </p>
+
+          <h2>Verantwortlich im Sinne des § 18 Abs. 2 MStV</h2>
+          <p>
+            <span class="placeholder-field">[Vollständiger Name]</span>, Anschrift wie oben.
+          </p>
+
+          <h2>Haftung für Inhalte</h2>
+          <p>Die Inhalte dieser Seiten wurden mit größter Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität der Inhalte kann jedoch keine Gewähr übernommen werden. Als Diensteanbieter sind wir für eigene Inhalte auf diesen Seiten nach den allgemeinen Gesetzen verantwortlich, jedoch nicht verpflichtet, übermittelte oder gespeicherte fremde Informationen zu überwachen.</p>
+
+          <h2>Haftung für Links</h2>
+          <p>Diese Seite und die App enthalten Links zu externen Websites Dritter, auf deren Inhalte wir keinen Einfluss haben. Für diese fremden Inhalte wird daher keine Gewähr übernommen. Für die Inhalte der verlinkten Seiten ist stets der jeweilige Anbieter oder Betreiber verantwortlich.</p>
+
+          <h2>Urheberrecht</h2>
+          <p>Die Yana-App ist unter der MIT-Lizenz veröffentlicht; siehe die Datei <a href="https://github.com/fa-krug/yana/blob/main/LICENSE">LICENSE</a>. Marken Dritter, darunter „Apple“, „App Store“ und „Apple Intelligence“, gehören ihren jeweiligen Inhabern.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <div class="footer-note">
+          © 2026 Sascha Krug ·
+          <a href="index.html"><span class="lang-en">Home</span><span class="lang-de">Start</span></a> ·
+          <a href="privacy.html"><span class="lang-en">Privacy Policy</span><span class="lang-de">Datenschutz</span></a> ·
+          <a href="terms.html"><span class="lang-en">Terms of Use</span><span class="lang-de">Nutzungsbedingungen</span></a>
+        </div>
+      </div>
+    </footer>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>
