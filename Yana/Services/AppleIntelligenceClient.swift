@@ -76,4 +76,13 @@ struct AppleIntelligenceClient: ArticleGenerating {
         let response = try await session.respond(to: prompt, generating: GeneratedSummary.self, options: options)
         return response.content.summary
     }
+
+    /// One free-form text generation (no guided schema), used by the selector suggester which
+    /// parses the model's JSON reply itself. Throws on generation failure.
+    func generateText(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
+        let session = LanguageModelSession(instructions: instructions)
+        let options = GenerationOptions(temperature: temperature, maximumResponseTokens: maxTokens)
+        let response = try await session.respond(to: prompt, options: options)
+        return response.content
+    }
 }

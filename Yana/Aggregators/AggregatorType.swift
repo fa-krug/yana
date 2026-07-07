@@ -38,7 +38,7 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .fullWebsite: "Full Website"
+        case .fullWebsite: "Full Article Feed"
         case .feedContent: "Feed Content (RSS/Atom)"
         case .heise: "Heise"
         case .merkur: "Merkur"
