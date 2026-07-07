@@ -27,7 +27,12 @@ hook structure; no aggregator rewrite.
 - **Legacy selectors are not enforced.** Existing `customContentSelector` /
   `customSelectorsToRemove` values are passed to the AI generation step as *candidates to
   validate*, not migrated into the active lists.
-- **AI button overwrites** both lists (with confirmation).
+- **Lists are prefilled with good defaults** on a new feed (see data model), so the editor
+  opens on populated, editable lists rather than blank ones.
+- **AI generation is per-list.** Each selector page has its own "Auto-generate with AI"
+  button that regenerates and **overwrites only that page's list** (content page → content
+  selectors; ignore page → ignore selectors), with confirmation.
+- **AI buttons are hidden entirely when no AI provider is configured** (not shown-but-disabled).
 - **Layout:** the feed editor gets three `NavigationLink`s — Content Selectors, Ignore
   Selectors, Preview. Only the **Preview** screen has a top tab bar, switching between the
   first three previewed articles. Preview has a **reload** button in its toolbar.
@@ -38,18 +43,28 @@ hook structure; no aggregator rewrite.
 
 ```swift
 struct WebsiteOptions: Codable, Sendable, Equatable {
+    static let defaultContentSelectors = ["article", ".article-content", ".entry-content", "main"]
+    static let defaultIgnoreSelectors  = [".advertisement", ".ad", ".social-share"]
+
     var useFullContent = true
-    var contentSelectors: [String] = []      // was: customContentSelector: String
-    var ignoreSelectors: [String] = []       // was: customSelectorsToRemove: String
+    var contentSelectors = defaultContentSelectors   // was: customContentSelector: String
+    var ignoreSelectors  = defaultIgnoreSelectors    // was: customSelectorsToRemove: String
     var ai = AIOptions()
 
-    // Custom Decodable: if the new arrays are absent but the legacy single-string
-    // fields are present, seed the arrays from them (comma-split) so existing feeds
-    // keep working. Legacy keys are decode-only; we never re-encode them.
+    // Custom Decodable disambiguates three cases per array:
+    //   • key present            → use the decoded value (even if the user cleared it to [])
+    //   • key absent + legacy set → seed from the legacy single-string field (comma-split)
+    //   • key absent, no legacy   → apply the good defaults above
+    // Legacy keys are decode-only; we never re-encode them.
     private enum CodingKeys: String, CodingKey { case useFullContent, contentSelectors, ignoreSelectors, ai }
     private enum LegacyKeys: String, CodingKey { case customContentSelector, customSelectorsToRemove }
 }
 ```
+
+New feeds therefore open with the default lists populated. The editorial-noise ignore
+defaults (`.advertisement`, `.ad`, `.social-share`) are user-editable; the mandatory
+security/sanitization removals (`script`, `style`, `noscript`, non-YouTube `iframe`) stay
+hardcoded in the aggregator and are always applied regardless of the ignore list.
 
 Options are persisted as a SwiftData composite attribute, so adding fields with defaults is
 migration-safe; the custom `init(from:)` handles the one-time legacy fallback in-place.
@@ -126,24 +141,29 @@ An editable `[String]` list (following the `ManagedList` pattern, minus `@Query`
 is the bound options array):
 
 - Rows are editable text fields; swipe / edit-mode delete; add-row button.
-- Toolbar **Auto-generate with AI** action (see below). Overwrites *this feed's* content and
-  ignore lists after a confirmation dialog. Disabled with an explanatory footer when no AI
-  provider is configured.
+- Toolbar **Auto-generate with AI** action (see below) — regenerates and overwrites **only
+  this page's list** after a confirmation dialog. **Hidden entirely when no AI provider is
+  configured.**
 - Empty state via `ContentUnavailableView`.
 
 ### AI auto-generate
 
-New `SelectorSuggester` service using the existing `AIClient`:
+New `SelectorSuggester` service using the existing `AIClient`, generating **one list at a
+time**:
 
 ```swift
-struct SelectorSuggestion: Codable { var contentSelectors: [String]; var ignoreSelectors: [String] }
+enum SelectorKind { case content, ignore }
+struct SelectorSuggestion: Codable { var selectors: [String] }
 ```
 
 - Fetch the feed's first article page HTML, chrome-strip + cap via `ArticleAIText`.
-- Prompt (JSON mode) asks for `{contentSelectors, ignoreSelectors}` — CSS selectors for the
-  main article container(s) and the noise to strip — and passes the current/legacy selectors
-  as candidates to validate and keep only if still present/appropriate.
-- `AIClient.generate(prompt:jsonMode:true)`, decode `SelectorSuggestion`, overwrite both lists.
+- Prompt (JSON mode) is scoped to the requested `kind`: content → CSS selectors for the main
+  article container(s); ignore → selectors for the noise to strip. Passes that list's current
+  entries (plus any legacy value) as candidates to validate and keep only if still appropriate.
+- `AIClient.generate(prompt:jsonMode:true)`, decode `SelectorSuggestion`, **overwrite just the
+  requested list.**
+- Availability is gated on a configured AI provider; the button is only rendered when one
+  exists (mirrors the AI-provider check already used elsewhere in Settings).
 
 ### `ExtractionPreviewView`
 
