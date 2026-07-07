@@ -149,6 +149,8 @@ final class AppSettings {
         static let useSystemBrowser = "settings.useSystemBrowser"
         static let articleFullscreenEnabled = "settings.articleFullscreenEnabled"
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
+        // Onboarding
+        static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
     }
 
     var activeAIProvider: AIProvider {
@@ -229,6 +231,34 @@ final class AppSettings {
     var deepseekModel: String {
         get { access(keyPath: \.deepseekModel); return defaults.string(forKey: Key.deepseekModel) ?? "deepseek-v4-flash" }
         set { withMutation(keyPath: \.deepseekModel) { defaults.set(newValue, forKey: Key.deepseekModel) } }
+    }
+
+    // MARK: AI model (generic accessor)
+    /// Model currently selected for `provider`. Provides a single generic path over the
+    /// per-provider model properties (used by the onboarding AI step); `.none` /
+    /// `.appleIntelligence` have no model and return "".
+    func aiModel(for provider: AIProvider) -> String {
+        switch provider {
+        case .openai: openaiModel
+        case .anthropic: anthropicModel
+        case .gemini: geminiModel
+        case .mistral: mistralModel
+        case .qwen: qwenModel
+        case .deepseek: deepseekModel
+        case .none, .appleIntelligence: ""
+        }
+    }
+
+    func setAIModel(_ value: String, for provider: AIProvider) {
+        switch provider {
+        case .openai: openaiModel = value
+        case .anthropic: anthropicModel = value
+        case .gemini: geminiModel = value
+        case .mistral: mistralModel = value
+        case .qwen: qwenModel = value
+        case .deepseek: deepseekModel = value
+        case .none, .appleIntelligence: break
+        }
     }
 
     // MARK: AI knobs
@@ -325,6 +355,13 @@ final class AppSettings {
     var hasSeenFullscreenHint: Bool {
         get { access(keyPath: \.hasSeenFullscreenHint); return defaults.bool(forKey: Key.hasSeenFullscreenHint) }
         set { withMutation(keyPath: \.hasSeenFullscreenHint) { defaults.set(newValue, forKey: Key.hasSeenFullscreenHint) } }
+    }
+
+    // MARK: Onboarding
+    /// One-time flag: whether the first-launch welcome/onboarding screen has been dismissed.
+    var hasCompletedOnboarding: Bool {
+        get { access(keyPath: \.hasCompletedOnboarding); return defaults.bool(forKey: Key.hasCompletedOnboarding) }
+        set { withMutation(keyPath: \.hasCompletedOnboarding) { defaults.set(newValue, forKey: Key.hasCompletedOnboarding) } }
     }
 
     // MARK: Timeline position

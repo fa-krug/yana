@@ -2761,6 +2761,206 @@
           }
         }
       }
+    },
+    "Welcome to Yana": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Willkommen bei Yana"
+          }
+        }
+      }
+    },
+    "Your own private feed reader — all your sources, gathered on your device.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein eigener privater Feed-Reader – alle deine Quellen, gesammelt auf deinem Gerät."
+          }
+        }
+      }
+    },
+    "Everything in One Timeline": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles in einer Timeline"
+          }
+        }
+      }
+    },
+    "RSS, YouTube, Reddit, podcasts, and whole websites flow into a single endless timeline you swipe through.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "RSS, YouTube, Reddit, Podcasts und ganze Websites fließen in eine einzige endlose Timeline, durch die du wischst."
+          }
+        }
+      }
+    },
+    "Organize with Tags": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit Tags organisieren"
+          }
+        }
+      }
+    },
+    "Tag your feeds to filter the timeline, and star articles to keep them around.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Versieh deine Feeds mit Tags, um die Timeline zu filtern, und markiere Artikel mit einem Stern, um sie zu behalten."
+          }
+        }
+      }
+    },
+    "Private by Design": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privat von Grund auf"
+          }
+        }
+      }
+    },
+    "Everything is fetched and stored on your device. No account, no server, no tracking.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles wird auf deinem Gerät geladen und gespeichert. Kein Konto, kein Server, kein Tracking."
+          }
+        }
+      }
+    },
+    "Optional AI": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optionale KI"
+          }
+        }
+      }
+    },
+    "Bring your own key to summarize, improve, or translate articles — entirely opt-in.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nutze deinen eigenen Schlüssel, um Artikel zusammenzufassen, zu verbessern oder zu übersetzen – vollständig optional."
+          }
+        }
+      }
+    },
+    "Get Started": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los geht’s"
+          }
+        }
+      }
+    },
+    "Skip": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Überspringen"
+          }
+        }
+      }
+    },
+    "Back": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zurück"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weiter"
+          }
+        }
+      }
+    },
+    "Add a Feed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed hinzufügen"
+          }
+        }
+      }
+    },
+    "Import Feeds": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeds importieren"
+          }
+        }
+      }
+    },
+    "Optional. Bring your own key to summarize, improve, or translate articles. You can change this anytime in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional. Nutze deinen eigenen Schlüssel, um Artikel zusammenzufassen, zu verbessern oder zu übersetzen. Du kannst dies jederzeit in den Einstellungen ändern."
+          }
+        }
+      }
+    },
+    "Set this up later in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Später in den Einstellungen einrichten."
+          }
+        }
+      }
+    },
+    "Add a feed or import an OPML file to get started. You can always add more later.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Füge einen Feed hinzu oder importiere eine OPML-Datei, um zu starten. Du kannst jederzeit weitere hinzufügen."
+          }
+        }
+      }
+    },
+    "You're all set.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles bereit."
+          }
+        }
+      }
     }
   },
   "version": "1.1"
