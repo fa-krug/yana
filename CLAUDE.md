@@ -45,9 +45,33 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   frameit resolves the title font relative to the screenshots dir, so a system font can't be used).
 - Output (gitignored): `fastlane/screenshots/en-US/*_framed.png`.
 - Gotchas: the `screenshots` lane bakes `LANG/LC_ALL=en_US.UTF-8` into the Fastfile because fastlane
-  crashes on a bare `C`/US-ASCII shell locale. `ScreenshotSeed` is idempotent (bails if any `Feed`
+  crashes on a bare `C`/US-ASCII shell locale. That bake uses `ENV["LANG"] ||= …`, which does **not**
+  override an already-set-but-empty `LANG` (an empty string is truthy in Ruby), so if the lane dies with
+  a `FastlanePtyError` / `"Cr" on UTF-16` encoding crash, export `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8`
+  explicitly before `fastlane screenshots`. `ScreenshotSeed` is idempotent (bails if any `Feed`
   exists), so after changing fixture content run `xcrun simctl shutdown all; xcrun simctl erase all`
   before re-capturing, or the stale library persists.
+
+### Website (GitHub Pages)
+- The project ships a self-contained marketing + legal site under `docs/site/`, deployed to GitHub
+  Pages at **`yana.fa-krug.de`** by `.github/workflows/pages.yml` on every push to `main` (one-time
+  manual setup: repo **Settings → Pages → Source: GitHub Actions**). Design spec:
+  `docs/superpowers/specs/2026-07-06-github-pages-site-design.md`.
+- Plain HTML/CSS/JS, **no build step** (served as-is) and **no external requests** (system font stack,
+  no CDN/trackers — mirrors the app's privacy posture). Pages: `index.html` (landing) plus
+  `privacy.html`, `impressum.html`, `terms.html`. Copy is reused from the README and
+  `docs/app-store/description-{en,de}.md`.
+- **Bilingual** EN/DE from one set of pages: every translatable element carries a `lang-en`/`lang-de`
+  class, `<html data-lang>` drives visibility via CSS, and `assets/app.js` runs the header toggle
+  (persisted to `localStorage`; default EN). When adding copy, always add both language spans.
+- Images live in `docs/site/assets/img/` and, unlike the gitignored `fastlane screenshots` output, are
+  **committed** (Pages serves them directly). `assets/img/README.md` maps each file to where it is used.
+  The screenshots (`hero.png`, `screen-reader.png`, `screen-timeline.png`, `screen-search.png`,
+  `screen-feeds.png`) are the raw (unframed) `fastlane screenshots` captures from
+  `fastlane/screenshots/en-US/` (`01_Reader`/`02_Timeline`/`03_Search`/`04_Feeds`), downscaled to
+  ~640px wide with `sips`; the site rounds their corners in CSS, so use the raw captures, **not** the
+  device-framed App-Store `*_framed.png`. To refresh: re-run `fastlane screenshots`, downscale, and
+  overwrite the files under `assets/img/`.
 
 ## Architecture
 
@@ -97,6 +121,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - `Yana/Utilities/Constants.swift` — app constants
 - `LICENSE` — MIT license
 - `docs/app-store/` — App Store listing copy: English + German descriptions (`description-*.md`, ≤4000 chars each) and keyword lines (`keywords-*.txt`, ≤100 chars each), plus a `README.md` documenting the field format
+- `docs/site/` — the GitHub Pages marketing + legal site (`index.html` + `privacy`/`impressum`/`terms`, `assets/`), deployed to `yana.fa-krug.de` by `.github/workflows/pages.yml` (see **Website** under Commands)
 
 ### Key patterns
 
