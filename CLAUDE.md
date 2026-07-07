@@ -147,6 +147,10 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   the `ArticleListView` swipe's **"Reload"** call `forceReload(article:)` (current article only —
   every aggregator now re-fetches a single item: website/scrapers re-scrape the page, RSS/podcast pick the matching feed entry, YouTube/Reddit fetch the one video/post; if the item is gone it leaves the article untouched and never reloads the feed), while the Feeds
   swipe **"Reload"** calls `forceReload(feed:)` (re-imports everything the feed offers).
+- **Auto-run new feeds:** creating a feed in `FeedEditorView` immediately fetches it — after
+  the insert, `save()` calls an `onCreate` callback that `FeedsView` wires to `update(feed:)`
+  (same path as the swipe "Update"), so a new enabled feed's articles appear without a manual
+  update. Feeds created disabled are skipped.
 - **SwiftData source of truth:** `AggregationService` writes; views read lightweight metadata via `ArticleStore` (backed by SwiftData) rather than per-view `@Query`s.
 - **Pluggable aggregators:** each content source is an `Aggregator` keyed by `AggregatorType`.
 - **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum (one case per

@@ -123,7 +123,13 @@ struct FeedsView: View {
             }
         }
         .sheet(isPresented: $showingCreateFeed) {
-            NavigationStack { FeedEditorView(feed: nil) }
+            NavigationStack {
+                FeedEditorView(feed: nil) { newFeed in
+                    // Fetch the just-added feed right away, unless it was created disabled.
+                    guard newFeed.enabled else { return }
+                    updateOne(newFeed)
+                }
+            }
         }
         .fileImporter(
             isPresented: $isImporting,
