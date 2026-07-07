@@ -169,6 +169,27 @@ enum HTMLUtils {
         return try container.html()
     }
 
+    /// Remove a leading `<h1>`/`<h2>` whose text duplicates the article `title`. The reader renders
+    /// the title itself as the masthead, so a repeated headline at the top of the extracted body is
+    /// noise. Only the first heading in document order is considered, and it is removed when its text
+    /// matches the title exactly (case/whitespace-insensitive) or one clearly contains the other, so
+    /// a mid-article heading that merely shares wording is left alone.
+    static func removeDuplicateTitleHeading(_ doc: Document, title: String) throws {
+        let normTitle = normalizeHeadingText(title)
+        guard !normTitle.isEmpty, let heading = try doc.select("h1, h2").first() else { return }
+        let normHeading = normalizeHeadingText(try heading.text())
+        guard !normHeading.isEmpty else { return }
+        let contained = normHeading.count > 12 && normTitle.count > 12
+            && (normHeading.contains(normTitle) || normTitle.contains(normHeading))
+        if normHeading == normTitle || contained { try heading.remove() }
+    }
+
+    private static func normalizeHeadingText(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
     /// True when `node` is a (transitive) descendant of `ancestor`.
     private static func isDescendant(_ node: Element, of ancestor: Element) -> Bool {
         var parent = node.parent()

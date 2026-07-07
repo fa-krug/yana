@@ -86,6 +86,12 @@ enum AggregatorType: String, CaseIterable, Codable, Sendable, Identifiable {
         }
     }
 
+    /// Whether the editor should normalize the entered URL (fill a missing scheme) and resolve a
+    /// homepage to its advertised feed URL on save/preview. True for the free-form URL types
+    /// (`fullWebsite`, `feedContent`, `podcast`); false for managed feeds with fixed choices and
+    /// the non-URL sources (subreddits, YouTube channels).
+    var resolvesFeedURL: Bool { identifierKind == .url && identifierChoices.isEmpty }
+
     /// Predefined RSS-feed choices for the feed editor's identifier Picker (empty = free-form URL or forced feed).
     var identifierChoices: [(value: String, label: String)] {
         switch self {
