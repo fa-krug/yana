@@ -2626,6 +2626,96 @@
           }
         }
       }
+    },
+    "Skip": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Überspringen"
+          }
+        }
+      }
+    },
+    "Back": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zurück"
+          }
+        }
+      }
+    },
+    "Continue": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weiter"
+          }
+        }
+      }
+    },
+    "Add a Feed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed hinzufügen"
+          }
+        }
+      }
+    },
+    "Import Feeds": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeds importieren"
+          }
+        }
+      }
+    },
+    "Optional. Bring your own key to summarize, improve, or translate articles. You can change this anytime in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Optional. Nutze deinen eigenen Schlüssel, um Artikel zusammenzufassen, zu verbessern oder zu übersetzen. Du kannst dies jederzeit in den Einstellungen ändern."
+          }
+        }
+      }
+    },
+    "Set this up later in Settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Später in den Einstellungen einrichten."
+          }
+        }
+      }
+    },
+    "Add a feed or import an OPML file to get started. You can always add more later.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Füge einen Feed hinzu oder importiere eine OPML-Datei, um zu starten. Du kannst jederzeit weitere hinzufügen."
+          }
+        }
+      }
+    },
+    "You're all set.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles bereit."
+          }
+        }
+      }
     }
   },
   "version": "1.1"

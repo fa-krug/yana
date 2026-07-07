@@ -121,7 +121,10 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - `Yana/ContentView.swift` — root view (opens directly into the reader; no auth gate). On first
   launch it presents `WelcomeView` (`Yana/Views/WelcomeView.swift`) as a full-screen onboarding
   cover, gated by the one-time `AppSettings.hasCompletedOnboarding` flag (skipped under the
-  `-UITEST_SKIP_ONBOARDING` / `-UITEST_SCREENSHOTS` launch arguments)
+  `-UITEST_SKIP_ONBOARDING` / `-UITEST_SCREENSHOTS` launch arguments). `WelcomeView` is a paged
+  coordinator over three steps — welcome/feature highlights, optional AI-provider setup (reuses
+  `CredentialTester`/`KeychainService`/`AppSettings.aiModel(for:)`; basics only, no advanced knobs),
+  and a first feed (reuses `FeedEditorView`'s auto-fetch `onCreate` path and `FeedPortability.importOPML`)
 - `Yana/Models/AppState.swift` — thin observable UI state (timeline anchor, tag filter, errors)
 - `Yana/Utilities/Constants.swift` — app constants
 - `LICENSE` — MIT license

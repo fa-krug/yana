@@ -233,6 +233,34 @@ final class AppSettings {
         set { withMutation(keyPath: \.deepseekModel) { defaults.set(newValue, forKey: Key.deepseekModel) } }
     }
 
+    // MARK: AI model (generic accessor)
+    /// Model currently selected for `provider`. Provides a single generic path over the
+    /// per-provider model properties (used by the onboarding AI step); `.none` /
+    /// `.appleIntelligence` have no model and return "".
+    func aiModel(for provider: AIProvider) -> String {
+        switch provider {
+        case .openai: openaiModel
+        case .anthropic: anthropicModel
+        case .gemini: geminiModel
+        case .mistral: mistralModel
+        case .qwen: qwenModel
+        case .deepseek: deepseekModel
+        case .none, .appleIntelligence: ""
+        }
+    }
+
+    func setAIModel(_ value: String, for provider: AIProvider) {
+        switch provider {
+        case .openai: openaiModel = value
+        case .anthropic: anthropicModel = value
+        case .gemini: geminiModel = value
+        case .mistral: mistralModel = value
+        case .qwen: qwenModel = value
+        case .deepseek: deepseekModel = value
+        case .none, .appleIntelligence: break
+        }
+    }
+
     // MARK: AI knobs
     var aiTemperature: Double {
         get { access(keyPath: \.aiTemperature); return defaults.double(forKey: Key.aiTemperature) }

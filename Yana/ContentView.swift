@@ -16,7 +16,7 @@ struct ContentView: View {
     var body: some View {
         ReaderScreen(appState: appState)
             .fullScreenCover(isPresented: $showWelcome) {
-                WelcomeView { showWelcome = false }
+                WelcomeView(onFinish: { showWelcome = false })
                     .interactiveDismissDisabled()
             }
             .onAppear {
