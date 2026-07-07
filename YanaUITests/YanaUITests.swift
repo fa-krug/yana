@@ -8,6 +8,8 @@ final class YanaUITests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        // Skip the first-launch welcome so it doesn't cover the reader's empty state.
+        app.launchArguments += ["-UITEST_SKIP_ONBOARDING"]
         app.launch()
         // The app opens directly into the reader. With no feeds configured yet, the reader
         // shows its empty-state ContentUnavailableView. Assert on a stable accessibility

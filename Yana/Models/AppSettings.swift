@@ -149,6 +149,8 @@ final class AppSettings {
         static let useSystemBrowser = "settings.useSystemBrowser"
         static let articleFullscreenEnabled = "settings.articleFullscreenEnabled"
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
+        // Onboarding
+        static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
     }
 
     var activeAIProvider: AIProvider {
@@ -325,6 +327,13 @@ final class AppSettings {
     var hasSeenFullscreenHint: Bool {
         get { access(keyPath: \.hasSeenFullscreenHint); return defaults.bool(forKey: Key.hasSeenFullscreenHint) }
         set { withMutation(keyPath: \.hasSeenFullscreenHint) { defaults.set(newValue, forKey: Key.hasSeenFullscreenHint) } }
+    }
+
+    // MARK: Onboarding
+    /// One-time flag: whether the first-launch welcome/onboarding screen has been dismissed.
+    var hasCompletedOnboarding: Bool {
+        get { access(keyPath: \.hasCompletedOnboarding); return defaults.bool(forKey: Key.hasCompletedOnboarding) }
+        set { withMutation(keyPath: \.hasCompletedOnboarding) { defaults.set(newValue, forKey: Key.hasCompletedOnboarding) } }
     }
 
     // MARK: Timeline position
