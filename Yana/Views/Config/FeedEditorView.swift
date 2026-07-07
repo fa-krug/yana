@@ -9,12 +9,16 @@ struct FeedEditorView: View {
 
     /// nil = create a new feed.
     let feed: Feed?
+    /// Invoked with the freshly inserted feed after a successful create (never on edit),
+    /// so the presenter can immediately fetch its articles.
+    let onCreate: ((Feed) -> Void)?
     @State private var model: FeedEditorModel
     @State private var showingSearch = false
     @State private var settings = AppSettings()
 
-    init(feed: Feed?) {
+    init(feed: Feed?, onCreate: ((Feed) -> Void)? = nil) {
         self.feed = feed
+        self.onCreate = onCreate
         _model = State(initialValue: FeedEditorModel(feed: feed))
     }
 
@@ -129,9 +133,12 @@ struct FeedEditorView: View {
     /// and an existing feed keeps its last valid state.
     private func save() {
         guard model.isValid else { return }
+        let isNew = feed == nil
         let target = feed ?? Feed(name: "", aggregatorType: .feedContent, identifier: "")
         model.apply(to: target, availableTags: allTags)
-        if feed == nil { modelContext.insert(target) }
+        if isNew { modelContext.insert(target) }
         try? modelContext.save()
+        // Auto-run a newly created feed so its articles appear without a manual "Update".
+        if isNew { onCreate?(target) }
     }
 }
