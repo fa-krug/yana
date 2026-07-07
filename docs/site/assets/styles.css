@@ -331,6 +331,20 @@ a:hover {
   min-height: 420px;
 }
 
+/* --- Real screenshots (replace the .ph placeholders) --- */
+.shot {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.hero-shot {
+  max-width: 320px;
+  margin: 0 auto;
+}
+
 /* --- Feature grid --- */
 .feature-grid {
   display: grid;
