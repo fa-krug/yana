@@ -45,6 +45,19 @@ actor ImageStore {
         return hash
     }
 
+    /// Stores already-decoded local image bytes (no fetch, no recompression) under a
+    /// content hash, recording `ext` so `fileURL(forHash:)` resolves the right file.
+    /// Used by DEBUG screenshot/test fixtures; `ext` is a bare extension, e.g. "jpg".
+    func storeData(_ data: Data, ext: String) -> String {
+        let hash = Self.hash(data)
+        extensions[hash] = ext
+        let url = fileURL(forHash: hash)
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? data.write(to: url)
+        }
+        return hash
+    }
+
     func fileURL(forHash hash: String) -> URL {
         if let ext = extensions[hash] {
             return directory.appendingPathComponent("\(hash).\(ext)")

@@ -134,6 +134,43 @@ xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' tes
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`)
 - `YanaUITests/` — UI tests using XCTest
 
+## App Store Screenshots
+
+Generate framed, captioned marketing screenshots (English, iPhone-only — 6.9″ `iPhone 17 Pro Max`):
+
+```bash
+brew install fastlane   # first time only
+fastlane screenshots
+```
+
+This runs the `ScreenshotUITests` capture flow against an offline content fixture
+(`ScreenshotSeed`, DEBUG-only, gated by the `-UITEST_SCREENSHOTS` launch argument) on the
+6.9″ iPhone simulator, then frames the results — device frame + caption on a solid
+background sized to exactly 1320×2868 so the output stays App-Store-valid. Captions live in
+`fastlane/screenshots/en-US/title.strings`; framed output lands in `fastlane/screenshots/en-US/`.
+
+### Fully original, generated content
+
+The fixture is **100% original** — invented feed names and hand-authored article text, with all
+imagery generated in-process: `ScreenshotImageFactory` renders article lead images and
+`ScreenshotLogoFactory` renders per-feed logo tiles, stored in `ImageStore` so the reader resolves
+them like any real import. Nothing is fetched from or copied out of real feeds, so there is no
+third-party licensing/trademark exposure and no image binaries are committed.
+
+To change what appears, edit `ScreenshotSeed.feedSpecs` (feed names, tags, article
+titles/summaries/bodies) and/or the two generators, then re-run `fastlane screenshots`. If you
+change article titles, check the `03_Search` query in `YanaUITests/ScreenshotUITests.swift` still
+matches an article.
+
+Notes:
+- The `screenshots` lane sets `LANG/LC_ALL=en_US.UTF-8` for you (fastlane crashes on a bare
+  `C`/US-ASCII shell locale).
+- `ScreenshotSeed` is idempotent (it bails if any feed already exists). After editing the
+  fixture content, erase the simulator before re-capturing so it re-seeds fresh:
+  `xcrun simctl shutdown all && xcrun simctl erase all`.
+- The caption font (`OpenSans-Bold.ttf`, SIL OFL) is bundled under `fastlane/screenshots/`
+  because frameit resolves the title font relative to that directory.
+
 ## Architecture
 
 - **UI Framework:** SwiftUI (iOS 26.0+)

@@ -1,0 +1,29 @@
+# Device: 6.9" iPhone (1320x2868). iPhone-only release — no iPad.
+# Confirm the name against `xcrun simctl list devices available`.
+devices([
+  "iPhone 17 Pro Max"
+])
+
+languages(["en-US"])
+
+scheme("Yana")
+
+# Only run the screenshot UITest, not the whole UI suite.
+only_testing(["YanaUITests/ScreenshotUITests"])
+
+output_directory("./fastlane/screenshots")
+clear_previous_screenshots(true)
+
+# The fixture launch argument is set inside the UITest (launchArguments), so no extra
+# launch_arguments needed here.
+
+concurrent_simulators(false)
+stop_after_first_error(true)
+
+# Force a clean, neutral 9:41 / full-signal status bar on all shots instead of the
+# simulator's localized clock.
+override_status_bar(true)
+
+# Force the simulator's system locale to match `languages` above, so any locale-formatted
+# system chrome renders in English rather than the host Mac's German region.
+localize_simulator(true)

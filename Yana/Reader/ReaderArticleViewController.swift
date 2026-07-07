@@ -162,6 +162,7 @@ final class ReaderArticleViewController: UIViewController,
             style: .plain, target: self, action: #selector(showArticleList)
         )
         articleListItem.accessibilityLabel = String(localized: "Article list")
+        articleListItem.accessibilityIdentifier = "reader.articleList"
 
         filterItem = UIBarButtonItem(
             image: UIImage(systemName: "line.3.horizontal.decrease.circle"),
@@ -187,6 +188,7 @@ final class ReaderArticleViewController: UIViewController,
             ])
         )
         menuItem.accessibilityLabel = String(localized: "More actions")
+        menuItem.accessibilityIdentifier = "reader.menu"
         // rightBarButtonItems is ordered edge-inward: [menu, filter, star] puts the overflow menu at
         // the screen edge, then the filter, then the star (on-screen L→R: star, filter, menu).
         navigationItem.rightBarButtonItems = [menuItem, filterItem, starItem]

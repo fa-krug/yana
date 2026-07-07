@@ -26,6 +26,29 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 ### Prerequisites
 - `brew install xcodegen` — install XcodeGen (required to generate `.xcodeproj`)
 
+### App Store screenshots
+- `fastlane screenshots` — capture + frame the App Store screenshots (en-US, **iPhone-only**,
+  6.9″ `iPhone 17 Pro Max`, 1320×2868). Requires `brew install fastlane`.
+- Content is a DEBUG-only offline fixture (`ScreenshotSeed`, `Yana/Utilities/ScreenshotSeed.swift`)
+  triggered by the `-UITEST_SCREENSHOTS` launch argument that the `ScreenshotUITests` capture flow
+  passes — no network, no committed binaries, fully reproducible. `ScreenshotSeed` authors a small
+  library of **fully original** invented feeds/articles in-code and generates all imagery in-process:
+  `ScreenshotImageFactory` (article lead images) and `ScreenshotLogoFactory` (per-feed logo tiles),
+  stored content-addressed via `ImageStore.storeData` so the `yana-img://` refs resolve. Nothing is
+  fetched from or copied out of real feeds, so there is no third-party licensing/trademark exposure.
+- To change what appears: edit `ScreenshotSeed.feedSpecs` (feed names, tags, article titles/summaries/
+  bodies) and/or the two generators, then re-run `fastlane screenshots`. If you change titles, check the
+  `03_Search` query in `YanaUITests/ScreenshotUITests.swift` still matches an article.
+- Framing: `fastlane/screenshots/Framefile.json` frames on a solid `background.png` sized to exactly
+  1320×2868 (so framed output stays App-Store-valid) with captions from
+  `fastlane/screenshots/en-US/title.strings`, rendered in the bundled `OpenSans-Bold.ttf` (SIL OFL —
+  frameit resolves the title font relative to the screenshots dir, so a system font can't be used).
+- Output (gitignored): `fastlane/screenshots/en-US/*_framed.png`.
+- Gotchas: the `screenshots` lane bakes `LANG/LC_ALL=en_US.UTF-8` into the Fastfile because fastlane
+  crashes on a bare `C`/US-ASCII shell locale. `ScreenshotSeed` is idempotent (bails if any `Feed`
+  exists), so after changing fixture content run `xcrun simctl shutdown all; xcrun simctl erase all`
+  before re-capturing, or the stale library persists.
+
 ## Architecture
 
 ### SwiftUI + SwiftData + local aggregation

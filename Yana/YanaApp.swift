@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         #if DEBUG
         DebugSeed.seedIfRequested(into: AppContainer.shared.mainContext)
+        Task { @MainActor in
+            await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)
+        }
         #endif
         StartupTrace.event("didFinishLaunching.begin")
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.

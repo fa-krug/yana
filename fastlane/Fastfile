@@ -1,0 +1,12 @@
+ENV["LANG"] ||= "en_US.UTF-8"
+ENV["LC_ALL"] ||= "en_US.UTF-8"
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Capture and frame App Store screenshots (en-US, 6.9\" iPhone)"
+  lane :screenshots do
+    capture_screenshots
+    frame_screenshots(white: false)
+  end
+end
