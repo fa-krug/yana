@@ -448,6 +448,7 @@ private struct EmbedCardView: View {
 private struct LeadImageReveal: ViewModifier {
     let leadImageRef: String?
     @State private var ready: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(leadImageRef: String?) {
         self.leadImageRef = leadImageRef
@@ -460,7 +461,7 @@ private struct LeadImageReveal: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(ready ? 1 : 0)
-            .animation(.easeIn(duration: 0.2), value: ready)
+            .animation(Motion.resolve(.easeIn(duration: 0.2), reduceMotion: reduceMotion), value: ready)
             .task(id: leadImageRef) {
                 guard !ready, let leadImageRef else { return }
                 _ = await ReaderImageCache.shared.image(for: leadImageRef)

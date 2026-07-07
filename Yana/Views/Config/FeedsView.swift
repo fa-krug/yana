@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 /// per-feed update, and article count. Add / delete (with confirmation); "Update all".
 struct FeedsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Feed.name) private var feeds: [Feed]
     @State private var isImporting = false
     @State private var isImportingOPML = false
@@ -82,10 +83,10 @@ struct FeedsView: View {
                 }
                 .padding(24)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                .transition(CrossFade.transition)
+                .transition(Motion.resolve(CrossFade.transition, reduceMotion: reduceMotion))
             }
         }
-        .animation(CrossFade.animation, value: isImportingOPML)
+        .animation(Motion.resolve(CrossFade.animation, reduceMotion: reduceMotion), value: isImportingOPML)
         .navigationTitle("Feeds")
         .onAppear { refreshArticleCounts() }
         .onChange(of: feeds) { _, _ in refreshArticleCounts() }

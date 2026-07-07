@@ -6,6 +6,7 @@ import SwiftUI
 /// `AppSettings`. A "Clear All" action re-enables everything.
 struct TagFilterView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]
     @Query(sort: \Feed.name) private var feeds: [Feed]
     @State private var settings = AppSettings()
@@ -71,7 +72,7 @@ struct TagFilterView: View {
     }
 
     private func clearAll() {
-        withAnimation {
+        withAnimation(Motion.resolve(.default, reduceMotion: reduceMotion)) {
             disabledTags = []
             disabledFeeds = []
             includeUntagged = true

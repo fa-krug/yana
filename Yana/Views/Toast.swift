@@ -14,6 +14,7 @@ struct ToastMessage: Equatable {
 
 private struct ToastModifier: ViewModifier {
     @Binding var message: ToastMessage?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content
@@ -32,7 +33,7 @@ private struct ToastModifier: ViewModifier {
                         }
                         .clipShape(Capsule())
                         .padding(.top, 8)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(Motion.resolve(.move(edge: .top).combined(with: .opacity), reduceMotion: reduceMotion))
                         .task(id: message) {
                             AccessibilityNotification.Announcement(message.text).post()
                             let dismissAfter: Double = message.style == .error ? 4 : 2.5
@@ -41,7 +42,7 @@ private struct ToastModifier: ViewModifier {
                         }
                 }
             }
-            .animation(.snappy, value: message)
+            .animation(Motion.resolve(.snappy, reduceMotion: reduceMotion), value: message)
     }
 }
 

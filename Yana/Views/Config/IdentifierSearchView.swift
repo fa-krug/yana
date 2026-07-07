@@ -116,6 +116,7 @@ final class IdentifierSearchModel {
 /// A sheet that searches subreddits / YouTube channels and lets the user pick one.
 struct IdentifierSearchView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var model: IdentifierSearchModel
     @State private var query = ""
     @State private var searchTask: Task<Void, Never>?
@@ -149,7 +150,7 @@ struct IdentifierSearchView: View {
                 .buttonStyle(.plain)
             }
             .listStyle(.plain)
-            .animation(CrossFade.animation, value: model.rows.map(\.id))
+            .animation(Motion.resolve(CrossFade.animation, reduceMotion: reduceMotion), value: model.rows.map(\.id))
             .overlay {
                 if model.isSearching && model.rows.isEmpty {
                     List(0..<8, id: \.self) { _ in

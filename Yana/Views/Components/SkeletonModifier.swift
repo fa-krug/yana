@@ -7,13 +7,17 @@ import SwiftUI
 private struct SkeletonModifier: ViewModifier {
     let active: Bool
     @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         if active {
             content
                 .redacted(reason: .placeholder)
                 .opacity(pulse ? 0.45 : 0.85)
-                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+                .animation(
+                    Motion.resolve(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), reduceMotion: reduceMotion),
+                    value: pulse
+                )
                 .onAppear { pulse = true }
                 .accessibilityHidden(true)
         } else {
