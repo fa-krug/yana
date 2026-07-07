@@ -197,6 +197,7 @@ final class ReaderArticleViewController: UIViewController,
     private func configureToolbar() {
         shareItem = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareArticle))
         let browser = UIBarButtonItem(image: UIImage(systemName: "safari"), style: .plain, target: self, action: #selector(openInBrowser))
+        browser.accessibilityLabel = String(localized: "Open in Browser")
         speakItem = UIBarButtonItem(image: UIImage(systemName: "play.circle"), style: .plain, target: self, action: #selector(toggleSpeech))
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
         // Read-aloud + Share + Open-in-Browser grouped together at the right edge, with the
