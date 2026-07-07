@@ -36,9 +36,9 @@ struct PodcastAggregatorTests {
         #expect(a.content.contains("<audio controls"))
         #expect(a.content.contains("https://p.com/1.mp3"))
         #expect(a.content.contains("\(ReaderWeb.imageScheme)://"))    // artwork cached
-        #expect(a.content.contains("Duration: 1:02:03"))
-        #expect(a.content.contains("Download Episode"))
-        #expect(a.content.contains("Show Notes"))
+        #expect(a.content.contains("\(String(localized: "Duration:")) 1:02:03"))   // locale-independent
+        #expect(a.content.contains(String(localized: "Download Episode")))
+        #expect(a.content.contains(String(localized: "Show Notes")))
         #expect(a.content.contains("Notes"))
     }
 
@@ -54,16 +54,16 @@ struct PodcastAggregatorTests {
         let agg = StubPodcast(entries: [e], options: opts, store: tempStore())
         let a = try #require(try await agg.aggregate().first)
         #expect(!a.content.contains("<audio"))
-        #expect(!a.content.contains("Download Episode"))
-        #expect(a.content.contains("Show Notes"))
+        #expect(!a.content.contains(String(localized: "Download Episode")))
+        #expect(a.content.contains(String(localized: "Show Notes")))
     }
 
     @Test func parsesSecondsAndMinuteSecondDurations() async throws {
         let e1 = entry(enclosures: [FeedEnclosure(url: "https://p.com/a.mp3", type: "audio/mpeg")], duration: "125")
         let a1 = try #require(try await StubPodcast(entries: [e1], options: PodcastOptions(), store: tempStore()).aggregate().first)
-        #expect(a1.content.contains("Duration: 2:05"))
+        #expect(a1.content.contains("\(String(localized: "Duration:")) 2:05"))
         let e2 = entry(enclosures: [FeedEnclosure(url: "https://p.com/b.mp3", type: "audio/mpeg")], duration: "5:09")
         let a2 = try #require(try await StubPodcast(entries: [e2], options: PodcastOptions(), store: tempStore()).aggregate().first)
-        #expect(a2.content.contains("Duration: 5:09"))
+        #expect(a2.content.contains("\(String(localized: "Duration:")) 5:09"))
     }
 }

@@ -48,6 +48,7 @@ struct SettingsScreenView: View {
             aiProviderSection
             aiKnobsSection
             librarySection
+            aboutSection
         }
         .navigationTitle("Settings")
         .toolbar {
@@ -457,6 +458,29 @@ struct SettingsScreenView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
             }
+        }
+    }
+
+    // MARK: About
+
+    private var aboutSection: some View {
+        Section {
+            Link(destination: URL(string: "https://github.com/fa-krug/yana")!) {
+                Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
+                    .labelStyle(.tintedIcon(.gray))
+            }
+            Link(destination: URL(string: "https://github.com/fa-krug/yana/issues")!) {
+                Label("Suggest a Source or Report an Issue", systemImage: "exclamationmark.bubble")
+                    .labelStyle(.tintedIcon(.green))
+            }
+            Link(destination: URL(string: "https://netnewswire.com")!) {
+                Label("Reader View Inspired by NetNewsWire", systemImage: "heart")
+                    .labelStyle(.tintedIcon(.pink))
+            }
+        } header: {
+            Text("About")
+        } footer: {
+            Text("Yana is free and open source. The list of built-in sources grows from what people ask for, so suggest one on the issue board. Thanks to the NetNewsWire team, whose clean reader view shaped how articles look here.")
         }
     }
 

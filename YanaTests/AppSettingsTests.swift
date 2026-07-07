@@ -15,7 +15,7 @@ struct AppSettingsTests {
         let settings = AppSettings(defaults: freshDefaults())
         #expect(settings.activeAIProvider == .none)
         #expect(settings.retentionDays == 30)
-        #expect(settings.backgroundInterval == 1800)
+        #expect(settings.backgroundInterval == 3600)   // default: 60 minutes (commit d104e4b)
     }
 
     @Test func persistsChanges() {

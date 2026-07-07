@@ -1,0 +1,1 @@
+rss,feedreader,nachrichten,offline,privat,ki,zusammenfassung,vorlesen,youtube,reddit,podcast,opml

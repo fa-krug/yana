@@ -168,7 +168,7 @@ struct BlueskyEmbedTests {
         #expect(result!.contains("eric stirpe"))
         #expect(result!.contains("@stirpicus.bsky.social"))
         #expect(result!.contains("This is a test post."))
-        #expect(result!.contains("View on Bluesky"))
+        #expect(result!.contains(String(localized: "View on Bluesky")))   // locale-independent
         #expect(result!.contains("https://bsky.app/profile/stirpicus.bsky.social/post/3mngsbu7t2s27"))
         #expect(result!.contains("https://cdn.bsky.app/img/1.jpg"))
         #expect(result!.contains("3.3K"))    // likes (3275)
@@ -331,7 +331,7 @@ struct MeinMmoAggregatorBlueskyTests {
         let result = try await agg.enrich(base, entry: entry())
 
         #expect(result.content.contains("Hello from Bluesky!"))
-        #expect(result.content.contains("View on Bluesky"))
+        #expect(result.content.contains(String(localized: "View on Bluesky")))   // locale-independent
         #expect(result.content.contains("bluesky-embed"))
         #expect(!result.content.contains("<figure"))
     }
