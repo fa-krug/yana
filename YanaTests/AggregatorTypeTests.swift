@@ -29,7 +29,8 @@ struct AggregatorTypeTests {
 
     @Test func displayNameIsHumanReadable() {
         #expect(AggregatorType.feedContent.displayName == "Feed Content (RSS/Atom)")
-        #expect(AggregatorType.fullWebsite.displayName == "Full Website")
+        #expect(AggregatorType.fullWebsite.displayName == "Full Article Feed")
+        #expect(AggregatorType.fullWebsite.rawValue == "full_website")   // persisted value unchanged by the rename
         #expect(AggregatorType.theVerge.displayName == "The Verge")
         #expect(AggregatorType.theVerge.rawValue == "the_verge")
         #expect(AggregatorType.arsTechnica.displayName == "Ars Technica")

@@ -135,6 +135,50 @@ enum HTMLUtils {
         return try content.html()
     }
 
+    /// OR-union extraction: combine every element matching any of `contentSelectors` into one
+    /// body (to gather content distributed across several containers), dropping matches nested
+    /// inside another match so overlaps aren't duplicated. Falls back to `<body>` when nothing
+    /// matches. Then removes every element matching any of `removeSelectors` from the result.
+    static func extractMainContent(_ html: String, contentSelectors: [String], removeSelectors: [String]) throws -> String {
+        let doc = try parse(html)
+
+        // Collect matches for every selector, preserving document order and de-duplicating the
+        // same element matched by multiple selectors.
+        var matched: [Element] = []
+        var seen = Set<ObjectIdentifier>()
+        for sel in contentSelectors where !sel.trimmingCharacters(in: .whitespaces).isEmpty {
+            guard let els = try? doc.select(sel) else { continue }
+            for el in els where seen.insert(ObjectIdentifier(el)).inserted {
+                matched.append(el)
+            }
+        }
+        // Keep only outermost matches — an element contained in another match is already included.
+        let roots = matched.filter { el in !matched.contains { $0 !== el && isDescendant(el, of: $0) } }
+
+        let container = Element(SwiftSoup.Tag("div"), "")
+        if roots.isEmpty {
+            try container.append((doc.body() ?? doc).html())
+        } else {
+            // Move each outermost match into the container (the source doc is discarded after this).
+            // roots are disjoint subtrees, so moving one never affects another.
+            for el in roots { try container.appendChild(el) }
+        }
+        for sel in removeSelectors where !sel.trimmingCharacters(in: .whitespaces).isEmpty {
+            for el in try container.select(sel) { try el.remove() }
+        }
+        return try container.html()
+    }
+
+    /// True when `node` is a (transitive) descendant of `ancestor`.
+    private static func isDescendant(_ node: Element, of ancestor: Element) -> Bool {
+        var parent = node.parent()
+        while let p = parent {
+            if p === ancestor { return true }
+            parent = p.parent()
+        }
+        return false
+    }
+
     // MARK: - Filename helpers (mirror server _get_base_filename)
 
     private static let dimensionSuffix = try? NSRegularExpression(pattern: #"(?:-\d+x\d+|-\d+)+$"#)

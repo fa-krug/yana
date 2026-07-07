@@ -12,15 +12,53 @@ struct AggregatorOptionsTests {
     @Test func websiteOptionsRoundTrip() throws {
         var opts = WebsiteOptions()
         opts.useFullContent = false
-        opts.customContentSelector = "article.main"
+        opts.contentSelectors = ["article.main", ".body"]
+        opts.ignoreSelectors = [".promo"]
         opts.ai.summarize = true
         let decoded = try roundTrip(.fullWebsite(opts))
         guard case .fullWebsite(let out) = decoded else {
             Issue.record("wrong case"); return
         }
         #expect(out.useFullContent == false)
-        #expect(out.customContentSelector == "article.main")
+        #expect(out.contentSelectors == ["article.main", ".body"])
+        #expect(out.ignoreSelectors == [".promo"])
         #expect(out.ai.summarize == true)
+    }
+
+    @Test func websiteOptionsDefaults() {
+        let o = WebsiteOptions()
+        #expect(o.contentSelectors == WebsiteOptions.defaultContentSelectors)
+        #expect(o.ignoreSelectors == WebsiteOptions.defaultIgnoreSelectors)
+        #expect(o.contentSelectors.contains("article"))
+        #expect(o.ignoreSelectors.contains(".ad"))
+    }
+
+    /// A cleared list (`[]`) must survive a round-trip — the user deliberately emptied it,
+    /// and the decoder must not "helpfully" reapply the defaults.
+    @Test func websiteOptionsClearedListStaysEmpty() throws {
+        var opts = WebsiteOptions()
+        opts.contentSelectors = []
+        let decoded = try roundTrip(.fullWebsite(opts))
+        guard case .fullWebsite(let out) = decoded else { Issue.record("wrong case"); return }
+        #expect(out.contentSelectors == [])
+        #expect(out.ignoreSelectors == WebsiteOptions.defaultIgnoreSelectors)
+    }
+
+    /// Absent array keys fall back to the good defaults (data written by builds before the
+    /// selector-list migration that also lacked the legacy single-string fields).
+    @Test func websiteOptionsAbsentKeysUseDefaults() throws {
+        let data = Data(#"{"useFullContent": true}"#.utf8)
+        let out = try JSONDecoder().decode(WebsiteOptions.self, from: data)
+        #expect(out.contentSelectors == WebsiteOptions.defaultContentSelectors)
+        #expect(out.ignoreSelectors == WebsiteOptions.defaultIgnoreSelectors)
+    }
+
+    /// Legacy single-string selector fields seed the new arrays when the array keys are absent.
+    @Test func websiteOptionsMigratesLegacyStringSelectors() throws {
+        let legacy = Data(#"{"customContentSelector": "article.main, .body", "customSelectorsToRemove": ".ads,.share"}"#.utf8)
+        let out = try JSONDecoder().decode(WebsiteOptions.self, from: legacy)
+        #expect(out.contentSelectors == ["article.main", ".body"])
+        #expect(out.ignoreSelectors == [".ads", ".share"])
     }
 
     @Test func redditOptionsRoundTrip() throws {

@@ -82,7 +82,7 @@ struct FeedEditorView: View {
                 }
             }
 
-            AggregatorOptionsForm(options: $model.options)
+            AggregatorOptionsForm(options: $model.options, identifier: model.identifier)
         }
         .navigationTitle(model.isEditingExisting ? "Edit Feed" : "New Feed")
         .sheet(isPresented: $showingSearch) {

@@ -4,6 +4,8 @@ import SwiftUI
 /// AI block. Editing goes through case-specific bindings back into the bound enum.
 struct AggregatorOptionsForm: View {
     @Binding var options: AggregatorOptions
+    /// The feed's identifier, used only by the full-website section's AI suggester + preview.
+    var identifier: String = ""
 
     var body: some View {
         Group {
@@ -108,14 +110,34 @@ struct AggregatorOptionsForm: View {
             Toggle("Fetch Full Content", isOn: Binding(
                 get: { o.useFullContent },
                 set: { var n = o; n.useFullContent = $0; options = .fullWebsite(n) }))
-            TextField("Custom Content Selector", text: Binding(
-                get: { o.customContentSelector },
-                set: { var n = o; n.customContentSelector = $0; options = .fullWebsite(n) }))
-                .autocorrectionDisabled()
-            TextField("Selectors to Remove", text: Binding(
-                get: { o.customSelectorsToRemove },
-                set: { var n = o; n.customSelectorsToRemove = $0; options = .fullWebsite(n) }))
-                .autocorrectionDisabled()
+
+            NavigationLink {
+                SelectorListView(
+                    kind: .content, navigationTitle: "Content Selectors",
+                    selectors: Binding(
+                        get: { o.contentSelectors },
+                        set: { var n = o; n.contentSelectors = $0; options = .fullWebsite(n) }),
+                    identifier: identifier, options: options)
+            } label: {
+                LabeledContent("Content Selectors", value: "\(o.contentSelectors.count)")
+            }
+
+            NavigationLink {
+                SelectorListView(
+                    kind: .ignore, navigationTitle: "Ignore Selectors",
+                    selectors: Binding(
+                        get: { o.ignoreSelectors },
+                        set: { var n = o; n.ignoreSelectors = $0; options = .fullWebsite(n) }),
+                    identifier: identifier, options: options)
+            } label: {
+                LabeledContent("Ignore Selectors", value: "\(o.ignoreSelectors.count)")
+            }
+
+            NavigationLink {
+                ExtractionPreviewView(identifier: identifier, options: options)
+            } label: {
+                Text("Preview")
+            }
         }
     }
 
