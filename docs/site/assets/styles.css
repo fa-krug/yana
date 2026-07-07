@@ -335,6 +335,7 @@ a:hover {
 .shot {
   display: block;
   width: 100%;
+  height: auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
