@@ -24,6 +24,20 @@ struct ReaderArticle: Equatable {
         summary = article.summary
         blocks = article.blocks
     }
+
+    /// Value init for rendering content that isn't a persisted `Article` (e.g. the extraction
+    /// editor's live preview, which parses freshly-scraped HTML into blocks without saving).
+    init(title: String, author: String = "", date: Date, url: String, blocks: [Block],
+         feedName: String = "", summary: String = "", logoHash: String? = nil) {
+        self.title = title
+        self.feedName = feedName
+        self.author = author
+        self.date = date
+        self.logoHash = logoHash
+        self.url = url
+        self.summary = summary
+        self.blocks = blocks
+    }
 }
 
 /// Native SwiftUI renderer for an article's `[Block]` body — replaces the WebView + themed-HTML

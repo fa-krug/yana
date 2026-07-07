@@ -9,9 +9,17 @@ struct AIOptions: Codable, Sendable, Equatable {
 }
 
 struct WebsiteOptions: Codable, Sendable, Equatable {
+    /// Good defaults a new website feed opens with; users edit these in the selector lists.
+    static let defaultContentSelectors = ["article", ".article-content", ".entry-content", "main"]
+    static let defaultIgnoreSelectors = [".advertisement", ".ad", ".social-share"]
+
     var useFullContent = true
-    var customContentSelector = ""
-    var customSelectorsToRemove = ""
+    /// CSS selectors whose matches are combined (OR) to form the article body.
+    var contentSelectors = defaultContentSelectors
+    /// CSS selectors whose matches are all removed (OR) from the extracted body. The mandatory
+    /// security/sanitization removals (script/style/noscript/non-YouTube iframe) live in the
+    /// aggregator and always apply regardless of this list.
+    var ignoreSelectors = defaultIgnoreSelectors
     var ai = AIOptions()
 }
 
@@ -171,13 +179,38 @@ extension AIOptions {
 }
 
 extension WebsiteOptions {
+    /// Legacy single-string selector fields (pre selector-list migration). Decode-only: seed the
+    /// new arrays from them when the array keys are absent, but never re-encode them.
+    private enum LegacyKeys: String, CodingKey { case customContentSelector, customSelectorsToRemove }
+
     init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
         useFullContent = try c.decodeIfPresent(Bool.self, forKey: .useFullContent) ?? useFullContent
-        customContentSelector = try c.decodeIfPresent(String.self, forKey: .customContentSelector) ?? customContentSelector
-        customSelectorsToRemove = try c.decodeIfPresent(String.self, forKey: .customSelectorsToRemove) ?? customSelectorsToRemove
         ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
+
+        // Per array, disambiguate three cases:
+        //   • key present            → use it (even []: the user deliberately cleared the list)
+        //   • key absent + legacy set → seed from the legacy comma-separated string
+        //   • key absent, no legacy   → keep the good defaults from init()
+        let legacy = try? decoder.container(keyedBy: LegacyKeys.self)
+        if let decoded = try c.decodeIfPresent([String].self, forKey: .contentSelectors) {
+            contentSelectors = decoded
+        } else if let s = try legacy?.decodeIfPresent(String.self, forKey: .customContentSelector),
+                  !s.trimmingCharacters(in: .whitespaces).isEmpty {
+            contentSelectors = Self.splitSelectors(s)
+        }
+        if let decoded = try c.decodeIfPresent([String].self, forKey: .ignoreSelectors) {
+            ignoreSelectors = decoded
+        } else if let s = try legacy?.decodeIfPresent(String.self, forKey: .customSelectorsToRemove),
+                  !s.trimmingCharacters(in: .whitespaces).isEmpty {
+            ignoreSelectors = Self.splitSelectors(s)
+        }
+    }
+
+    /// Split a legacy comma-separated selector string into a trimmed, non-empty list.
+    static func splitSelectors(_ s: String) -> [String] {
+        s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 }
 

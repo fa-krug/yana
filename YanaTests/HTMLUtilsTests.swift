@@ -21,6 +21,40 @@ struct HTMLUtilsTests {
         #expect(!out.contains("<footer"))
     }
 
+    @Test func extractMainContentUnionsMultipleSelectors() throws {
+        // Content distributed across two separate containers is combined (OR).
+        let html = "<html><body><div class=\"lead\"><p>Lead</p></div>"
+            + "<div class=\"body\"><p>Body</p></div><aside>side</aside></body></html>"
+        let out = try HTMLUtils.extractMainContent(html, contentSelectors: [".lead", ".body"], removeSelectors: [])
+        #expect(out.contains("Lead"))
+        #expect(out.contains("Body"))
+        #expect(!out.contains("side"))
+    }
+
+    @Test func extractMainContentDropsNestedDuplicateMatches() throws {
+        // `main` wraps `article`; keeping the outermost avoids duplicating the inner text.
+        let html = "<html><body><main><article><p>Once</p></article></main></body></html>"
+        let out = try HTMLUtils.extractMainContent(html, contentSelectors: ["main", "article"], removeSelectors: [])
+        // "Once" appears exactly one time (outer match only, not doubled).
+        let occurrences = out.components(separatedBy: "Once").count - 1
+        #expect(occurrences == 1)
+    }
+
+    @Test func extractMainContentRemovesAllIgnoreMatches() throws {
+        let html = "<html><body><article><p>Keep</p><div class=\"ad\">A</div>"
+            + "<div class=\"promo\">B</div></article></body></html>"
+        let out = try HTMLUtils.extractMainContent(html, contentSelectors: ["article"], removeSelectors: [".ad", ".promo"])
+        #expect(out.contains("Keep"))
+        #expect(!out.contains(">A<"))
+        #expect(!out.contains(">B<"))
+    }
+
+    @Test func extractMainContentFallsBackToBodyWhenNoMatch() throws {
+        let html = "<html><body><p>Only body</p></body></html>"
+        let out = try HTMLUtils.extractMainContent(html, contentSelectors: [".missing"], removeSelectors: [])
+        #expect(out.contains("Only body"))
+    }
+
     @Test func removeEmptyElementsDropsBlankParagraphs() throws {
         let doc = try HTMLUtils.parse("<p>real</p><p></p><p>   </p>")
         try HTMLUtils.removeEmptyElements(doc, tags: ["p"])

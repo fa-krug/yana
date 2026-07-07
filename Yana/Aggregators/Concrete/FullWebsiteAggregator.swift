@@ -4,11 +4,14 @@ import SwiftSoup
 /// Fetches the article page and extracts main content via CSS selectors, hoisting a header
 /// element and downloading images. Scrapers (4d) subclass this and override the selectors/hooks.
 class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
-    override var contentSelector: String { "article, .article-content, .entry-content, main" }
+    override var contentSelector: String { WebsiteOptions.defaultContentSelectors.joined(separator: ", ") }
+    /// Mandatory security/sanitization removals, always applied regardless of the user's ignore
+    /// list. Editorial-noise selectors (.advertisement/.ad/.social-share) now live in the
+    /// user-editable `WebsiteOptions.ignoreSelectors` defaults instead.
     override var selectorsToRemove: [String] {
         ["script", "style",
          "iframe:not([src*='youtube.com']):not([src*='youtu.be'])",
-         "noscript", ".advertisement", ".ad", ".social-share"]
+         "noscript"]
     }
 
     /// Overridable for tests.
@@ -38,13 +41,12 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
                 articleURL: article.url, title: article.title, store: store,
                 credentials: credentials, pageHTML: raw)
 
-            let selector = opts.customContentSelector.isEmpty ? contentSelector : opts.customContentSelector
-            var removeSelectors = selectorsToRemove
-            if !opts.customSelectorsToRemove.isEmpty {
-                removeSelectors += opts.customSelectorsToRemove.split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            }
-            let extracted = try HTMLUtils.extractMainContent(raw, selector: selector, removeSelectors: removeSelectors)
+            // Fall back to the built-in defaults when the user cleared the content list entirely.
+            let contentSelectors = opts.contentSelectors.isEmpty
+                ? WebsiteOptions.defaultContentSelectors : opts.contentSelectors
+            // Always-applied security removals + the user's editable ignore list.
+            let removeSelectors = selectorsToRemove + opts.ignoreSelectors
+            let extracted = try HTMLUtils.extractMainContent(raw, contentSelectors: contentSelectors, removeSelectors: removeSelectors)
             article.content = try await processFullContent(extracted, article: article, header: header)
             return article
         } catch let error as AggregatorError {

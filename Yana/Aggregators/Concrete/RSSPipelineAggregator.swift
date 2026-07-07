@@ -69,6 +69,18 @@ class RSSPipelineAggregator: Aggregator, @unchecked Sendable {
     func fetchEntries() async throws -> [FeedEntry] {
         guard let url = URL(string: config.identifier) else { throw AggregatorError.missingIdentifier }
         let (data, _) = try await HTTPClient.fetchData(url)
+        // Happy path: the identifier is a feed.
+        if let parsed = try? FeedParser.parse(data), !parsed.entries.isEmpty {
+            return parsed.entries
+        }
+        // Feedless: the identifier was an HTML page (or an empty/foreign feed). Discover the feed
+        // it advertises via <link rel="alternate">, then parse that instead.
+        if let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
+           let feedURL = FeedDiscovery.feedURL(inHTML: html, baseURL: url) {
+            let (feedData, _) = try await HTTPClient.fetchData(feedURL)
+            return try FeedParser.parse(feedData).entries
+        }
+        // Nothing discoverable: surface the original parse outcome (empty list or its error).
         return try FeedParser.parse(data).entries
     }
 
