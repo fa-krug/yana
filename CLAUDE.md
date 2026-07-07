@@ -43,7 +43,9 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   1320×2868 (so framed output stays App-Store-valid) with captions from
   `fastlane/screenshots/en-US/title.strings`, rendered in the bundled `OpenSans-Bold.ttf` (SIL OFL —
   frameit resolves the title font relative to the screenshots dir, so a system font can't be used).
-- Output (gitignored): `fastlane/screenshots/en-US/*_framed.png`.
+- Output: `fastlane/screenshots/en-US/` — both the raw captures (`*.png`) and the framed
+  `*_framed.png` are committed to the repo (only fastlane run artifacts — `screenshots.html`,
+  `test_output/`, `report.xml`, `README.md` — stay gitignored).
 - Gotchas: the `screenshots` lane bakes `LANG/LC_ALL=en_US.UTF-8` into the Fastfile because fastlane
   crashes on a bare `C`/US-ASCII shell locale. That bake uses `ENV["LANG"] ||= …`, which does **not**
   override an already-set-but-empty `LANG` (an empty string is truthy in Ruby), so if the lane dies with
@@ -64,10 +66,10 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - **Bilingual** EN/DE from one set of pages: every translatable element carries a `lang-en`/`lang-de`
   class, `<html data-lang>` drives visibility via CSS, and `assets/app.js` runs the header toggle
   (persisted to `localStorage`; default EN). When adding copy, always add both language spans.
-- Images live in `docs/site/assets/img/` and, unlike the gitignored `fastlane screenshots` output, are
-  **committed** (Pages serves them directly). `assets/img/README.md` maps each file to where it is used.
-  The screenshots (`hero.png`, `screen-reader.png`, `screen-timeline.png`, `screen-search.png`,
-  `screen-feeds.png`) are the raw (unframed) `fastlane screenshots` captures from
+- Images live in `docs/site/assets/img/` and are committed (Pages serves them directly).
+  `assets/img/README.md` maps each file to where it is used.
+  The screenshots (`hero.png`, `screen-timeline.png`, `screen-search.png`, `screen-feeds.png`) are
+  the raw (unframed) `fastlane screenshots` captures from
   `fastlane/screenshots/en-US/` (`01_Reader`/`02_Timeline`/`03_Search`/`04_Feeds`), downscaled to
   ~640px wide with `sips`; the site rounds their corners in CSS, so use the raw captures, **not** the
   device-framed App-Store `*_framed.png`. To refresh: re-run `fastlane screenshots`, downscale, and

@@ -1,7 +1,7 @@
 # Site images
 
 All images used by the site live here and are committed (GitHub Pages serves them
-directly — unlike the gitignored `fastlane screenshots` output).
+directly).
 
 | File | Used on |
 | --- | --- |

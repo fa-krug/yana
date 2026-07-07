@@ -48,11 +48,8 @@ Pods/
 # Superpowers
 .superpowers
 
-# fastlane screenshot output (regenerated on demand)
-fastlane/screenshots/**/*.png
+# fastlane run artifacts (the captured screenshots themselves are committed)
 fastlane/screenshots/**/screenshots.html
 fastlane/test_output/
 fastlane/report.xml
 fastlane/README.md
-# ...but keep the solid framing background (a source asset, not a capture)
-!fastlane/screenshots/background.png
