@@ -45,7 +45,11 @@ enum ArticleAIText {
     static func translateInstruction(language: String) -> String {
         let targetLang = language.isEmpty ? "English" : language
         return "Translate the title and content to \(targetLang). "
+            + "Translate the ENTIRE content, including any reader comments and any text "
+            + "quoted inside <blockquote> elements. The comment/discussion section must be "
+            + "translated too — do not leave it in the original language. "
             + "IMPORTANT: Do NOT translate link labels (the text inside <a> tags). "
-            + "Keep link text in the original language. Only translate regular text content."
+            + "Keep link text in the original language. Translate every other piece of "
+            + "human-readable text, including comment bodies."
     }
 }

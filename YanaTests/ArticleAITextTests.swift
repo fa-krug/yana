@@ -33,4 +33,13 @@ struct ArticleAITextTests {
     @Test func translateInstructionMentionsLanguage() {
         #expect(ArticleAIText.translateInstruction(language: "German").contains("German"))
     }
+
+    @Test func translateInstructionCoversComments() {
+        // Reddit posts carry their comment thread inside the body content; the model was
+        // translating the article but leaving the <blockquote> comment section in the source
+        // language. The instruction must explicitly require translating comments/quotes.
+        let instruction = ArticleAIText.translateInstruction(language: "German")
+        #expect(instruction.contains("comment"))
+        #expect(instruction.contains("blockquote"))
+    }
 }
