@@ -28,6 +28,27 @@ struct SelectorSuggesterTests {
         #expect(SelectorSuggester.parseSelectors(from: "no json here").isEmpty)
     }
 
+    // A "be thorough" ignore-list reply can open with reasoning prose whose brackets precede the
+    // real JSON. The first bracketed fragment is unparseable prose; parsing must skip it and reach
+    // the actual object rather than giving up (which surfaced as "the AI returned no selectors").
+    @Test func skipsLeadingProseBracketsToReachJSON() {
+        let text = "I found these noise blocks: [ads, share buttons, related]. "
+            + #"Here is the JSON: {"selectors": [".advertisement", ".related-articles"]}"#
+        #expect(SelectorSuggester.parseSelectors(from: text) == [".advertisement", ".related-articles"])
+    }
+
+    @Test func skipsLeadingProseObjectToReachJSON() {
+        let text = #"Reasoning {step: one}. Final: {"selectors": [".ad"]}"#
+        #expect(SelectorSuggester.parseSelectors(from: text) == [".ad"])
+    }
+
+    // A JSON object truncated by the token cap has no closing brace; parsing returns empty rather
+    // than hanging or mis-parsing a stray inner bracket.
+    @Test func returnsEmptyOnTruncatedJSON() {
+        let text = #"{"selectors": [".advertisement", ".ad"#
+        #expect(SelectorSuggester.parseSelectors(from: text).isEmpty)
+    }
+
     @Test func promptIncludesCandidatesAndHTML() {
         let prompt = SelectorSuggester.prompt(for: .content, pageHTML: "<article>hi</article>",
                                               current: ["article", ".old"])
