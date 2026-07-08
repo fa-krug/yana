@@ -137,7 +137,7 @@ struct FeedEditorView: View {
         // Resolve a homepage URL to its advertised feed for free-form URL feeds that are new or
         // whose identifier changed. `apply` has already filled in a missing scheme synchronously.
         let shouldResolve = model.type.resolvesFeedURL && (isNew || model.identifierChanged)
-        let target = feed ?? Feed(name: "", aggregatorType: .feedContent, identifier: "")
+        let target = feed ?? Feed(name: "", aggregatorType: .fullWebsite, identifier: "")
         model.apply(to: target, availableTags: allTags)
         if isNew { modelContext.insert(target) }
         try? modelContext.save()

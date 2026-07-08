@@ -33,11 +33,11 @@ final class FeedEditorModel {
             isEditingExisting = true
         } else {
             name = ""
-            type = .feedContent
+            type = .fullWebsite
             identifier = ""
             dailyLimit = 20
             enabled = true
-            options = AggregatorType.feedContent.defaultOptions
+            options = AggregatorType.fullWebsite.defaultOptions
             selectedTagNames = []
             isEditingExisting = false
         }
