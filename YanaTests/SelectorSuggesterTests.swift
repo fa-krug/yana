@@ -82,6 +82,47 @@ struct SelectorSuggesterTests {
         #expect(SelectorSuggester.tokenBudget(userMax: 8000) == 8000)
     }
 
+    // The ignore list only removes elements inside the extracted article body, so its AI analysis
+    // is scoped to the content region — page chrome (nav/header/footer/sidebar) is dropped, which is
+    // what shrinks the prompt. In-body noise (a nested related-articles widget) must survive so the
+    // model can still name it.
+    @Test func contentRegionKeepsInBodyNoiseDropsPageChrome() {
+        let html = """
+        <html><body>
+          <nav class="site-nav">Home About</nav>
+          <header class="masthead">Logo</header>
+          <article class="entry-content">
+            <p>Real body text.</p>
+            <div class="related-articles">Read next</div>
+          </article>
+          <aside class="sidebar">Ads</aside>
+          <footer class="site-footer">Copyright</footer>
+        </body></html>
+        """
+        var opts = WebsiteOptions()
+        opts.contentSelectors = [".entry-content"]
+        let region = SelectorSuggester.contentRegionHTML(html, options: .fullWebsite(opts))
+        // Page chrome outside the content container is gone.
+        #expect(!region.contains("site-nav"))
+        #expect(!region.contains("masthead"))
+        #expect(!region.contains("sidebar"))
+        #expect(!region.contains("site-footer"))
+        // The article body and its in-body noise survive for the model to select.
+        #expect(region.contains("Real body text."))
+        #expect(region.contains("related-articles"))
+    }
+
+    // An empty content list falls back to the built-in defaults (mirroring the aggregator), so the
+    // scoping still extracts a body rather than analyzing the whole page.
+    @Test func contentRegionFallsBackToDefaultContentSelectors() {
+        let html = "<html><body><nav>chrome</nav><article><p>Body</p></article></body></html>"
+        var opts = WebsiteOptions()
+        opts.contentSelectors = []
+        let region = SelectorSuggester.contentRegionHTML(html, options: .fullWebsite(opts))
+        #expect(region.contains("Body"))
+        #expect(!region.contains("chrome"))
+    }
+
     @Test func compactStripsScriptsStylesAndHead() {
         let html = """
         <html><head><style>.x{}</style><script>var a=1</script></head>

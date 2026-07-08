@@ -68,6 +68,25 @@ enum SelectorSuggester {
         return compacted.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
 
+    /// Restrict the HTML analyzed for an ignore-list suggestion to the article body — the region the
+    /// content selectors capture — instead of the whole page. The ignore list only ever removes
+    /// elements *inside* the extracted content, so page chrome (nav/header/footer/sidebar) is
+    /// irrelevant to it and only inflates the prompt; on a real news page it dwarfs the article body.
+    /// Extracting the content subtree first keeps the model focused on in-body noise (inline "Anzeige"
+    /// blocks, related-article widgets nested in the article) and drastically cuts the token count.
+    ///
+    /// `removeSelectors` is empty on purpose: stripping noise here would hide the very elements the
+    /// model is asked to name. Falls back to the full page when the options aren't website options or
+    /// the content selectors match nothing (`extractMainContent` itself falls back to `<body>`), and
+    /// mirrors the aggregator by substituting the built-in defaults for an empty content list.
+    static func contentRegionHTML(_ html: String, options: AggregatorOptions) -> String {
+        guard case .fullWebsite(let opts) = options else { return html }
+        let contentSelectors = opts.contentSelectors.isEmpty
+            ? WebsiteOptions.defaultContentSelectors : opts.contentSelectors
+        return (try? HTMLUtils.extractMainContent(html, contentSelectors: contentSelectors,
+                                                  removeSelectors: [])) ?? html
+    }
+
     /// The user-message prompt: the (capped, chrome-stripped) page HTML, the current selectors to
     /// validate, and a strict output contract. `jsonMode` providers still benefit from the explicit
     /// shape; Apple Intelligence (free-form) relies on it.
@@ -204,7 +223,10 @@ enum SelectorSuggester {
         } catch {
             throw SuggestError.sampleFetchFailed     // network/parse — distinct from an AI failure
         }
-        let pageHTML = compactForAnalysis(sampleHTML)
+        // For the ignore list, analyze only the extracted article body (see `contentRegionHTML`);
+        // the content list needs the whole page to locate the body container in the first place.
+        let analysisSource = kind == .ignore ? contentRegionHTML(sampleHTML, options: options) : sampleHTML
+        let pageHTML = compactForAnalysis(analysisSource)
 
         let instr = instructions(for: kind)
 
