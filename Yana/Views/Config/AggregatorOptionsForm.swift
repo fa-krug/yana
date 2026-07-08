@@ -107,10 +107,6 @@ struct AggregatorOptionsForm: View {
 
     private func websiteSection(_ o: WebsiteOptions) -> some View {
         Section("Options") {
-            Toggle("Fetch Full Content", isOn: Binding(
-                get: { o.useFullContent },
-                set: { var n = o; n.useFullContent = $0; options = .fullWebsite(n) }))
-
             NavigationLink {
                 SelectorListView(
                     kind: .content, navigationTitle: "Content Selectors",

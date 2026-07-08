@@ -11,7 +11,6 @@ struct AggregatorOptionsTests {
 
     @Test func websiteOptionsRoundTrip() throws {
         var opts = WebsiteOptions()
-        opts.useFullContent = false
         opts.contentSelectors = ["article.main", ".body"]
         opts.ignoreSelectors = [".promo"]
         opts.ai.summarize = true
@@ -19,7 +18,6 @@ struct AggregatorOptionsTests {
         guard case .fullWebsite(let out) = decoded else {
             Issue.record("wrong case"); return
         }
-        #expect(out.useFullContent == false)
         #expect(out.contentSelectors == ["article.main", ".body"])
         #expect(out.ignoreSelectors == [".promo"])
         #expect(out.ai.summarize == true)
@@ -74,7 +72,6 @@ struct AggregatorOptionsTests {
     }
 
     @Test func defaultsMatchExpectations() {
-        #expect(WebsiteOptions().useFullContent == true)
         #expect(RedditOptions().subredditSort == "hot")
         #expect(PodcastOptions().includePlayer == true)
         #expect(AIOptions().translateLanguage == "English")
