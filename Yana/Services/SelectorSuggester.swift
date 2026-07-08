@@ -110,6 +110,7 @@ enum SelectorSuggester {
     enum SuggestError: Error {
         case noProvider          // no usable AI provider configured
         case noSampleArticle     // couldn't resolve a sample article page to analyze
+        case sampleFetchFailed   // network/parse error loading the sample article page
     }
 
     /// Resolve the active provider, fetch a sample article page via the website aggregator, ask the
@@ -123,25 +124,43 @@ enum SelectorSuggester {
         guard provider != .none else { throw SuggestError.noProvider }
 
         // Fetch a sample article page through the same path the aggregator uses (feed discovery
-        // included), so the selectors are derived from a real article, not the index page.
-        let config = FeedConfig(type: .fullWebsite, identifier: identifier,
+        // included), so the selectors are derived from a real article, not the index page. The
+        // identifier here is the editor's live text field, which for a not-yet-saved feed can be a
+        // scheme-less domain like `golem.de` — `URL(string:)` would then yield a host-less URL and
+        // the fetch would fail. Fill in the scheme first, exactly as save/preview do.
+        let config = FeedConfig(type: .fullWebsite, identifier: FeedURLResolver.normalized(identifier),
                                 dailyLimit: 1, options: options, collectedToday: 0)
         let aggregator = FullWebsiteAggregator(config: config, credentials: AggregatorCredentials())
-        let pageHTML = compactForAnalysis(try await sampleArticleHTML(from: aggregator))
+        let sampleHTML: String
+        do {
+            sampleHTML = try await sampleArticleHTML(from: aggregator)
+        } catch let error as SuggestError {
+            throw error                              // already precise (e.g. .noSampleArticle)
+        } catch {
+            throw SuggestError.sampleFetchFailed     // network/parse — distinct from an AI failure
+        }
+        let pageHTML = compactForAnalysis(sampleHTML)
 
         let instr = instructions(for: kind)
-        let userPrompt = prompt(for: kind, pageHTML: pageHTML, current: current)
 
         let text: String
         if provider == .appleIntelligence {
             let client = AppleIntelligenceClient()
             guard client.availability == .available else { throw SuggestError.noProvider }
-            text = try await client.generateText(instructions: instr, prompt: userPrompt,
+            // The on-device model has a ~4096-token context window. The cloud-sized 50k-char page
+            // cap overflows it, so `respond` throws and the whole request fails (summaries survive
+            // only because they chunk to fit). Truncate the page to the on-device content budget so
+            // the model actually sees markup it can select from. ~3 chars/token, conservative to
+            // leave room for the instructions, the candidate list, and the model's reply.
+            let budgetChars = AppleIntelligenceProcessor.contentBudgetTokens * 3
+            let applePrompt = prompt(for: kind, pageHTML: String(pageHTML.prefix(budgetChars)),
+                                     current: current)
+            text = try await client.generateText(instructions: instr, prompt: applePrompt,
                                                  temperature: 0.2, maxTokens: 500)
         } else {
             let aiConfig = AggregationService.makeAIConfig(settings: settings)
             guard !aiConfig.apiKey.isEmpty else { throw SuggestError.noProvider }
-            let combined = instr + "\n\n" + userPrompt
+            let combined = instr + "\n\n" + prompt(for: kind, pageHTML: pageHTML, current: current)
             // jsonMode is intentionally off: the Gemini path pins a fixed article-shaped response
             // schema in jsonMode, which would prevent a selector list. The explicit prompt +
             // tolerant `parseSelectors` recover the JSON regardless of provider.
