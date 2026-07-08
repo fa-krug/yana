@@ -29,11 +29,6 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
     override func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle {
         var article = article
         let opts = websiteOptions
-        guard opts.useFullContent else {
-            // Keep RSS summary, still localize images + embeds.
-            article.content = try await processContent(article.content, article: article, headerHTML: nil)
-            return article
-        }
         do {
             let raw = try await fetchArticleHTML(article.url)
             article.rawContent = raw

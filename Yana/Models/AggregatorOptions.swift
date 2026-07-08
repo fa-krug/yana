@@ -16,7 +16,6 @@ struct WebsiteOptions: Codable, Sendable, Equatable {
         ".social-share", ".newsletter", ".related-articles",
     ]
 
-    var useFullContent = true
     /// CSS selectors whose matches are combined (OR) to form the article body.
     var contentSelectors = defaultContentSelectors
     /// CSS selectors whose matches are all removed (OR) from the extracted body. The mandatory
@@ -189,7 +188,6 @@ extension WebsiteOptions {
     init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        useFullContent = try c.decodeIfPresent(Bool.self, forKey: .useFullContent) ?? useFullContent
         ai = try c.decodeIfPresent(AIOptions.self, forKey: .ai) ?? ai
 
         // Per array, disambiguate three cases:
