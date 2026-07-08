@@ -98,6 +98,14 @@ struct SelectorListView: View {
                 } else {
                     selectors = result
                 }
+            } catch let error as SelectorSuggester.SuggestError {
+                // Report which stage failed so a feed-loading problem isn't mistaken for an AI one.
+                switch error {
+                case .noProvider:
+                    errorMessage = String(localized: "No AI provider is set up. Configure one in Settings, then try again.")
+                case .noSampleArticle, .sampleFetchFailed:
+                    errorMessage = String(localized: "Couldn’t load a sample article from this feed. Check the URL and your connection, then try again.")
+                }
             } catch {
                 errorMessage = String(localized: "The AI request failed. Check your connection and AI settings, then try again.")
             }

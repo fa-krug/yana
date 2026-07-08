@@ -2685,6 +2685,28 @@
         }
       }
     },
+    "Couldn’t load a sample article from this feed. Check the URL and your connection, then try again.": {
+      "comment": "Error when the selector generator can't load a sample article to analyze.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es konnte kein Beispielartikel aus diesem Feed geladen werden. URL und Verbindung prüfen und erneut versuchen."
+          }
+        }
+      }
+    },
+    "No AI provider is set up. Configure one in Settings, then try again.": {
+      "comment": "Error when selector generation is attempted without a configured AI provider.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es ist kein KI-Anbieter eingerichtet. In den Einstellungen einen Anbieter konfigurieren und erneut versuchen."
+          }
+        }
+      }
+    },
     "Fetching articles…": {
       "comment": "Progress label while the preview fetches articles.",
       "localizations": {

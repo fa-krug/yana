@@ -110,6 +110,7 @@ enum SelectorSuggester {
     enum SuggestError: Error {
         case noProvider          // no usable AI provider configured
         case noSampleArticle     // couldn't resolve a sample article page to analyze
+        case sampleFetchFailed   // network/parse error loading the sample article page
     }
 
     /// Resolve the active provider, fetch a sample article page via the website aggregator, ask the
@@ -123,11 +124,22 @@ enum SelectorSuggester {
         guard provider != .none else { throw SuggestError.noProvider }
 
         // Fetch a sample article page through the same path the aggregator uses (feed discovery
-        // included), so the selectors are derived from a real article, not the index page.
-        let config = FeedConfig(type: .fullWebsite, identifier: identifier,
+        // included), so the selectors are derived from a real article, not the index page. The
+        // identifier here is the editor's live text field, which for a not-yet-saved feed can be a
+        // scheme-less domain like `golem.de` — `URL(string:)` would then yield a host-less URL and
+        // the fetch would fail. Fill in the scheme first, exactly as save/preview do.
+        let config = FeedConfig(type: .fullWebsite, identifier: FeedURLResolver.normalized(identifier),
                                 dailyLimit: 1, options: options, collectedToday: 0)
         let aggregator = FullWebsiteAggregator(config: config, credentials: AggregatorCredentials())
-        let pageHTML = compactForAnalysis(try await sampleArticleHTML(from: aggregator))
+        let sampleHTML: String
+        do {
+            sampleHTML = try await sampleArticleHTML(from: aggregator)
+        } catch let error as SuggestError {
+            throw error                              // already precise (e.g. .noSampleArticle)
+        } catch {
+            throw SuggestError.sampleFetchFailed     // network/parse — distinct from an AI failure
+        }
+        let pageHTML = compactForAnalysis(sampleHTML)
 
         let instr = instructions(for: kind)
 
