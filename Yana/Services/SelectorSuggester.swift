@@ -22,9 +22,28 @@ enum SelectorSuggester {
                 + "the headline body text, not navigation, headers, footers, sidebars, comments, or ads."
         case .ignore:
             return "You are a web-scraping assistant. Given the HTML of a news/blog article page, "
-                + "identify the CSS selectors for noise that should be removed from the article body — "
-                + "ads, share buttons, related-article widgets, newsletter prompts, and similar clutter."
+                + "identify the CSS selectors for noise that should be removed from the article body. "
+                + "Be thorough and list a selector for EVERY distinct noise block you can find, including: "
+                + "advertisements and sponsored/affiliate blocks (often labeled 'Anzeige', 'Advertisement', "
+                + "'Sponsored', or carrying class names containing 'ad', 'advert', 'promo', 'affiliate', "
+                + "'sponsor', 'commercial'); share/social buttons; newsletter and subscription prompts; "
+                + "related-, recommended-, and most-read-article widgets; author bios; comment counters; "
+                + "and 'back to homepage'/breadcrumb navigation. Prefer stable class or attribute "
+                + "selectors over auto-generated hash class names."
         }
+    }
+
+    /// Strip the bulk that carries no structural signal — scripts, styles, inline SVG, templates,
+    /// and the document `<head>` — so the character cap is spent on real, class-bearing body markup.
+    /// Without this a large page (e.g. golem.de) buries the article body and its noise blocks past
+    /// the cap, and the model never sees the elements it is asked to select. Falls back to the
+    /// original HTML if parsing fails.
+    static func compactForAnalysis(_ html: String) -> String {
+        guard let doc = try? HTMLUtils.parse(html) else { return html }
+        for sel in ["script", "style", "noscript", "svg", "template", "head"] {
+            if let els = try? doc.select(sel) { for el in els { try? el.remove() } }
+        }
+        return (try? doc.html()) ?? html
     }
 
     /// The user-message prompt: the (capped, chrome-stripped) page HTML, the current selectors to
@@ -108,7 +127,7 @@ enum SelectorSuggester {
         let config = FeedConfig(type: .fullWebsite, identifier: identifier,
                                 dailyLimit: 1, options: options, collectedToday: 0)
         let aggregator = FullWebsiteAggregator(config: config, credentials: AggregatorCredentials())
-        let pageHTML = try await sampleArticleHTML(from: aggregator)
+        let pageHTML = compactForAnalysis(try await sampleArticleHTML(from: aggregator))
 
         let instr = instructions(for: kind)
         let userPrompt = prompt(for: kind, pageHTML: pageHTML, current: current)

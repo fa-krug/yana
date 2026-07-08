@@ -75,6 +75,8 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
     /// Like base processContent but de-dups the header image from the body and prepends the header.
     func processFullContent(_ html: String, article: AggregatedArticle, header: HeaderElement?) async throws -> String {
         let doc = try HTMLUtils.parse(html)
+        // The reader shows the title as its masthead; drop a duplicate headline at the top of the body.
+        try? HTMLUtils.removeDuplicateTitleHeading(doc, title: article.title)
         try EmbedRewriter.rewriteEmbeds(in: doc)
         if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
         try HTMLUtils.removeUnsafeTags(doc)

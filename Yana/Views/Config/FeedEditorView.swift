@@ -134,11 +134,31 @@ struct FeedEditorView: View {
     private func save() {
         guard model.isValid else { return }
         let isNew = feed == nil
+        // Resolve a homepage URL to its advertised feed for free-form URL feeds that are new or
+        // whose identifier changed. `apply` has already filled in a missing scheme synchronously.
+        let shouldResolve = model.type.resolvesFeedURL && (isNew || model.identifierChanged)
         let target = feed ?? Feed(name: "", aggregatorType: .feedContent, identifier: "")
         model.apply(to: target, availableTags: allTags)
         if isNew { modelContext.insert(target) }
         try? modelContext.save()
-        // Auto-run a newly created feed so its articles appear without a manual "Update".
-        if isNew { onCreate?(target) }
+
+        guard shouldResolve else {
+            // Auto-run a newly created feed so its articles appear without a manual "Update".
+            if isNew { onCreate?(target) }
+            return
+        }
+        // Discover the real feed URL, persist it, then (for new feeds) auto-run — so the first
+        // fetch already uses the canonical feed URL. Resolution never throws; on failure the
+        // normalized URL stays and the aggregator's own discovery still handles a homepage.
+        let entered = target.identifier
+        let context = modelContext
+        Task { @MainActor in
+            let resolved = await FeedURLResolver.resolvedFeedURL(entered)
+            if resolved != entered {
+                target.identifier = resolved
+                try? context.save()
+            }
+            if isNew { onCreate?(target) }
+        }
     }
 }

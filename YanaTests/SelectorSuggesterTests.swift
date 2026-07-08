@@ -39,4 +39,26 @@ struct SelectorSuggesterTests {
     @Test func instructionsDifferByKind() {
         #expect(SelectorSuggester.instructions(for: .content) != SelectorSuggester.instructions(for: .ignore))
     }
+
+    @Test func ignoreInstructionsCoverAffiliateAndNavNoise() {
+        let instr = SelectorSuggester.instructions(for: .ignore).lowercased()
+        #expect(instr.contains("anzeige"))
+        #expect(instr.contains("affiliate"))
+        #expect(instr.contains("sponsor"))
+    }
+
+    @Test func compactStripsScriptsStylesAndHead() {
+        let html = """
+        <html><head><style>.x{}</style><script>var a=1</script></head>
+        <body><article><script>track()</script><p class="body">Text</p>
+        <div class="ad-affiliate">Anzeige</div></article><noscript>x</noscript></body></html>
+        """
+        let compacted = SelectorSuggester.compactForAnalysis(html)
+        #expect(!compacted.contains("track()"))
+        #expect(!compacted.contains("var a=1"))
+        #expect(!compacted.contains(".x{}"))
+        // The class-bearing body markup the model needs to select survives.
+        #expect(compacted.contains("class=\"body\""))
+        #expect(compacted.contains("ad-affiliate"))
+    }
 }

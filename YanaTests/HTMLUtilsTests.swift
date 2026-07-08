@@ -5,6 +5,32 @@ import SwiftSoup
 
 @Suite("HTMLUtils")
 struct HTMLUtilsTests {
+    @Test func removesLeadingHeadingDuplicatingTitle() throws {
+        let doc = try HTMLUtils.parse("<article><h1>Breaking: Big News Today</h1><p>Body text.</p></article>")
+        try HTMLUtils.removeDuplicateTitleHeading(doc, title: "Breaking: Big News Today")
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(!html.contains("<h1>"))
+        #expect(html.contains("Body text."))
+    }
+
+    @Test func removesHeadingWhenTitleIsWhitespaceOrCaseVariant() throws {
+        let doc = try HTMLUtils.parse("<article><h1>  Big   News  Today </h1><p>x</p></article>")
+        try HTMLUtils.removeDuplicateTitleHeading(doc, title: "big news today")
+        #expect(!(try HTMLUtils.bodyHTML(doc)).contains("<h1>"))
+    }
+
+    @Test func keepsHeadingThatDiffersFromTitle() throws {
+        let doc = try HTMLUtils.parse("<article><h1>Something Completely Different</h1><p>x</p></article>")
+        try HTMLUtils.removeDuplicateTitleHeading(doc, title: "Breaking: Big News Today")
+        #expect((try HTMLUtils.bodyHTML(doc)).contains("<h1>"))
+    }
+
+    @Test func doesNothingWhenTitleEmpty() throws {
+        let doc = try HTMLUtils.parse("<article><h1>Heading</h1></article>")
+        try HTMLUtils.removeDuplicateTitleHeading(doc, title: "")
+        #expect((try HTMLUtils.bodyHTML(doc)).contains("<h1>"))
+    }
+
     @Test func sanitizeClassNamesRewritesClassAttr() throws {
         let doc = try HTMLUtils.parse("<div class=\"foo bar\">x</div>")
         try HTMLUtils.sanitizeClassNames(doc)

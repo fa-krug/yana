@@ -11,7 +11,10 @@ struct AIOptions: Codable, Sendable, Equatable {
 struct WebsiteOptions: Codable, Sendable, Equatable {
     /// Good defaults a new website feed opens with; users edit these in the selector lists.
     static let defaultContentSelectors = ["article", ".article-content", ".entry-content", "main"]
-    static let defaultIgnoreSelectors = [".advertisement", ".ad", ".social-share"]
+    static let defaultIgnoreSelectors = [
+        ".advertisement", ".ad", ".ads", "[class*='advert']", "[class*='sponsor']",
+        ".social-share", ".newsletter", ".related-articles",
+    ]
 
     var useFullContent = true
     /// CSS selectors whose matches are combined (OR) to form the article body.

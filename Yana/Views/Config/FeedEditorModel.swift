@@ -17,8 +17,11 @@ final class FeedEditorModel {
     var selectedTagNames: Set<String>
 
     let isEditingExisting: Bool
+    /// The identifier the editor opened with, so save can skip URL resolution when it is unchanged.
+    private let originalIdentifier: String
 
     init(feed: Feed?) {
+        originalIdentifier = feed?.identifier ?? ""
         if let feed {
             name = feed.name
             type = feed.type
@@ -47,6 +50,11 @@ final class FeedEditorModel {
         return !identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Whether the identifier differs from what the editor opened with (an edit changed the URL).
+    var identifierChanged: Bool {
+        identifier.trimmingCharacters(in: .whitespacesAndNewlines) != originalIdentifier
+    }
+
     func changeType(_ newType: AggregatorType) {
         type = newType
         options = newType.defaultOptions
@@ -59,7 +67,10 @@ final class FeedEditorModel {
     func apply(to feed: Feed, availableTags: [Tag]) {
         feed.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         feed.type = type
-        feed.identifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedIdentifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Free-form URL feeds get a missing scheme filled in immediately (the async feed-URL
+        // discovery in the editor refines this further); other types keep the entered value.
+        feed.identifier = type.resolvesFeedURL ? FeedURLResolver.normalized(trimmedIdentifier) : trimmedIdentifier
         feed.dailyLimit = dailyLimit
         feed.enabled = enabled
         feed.options = options

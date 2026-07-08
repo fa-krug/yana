@@ -93,7 +93,11 @@ struct ExtractionPreviewView: View {
             state = .failed(String(localized: "Enter a feed or website URL first."))
             return
         }
-        let config = FeedConfig(type: .fullWebsite, identifier: trimmed,
+        // Fill in a missing scheme and resolve a homepage to its advertised feed, so the preview
+        // uses the same canonical URL the feed is saved with.
+        let resolved = await FeedURLResolver.resolvedFeedURL(trimmed)
+        // `dailyLimit` caps the fetch at `previewCount`, so only 3 entries are ever fetched.
+        let config = FeedConfig(type: .fullWebsite, identifier: resolved,
                                 dailyLimit: Self.previewCount, options: options, collectedToday: 0)
         guard let aggregator = AggregatorRegistry.shared.makeAggregator(config, credentials: AggregatorCredentials()) else {
             state = .failed(String(localized: "Couldn’t build the aggregator for this feed."))
