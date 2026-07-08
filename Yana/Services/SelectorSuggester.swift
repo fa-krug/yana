@@ -33,17 +33,39 @@ enum SelectorSuggester {
         }
     }
 
-    /// Strip the bulk that carries no structural signal — scripts, styles, inline SVG, templates,
-    /// and the document `<head>` — so the character cap is spent on real, class-bearing body markup.
-    /// Without this a large page (e.g. golem.de) buries the article body and its noise blocks past
-    /// the cap, and the model never sees the elements it is asked to select. Falls back to the
-    /// original HTML if parsing fails.
+    /// Attributes worth keeping when compacting a page for analysis: everything a CSS selector can
+    /// key on. Everything else (href/src/srcset/style/data-*/inline event handlers/etc.) is dropped —
+    /// it carries no selector signal but on a real news page dwarfs the markup in size.
+    private static let selectorAttributes: Set<String> = ["class", "id", "role", "itemprop", "name", "type"]
+
+    /// Reduce a page to the structural signal the model actually selects on — tags plus their
+    /// class/id/role attributes — so the whole DOM fits under the character cap.
+    ///
+    /// First drop the bulk that carries no structural signal (scripts, styles, inline SVG, templates,
+    /// the document `<head>`), then strip every non-selector attribute and collapse runs of
+    /// whitespace. Without this a large page (e.g. golem.de, ~475 KB / ~70 KB even after removing
+    /// scripts) buries its lower-half noise blocks — the "read next" article teasers and in-text
+    /// affiliate/sponsored ("Anzeige") link lists — past the cap, so the model never sees the
+    /// elements it is asked to select and they leak into every extracted article. Keeping only the
+    /// class-bearing skeleton shrinks that same page to ~45 KB, bringing the entire structure
+    /// (every noise block included) within the budget. Falls back to the original HTML if parsing fails.
     static func compactForAnalysis(_ html: String) -> String {
         guard let doc = try? HTMLUtils.parse(html) else { return html }
         for sel in ["script", "style", "noscript", "svg", "template", "head"] {
             if let els = try? doc.select(sel) { for el in els { try? el.remove() } }
         }
-        return (try? doc.html()) ?? html
+        if let all = try? doc.getAllElements() {
+            for el in all {
+                guard let attrs = el.getAttributes() else { continue }
+                // Snapshot the keys before mutating (removeAttr edits the same collection).
+                for key in attrs.asList().map({ $0.getKey() })
+                where !selectorAttributes.contains(key.lowercased()) {
+                    try? el.removeAttr(key)
+                }
+            }
+        }
+        let compacted = (try? doc.html()) ?? html
+        return compacted.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
 
     /// The user-message prompt: the (capped, chrome-stripped) page HTML, the current selectors to

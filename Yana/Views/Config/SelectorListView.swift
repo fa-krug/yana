@@ -69,10 +69,9 @@ struct SelectorListView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
-        .confirmationDialog("Replace this list with AI suggestions?",
-                            isPresented: $showConfirm, titleVisibility: .visible) {
-            Button("Auto-generate", role: .destructive) { generate() }
+        .alert("Replace this list with AI suggestions?", isPresented: $showConfirm) {
             Button("Cancel", role: .cancel) {}
+            Button("Auto-generate", role: .destructive) { generate() }
         } message: {
             Text("The current selectors on this page will be overwritten.")
         }
