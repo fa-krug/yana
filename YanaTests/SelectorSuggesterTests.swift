@@ -96,4 +96,31 @@ struct SelectorSuggesterTests {
         #expect(compacted.contains("class=\"body\""))
         #expect(compacted.contains("ad-affiliate"))
     }
+
+    /// Bulky, selector-irrelevant attributes are dropped so a long page's full structure — including
+    /// the lower-half noise blocks — fits under the character cap; class/id/role survive.
+    @Test func compactStripsBulkyAttributesKeepsSelectorSignal() {
+        let html = """
+        <article>
+          <a class="go-alink" href="https://example.com/a-very-long-affiliate-url?with=lots&of=params">Anzeige</a>
+          <img class="go-media__img" src="https://cdn.example.com/huge.jpg" srcset="a 1x, b 2x" data-track="xyz" style="width:100%">
+          <div class="go-teaser" id="teaser-1" role="article" data-analytics="{'a':'b'}">Read next</div>
+        </article>
+        """
+        let compacted = SelectorSuggester.compactForAnalysis(html)
+        // Selector signal is preserved.
+        #expect(compacted.contains("go-alink"))
+        #expect(compacted.contains("go-teaser"))
+        #expect(compacted.contains("id=\"teaser-1\""))
+        #expect(compacted.contains("role=\"article\""))
+        // Bulk that carries no selector signal is gone.
+        #expect(!compacted.contains("href="))
+        #expect(!compacted.contains("src="))
+        #expect(!compacted.contains("srcset"))
+        #expect(!compacted.contains("data-track"))
+        #expect(!compacted.contains("data-analytics"))
+        #expect(!compacted.contains("style="))
+        // Visible text (an ad-labelling cue) still survives for the model to reason over.
+        #expect(compacted.contains("Anzeige"))
+    }
 }
