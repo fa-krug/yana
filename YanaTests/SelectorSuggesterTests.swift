@@ -68,6 +68,20 @@ struct SelectorSuggesterTests {
         #expect(instr.contains("sponsor"))
     }
 
+    // Reasoning models (e.g. DeepSeek v4) spend hidden reasoning_tokens out of the same completion
+    // budget. The verbose "be thorough" ignore instruction can burn ~2500 tokens on reasoning alone,
+    // so the user's default 2000-token budget leaves nothing for the JSON reply and the model returns
+    // empty content (finish_reason=length). The selector call must floor the budget well above that.
+    @Test func tokenBudgetFloorsBelowReasoningCeiling() {
+        // A user's summarization budget too small for reasoning + reply is raised to the floor.
+        #expect(SelectorSuggester.tokenBudget(userMax: 2000) == SelectorSuggester.minSelectorTokens)
+        #expect(SelectorSuggester.tokenBudget(userMax: 500) == SelectorSuggester.minSelectorTokens)
+        // The floor is comfortably above the worst observed reasoning burn (~2500).
+        #expect(SelectorSuggester.minSelectorTokens >= 4096)
+        // A user who already allows more keeps their larger budget.
+        #expect(SelectorSuggester.tokenBudget(userMax: 8000) == 8000)
+    }
+
     @Test func compactStripsScriptsStylesAndHead() {
         let html = """
         <html><head><style>.x{}</style><script>var a=1</script></head>

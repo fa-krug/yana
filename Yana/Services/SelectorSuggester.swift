@@ -132,6 +132,22 @@ enum SelectorSuggester {
         return fragments
     }
 
+    // MARK: - Token budget
+
+    /// Completion-token floor for a selector suggestion call. Reasoning models (e.g. DeepSeek v4)
+    /// spend hidden `reasoning_tokens` out of the same completion budget as the visible reply. The
+    /// verbose "be thorough" ignore instruction induces heavy reasoning — observed 1200–2500 tokens —
+    /// so the user's summarization budget (default 2000) can be fully consumed by reasoning, leaving
+    /// the model to return empty content with `finish_reason=length` (surfaced as "the AI returned no
+    /// selectors"). The selector reply itself is tiny, so give the call generous headroom; only the
+    /// tokens actually used are billed. 4096 clears the worst observed reasoning burn while staying
+    /// within every supported provider's per-request output limit.
+    static let minSelectorTokens = 4096
+
+    /// The completion budget for a selector call: the user's configured max, floored so reasoning
+    /// models have room for reasoning *and* the JSON reply.
+    static func tokenBudget(userMax: Int) -> Int { max(userMax, minSelectorTokens) }
+
     // MARK: - Orchestration
 
     enum SuggestError: Error {
@@ -185,8 +201,11 @@ enum SelectorSuggester {
             text = try await client.generateText(instructions: instr, prompt: applePrompt,
                                                  temperature: 0.2, maxTokens: 500)
         } else {
-            let aiConfig = AggregationService.makeAIConfig(settings: settings)
+            var aiConfig = AggregationService.makeAIConfig(settings: settings)
             guard !aiConfig.apiKey.isEmpty else { throw SuggestError.noProvider }
+            // Floor the completion budget: a reasoning model can otherwise spend the whole configured
+            // budget on hidden reasoning for the "be thorough" ignore prompt and return empty content.
+            aiConfig.maxTokens = tokenBudget(userMax: aiConfig.maxTokens)
             let combined = instr + "\n\n" + prompt(for: kind, pageHTML: pageHTML, current: current)
             // jsonMode is intentionally off: the Gemini path pins a fixed article-shaped response
             // schema in jsonMode, which would prevent a selector list. The explicit prompt +
