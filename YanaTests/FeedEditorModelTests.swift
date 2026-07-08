@@ -9,6 +9,8 @@ struct FeedEditorModelTests {
     @Test func newModelStartsWithDefaultsAndIsInvalidWithoutName() {
         let model = FeedEditorModel(feed: nil)
         #expect(model.name.isEmpty)
+        #expect(model.type == .fullWebsite)
+        guard case .fullWebsite = model.options else { Issue.record("expected fullWebsite options"); return }
         #expect(model.isValid == false)
         model.name = "Heise"
         model.type = .heise
