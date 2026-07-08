@@ -37,4 +37,50 @@ enum FeedURLResolver {
         }
         return normalized
     }
+
+    /// The verified outcome of resolving a user-entered URL to a working feed: the canonical feed
+    /// URL and the number of entries the parse produced. Reported back in the editor so the user
+    /// sees exactly what will be saved.
+    struct FeedResolveResult: Equatable, Sendable {
+        let feedURL: String
+        let entryCount: Int
+    }
+
+    /// Why a resolve-and-test attempt failed, classified for a user-facing message.
+    enum FeedResolveError: Error, Equatable {
+        case invalidURL       // empty input or unparseable as a URL
+        case network          // the page or feed could not be fetched
+        case noFeedFound      // reachable, but no feed and no advertised `<link rel="alternate">`
+        case notAFeed         // a feed URL was found/entered but did not parse into any entries
+    }
+
+    /// Like `resolvedFeedURL`, but *verifies* the result: it fetches and parses the resolved feed,
+    /// returning the canonical URL plus its entry count on success, or a classified failure. Unlike
+    /// `resolvedFeedURL` (best-effort, save-path), a discovered `<link rel="alternate">` feed is
+    /// re-fetched and parsed so the caller knows it actually works. `fetch` is injectable for tests.
+    static func resolveAndTest(
+        _ raw: String,
+        fetch: (URL) async throws -> Data = { try await HTTPClient.fetchData($0).data }
+    ) async -> Result<FeedResolveResult, FeedResolveError> {
+        let normalized = normalized(raw)
+        guard !normalized.isEmpty, let url = URL(string: normalized) else { return .failure(.invalidURL) }
+        guard let data = try? await fetch(url) else { return .failure(.network) }
+
+        // Already a feed → done.
+        if let parsed = try? FeedParser.parse(data), !parsed.entries.isEmpty {
+            return .success(FeedResolveResult(feedURL: normalized, entryCount: parsed.entries.count))
+        }
+
+        // HTML page advertising a feed → fetch and parse that feed to confirm it works.
+        if let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1),
+           let feedURL = FeedDiscovery.feedURL(inHTML: html, baseURL: url) {
+            guard let feedData = try? await fetch(feedURL) else { return .failure(.network) }
+            if let parsed = try? FeedParser.parse(feedData), !parsed.entries.isEmpty {
+                return .success(FeedResolveResult(feedURL: feedURL.absoluteString, entryCount: parsed.entries.count))
+            }
+            return .failure(.notAFeed)
+        }
+
+        return .failure(.noFeedFound)
+    }
 }

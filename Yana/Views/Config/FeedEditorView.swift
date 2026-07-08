@@ -15,6 +15,16 @@ struct FeedEditorView: View {
     @State private var model: FeedEditorModel
     @State private var showingSearch = false
     @State private var settings = AppSettings()
+    @State private var resolveStatus: ResolveStatus = .idle
+
+    /// Point-in-time outcome of the "Resolve & Test" button. `success`/`failure` carry a localized
+    /// message; the resolved URL itself is written back into the identifier field.
+    private enum ResolveStatus: Equatable {
+        case idle
+        case testing
+        case success(String)
+        case failure(String)
+    }
 
     init(feed: Feed?, onCreate: ((Feed) -> Void)? = nil) {
         self.feed = feed
@@ -53,6 +63,9 @@ struct FeedEditorView: View {
                             Button { showingSearch = true } label: { Image(systemName: "magnifyingglass") }
                                 .buttonStyle(.borderless)
                         }
+                    }
+                    if model.type.resolvesFeedURL {
+                        resolveTestControls
                     }
                 }
                 Stepper("Daily Limit: \(model.dailyLimit)", value: $model.dailyLimit, in: 1...200)
@@ -118,6 +131,61 @@ struct FeedEditorView: View {
         case .subreddit: String(localized: "Subreddit (e.g. swift)")
         case .youtubeChannel: String(localized: "YouTube Channel ID or handle")
         case .none: ""
+        }
+    }
+
+    /// A "Resolve & Test" button plus an inline result row: resolves the entered URL to its
+    /// canonical feed URL, verifies it parses, writes the resolved URL back, and reports the outcome.
+    @ViewBuilder
+    private var resolveTestControls: some View {
+        Button(action: resolveAndTest) {
+            HStack {
+                Text("Resolve & Test")
+                if resolveStatus == .testing {
+                    Spacer()
+                    Text("Testing…").foregroundStyle(.secondary)
+                    ProgressView()
+                }
+            }
+        }
+        .disabled(model.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  || resolveStatus == .testing)
+
+        switch resolveStatus {
+        case .idle, .testing:
+            EmptyView()
+        case .success(let message):
+            Label(message, systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .failure(let message):
+            Label(message, systemImage: "xmark.circle.fill")
+                .foregroundStyle(.red)
+        }
+    }
+
+    /// Resolve the entered URL to a working feed URL, verify it, and surface the outcome. On success
+    /// the canonical feed URL is written back into the field so it's exactly what gets saved.
+    private func resolveAndTest() {
+        let entered = model.identifier
+        resolveStatus = .testing
+        Task { @MainActor in
+            switch await FeedURLResolver.resolveAndTest(entered) {
+            case .success(let result):
+                model.identifier = result.feedURL
+                let count = result.entryCount
+                resolveStatus = .success(String(localized: "Feed valid — \(count) articles"))
+            case .failure(let error):
+                resolveStatus = .failure(message(for: error))
+            }
+        }
+    }
+
+    private func message(for error: FeedURLResolver.FeedResolveError) -> String {
+        switch error {
+        case .invalidURL: String(localized: "Enter a valid URL")
+        case .network: String(localized: "Couldn't reach this URL")
+        case .noFeedFound: String(localized: "No feed found at this URL")
+        case .notAFeed: String(localized: "This URL isn't a valid feed")
         }
     }
 
