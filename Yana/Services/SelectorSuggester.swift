@@ -130,18 +130,25 @@ enum SelectorSuggester {
         let pageHTML = compactForAnalysis(try await sampleArticleHTML(from: aggregator))
 
         let instr = instructions(for: kind)
-        let userPrompt = prompt(for: kind, pageHTML: pageHTML, current: current)
 
         let text: String
         if provider == .appleIntelligence {
             let client = AppleIntelligenceClient()
             guard client.availability == .available else { throw SuggestError.noProvider }
-            text = try await client.generateText(instructions: instr, prompt: userPrompt,
+            // The on-device model has a ~4096-token context window. The cloud-sized 50k-char page
+            // cap overflows it, so `respond` throws and the whole request fails (summaries survive
+            // only because they chunk to fit). Truncate the page to the on-device content budget so
+            // the model actually sees markup it can select from. ~3 chars/token, conservative to
+            // leave room for the instructions, the candidate list, and the model's reply.
+            let budgetChars = AppleIntelligenceProcessor.contentBudgetTokens * 3
+            let applePrompt = prompt(for: kind, pageHTML: String(pageHTML.prefix(budgetChars)),
+                                     current: current)
+            text = try await client.generateText(instructions: instr, prompt: applePrompt,
                                                  temperature: 0.2, maxTokens: 500)
         } else {
             let aiConfig = AggregationService.makeAIConfig(settings: settings)
             guard !aiConfig.apiKey.isEmpty else { throw SuggestError.noProvider }
-            let combined = instr + "\n\n" + userPrompt
+            let combined = instr + "\n\n" + prompt(for: kind, pageHTML: pageHTML, current: current)
             // jsonMode is intentionally off: the Gemini path pins a fixed article-shaped response
             // schema in jsonMode, which would prevent a selector list. The explicit prompt +
             // tolerant `parseSelectors` recover the JSON regardless of provider.
