@@ -67,19 +67,34 @@ enum SelectorSuggester {
     // MARK: - Pure parsing
 
     /// Tolerant extraction of a selector list from a model reply. Accepts a bare JSON object
-    /// (`{"selectors": [...]}`), a bare JSON array, or the first such structure embedded in prose.
+    /// (`{"selectors": [...]}`), a bare JSON array, or such a structure embedded in prose.
     /// Trims, drops empties, and de-duplicates while preserving order.
+    ///
+    /// A "be thorough" ignore-list reply often opens with reasoning prose that itself contains a
+    /// bracketed fragment (an enumerated list like `[ads, share buttons]`, or a `{…}`) *before* the
+    /// real JSON object. Trusting the first bracket found would hand that unparseable prose to
+    /// `JSONSerialization`, yield nothing, and surface as "the AI returned no selectors" — even
+    /// though the model did answer. So try the whole text first, then every balanced JSON fragment
+    /// in order, returning the first that actually produces selectors.
     static func parseSelectors(from text: String) -> [String] {
-        let raw = firstJSONFragment(in: text) ?? text
-        guard let data = raw.data(using: .utf8) else { return [] }
+        for candidate in [text] + jsonFragments(in: text) {
+            let list = selectors(fromJSON: candidate)
+            if !list.isEmpty { return list }
+        }
+        return []
+    }
+
+    /// Parse a single JSON string into a cleaned selector list (object with a `selectors` array or
+    /// a bare array). Returns empty when the string isn't the expected JSON shape.
+    private static func selectors(fromJSON raw: String) -> [String] {
+        guard let data = raw.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) else { return [] }
 
         var list: [String] = []
-        if let obj = try? JSONSerialization.jsonObject(with: data) {
-            if let dict = obj as? [String: Any], let arr = dict["selectors"] as? [Any] {
-                list = arr.compactMap { $0 as? String }
-            } else if let arr = obj as? [Any] {
-                list = arr.compactMap { $0 as? String }
-            }
+        if let dict = obj as? [String: Any], let arr = dict["selectors"] as? [Any] {
+            list = arr.compactMap { $0 as? String }
+        } else if let arr = obj as? [Any] {
+            list = arr.compactMap { $0 as? String }
         }
         var seen = Set<String>()
         return list
@@ -87,22 +102,34 @@ enum SelectorSuggester {
             .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
-    /// The first `{...}` or `[...]` fragment in `text`, so a model that wraps JSON in prose or
-    /// ```json fences still parses. Balanced-delimiter scan over the first opener found.
-    private static func firstJSONFragment(in text: String) -> String? {
+    /// Every balanced `{...}` or `[...]` fragment in `text`, in order, so a model that wraps JSON in
+    /// prose or ```json fences still parses even when leading prose contains stray brackets. Each
+    /// fragment counts only its own delimiter type; scanning resumes past a closed fragment. A
+    /// never-closed opener (e.g. JSON truncated by the token cap) ends the scan.
+    private static func jsonFragments(in text: String) -> [String] {
         let chars = Array(text)
-        guard let start = chars.firstIndex(where: { $0 == "{" || $0 == "[" }) else { return nil }
-        let open = chars[start]
-        let close: Character = open == "{" ? "}" : "]"
-        var depth = 0
-        for i in start..<chars.count {
-            if chars[i] == open { depth += 1 }
-            else if chars[i] == close {
-                depth -= 1
-                if depth == 0 { return String(chars[start...i]) }
+        var fragments: [String] = []
+        var i = 0
+        while i < chars.count {
+            let open = chars[i]
+            guard open == "{" || open == "[" else { i += 1; continue }
+            let close: Character = open == "{" ? "}" : "]"
+            var depth = 0
+            var j = i
+            var closed = false
+            while j < chars.count {
+                if chars[j] == open { depth += 1 }
+                else if chars[j] == close {
+                    depth -= 1
+                    if depth == 0 { closed = true; break }
+                }
+                j += 1
             }
+            guard closed else { break }
+            fragments.append(String(chars[i...j]))
+            i = j + 1
         }
-        return nil
+        return fragments
     }
 
     // MARK: - Orchestration
