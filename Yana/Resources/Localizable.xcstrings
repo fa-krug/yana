@@ -183,6 +183,72 @@
         }
       }
     },
+    "Couldn't reach this URL": {
+      "comment": "Error shown when the entered feed URL could not be fetched during Resolve & Test.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL nicht erreichbar"
+          }
+        }
+      }
+    },
+    "Enter a valid URL": {
+      "comment": "Error shown when the entered text is not a usable URL during Resolve & Test.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gültige URL eingeben"
+          }
+        }
+      }
+    },
+    "Feed valid — %lld articles": {
+      "comment": "Success message after Resolve & Test, with the number of articles the feed returned.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed gültig – %lld Artikel"
+          }
+        }
+      }
+    },
+    "No feed found at this URL": {
+      "comment": "Error shown when a page was reachable but advertised no feed during Resolve & Test.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Feed unter dieser URL gefunden"
+          }
+        }
+      }
+    },
+    "Resolve & Test": {
+      "comment": "Button that resolves the entered URL to its feed URL and verifies it.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auflösen & testen"
+          }
+        }
+      }
+    },
+    "This URL isn't a valid feed": {
+      "comment": "Error shown when the resolved URL did not parse into a feed during Resolve & Test.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese URL ist kein gültiger Feed"
+          }
+        }
+      }
+    },
     "%lld feeds couldn't be updated. Check Feeds in the Library.": {
       "localizations": {
         "de": {
