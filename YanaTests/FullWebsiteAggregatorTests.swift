@@ -35,6 +35,42 @@ struct FullWebsiteAggregatorTests {
         #expect(a.content.contains("article-content"))
     }
 
+    /// Golem-style page: the reader hoists og:image into its header and renders the byline in its
+    /// chrome, so the article's own byline line and its (differently-derived) in-body lead image must
+    /// not appear a second time in the body. The dek/intro and the prose are kept.
+    @Test func dedupsHeaderBylineAndLeadImage() async throws {
+        let page = """
+        <html><head>
+        <meta name="twitter:image" property="og:image" content="https://www.golem.de/2607/210679-586931-586928.jpg">
+        </head><body><article>
+        <header>
+          <h1>Speicherkrise: KI gefaehrdet preiswerte Smartphones</h1>
+          <div class="intro">Die Nachfrage nach Speicher fuer KI wirkt sich negativ aus.</div>
+          <div class="meta">9. Juli 2026 um 09:53 Uhr / Tobias Koeltzsch</div>
+        </header>
+        <figure><img src="https://www.golem.de/2607/210679-586929-586928_rc.jpg"></figure>
+        <p>Der eigentliche Artikeltext beginnt hier und ist deutlich laenger als der Vorspann.</p>
+        </article></body></html>
+        """
+        let entry = FeedEntry(title: "Speicherkrise: KI gefaehrdet preiswerte Smartphones",
+                              link: "https://www.golem.de/news/x-2607-210679.html", content: "<p>feed</p>",
+                              summary: "<p>feed</p>", entryDescription: nil, published: .now,
+                              author: "Tobias Koeltzsch", enclosures: [], itunesDuration: nil,
+                              itunesImage: nil, mediaThumbnails: [])
+        let agg = StubWebsite(entries: [entry], page: page, store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        // Title heading and byline both dropped (reader shows them in its chrome).
+        #expect(!a.content.contains("<h1"))
+        #expect(!a.content.contains("Tobias Koeltzsch"), "duplicate byline should be gone")
+        #expect(!a.content.contains("09:53"), "duplicate dateline should be gone")
+        // Dek and prose preserved.
+        #expect(a.content.contains("Die Nachfrage nach Speicher"))
+        #expect(a.content.contains("Artikeltext beginnt hier"))
+        // Exactly one image survives — the hoisted header image; the body lead figure is de-duped.
+        #expect(a.content.components(separatedBy: "\(ReaderWeb.imageScheme)://").count - 1 == 1,
+                "only the header image should remain; the body lead image is a duplicate")
+    }
+
     @Test func refetchReExtractsContentFromArticleURL() async throws {
         let page = "<html><body><article><p>Refetched body</p></article><div class=\"ad\">AD</div></body></html>"
         let agg = StubWebsite(entries: [], page: page, store: tempStore())

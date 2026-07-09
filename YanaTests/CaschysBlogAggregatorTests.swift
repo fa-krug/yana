@@ -90,6 +90,23 @@ struct CaschysBlogAggregatorTests {
         #expect(titles == ["Echte News"])
     }
 
+    @Test func extractsFromEntryInnerNotSurroundingChrome() async throws {
+        // Everything is wrapped in <article> (which the generic default selectors would grab);
+        // Caschy's Blog must extract from its `.entry-inner` container, dropping surrounding chrome.
+        let page = """
+        <html><body><article>
+        <nav class="masthead-nav">NAVNOISE</nav>
+        <div class="entry-inner"><p>Echter Artikeltext</p></div>
+        <div class="promo-box">PROMONOISE</div>
+        </article></body></html>
+        """
+        let agg = StubCaschy(entries: [entry("Post")], page: page, options: CaschysBlogOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Echter Artikeltext"))
+        #expect(!a.content.contains("NAVNOISE"))
+        #expect(!a.content.contains("PROMONOISE"))
+    }
+
     @Test func identifierChoicesHasSingleFeed() {
         #expect(CaschysBlogAggregator.identifierChoices.count == 1)
         #expect(CaschysBlogAggregator.identifierChoices.first?.value == "https://stadt-bremerhaven.de/feed/")

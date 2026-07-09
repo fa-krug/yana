@@ -43,6 +43,24 @@ struct TheVergeAggregatorTests {
         #expect(!a.content.contains("Related stream article"))
     }
 
+    @Test func extractsFromDuetBodyNotSurroundingArticle() async throws {
+        // The page wraps everything in <article> (which the generic default selectors would grab);
+        // The Verge must extract from its `.duet--article--article-body-component` block instead, so
+        // surrounding chrome/related content outside that block is dropped.
+        let page = """
+        <html><body><article>
+        <div class="site-nav">NAVNOISE</div>
+        <div class="duet--article--article-body-component"><p>Real body text</p></div>
+        <div class="duet--recirculation--related">RELATEDNOISE</div>
+        </article></body></html>
+        """
+        let agg = StubVerge(entries: [entry()], page: page, store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Real body text"))
+        #expect(!a.content.contains("NAVNOISE"))
+        #expect(!a.content.contains("RELATEDNOISE"))
+    }
+
     @Test func removesAdAndNewsletterNoise() async throws {
         let page = """
         <div class="duet--article--article-body-component"><p>Keep this</p>\

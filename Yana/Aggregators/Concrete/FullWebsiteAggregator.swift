@@ -26,6 +26,14 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
         return WebsiteOptions()
     }
 
+    /// When true, `enrich` extracts only the FIRST match of the scraper's own `contentSelector`
+    /// (single-selector, `.first()`) instead of the OR-union of every `websiteOptions.contentSelectors`
+    /// match. Scrapers that target one dedicated container (e.g. Merkur `.idjs-Story`, Caschy's Blog
+    /// `.entry-inner`) — or whose body class repeats for related/"stream" stories (The Verge) — opt in
+    /// so extraction uses their container and keeps only the main article, ignoring the generic
+    /// defaults and surrounding page chrome.
+    var usesFirstContentMatch: Bool { false }
+
     override func enrich(_ article: AggregatedArticle, entry: FeedEntry) async throws -> AggregatedArticle {
         var article = article
         let opts = websiteOptions
@@ -36,12 +44,19 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
                 articleURL: article.url, title: article.title, store: store,
                 credentials: credentials, pageHTML: raw)
 
-            // Fall back to the built-in defaults when the user cleared the content list entirely.
-            let contentSelectors = opts.contentSelectors.isEmpty
-                ? WebsiteOptions.defaultContentSelectors : opts.contentSelectors
             // Always-applied security removals + the user's editable ignore list.
             let removeSelectors = selectorsToRemove + opts.ignoreSelectors
-            let extracted = try HTMLUtils.extractMainContent(raw, contentSelectors: contentSelectors, removeSelectors: removeSelectors)
+            let extracted: String
+            if usesFirstContentMatch {
+                // Single-selector, first-match extraction: the page repeats the body class for
+                // related stories, so only the first (main-article) block is kept.
+                extracted = try HTMLUtils.extractMainContent(raw, selector: contentSelector, removeSelectors: removeSelectors)
+            } else {
+                // Fall back to the built-in defaults when the user cleared the content list entirely.
+                let contentSelectors = opts.contentSelectors.isEmpty
+                    ? WebsiteOptions.defaultContentSelectors : opts.contentSelectors
+                extracted = try HTMLUtils.extractMainContent(raw, contentSelectors: contentSelectors, removeSelectors: removeSelectors)
+            }
             article.content = try await processFullContent(extracted, article: article, header: header)
             return article
         } catch let error as AggregatorError {
@@ -70,10 +85,17 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
     /// Like base processContent but de-dups the header image from the body and prepends the header.
     func processFullContent(_ html: String, article: AggregatedArticle, header: HeaderElement?) async throws -> String {
         let doc = try HTMLUtils.parse(html)
-        // The reader shows the title as its masthead; drop a duplicate headline at the top of the body.
+        // The reader shows the title + byline + lead image as its masthead; drop the body's copies.
         try? HTMLUtils.removeDuplicateTitleHeading(doc, title: article.title)
+        try? HTMLUtils.removeDuplicateByline(doc, author: article.author)
         try EmbedRewriter.rewriteEmbeds(in: doc)
-        if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
+        if let dedup = header?.dedupURL {
+            // og:image and the in-body derivative can be different files (e.g. Golem); when the URL
+            // match misses, fall back to removing the leading lead figure.
+            if !((try? HTMLUtils.removeImageByURL(doc, url: dedup)) ?? false) {
+                try? HTMLUtils.removeLeadingLeadImage(doc)
+            }
+        }
         try HTMLUtils.removeUnsafeTags(doc)
         try HTMLUtils.removeTrackingPixels(doc)
         try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))

@@ -125,6 +125,69 @@ struct HTMLUtilsTests {
         #expect(html.contains("<img"), "image with different base filename should NOT be removed")
     }
 
+    @Test func removeImageByURLReportsWhetherItRemoved() throws {
+        let hit = try HTMLUtils.parse("<img src=\"https://x.com/photo.jpg\"><p>body</p>")
+        #expect(try HTMLUtils.removeImageByURL(hit, url: "https://x.com/photo.jpg"))
+        let miss = try HTMLUtils.parse("<img src=\"https://x.com/other.jpg\"><p>body</p>")
+        #expect(!(try HTMLUtils.removeImageByURL(miss, url: "https://x.com/photo.jpg")))
+    }
+
+    // MARK: - Duplicate byline removal
+
+    @Test func removeDuplicateBylineRemovesAuthorDateLine() throws {
+        // The reader renders author + date in its chrome; the article's own byline line is noise.
+        let doc = try HTMLUtils.parse(
+            "<header><div class=\"intro\">Ein spannender Vorspann ohne Autor.</div>"
+            + "<div class=\"meta\">9. Juli 2026 um 09:53 Uhr / Tobias Költzsch</div></header>"
+            + "<p>Der eigentliche Artikeltext beginnt hier und ist deutlich laenger.</p>")
+        try HTMLUtils.removeDuplicateByline(doc, author: "Tobias Költzsch")
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(!html.contains("Tobias Költzsch"), "byline line should be removed")
+        #expect(html.contains("Ein spannender Vorspann"), "the dek/intro must be preserved")
+        #expect(html.contains("Artikeltext beginnt"), "body prose must be preserved")
+    }
+
+    @Test func removeDuplicateBylineKeepsProseMentioningAuthor() throws {
+        // A real paragraph that merely mentions the author is long → must NOT be removed.
+        let doc = try HTMLUtils.parse(
+            "<p>In diesem ausfuehrlichen Bericht erklaert Tobias Költzsch die Hintergruende "
+            + "der Speicherkrise und was sie fuer die Smartphone-Branche konkret bedeutet.</p>")
+        try HTMLUtils.removeDuplicateByline(doc, author: "Tobias Költzsch")
+        #expect((try HTMLUtils.bodyHTML(doc)).contains("Tobias Költzsch"))
+    }
+
+    @Test func removeDuplicateBylineNoOpWhenAuthorBlank() throws {
+        let doc = try HTMLUtils.parse("<div class=\"meta\">9. Juli 2026</div><p>body</p>")
+        try HTMLUtils.removeDuplicateByline(doc, author: "")
+        #expect((try HTMLUtils.bodyHTML(doc)).contains("9. Juli 2026"))
+    }
+
+    // MARK: - Leading lead-image fallback removal
+
+    @Test func removeLeadingLeadImageRemovesFirstFigureBeforeProse() throws {
+        // Golem-style: header image was hoisted but its URL differs from the body derivative,
+        // so URL de-dup missed it — the leading figure is dropped as a fallback.
+        let doc = try HTMLUtils.parse(
+            "<div class=\"intro\">Kurzer Vorspann.</div>"
+            + "<figure><img src=\"https://www.golem.de/2607/210679-586929-586928_rc.jpg\"></figure>"
+            + "<p>Ein langer Absatz mit dem eigentlichen Artikeltext, der die Vorschau klar uebertrifft.</p>")
+        #expect(try HTMLUtils.removeLeadingLeadImage(doc))
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(!html.contains("<img"), "leading lead figure should be removed")
+        #expect(html.contains("Artikeltext"), "body prose must remain")
+    }
+
+    @Test func removeLeadingLeadImageKeepsImageThatFollowsProse() throws {
+        // A figure that appears only after real prose is a content image, not the lead → keep it.
+        let doc = try HTMLUtils.parse(
+            "<p>Ein langer einleitender Absatz mit viel Text, der deutlich mehr als zweihundert "
+            + "Zeichen umfasst, damit der Prosa-Schwellenwert sicher ueberschritten wird und die "
+            + "Bilderkennung diesen Absatz als echten Fliesstext einordnet.</p>"
+            + "<figure><img src=\"https://x.com/inline.jpg\"></figure>")
+        #expect(!(try HTMLUtils.removeLeadingLeadImage(doc)))
+        #expect((try HTMLUtils.bodyHTML(doc)).contains("<img"))
+    }
+
     // MARK: - Sanitization (Tier 1: unsafe tags + attributes)
 
     @Test func removeUnsafeTagsStripsScriptStyleNoscript() throws {

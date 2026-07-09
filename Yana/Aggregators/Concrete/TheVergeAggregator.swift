@@ -14,6 +14,10 @@ class TheVergeAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     override var contentSelector: String { ".duet--article--article-body-component" }
 
+    /// The page repeats `.duet--article--article-body-component` for related/"stream" stories, so
+    /// extract only the first (main-article) block rather than the OR-union of all matches.
+    override var usesFirstContentMatch: Bool { true }
+
     override var selectorsToRemove: [String] {
         ["script", "style", "noscript",
          "iframe:not([src*='youtube.com']):not([src*='youtu.be'])",

@@ -50,6 +50,23 @@ struct MerkurAggregatorTests {
         #expect(a.content.contains("<p></p>"))
     }
 
+    @Test func extractsFromIdjsStoryNotSurroundingChrome() async throws {
+        // Everything is wrapped in <article> (which the generic default selectors would grab);
+        // Merkur must extract from its `.idjs-Story` container, dropping the surrounding chrome.
+        let page = """
+        <html><body><article>
+        <nav class="masthead-nav">NAVNOISE</nav>
+        <div class="idjs-Story"><p>Echter Artikeltext</p></div>
+        <div class="promo-box">PROMONOISE</div>
+        </article></body></html>
+        """
+        let agg = StubMerkur(entries: [entry()], page: page, options: MerkurOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Echter Artikeltext"))
+        #expect(!a.content.contains("NAVNOISE"))
+        #expect(!a.content.contains("PROMONOISE"))
+    }
+
     @Test func identifierChoicesHas18RegionalFeeds() {
         #expect(MerkurAggregator.identifierChoices.count == 18)
         #expect(MerkurAggregator.identifierChoices.first?.value == "https://www.merkur.de/rssfeed.rdf")

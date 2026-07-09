@@ -18,6 +18,9 @@ class CaschysBlogAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     override var contentSelector: String { ".entry-inner" }
 
+    /// Extract from the dedicated `.entry-inner` container, not the generic default selectors.
+    override var usesFirstContentMatch: Bool { true }
+
     override var selectorsToRemove: [String] {
         [".aawp", ".aawp-disclaimer", "script", "style", "noscript", "svg"]
     }

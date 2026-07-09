@@ -34,6 +34,9 @@ class MerkurAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     override var contentSelector: String { ".idjs-Story" }
 
+    /// Extract from the dedicated `.idjs-Story` container, not the generic default selectors.
+    override var usesFirstContentMatch: Bool { true }
+
     override var selectorsToRemove: [String] {
         [".id-DonaldBreadcrumb--default", ".id-StoryElement-headline", ".id-StoryElement-image",
          ".lp_west_printAction", ".lp_west_webshareAction", ".id-Recommendation", ".enclosure",

@@ -108,8 +108,12 @@ enum HTMLUtils {
         compact(doc)
     }
 
-    static func removeImageByURL(_ doc: Document, url: String) throws {
-        guard !url.isEmpty, !url.hasPrefix("data:") else { return }
+    /// Remove the body's copy of the hoisted header image, matched by exact URL, last path
+    /// component, or normalized base filename. Returns `true` when an image was removed so callers
+    /// can fall back to a structural removal (`removeLeadingLeadImage`) when the URL didn't match.
+    @discardableResult
+    static func removeImageByURL(_ doc: Document, url: String) throws -> Bool {
+        guard !url.isEmpty, !url.hasPrefix("data:") else { return false }
         let targetBase = baseFilename(url)
         let targetFile = (url as NSString).lastPathComponent
         for img in try doc.select("img") {
@@ -121,9 +125,54 @@ enum HTMLUtils {
             let file = (src as NSString).lastPathComponent
             if src == url || (file == targetFile && file.count > 3) || (baseFilename(src) == targetBase && targetBase.count > 3) {
                 try img.remove()
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Remove a leading byline/dateline element whose text is dominated by the article `author`
+    /// (typically "date · author"). The reader renders author + date in its own chrome, so this
+    /// masthead line is a duplicate. Only the leading masthead region is scanned — the walk stops at
+    /// the first substantial prose paragraph — and only a short element containing the author is
+    /// removed, so a paragraph that merely mentions the author is left alone. No-op when `author` is
+    /// blank/too short to identify reliably.
+    static func removeDuplicateByline(_ doc: Document, author: String) throws {
+        let name = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name.count >= 3 else { return }
+        let needle = name.lowercased()
+        for el in try doc.select("p, div, span, address, time, li, h3, h4, h5, h6") {
+            let text = try el.text().trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.count > 200 { break }   // reached prose; bylines sit above the article text
+            if text.count <= name.count + 40, text.lowercased().contains(needle) {
+                try el.remove()
                 return
             }
         }
+    }
+
+    /// Fallback lead-image de-dup: remove the article's leading media — the first `<figure>` (or a
+    /// standalone leading `<img>`) that appears before the first substantial prose paragraph. Used
+    /// when `removeImageByURL` can't match the hoisted header image to its in-body copy because the
+    /// page's og:image and body image are different derivatives of the same source (e.g. Golem).
+    /// Returns `false` (removing nothing) when the first media element only appears after real prose,
+    /// where it is a content image rather than the lead.
+    @discardableResult
+    static func removeLeadingLeadImage(_ doc: Document) throws -> Bool {
+        for el in try doc.select("figure, img, p") {
+            switch el.tagName() {
+            case "p":
+                let text = try el.text().trimmingCharacters(in: .whitespacesAndNewlines)
+                if text.count > 200 { return false }   // prose precedes any lead media → keep images
+            case "figure", "img":
+                // A figure is hit before its child <img> (document order), so removing it drops both.
+                try el.remove()
+                return true
+            default:
+                break
+            }
+        }
+        return false
     }
 
     static func extractMainContent(_ html: String, selector: String, removeSelectors: [String]) throws -> String {
