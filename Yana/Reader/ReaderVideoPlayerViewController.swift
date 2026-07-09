@@ -14,6 +14,12 @@ final class ReaderVideoPlayerViewController: UIViewController {
 
     private let embedURL: URL
     private var webView: WKWebView!
+    private var closeButton: UIButton!
+
+    /// Vertical drag distance past which releasing dismisses the player.
+    private static let dismissThreshold: CGFloat = 120
+    /// Downward flick velocity that dismisses regardless of distance dragged.
+    private static let dismissVelocity: CGFloat = 900
 
     /// Builds a player for the embed, or returns `nil` when the embed isn't a playable video (e.g.
     /// a tweet, or a video whose id couldn't be resolved) — the caller then opens it externally.
@@ -77,7 +83,46 @@ final class ReaderVideoPlayerViewController: UIViewController {
         ])
 
         addCloseButton()
+        addDismissPanGesture()
         webView.loadHTMLString(Self.html(embedURL: embedURL), baseURL: URL(string: ReaderWeb.baseOrigin))
+    }
+
+    /// Lets the user swipe the player down to dismiss it, mirroring the sheet-style gesture (the
+    /// full-screen presentation style doesn't provide one). The content tracks the drag and either
+    /// snaps back or dismisses on release, depending on distance dragged and flick velocity.
+    private func addDismissPanGesture() {
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handleDismissPan))
+        pan.delegate = self
+        view.addGestureRecognizer(pan)
+    }
+
+    @objc private func handleDismissPan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
+
+        switch gesture.state {
+        case .changed:
+            // Only follow downward drags; clamp upward movement to zero.
+            let offset = max(0, translation.y)
+            webView.transform = CGAffineTransform(translationX: 0, y: offset)
+            closeButton.transform = CGAffineTransform(translationX: 0, y: offset)
+            // Fade the content as it slides toward the edge.
+            let progress = min(1, offset / (view.bounds.height * 0.6))
+            webView.alpha = 1 - progress * 0.5
+        case .ended, .cancelled:
+            let shouldDismiss = translation.y > Self.dismissThreshold || velocity.y > Self.dismissVelocity
+            if shouldDismiss {
+                close()
+            } else {
+                UIView.animate(withDuration: 0.25) {
+                    self.webView.transform = .identity
+                    self.closeButton.transform = .identity
+                    self.webView.alpha = 1
+                }
+            }
+        default:
+            break
+        }
     }
 
     private func addCloseButton() {
@@ -97,6 +142,7 @@ final class ReaderVideoPlayerViewController: UIViewController {
             button.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             button.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
         ])
+        closeButton = button
     }
 
     @objc private func close() {
@@ -122,5 +168,22 @@ final class ReaderVideoPlayerViewController: UIViewController {
         <iframe src="\(src)" allow="\(allow)" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
         </div></body></html>
         """
+    }
+}
+
+extension ReaderVideoPlayerViewController: UIGestureRecognizerDelegate {
+    /// Only start the dismiss drag for predominantly-downward gestures, so horizontal touches
+    /// (e.g. the video player's scrubber) still reach the web view.
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
+        let velocity = pan.velocity(in: view)
+        return velocity.y > 0 && abs(velocity.y) > abs(velocity.x)
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
     }
 }
