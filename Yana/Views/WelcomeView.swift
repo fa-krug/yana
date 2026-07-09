@@ -14,6 +14,7 @@ struct WelcomeView: View {
         case welcome, ai, feeds
     }
 
+    @Environment(\.modelContext) private var modelContext
     @State private var step: Step = .welcome
     @State private var settings = AppSettings()
 
@@ -24,7 +25,7 @@ struct WelcomeView: View {
                 switch step {
                 case .welcome: WelcomeIntroPage()
                 case .ai: OnboardingAIPage(settings: settings)
-                case .feeds: OnboardingFeedsPage(onFinish: onFinish)
+                case .feeds: OnboardingFeedsPage()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,9 +65,17 @@ struct WelcomeView: View {
                     .controlSize(.large)
                     .accessibilityIdentifier("onboardingBackButton")
                 }
-                // The feeds step completes via its own in-page "Finish" button, so the footer
-                // only carries the forward action on the earlier steps.
-                if step != .feeds {
+                // The final step completes onboarding via "Finish"; earlier steps advance the pager.
+                if step == .feeds {
+                    Button(action: finish) {
+                        Text("Finish")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("onboardingFinishButton")
+                } else {
                     Button(action: goForward) {
                         Text("Continue")
                             .font(.headline)
@@ -106,6 +115,14 @@ struct WelcomeView: View {
             return
         }
         step = next
+    }
+
+    /// Completes onboarding and kicks off a full aggregation for the feeds just added.
+    private func finish() {
+        UpdateActivity.shared.restart {
+            _ = await AggregationService(context: modelContext).updateAll()
+        }
+        onFinish()
     }
 }
 
@@ -335,9 +352,6 @@ private struct OnboardingAIPage: View {
 // MARK: - Page 3: First feed (add or import)
 
 private struct OnboardingFeedsPage: View {
-    /// Completes onboarding (called by the in-page "Finish" button).
-    var onFinish: () -> Void
-
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Feed.createdAt) private var feeds: [Feed]
 
@@ -353,10 +367,10 @@ private struct OnboardingFeedsPage: View {
                         .font(.system(size: 52, weight: .semibold))
                         .foregroundStyle(.tint)
                         .accessibilityHidden(true)
-                    Text("Add Your First Feed")
+                    Text("Add Your Feeds")
                         .font(.largeTitle.bold())
                         .multilineTextAlignment(.center)
-                    Text("Add a feed or import an OPML file to get started. You can always add more later.")
+                    Text("Add as many feeds as you like, or import an OPML file to get started. You can always add more later.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -391,17 +405,6 @@ private struct OnboardingFeedsPage: View {
                 if !feeds.isEmpty {
                     addedFeedsList
                 }
-
-                Button(action: finish) {
-                    Text("Finish")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .padding(.top, 8)
-                .accessibilityIdentifier("onboardingFinishButton")
             }
             .padding(.horizontal, 24)
             .padding(.top, 32)
@@ -454,14 +457,6 @@ private struct OnboardingFeedsPage: View {
         .background(Color(.secondarySystemBackground),
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityIdentifier("onboardingAddedFeeds")
-    }
-
-    /// Completes onboarding and kicks off a full aggregation for the feeds just added.
-    private func finish() {
-        UpdateActivity.shared.restart {
-            _ = await AggregationService(context: modelContext).updateAll()
-        }
-        onFinish()
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
