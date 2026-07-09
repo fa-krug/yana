@@ -11,6 +11,15 @@ enum ArticleUpsert {
     /// refresh cadence (300s) so separate runs never reorder relative to each other.
     static let importJitterWindow: TimeInterval = 180
 
+    /// Default block converter: the SwiftSoup HTML → `[Block]` parse. It runs on the main actor
+    /// when `apply` is called directly (tests, single-article reload), which is fine for one item.
+    /// The bulk refresh path instead pre-parses every article **off the main actor** and injects
+    /// the result via `blocksFor`, so the heavy parse never runs on the main thread during a run
+    /// (see `AggregationService.parseBlocks`).
+    static func defaultBlocks(for item: AggregatedArticle) -> [Block] {
+        BlockParser.blocks(fromHTML: item.content, baseURL: URL(string: item.url))
+    }
+
     @discardableResult
     @MainActor
     static func apply(
@@ -19,7 +28,8 @@ enum ArticleUpsert {
         starredTag: Tag?,
         context: ModelContext,
         now: Date,
-        jitter: () -> TimeInterval = { .random(in: 0..<importJitterWindow) }
+        jitter: () -> TimeInterval = { .random(in: 0..<importJitterWindow) },
+        blocksFor: (AggregatedArticle) -> [Block] = ArticleUpsert.defaultBlocks
     ) -> Int {
         // Build the dedup index once (O(n)) instead of scanning the relationship per item.
         var byIdentifier: [String: Article] = [:]
@@ -29,8 +39,9 @@ enum ArticleUpsert {
         for item in aggregated {
             // The pipeline's sanitized HTML is converted to native blocks here — the single
             // import-time conversion point (also covers AI improve/translate output, which arrives
-            // as HTML in `item.content`). Conversion runs off the reader's render path.
-            let blocks = BlockParser.blocks(fromHTML: item.content, baseURL: URL(string: item.url))
+            // as HTML in `item.content`). The bulk refresh path supplies these blocks pre-parsed
+            // off the main actor; direct callers fall back to parsing inline (`defaultBlocks`).
+            let blocks = blocksFor(item)
             if let existing = byIdentifier[item.identifier] {
                 // Update: refresh content; re-snapshot feed tags; preserve Starred.
                 let wasStarred = existing.isStarred
