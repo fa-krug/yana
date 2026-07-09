@@ -1,3 +1,4 @@
+import AVKit
 import UIKit
 import WebKit
 
@@ -23,9 +24,29 @@ final class ReaderVideoPlayerViewController: UIViewController {
 
     /// Builds a player for the embed, or returns `nil` when the embed isn't a playable video (e.g.
     /// a tweet, or a video whose id couldn't be resolved) — the caller then opens it externally.
-    static func make(for embed: Embed) -> ReaderVideoPlayerViewController? {
+    /// A `.video` embed (a direct HLS/MP4 stream, e.g. Reddit `v.redd.it`) plays in a native
+    /// `AVPlayerViewController`; iframe providers (YouTube/Dailymotion) play in a `WKWebView`.
+    static func make(for embed: Embed) -> UIViewController? {
+        if embed.provider == .video {
+            guard let url = URL(string: embed.externalURL) else { return nil }
+            return makeDirectVideoPlayer(url: url)
+        }
         guard let url = playerURL(for: embed) else { return nil }
         return ReaderVideoPlayerViewController(embedURL: url)
+    }
+
+    /// A native full-screen player for a direct video stream. `AVPlayerViewController` provides the
+    /// scrubber, fullscreen, Picture-in-Picture and AirPlay controls; the `.playback` audio session
+    /// lets the video play with sound even when the ring/silent switch is on.
+    private static func makeDirectVideoPlayer(url: URL) -> AVPlayerViewController {
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let controller = AVPlayerViewController()
+        controller.player = AVPlayer(url: url)
+        controller.modalPresentationStyle = .fullScreen
+        controller.allowsPictureInPicturePlayback = true
+        controller.player?.play()
+        return controller
     }
 
     /// Maps an embed to its inline-playable embed-player URL, or `nil` when it isn't a video we can
@@ -39,6 +60,9 @@ final class ReaderVideoPlayerViewController: UIViewController {
         case .dailymotion:
             guard let id = dailymotionID(from: embed.externalURL) else { return nil }
             return URL(string: "https://geo.dailymotion.com/player.html?video=\(id)&autoplay=1")
+        case .video:
+            // A direct stream (HLS/MP4): the "player URL" is the stream itself, played via AVPlayer.
+            return URL(string: embed.externalURL)
         case .tweet, .generic:
             return nil
         }

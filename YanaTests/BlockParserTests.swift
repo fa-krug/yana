@@ -68,6 +68,33 @@ struct BlockParserTests {
         #expect(embed.thumbnailRef == "yana-img://poster1")
     }
 
+    @Test func recognizesHostedVideoAsInlineVideoEmbed() {
+        // Mirrors RedditAggregator.makeVideoHTML / TagesschauAggregator: a Reddit-hosted (v.redd.it)
+        // video is emitted as an HTML5 <video> with a <source> stream and a cached poster. It must
+        // survive HTML→blocks conversion as a playable .video embed (not be dropped as chrome).
+        let html = """
+        <header><video controls playsinline preload="metadata" poster="yana-img://poster9">
+        <source src="https://v.redd.it/abc123/HLSPlaylist.m3u8" type="application/vnd.apple.mpegurl">
+        Your browser does not support the video element.</video></header>
+        """
+        let blocks = BlockParser.blocks(fromHTML: html)
+        guard case let .embed(embed) = blocks.first else { Issue.record("expected video embed, got \(blocks)"); return }
+        #expect(embed.provider == .video)
+        #expect(embed.externalURL == "https://v.redd.it/abc123/HLSPlaylist.m3u8")
+        #expect(embed.thumbnailRef == "yana-img://poster9")
+        // The <video> element's plain-text fallback must not leak into the body as a paragraph.
+        #expect(!BlockParser.plainText(blocks).contains("does not support"))
+    }
+
+    @Test func hostedVideoWithoutSourceUsesElementSrc() {
+        let html = #"<video src="https://v.redd.it/xyz/DASH_720.mp4"></video>"#
+        let blocks = BlockParser.blocks(fromHTML: html)
+        guard case let .embed(embed) = blocks.first else { Issue.record("expected video embed, got \(blocks)"); return }
+        #expect(embed.provider == .video)
+        #expect(embed.externalURL == "https://v.redd.it/xyz/DASH_720.mp4")
+        #expect(embed.thumbnailRef == nil)
+    }
+
     @Test func recognizesTweetBlockquoteAsEmbed() {
         let html = #"<blockquote><p><strong>@nasa</strong> · <a href="https://x.com/nasa/status/123">View on X</a></p><p>Hello universe</p></blockquote>"#
         let blocks = BlockParser.blocks(fromHTML: html)

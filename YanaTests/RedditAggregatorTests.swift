@@ -412,8 +412,9 @@ struct RedditAggregatorTests {
 
     // MARK: - Reddit-hosted video
 
-    /// A native `v.redd.it` video post must embed an inline HTML5 player using the HLS stream
-    /// (audio + inline playback in WKWebView), with the Reddit preview image as the poster.
+    /// A native `v.redd.it` video post must embed an inline HTML5 player using the HLS stream, with
+    /// the Reddit preview image as the poster — and that `<video>` must survive `BlockParser` as a
+    /// playable `.video` embed in the native reader (the regression this exercises end-to-end).
     @Test func hostedVideoPostEmbedsInlinePlayer() async throws {
         let rec = FetchRecorder()
         let listing = """
@@ -437,6 +438,17 @@ struct RedditAggregatorTests {
         #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "poster image must be localized")
         #expect(rec.urls.contains("https://preview.redd.it/poster.jpg?width=640"),
                 "the preview image must be cached as the video poster")
+
+        // End-to-end: the aggregator's `<video>` HTML must convert into a playable `.video` embed
+        // (with the HLS stream URL + cached poster) rather than being dropped by BlockParser.
+        let blocks = BlockParser.blocks(fromHTML: a.content)
+        let videoEmbed = blocks.compactMap { block -> Embed? in
+            if case let .embed(embed) = block, embed.provider == .video { return embed }
+            return nil
+        }.first
+        let embed = try #require(videoEmbed, "the hosted video must survive as a .video embed")
+        #expect(embed.externalURL == "https://v.redd.it/abc123/HLSPlaylist.m3u8?a=1&b=2")
+        #expect(embed.thumbnailRef?.hasPrefix("\(ReaderWeb.imageScheme)://") == true)
     }
 
     /// Regression: a *crosspost* of a video post. Reddit omits `media`/`preview` from the nested
