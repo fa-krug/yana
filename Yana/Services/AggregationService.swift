@@ -158,6 +158,13 @@ final class AggregationService {
         let feeds = ((try? context.fetch(descriptor)) ?? [])
             .filter { settings.isSourceEnabled($0.type) }
 
+        // Flush any pending inserts so every feed has a *permanent* identifier before we capture
+        // it. We carry ids across the task boundary and re-resolve each with `context.model(for:)`;
+        // the per-feed `save()` below persists *all* pending inserts, so a temporary id captured
+        // here would be invalidated the moment another feed saves — its later re-resolution then
+        // faults on "backing data could no longer be found" (a hard SwiftData crash).
+        save()
+
         // Run per-feed work concurrently with a bounded sliding window. Each `aggregate(feed:)`
         // stays on the main actor, so its synchronous SwiftData reads/writes remain serialized
         // and race-free; only the network/AI `await` suspension points interleave. We carry the
