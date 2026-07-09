@@ -24,7 +24,7 @@ struct WelcomeView: View {
                 switch step {
                 case .welcome: WelcomeIntroPage()
                 case .ai: OnboardingAIPage(settings: settings)
-                case .feeds: OnboardingFeedsPage()
+                case .feeds: OnboardingFeedsPage(onFinish: onFinish)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -42,18 +42,12 @@ struct WelcomeView: View {
 
     // MARK: Chrome
 
+    // Reserves the top inset so the paged content doesn't butt against the status bar. Onboarding
+    // can only be completed from the final step's "Finish" button, so there is no Skip affordance.
     private var topBar: some View {
-        HStack {
-            Spacer()
-            if step != .welcome {
-                Button(String(localized: "Skip"), action: onFinish)
-                    .font(.body)
-                    .accessibilityIdentifier("onboardingSkipButton")
-            }
-        }
-        .frame(height: 24)
-        .padding(.horizontal, 20)
-        .padding(.top, 12)
+        Color.clear
+            .frame(height: 24)
+            .padding(.top, 12)
     }
 
     private var footer: some View {
@@ -70,20 +64,18 @@ struct WelcomeView: View {
                     .controlSize(.large)
                     .accessibilityIdentifier("onboardingBackButton")
                 }
-                Button(action: goForward) {
-                    Group {
-                        if step == .feeds {
-                            Text("Get Started")
-                        } else {
-                            Text("Continue")
-                        }
+                // The feeds step completes via its own in-page "Finish" button, so the footer
+                // only carries the forward action on the earlier steps.
+                if step != .feeds {
+                    Button(action: goForward) {
+                        Text("Continue")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
                     }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("onboardingContinueButton")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .accessibilityIdentifier("onboardingContinueButton")
             }
         }
         .padding(.horizontal, 24)
@@ -343,11 +335,14 @@ private struct OnboardingAIPage: View {
 // MARK: - Page 3: First feed (add or import)
 
 private struct OnboardingFeedsPage: View {
+    /// Completes onboarding (called by the in-page "Finish" button).
+    var onFinish: () -> Void
+
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Feed.createdAt) private var feeds: [Feed]
 
     @State private var showCreateFeed = false
     @State private var isImporting = false
-    @State private var addedCount = 0
     @State private var toast: ToastMessage?
 
     var body: some View {
@@ -378,6 +373,7 @@ private struct OnboardingFeedsPage: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
+                    .accessibilityIdentifier("onboardingAddFeedButton")
 
                     Button {
                         isImporting = true
@@ -389,14 +385,23 @@ private struct OnboardingFeedsPage: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
+                    .accessibilityIdentifier("onboardingImportButton")
                 }
 
-                if addedCount > 0 {
-                    Label("You're all set.", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline)
-                        .foregroundStyle(.green)
-                        .transition(.opacity)
+                if !feeds.isEmpty {
+                    addedFeedsList
                 }
+
+                Button(action: finish) {
+                    Text("Finish")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.top, 8)
+                .accessibilityIdentifier("onboardingFinishButton")
             }
             .padding(.horizontal, 24)
             .padding(.top, 32)
@@ -404,14 +409,12 @@ private struct OnboardingFeedsPage: View {
             .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("onboardingFeedsScreen")
-        .animation(.easeInOut, value: addedCount)
+        .animation(.easeInOut, value: feeds.count)
         .sheet(isPresented: $showCreateFeed) {
             NavigationStack {
-                FeedEditorView(feed: nil) { newFeed in
-                    guard newFeed.enabled else { return }
-                    updateOne(newFeed)
-                    addedCount += 1
-                }
+                // The editor inserts & saves the feed; the list below updates via @Query.
+                // Aggregation is deferred to the Finish button.
+                FeedEditorView(feed: nil) { _ in }
             }
         }
         .fileImporter(
@@ -424,12 +427,41 @@ private struct OnboardingFeedsPage: View {
         .toast($toast)
     }
 
-    private func updateOne(_ feed: Feed) {
-        UpdateActivity.shared.restart {
-            let count = await AggregationService(context: modelContext).update(feed: feed)
-            guard !Task.isCancelled else { return }
-            toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
+    /// The feeds added so far (created or imported), shown so the user can see their progress
+    /// before finishing.
+    private var addedFeedsList: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Your Feeds")
+                .font(.headline)
+            ForEach(feeds) { feed in
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(feed.name.isEmpty ? feed.identifier : feed.name)
+                            .font(.body)
+                        Text(feed.type.displayName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color(.secondarySystemBackground),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityIdentifier("onboardingAddedFeeds")
+    }
+
+    /// Completes onboarding and kicks off a full aggregation for the feeds just added.
+    private func finish() {
+        UpdateActivity.shared.restart {
+            _ = await AggregationService(context: modelContext).updateAll()
+        }
+        onFinish()
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
@@ -441,14 +473,8 @@ private struct OnboardingFeedsPage: View {
             return
         }
         let r = FeedPortability.importOPML(xml, context: modelContext)
-        addedCount += r.imported
         toast = ToastMessage(text: String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped)."))
-        // Imported feeds aren't auto-fetched — kick a full update so their articles appear.
-        if r.imported > 0 {
-            UpdateActivity.shared.restart {
-                _ = await AggregationService(context: modelContext).updateAll()
-            }
-        }
+        // Aggregation is deferred to the Finish button.
     }
 }
 
