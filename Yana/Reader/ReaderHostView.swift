@@ -108,6 +108,9 @@ struct ReaderScreen: View {
     @State private var toast: ToastMessage?
     @State private var isSummarizing = false
     @State private var reloadToken = 0
+    /// Set by the Settings "Show Welcome Screen Again" row; consumed once the Settings sheet has
+    /// fully dismissed so the welcome cover presents cleanly (no stacked-presentation race).
+    @State private var restartOnboardingPending = false
 
     @State private var filteredArticles: [ArticleSummary] = []
 
@@ -165,6 +168,7 @@ struct ReaderScreen: View {
                 } actions: {
                     Button(String(localized: "Add Your First Feed")) { appState.showSettings = true }
                         .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("emptyAddFirstFeed")
                 }
             case .loaded:
                 ReaderHostView(
@@ -189,7 +193,16 @@ struct ReaderScreen: View {
                 .ignoresSafeArea()
             }
         }
-        .sheet(isPresented: $appState.showSettings) { NavigationStack { SettingsScreenView() } }
+        .sheet(isPresented: $appState.showSettings, onDismiss: {
+            if restartOnboardingPending {
+                restartOnboardingPending = false
+                appState.showWelcome = true
+            }
+        }) {
+            NavigationStack {
+                SettingsScreenView(onRestartOnboarding: { restartOnboardingPending = true })
+            }
+        }
         .sheet(isPresented: $appState.showArticleList) {
             NavigationStack {
                 ArticleListView(
