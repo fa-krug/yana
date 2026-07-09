@@ -66,7 +66,7 @@ enum BlockParser {
     /// noise (table cells as stray paragraphs, etc.).
     private static let droppedTags: Set<String> = [
         "table", "thead", "tbody", "tfoot", "tr", "td", "th", "form", "input", "button", "select",
-        "textarea", "script", "style", "noscript", "iframe", "video", "audio", "svg", "canvas",
+        "textarea", "script", "style", "noscript", "iframe", "audio", "svg", "canvas",
     ]
 
     private static func convert(_ container: Element, baseURL: URL?) -> [Block] {
@@ -140,6 +140,9 @@ enum BlockParser {
             case "img":
                 flush()
                 if let image = imageBlock(element) { blocks.append(image) }
+            case "video":
+                flush()
+                if let embed = videoEmbed(element) { blocks.append(.embed(embed)) }
             case "figure":
                 flush()
                 blocks.append(contentsOf: figureBlocks(element, baseURL: baseURL))
@@ -188,6 +191,22 @@ enum BlockParser {
         return .image(ref: src, caption: caption)
     }
 
+    /// A Reddit-hosted / Tagesschau `<video>` → a `.video` embed. The stream URL comes from the
+    /// first `<source src>` (else the element's own `src`); the `poster` attribute — already
+    /// localized to a `yana-img://` ref by the aggregator — is the card thumbnail. Returns nil when
+    /// there is no playable source.
+    private static func videoEmbed(_ element: Element) -> Embed? {
+        let src: String? = {
+            if let source = firstElement(in: element, "source"),
+               let s = try? source.attr("src"), !s.isEmpty { return s }
+            if let s = try? element.attr("src"), !s.isEmpty { return s }
+            return nil
+        }()
+        guard let src, !src.isEmpty else { return nil }
+        let poster = (try? element.attr("poster")).flatMap { $0.isEmpty ? nil : $0 }
+        return Embed(provider: .video, thumbnailRef: poster, externalURL: src, title: nil)
+    }
+
     // MARK: - Inline runs
 
     private static func inlineRuns(
@@ -210,6 +229,11 @@ enum BlockParser {
             if tag == "img" {
                 // Images can't live inside a text run; skip here. The block walk re-extracts them
                 // as standalone image blocks (see the `<p>`/`figure` cases in `convert`).
+                continue
+            }
+            if tag == "video" {
+                // A `<video>` is a block-level media embed handled in `convert`; skip it here so its
+                // plain-text fallback ("Your browser does not support…") never leaks into a run.
                 continue
             }
 
