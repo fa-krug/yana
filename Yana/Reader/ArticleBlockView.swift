@@ -42,7 +42,9 @@ struct ReaderArticle: Equatable {
 
 /// Native SwiftUI renderer for an article's `[Block]` body — replaces the WebView + themed-HTML
 /// reader page. Renders top-to-bottom in a scroll view: heading + dateline, the AI summary card
-/// (after the lead image), then each block. Text is `AttributedString` so selection, Dynamic Type
+/// (after the lead image), then each block. Top-level flowing text renders through `SelectableText`
+/// (a hosted `UITextView`) so it is fully selectable with the system edit menu; text nested in a
+/// list/blockquote stays SwiftUI `Text` (selectable via the ambient `.textSelection`). Dynamic Type
 /// and accessibility come for free; links and embeds open externally via `onOpenLink`.
 struct ArticleBlockView: View {
     let article: ReaderArticle
@@ -69,7 +71,7 @@ struct ArticleBlockView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 ForEach(Array(bodyBlocks.enumerated()), id: \.offset) { _, block in
-                    BlockNodeView(block: block, bodySize: bodySize,
+                    BlockNodeView(block: block, bodySize: bodySize, design: font.uiDesign,
                                   leadImageRef: leadImageRef, onOpenLink: onOpenLink,
                                   onPlayVideo: onPlayVideo)
                 }
@@ -119,7 +121,8 @@ struct ArticleBlockView: View {
             dateline
             // Lead image (if the first block is an image) renders before the summary.
             if case let .image(ref, caption)? = bodyBlocks.first {
-                BlockImageView(ref: ref, caption: caption, bodySize: bodySize)
+                BlockImageView(ref: ref, caption: caption, bodySize: bodySize,
+                               design: font.uiDesign, onOpenLink: onOpenLink)
             }
             summaryCard
         }
@@ -189,23 +192,46 @@ struct ArticleBlockView: View {
 private struct BlockNodeView: View {
     let block: Block
     let bodySize: CGFloat
+    /// UIKit typeface design for text baked into a `SelectableText` (`UITextView`).
+    let design: UIFontDescriptor.SystemDesign
     let leadImageRef: String?
     let onOpenLink: (URL) -> Void
     let onPlayVideo: (Embed) -> Void
+    /// Top-level flowing text renders in a `UITextView` (`SelectableText`) for full, reliable text
+    /// selection. Text nested inside a list item or blockquote stays a SwiftUI `Text` — its baseline
+    /// alignment and color treatment matter there, and it is still selectable via the ambient
+    /// `.textSelection(.enabled)`.
+    var selectable: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         switch block {
         case .paragraph(let runs):
-            Text(attributedString(from: runs))
-                .font(.system(size: bodySize))
-                .fixedSize(horizontal: false, vertical: true)
+            if selectable {
+                SelectableText(
+                    attributedText: ReaderAttributedText.make(runs: runs, baseSize: bodySize, design: design),
+                    onOpenLink: onOpenLink
+                )
+            } else {
+                Text(attributedString(from: runs))
+                    .font(.system(size: bodySize))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         case .heading(let level, let runs):
-            Text(attributedString(from: runs))
-                .font(.system(size: headingSize(level), weight: .bold))
-                .fixedSize(horizontal: false, vertical: true)
+            if selectable {
+                SelectableText(
+                    attributedText: ReaderAttributedText.make(runs: runs, baseSize: headingSize(level),
+                                                              weight: .bold, design: design),
+                    onOpenLink: onOpenLink
+                )
                 .padding(.top, 4)
+            } else {
+                Text(attributedString(from: runs))
+                    .font(.system(size: headingSize(level), weight: .bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
         case .list(let ordered, let items):
             listView(ordered: ordered, items: items)
         case .blockquote(let inner):
@@ -213,16 +239,20 @@ private struct BlockNodeView: View {
         case .image(let ref, let caption):
             // The lead image is rendered in the header; skip it here to avoid a duplicate.
             if ref != leadImageRef {
-                BlockImageView(ref: ref, caption: caption, bodySize: bodySize)
+                BlockImageView(ref: ref, caption: caption, bodySize: bodySize,
+                               design: design, onOpenLink: onOpenLink)
             }
         case .embed(let embed):
             EmbedCardView(embed: embed, baseSize: bodySize, onOpen: openExternal, onPlayVideo: onPlayVideo)
         case .codeBlock(let text, _):
-            Text(text)
-                .font(.system(size: bodySize * 0.9, design: .monospaced))
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            // Code pins a monospaced face regardless of the chosen body typeface.
+            SelectableText(
+                attributedText: ReaderAttributedText.make(string: text, size: bodySize * 0.9, design: .monospaced),
+                onOpenLink: onOpenLink
+            )
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
         case .divider:
             Divider().padding(.vertical, 4)
         }
@@ -237,9 +267,9 @@ private struct BlockNodeView: View {
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(itemBlocks.enumerated()), id: \.offset) { _, b in
-                            BlockNodeView(block: b, bodySize: bodySize,
+                            BlockNodeView(block: b, bodySize: bodySize, design: design,
                                           leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                          onPlayVideo: onPlayVideo)
+                                          onPlayVideo: onPlayVideo, selectable: false)
                         }
                     }
                 }
@@ -253,9 +283,9 @@ private struct BlockNodeView: View {
             Rectangle().fill(Color.accentColor.opacity(0.6)).frame(width: 3)
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(inner.enumerated()), id: \.offset) { _, b in
-                    BlockNodeView(block: b, bodySize: bodySize,
+                    BlockNodeView(block: b, bodySize: bodySize, design: design,
                                   leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                  onPlayVideo: onPlayVideo)
+                                  onPlayVideo: onPlayVideo, selectable: false)
                 }
             }
             .padding(.leading, 12)
@@ -285,15 +315,19 @@ private struct BlockImageView: View {
     let ref: String
     let caption: [InlineRun]
     let bodySize: CGFloat
+    var design: UIFontDescriptor.SystemDesign = .default
+    var onOpenLink: (URL) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ReaderImageView(ref: ref)
             let captionRuns = caption.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             if !captionRuns.isEmpty {
-                Text(attributedString(from: captionRuns))
-                    .font(.system(size: bodySize * 0.8))
-                    .foregroundStyle(.secondary)
+                SelectableText(
+                    attributedText: ReaderAttributedText.make(runs: captionRuns, baseSize: bodySize * 0.8,
+                                                              design: design, color: .secondaryLabel),
+                    onOpenLink: onOpenLink
+                )
             }
         }
     }
