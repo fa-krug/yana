@@ -401,13 +401,13 @@
         }
       }
     },
-    "Add feeds in Settings, then pull down to refresh.": {
+    "Add your first feed to start reading.": {
       "comment": "A description shown when there are no articles to display.",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Feeds in den Einstellungen hinzufügen und dann zum Aktualisieren nach unten ziehen."
+            "value": "Ersten Feed hinzufügen, um mit dem Lesen zu beginnen."
           }
         }
       }

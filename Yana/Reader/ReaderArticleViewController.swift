@@ -1,5 +1,24 @@
 import UIKit
 import SafariServices
+import SwiftUI
+
+/// The reader's zero-state, shown inside the pager (so the nav-bar chrome stays) when the timeline
+/// is empty. Offers a direct shortcut to create the first feed.
+struct ReaderEmptyStateView: View {
+    var onCreateFeed: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("No Articles", systemImage: "tray")
+                .accessibilityIdentifier("emptyArticlesTitle")
+        } description: {
+            Text("Add your first feed to start reading.")
+        } actions: {
+            Button(String(localized: "Add Your First Feed"), action: onCreateFeed)
+                .buttonStyle(.borderedProminent)
+        }
+    }
+}
 
 /// Pages through the timeline with native opaque nav bar + toolbar and NNW-style tap-to-hide
 /// full-screen. Adapted from NetNewsWire's ArticleViewController (no read state / extractor / search).
@@ -16,6 +35,8 @@ final class ReaderArticleViewController: UIViewController,
     var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
+    /// Invoked by the empty-timeline page's shortcut button to begin creating the first feed.
+    var onCreateFeed: (() -> Void)?
     /// Whether AI is configured/available; gates the Summarize menu item. Set by the host.
     var aiReady = false
     /// True while an on-demand summary is in flight; disables the Summarize menu item.
@@ -27,6 +48,21 @@ final class ReaderArticleViewController: UIViewController,
     var resolveArticle: ((ArticleSummary) -> Article?)?
     private var index = 0
     private var isTransitioning = false
+
+    /// True while the empty-timeline zero-state page is displayed. Drives the reduced chrome
+    /// (no article-specific controls / toolbar) and gates the article-dependent bar updates.
+    private var isShowingEmptyState = false
+
+    /// The zero-state page shown inside the pager when there are no articles. Built lazily; its
+    /// button reads `onCreateFeed` at tap time, so it works even though the callback is assigned
+    /// after this controller is created.
+    private lazy var emptyStateController: UIViewController = {
+        let host = UIHostingController(
+            rootView: ReaderEmptyStateView(onCreateFeed: { [weak self] in self?.onCreateFeed?() })
+        )
+        host.view.backgroundColor = .systemBackground
+        return host
+    }()
 
     /// The pager's internal gesture scroll view (`UIPageViewController` hosts a private
     /// `_UIQueuingScrollView`), located by scanning the page controller's subviews. Used to detect
@@ -143,6 +179,12 @@ final class ReaderArticleViewController: UIViewController,
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        guard !isShowingEmptyState else {
+            // Zero-state: keep only the nav bar, never the article toolbar or full-screen mode.
+            navigationController?.setNavigationBarHidden(false, animated: false)
+            navigationController?.setToolbarHidden(true, animated: false)
+            return
+        }
         navigationController?.setToolbarHidden(false, animated: false)
         applyFullscreen(settings.articleFullscreenEnabled && isFullscreenAvailable, animated: false)
         displayedPage?.reload()
@@ -191,7 +233,13 @@ final class ReaderArticleViewController: UIViewController,
         menuItem.accessibilityIdentifier = "reader.menu"
         // rightBarButtonItems is ordered edge-inward: [menu, filter, star] puts the overflow menu at
         // the screen edge, then the filter, then the star (on-screen L→R: star, filter, menu).
-        navigationItem.rightBarButtonItems = [menuItem, filterItem, starItem]
+        navigationItem.rightBarButtonItems = rightBarItems
+    }
+
+    /// Right-hand nav items. Star is dropped in the zero-state (nothing to star yet); the overflow
+    /// menu and filter stay so Settings and the tag filter remain reachable.
+    private var rightBarItems: [UIBarButtonItem] {
+        isShowingEmptyState ? [menuItem, filterItem] : [menuItem, filterItem, starItem]
     }
 
     private func configureToolbar() {
@@ -225,8 +273,8 @@ final class ReaderArticleViewController: UIViewController,
         // custom-view bar item, which the bar cannot move into its automatic "•••" overflow; under a
         // width-constrained layout it overflows the *standard* buttons instead, and that collapse
         // sticks even after the spinner is gone unless a fresh layout is forced. Reassigning the
-        // (unchanged) right items is that nudge, so star + filter + menu reappear when refresh ends.
-        navigationItem.rightBarButtonItems = [menuItem, filterItem, starItem]
+        // (unchanged) right items is that nudge, so the standard buttons reappear when refresh ends.
+        navigationItem.rightBarButtonItems = rightBarItems
     }
 
     func setFilterActive(_ active: Bool) {
@@ -242,12 +290,39 @@ final class ReaderArticleViewController: UIViewController,
             ? String(localized: "Unstar article") : String(localized: "Star article")
     }
 
+    /// Switch to the zero-state: show the placeholder page inside the pager and strip the chrome
+    /// down to the nav bar (filter + overflow menu, which still reaches Settings), hiding the
+    /// article toolbar and any full-screen mode. Idempotent while already empty.
+    private func applyEmptyState() {
+        isShowingEmptyState = true
+        navigationController?.setNavigationBarHidden(false, animated: false)
+        navigationController?.setToolbarHidden(true, animated: false)
+        navigationItem.leftBarButtonItems = activityIndicator.isAnimating
+            ? [articleListItem, indicatorItem] : [articleListItem]
+        navigationItem.rightBarButtonItems = rightBarItems
+        speech.stop()
+        guard pageController.viewControllers?.first !== emptyStateController else { return }
+        pageController.setViewControllers([emptyStateController], direction: .forward, animated: false)
+    }
+
+    /// Restore the full article chrome (bar items, toolbar, full-screen preference) after leaving
+    /// the zero-state. No-op unless the zero-state was showing.
+    private func applyPopulatedChrome() {
+        guard isShowingEmptyState else { return }
+        isShowingEmptyState = false
+        navigationItem.leftBarButtonItems = [articleListItem]
+        navigationItem.rightBarButtonItems = rightBarItems
+        applyFullscreen(settings.articleFullscreenEnabled && isFullscreenAvailable, animated: false)
+    }
+
     // MARK: - Data
 
     func configure(articles: [ArticleSummary], index: Int) {
         self.articles = articles
         self.index = clamp(index)
         loadViewIfNeeded()
+        guard !articles.isEmpty else { applyEmptyState(); return }
+        applyPopulatedChrome()
         if let page = makePage(for: self.index) {
             // Warm the visible page's lead image before it is shown so its header renders on the
             // first frame instead of popping in after the page appears (the reveal gate in
@@ -285,6 +360,8 @@ final class ReaderArticleViewController: UIViewController,
     /// when `isPagerBusy` is false, so the `setViewControllers` calls here are safe.
     private func reconcile(toIndex index: Int) {
         needsReconcileAfterInteraction = false
+        guard !articles.isEmpty else { applyEmptyState(); return }
+        applyPopulatedChrome()
         let target = clamp(index)
         let displayedID = displayedPage?.article.identifier
         let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
@@ -421,7 +498,15 @@ final class ReaderArticleViewController: UIViewController,
     }
 
     private func buildMenuActions() -> [UIMenuElement] {
-        guard let article = currentArticle() else { return [] }
+        let settingsAction = UIAction(
+            title: String(localized: "Settings"),
+            image: UIImage(systemName: "gearshape")
+        ) { [weak self] _ in self?.onShowSettings?() }
+
+        // Zero-state (no article): only Settings is meaningful.
+        guard let article = currentArticle() else {
+            return [UIMenu(title: "", options: .displayInline, children: [settingsAction])]
+        }
         let config = ReaderMenuBuilder.config(
             hasURL: !article.url.isEmpty, aiReady: aiReady
         )
@@ -448,11 +533,7 @@ final class ReaderArticleViewController: UIViewController,
             actions.append(summarize)
         }
 
-        let settings = UIAction(
-            title: String(localized: "Settings"),
-            image: UIImage(systemName: "gearshape")
-        ) { [weak self] _ in self?.onShowSettings?() }
-        actions.append(UIMenu(title: "", options: .displayInline, children: [settings]))
+        actions.append(UIMenu(title: "", options: .displayInline, children: [settingsAction]))
 
         return actions
     }
