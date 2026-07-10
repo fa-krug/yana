@@ -13,6 +13,10 @@ enum TestStatus: Equatable {
 /// Secrets are read from / written to the Keychain via local @State; non-secret prefs go to
 /// `AppSettings` (UserDefaults).
 struct SettingsScreenView: View {
+    /// Called after the onboarding flag is reset, so the host can re-present the welcome screen
+    /// once this settings sheet has dismissed.
+    var onRestartOnboarding: () -> Void = {}
+
     @Environment(\.dismiss) private var dismiss
     @State private var settings = AppSettings()
     @State private var showNotificationDeniedAlert = false
@@ -477,6 +481,15 @@ struct SettingsScreenView: View {
                 Label("Reader View Inspired by NetNewsWire", systemImage: "heart")
                     .labelStyle(.tintedIcon(.pink))
             }
+            Button {
+                settings.hasCompletedOnboarding = false
+                onRestartOnboarding()
+                dismiss()
+            } label: {
+                Label("Show Welcome Screen Again", systemImage: "sparkles")
+                    .labelStyle(.tintedIcon(.orange))
+            }
+            .accessibilityIdentifier("settings.showWelcome")
         } header: {
             Text("About")
         } footer: {

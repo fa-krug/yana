@@ -158,6 +158,13 @@ final class AggregationService {
         let feeds = ((try? context.fetch(descriptor)) ?? [])
             .filter { settings.isSourceEnabled($0.type) }
 
+        // Flush any pending inserts so every feed has a *permanent* identifier before we capture
+        // it. We carry ids across the task boundary and re-resolve each with `context.model(for:)`;
+        // the per-feed `save()` below persists *all* pending inserts, so a temporary id captured
+        // here would be invalidated the moment another feed saves — its later re-resolution then
+        // faults on "backing data could no longer be found" (a hard SwiftData crash).
+        save()
+
         // Run per-feed work concurrently with a bounded sliding window. Each `aggregate(feed:)`
         // stays on the main actor, so its synchronous SwiftData reads/writes remain serialized
         // and race-free; only the network/AI `await` suspension points interleave. We carry the
@@ -341,7 +348,11 @@ final class AggregationService {
                     guard kept < cap else { throw CapReached() }        // run cap reached → stop fetching more
                     guard force || AggregationLogic.isWithinIntakeWindow(article.date, now: runNow) else { return }
                     let processed = await processor.process([article], ai: config.options.ai)
-                    inserted += await self.upsert(processed, feedID: feedID, now: runNow)
+                    // Parse each article's HTML into native blocks OFF the main actor before the
+                    // upsert hops back to it — the SwiftSoup parse is the heavy per-article cost and
+                    // running it on the main thread is what made the reader stutter during a refresh.
+                    let blocks = await Self.parseBlocks(processed)
+                    inserted += await self.upsert(processed, blocks: blocks, feedID: feedID, now: runNow)
                     kept += 1
                 }
             } catch is CapReached { /* normal stop: everything kept is upserted */ }
@@ -371,12 +382,31 @@ final class AggregationService {
     /// Upsert one run's processed article(s) into the context, *without* saving — the owning
     /// `aggregate(feed:)` saves once per feed (see its comment). Runs on the main actor (the
     /// SwiftData `context` is non-Sendable and main-actor-isolated); takes only Sendable values so
-    /// the streaming sink can call it across the actor boundary. Returns the number of newly
-    /// inserted articles.
+    /// the streaming sink can call it across the actor boundary. The `blocks` were parsed off the
+    /// main actor by `parseBlocks`, so this hop does only the light SwiftData writes. Returns the
+    /// number of newly inserted articles.
     @MainActor
-    private func upsert(_ processed: [AggregatedArticle], feedID: PersistentIdentifier, now: Date) -> Int {
+    private func upsert(
+        _ processed: [AggregatedArticle], blocks: [String: [Block]], feedID: PersistentIdentifier, now: Date
+    ) -> Int {
         guard let feed = self[feedID, as: Feed.self] else { return 0 }
-        return ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(), context: context, now: now)
+        return ArticleUpsert.apply(
+            processed, to: feed, starredTag: starredTag(), context: context, now: now,
+            // Every processed article is pre-parsed; the inline fallback is defensive and never hit.
+            blocksFor: { blocks[$0.identifier] ?? ArticleUpsert.defaultBlocks(for: $0) }
+        )
+    }
+
+    /// Convert each processed article's sanitized HTML into native `[Block]`s **off the main actor**.
+    /// `nonisolated` detaches this from the service's `@MainActor` isolation so the SwiftSoup parse —
+    /// the heaviest per-article step — runs on the cooperative pool, leaving the main thread free for
+    /// the reader. Only the resulting `Sendable` blocks cross back for the on-main upsert.
+    nonisolated static func parseBlocks(_ articles: [AggregatedArticle]) async -> [String: [Block]] {
+        var result: [String: [Block]] = [:]
+        for article in articles {
+            result[article.identifier] = ArticleUpsert.defaultBlocks(for: article)
+        }
+        return result
     }
 
     /// Persist pending context changes, ignoring the error — a failed save leaves the run's

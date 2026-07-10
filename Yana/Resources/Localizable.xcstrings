@@ -379,6 +379,16 @@
         }
       }
     },
+    "Add Your Feeds": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feeds hinzufügen"
+          }
+        }
+      }
+    },
     "Add Your First Feed": {
       "localizations": {
         "de": {
@@ -2938,12 +2948,42 @@
         }
       }
     },
+    "Finish": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fertig"
+          }
+        }
+      }
+    },
     "Get Started": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Los geht’s"
+          }
+        }
+      }
+    },
+    "Show Welcome Screen Again": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Willkommensbildschirm erneut anzeigen"
+          }
+        }
+      }
+    },
+    "Your Feeds": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hinzugefügte Feeds"
           }
         }
       }
@@ -3018,12 +3058,12 @@
         }
       }
     },
-    "Add a feed or import an OPML file to get started. You can always add more later.": {
+    "Add as many feeds as you like, or import an OPML file to get started. You can always add more later.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Füge einen Feed hinzu oder importiere eine OPML-Datei, um zu starten. Du kannst jederzeit weitere hinzufügen."
+            "value": "Beliebig viele Feeds hinzufügen oder eine OPML-Datei importieren, um loszulegen. Weitere lassen sich jederzeit ergänzen."
           }
         }
       }

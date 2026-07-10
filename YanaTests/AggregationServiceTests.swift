@@ -299,6 +299,42 @@ struct AggregationServiceTests {
         #expect(second == 0)
     }
 
+    // MARK: - Off-main block parsing (background-refresh lag)
+
+    /// The heavy SwiftSoup HTML → `[Block]` parse now runs off the main actor before the on-main
+    /// upsert, so it can't stutter the reader during a refresh. Verify the helper still produces the
+    /// same blocks `BlockParser` does, keyed by identifier.
+    @Test func parseBlocksMatchesBlockParserKeyedByIdentifier() async {
+        let a = AggregatedArticle(title: "A", identifier: "id-a", url: "https://x/a", rawContent: "",
+                                  content: "<p>Hello <b>world</b></p>", date: .now, author: "", iconURL: nil)
+        let b = AggregatedArticle(title: "B", identifier: "id-b", url: "https://x/b", rawContent: "",
+                                  content: "<h2>Heading</h2>", date: .now, author: "", iconURL: nil)
+
+        let parsed = await AggregationService.parseBlocks([a, b])
+
+        #expect(parsed["id-a"] == BlockParser.blocks(fromHTML: a.content, baseURL: URL(string: a.url)))
+        #expect(parsed["id-b"] == BlockParser.blocks(fromHTML: b.content, baseURL: URL(string: b.url)))
+    }
+
+    /// End-to-end: a bulk `updateAll()` run must still populate each imported article's native body
+    /// (the off-main parse feeds the on-main upsert), not just insert empty rows.
+    @Test func updateAllPopulatesArticleBodyViaOffMainParse() async throws {
+        let context = try makeContext()
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        context.insert(feed)
+
+        var item = self.aggregated("x1")
+        item.content = "<p>Body text</p>"
+        let article = item
+        let service = AggregationService(context: context) { _, _ in
+            FakeAggregator(articles: [article])
+        }
+        await service.updateAll()
+
+        #expect(feed.articles.count == 1)
+        #expect(feed.articles.first?.plainText.contains("Body text") == true)
+    }
+
     // MARK: - User-facing error messages
 
     @Test func userFacingMessageUsesLocalizedErrorDescription() {

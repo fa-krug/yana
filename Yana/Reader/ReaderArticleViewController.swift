@@ -16,6 +16,7 @@ struct ReaderEmptyStateView: View {
         } actions: {
             Button(String(localized: "Add Your First Feed"), action: onCreateFeed)
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("emptyAddFirstFeed")
         }
     }
 }

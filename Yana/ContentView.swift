@@ -1,10 +1,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    var appState: AppState
+    @Bindable var appState: AppState
 
     @State private var settings = AppSettings()
-    @State private var showWelcome = false
 
     /// Suppress the first-launch welcome during UI-test / screenshot runs so it never covers the
     /// reader the tests assert against.
@@ -15,14 +14,20 @@ struct ContentView: View {
 
     var body: some View {
         ReaderScreen(appState: appState)
-            .fullScreenCover(isPresented: $showWelcome) {
-                WelcomeView(onFinish: { showWelcome = false })
-                    .interactiveDismissDisabled()
+            .fullScreenCover(isPresented: $appState.showWelcome) {
+                WelcomeView(onFinish: {
+                    settings.hasCompletedOnboarding = true
+                    appState.showWelcome = false
+                })
+                .interactiveDismissDisabled()
             }
             .onAppear {
+                // Test hook: force the first-launch flow regardless of persisted state.
+                if ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_ONBOARDING") {
+                    settings.hasCompletedOnboarding = false
+                }
                 if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
-                    showWelcome = true
-                    settings.hasCompletedOnboarding = true
+                    appState.showWelcome = true
                 }
             }
     }
