@@ -58,12 +58,11 @@ struct TagsView: View {
         .sheet(isPresented: $showingCreateTag) {
             NavigationStack { TagEditorView(tag: nil) }
         }
-        .confirmationDialog(
+        .alert(
             (tagsToDelete?.count ?? 0) == 1
                 ? String(localized: "Delete Tag?")
                 : String(localized: "Delete Tags?"),
-            isPresented: Binding(get: { tagsToDelete != nil }, set: { if !$0 { tagsToDelete = nil } }),
-            titleVisibility: .visible
+            isPresented: Binding(get: { tagsToDelete != nil }, set: { if !$0 { tagsToDelete = nil } })
         ) {
             Button(String(localized: "Delete"), role: .destructive) {
                 if let resolved = tagsToDelete {

@@ -142,10 +142,9 @@ struct ArticleListView: View {
             }
         }
         .sheet(isPresented: $showFilter) { TagFilterView() }
-        .confirmationDialog(
+        .alert(
             String(localized: "Delete Article?"),
-            isPresented: Binding(get: { summaryToDelete != nil }, set: { if !$0 { summaryToDelete = nil } }),
-            titleVisibility: .visible
+            isPresented: Binding(get: { summaryToDelete != nil }, set: { if !$0 { summaryToDelete = nil } })
         ) {
             if let summary = summaryToDelete {
                 Button(String(localized: "Delete"), role: .destructive) {
