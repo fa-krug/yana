@@ -142,10 +142,9 @@ struct FeedsView: View {
             if let url = exportURL { ShareSheet(activityItems: [url]) }
         }
         .toast($toast)
-        .confirmationDialog(
+        .alert(
             String(localized: "Delete Feed?"),
-            isPresented: Binding(get: { feedToDelete != nil }, set: { if !$0 { feedToDelete = nil } }),
-            titleVisibility: .visible
+            isPresented: Binding(get: { feedToDelete != nil }, set: { if !$0 { feedToDelete = nil } })
         ) {
             if let feed = feedToDelete {
                 Button(String(localized: "Delete"), role: .destructive) {
