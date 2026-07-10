@@ -17,6 +17,8 @@ struct ReaderHostView: UIViewControllerRepresentable {
     let isRefreshing: Bool
     let isFilterActive: Bool
     var onRefresh: (() -> Void)?
+    /// Fired from the empty-timeline page's shortcut button to start creating the first feed.
+    var onCreateFeed: (() -> Void)?
     var onShowFilter: (() -> Void)?
     var onShowArticleList: (() -> Void)?
     var onShowSettings: (() -> Void)?
@@ -43,6 +45,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
+        reader.onCreateFeed = onCreateFeed
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
         context.coordinator.lastReloadToken = reloadToken
@@ -67,6 +70,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
+        reader.onCreateFeed = onCreateFeed
         reader.aiReady = aiReady
         reader.isSummarizing = isSummarizing
         // MUST run before the reloadToken re-render: clearing summaryPending here lets the
@@ -108,6 +112,7 @@ struct ReaderScreen: View {
     @State private var toast: ToastMessage?
     @State private var isSummarizing = false
     @State private var reloadToken = 0
+    @State private var showingCreateFeed = false
     /// Set by the Settings "Show Welcome Screen Again" row; consumed once the Settings sheet has
     /// fully dismissed so the welcome cover presents cleanly (no stacked-presentation race).
     @State private var restartOnboardingPending = false
@@ -159,18 +164,9 @@ struct ReaderScreen: View {
                 // which avoids both the skeleton shape and a wrong "No Articles" flash.
                 Color(.systemBackground)
                     .ignoresSafeArea()
-            case .empty:
-                ContentUnavailableView {
-                    Label("No Articles", systemImage: "tray")
-                        .accessibilityIdentifier("emptyArticlesTitle")
-                } description: {
-                    Text("Add feeds in Settings, then pull down to refresh.")
-                } actions: {
-                    Button(String(localized: "Add Your First Feed")) { appState.showSettings = true }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("emptyAddFirstFeed")
-                }
-            case .loaded:
+            case .empty, .loaded:
+                // Render the reader even with an empty timeline so its nav-bar chrome stays put;
+                // the pager shows a zero-state page offering a direct "create feed" shortcut.
                 ReaderHostView(
                     articles: articles,
                     resolveArticle: { ArticleResolution.resolve($0, in: modelContext) },
@@ -179,6 +175,7 @@ struct ReaderScreen: View {
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
+                    onCreateFeed: { showingCreateFeed = true },
                     onShowFilter: { appState.showFilter = true },
                     onShowArticleList: { appState.showArticleList = true },
                     onShowSettings: { appState.showSettings = true },
@@ -201,6 +198,15 @@ struct ReaderScreen: View {
         }) {
             NavigationStack {
                 SettingsScreenView(onRestartOnboarding: { restartOnboardingPending = true })
+            }
+        }
+        .sheet(isPresented: $showingCreateFeed) {
+            NavigationStack {
+                FeedEditorView(feed: nil) { newFeed in
+                    // Fetch the just-added feed right away, unless it was created disabled.
+                    guard newFeed.enabled else { return }
+                    createFeed(newFeed)
+                }
             }
         }
         .sheet(isPresented: $appState.showArticleList) {
@@ -323,6 +329,16 @@ struct ReaderScreen: View {
                 toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feedName))
                 Haptics.impact(.light)
             }
+        }
+    }
+
+    /// Fetch a freshly created feed right away so its articles replace the empty state
+    /// (mirrors the Feeds screen's create path).
+    private func createFeed(_ feed: Feed) {
+        UpdateActivity.shared.restart {
+            let count = await AggregationService(context: modelContext).update(feed: feed)
+            guard !Task.isCancelled else { return }
+            toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
         }
     }
 

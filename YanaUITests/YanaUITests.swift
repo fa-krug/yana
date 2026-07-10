@@ -61,10 +61,12 @@ final class YanaUITests: XCTestCase {
         app.launchArguments += ["-UITEST_SKIP_ONBOARDING"]   // start past onboarding, in the reader
         app.launch()
 
-        // Open Settings from the empty-state entry point.
-        let addFirst = app.buttons["emptyAddFirstFeed"]
-        XCTAssertTrue(addFirst.waitForExistence(timeout: 5))
-        addFirst.tap()
+        // Open Settings via the reader's overflow menu (the empty state keeps the reader chrome;
+        // its "Add Your First Feed" button now opens the feed editor, not Settings).
+        let menu = app.buttons["reader.menu"]
+        XCTAssertTrue(menu.waitForExistence(timeout: 5))
+        menu.tap()
+        app.buttons["Settings"].tap()
         XCTAssertTrue(app.buttons["settings.feeds"].waitForExistence(timeout: 5))   // Settings opened
 
         // Scroll to the restore row (About section, bottom of the form) and tap it.
