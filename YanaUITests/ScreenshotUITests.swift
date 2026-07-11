@@ -141,11 +141,23 @@ final class ScreenshotUITests: XCTestCase {
             scrollAttempts += 1
         }
         XCTAssertTrue(aiSection.waitForExistence(timeout: 5), "settings.aiSection not found after scrolling")
-        // Nudge it fully on-screen so the key/model/Test fields are visible in the shot.
+        // Bring the row fully on-screen (proven-stable hittable loop).
         scrollAttempts = 0
-        while !aiSection.isHittable && scrollAttempts < 5 {
+        while !aiSection.isHittable && scrollAttempts < 6 {
             app.swipeUp(velocity: .slow)
             Thread.sleep(forTimeInterval: 0.3)
+            scrollAttempts += 1
+        }
+        // Then push the AI block up so its own fields (API key, URL, model, fine-tuning) fill the
+        // frame instead of the empty Reddit/YouTube rows above it. Read `.frame` only while the
+        // row is on-screen — the short-circuit `exists && isHittable` guards avoid resolving the
+        // query mid-animation (which aborts the test with "no matches found").
+        scrollAttempts = 0
+        while scrollAttempts < 4,
+              aiSection.exists, aiSection.isHittable,
+              aiSection.frame.minY > app.frame.height * 0.42 {
+            app.swipeUp(velocity: .slow)
+            Thread.sleep(forTimeInterval: 0.4)
             scrollAttempts += 1
         }
         Thread.sleep(forTimeInterval: 1.0)   // let the view settle
