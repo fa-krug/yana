@@ -141,22 +141,26 @@ final class ScreenshotUITests: XCTestCase {
             scrollAttempts += 1
         }
         XCTAssertTrue(aiSection.waitForExistence(timeout: 5), "settings.aiSection not found after scrolling")
-        // Bring the row fully on-screen (proven-stable hittable loop).
+
+        // Frame the shot on the AI block deterministically across locales. `frame.minY` on the
+        // menu-style Picker is not a reliable position proxy (row heights differ EN vs DE, so any
+        // fixed threshold overshoots one locale), so instead of tuning a stop position we reveal
+        // the row FROM THE TOP: first scroll up until the "Active Provider" row is pushed just
+        // above the viewport, then drag back down in small steps until it re-enters and becomes
+        // hittable. A row entering from the top edge lands near the top of the screen regardless
+        // of locale, so its own fields (API key, URL, model) — the "bring your own key" evidence
+        // — fill the frame below it.
         scrollAttempts = 0
-        while !aiSection.isHittable && scrollAttempts < 6 {
+        while aiSection.isHittable && scrollAttempts < 8 {
             app.swipeUp(velocity: .slow)
             Thread.sleep(forTimeInterval: 0.3)
             scrollAttempts += 1
         }
-        // Then push the AI block up so its own fields (API key, URL, model, fine-tuning) fill the
-        // frame instead of the empty Reddit/YouTube rows above it. Read `.frame` only while the
-        // row is on-screen — the short-circuit `exists && isHittable` guards avoid resolving the
-        // query mid-animation (which aborts the test with "no matches found").
         scrollAttempts = 0
-        while scrollAttempts < 4,
-              aiSection.exists, aiSection.isHittable,
-              aiSection.frame.minY > app.frame.height * 0.42 {
-            app.swipeUp(velocity: .slow)
+        while !aiSection.isHittable && scrollAttempts < 16 {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45))
+                .press(forDuration: 0.05,
+                       thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.60)))
             Thread.sleep(forTimeInterval: 0.4)
             scrollAttempts += 1
         }
