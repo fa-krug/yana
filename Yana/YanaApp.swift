@@ -62,8 +62,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 }
             }
         }
+        // Register for remote notifications so CloudKit silent pushes can wake the app.
+        application.registerForRemoteNotifications()
         StartupTrace.event("didFinishLaunching.end")
         return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        // Treat any remote notification as a CloudKit config-change ping.
+        Task { @MainActor in
+            await ConfigSyncService.shared.pull()
+            completionHandler(.newData)
+        }
     }
 }
 
@@ -83,6 +97,8 @@ struct YanaApp: App {
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)
+                    // Register CloudKit subscription + pull on launch (no-op when sync is off).
+                    await ConfigSyncService.shared.start()
                 }
         }
         .modelContainer(AppContainer.shared)

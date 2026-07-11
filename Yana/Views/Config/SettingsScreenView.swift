@@ -63,6 +63,7 @@ struct SettingsScreenView: View {
             }
         }
         .onAppear(perform: loadSecrets)
+        .onDisappear { ConfigSyncService.shared.requestPush() }
         .alert("Notifications Disabled", isPresented: $showNotificationDeniedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -476,6 +477,14 @@ struct SettingsScreenView: View {
                 set: { newValue in
                     settings.iCloudSyncEnabled = newValue
                     KeychainService.migrateSynchronizable(to: newValue)
+                    if newValue {
+                        Task {
+                            await ConfigSyncService.shared.start()
+                            await ConfigSyncService.shared.push()
+                        }
+                    } else {
+                        ConfigSyncService.shared.stop()
+                    }
                 }
             )) {
                 Label(String(localized: "Sync via iCloud"), systemImage: "icloud")
