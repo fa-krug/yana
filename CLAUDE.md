@@ -35,7 +35,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - The set is a 5-shot story flow (numeric key = App Store order): `01_Reader` (hero, native reader with
   the AI summary block) → `02_Timeline` → `03_Feeds` (multi-source proof) → `04_Search` → `05_AI` (the
   AI bring-your-own-key section in Settings, reached via `settings.aiSection`). Keep these keys in sync
-  across `ScreenshotUITests.swift`, `Framefile.json`'s implied filter, and the `{en-US,de}` caption files.
+  across `ScreenshotUITests.swift`, `Framefile.json`'s implied filter, and the `{en-US,de-DE}` caption files.
 - Content is a DEBUG-only offline fixture (`ScreenshotSeed`, `Yana/Utilities/ScreenshotSeed.swift`)
   triggered by the `-UITEST_SCREENSHOTS` launch argument that the `ScreenshotUITests` capture flow
   passes — no network, no committed binaries, fully reproducible. `ScreenshotSeed` authors a small
@@ -56,7 +56,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   full-tag folder that matches its `languages(...)` entry (`de-DE`, not `de`).
 - Output: `fastlane/screenshots/en-US/` and `fastlane/screenshots/de-DE/` — both the raw captures
   (`*.png`) and the framed `*_framed.png` are committed to the repo (only fastlane run artifacts —
-  `screenshots.html`, `test_output/`, `report.xml` — stay gitignored).
+  `screenshots.html`, `test_output/`, `report.xml`, `README.md` — stay gitignored).
 - Gotchas: the `screenshots` lane bakes `LANG/LC_ALL=en_US.UTF-8` into the Fastfile because fastlane
   crashes on a bare `C`/US-ASCII shell locale. That bake uses `ENV["LANG"] ||= …`, which does **not**
   override an already-set-but-empty `LANG` (an empty string is truthy in Ruby), so if the lane dies with
