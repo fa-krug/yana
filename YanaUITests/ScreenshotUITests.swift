@@ -113,16 +113,26 @@ final class ScreenshotUITests: XCTestCase {
         menu2.tap()
         app.buttons["Settings"].tap()
 
-        // Scroll the Settings form until the AI section picker is hittable. The AI picker
-        // carries .accessibilityIdentifier("settings.aiSection") in SettingsScreenView.
+        // The AI section carries .accessibilityIdentifier("settings.aiSection") in
+        // SettingsScreenView, but it sits below the fold in a lazily-rendered SwiftUI Form:
+        // off-screen rows are absent from the accessibility tree until scrolled into view, so
+        // we must scroll *while* searching for it rather than asserting existence up front.
         let aiSection = app.descendants(matching: .any).matching(identifier: "settings.aiSection").firstMatch
-        XCTAssertTrue(aiSection.waitForExistence(timeout: 10), "settings.aiSection not found")
+        XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 10), "Settings did not open")
         var scrollAttempts = 0
-        while !aiSection.isHittable && scrollAttempts < 8 {
+        while !aiSection.exists && scrollAttempts < 12 {
             app.swipeUp(velocity: .slow)
+            Thread.sleep(forTimeInterval: 0.3)
             scrollAttempts += 1
         }
-        XCTAssertTrue(aiSection.isHittable, "settings.aiSection is not hittable after scrolling")
+        XCTAssertTrue(aiSection.waitForExistence(timeout: 5), "settings.aiSection not found after scrolling")
+        // Nudge it fully on-screen so the key/model/Test fields are visible in the shot.
+        scrollAttempts = 0
+        while !aiSection.isHittable && scrollAttempts < 5 {
+            app.swipeUp(velocity: .slow)
+            Thread.sleep(forTimeInterval: 0.3)
+            scrollAttempts += 1
+        }
         Thread.sleep(forTimeInterval: 1.0)   // let the view settle
         snapshot("05_AI")
     }
