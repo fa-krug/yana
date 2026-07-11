@@ -43,6 +43,7 @@ final class AggregationService {
     private let now: () -> Date
     private let logoResolver: LogoResolver
     private let settings: AppSettings
+    private let starredRegistry: StarredRegistry
 
     init(
         context: ModelContext,
@@ -50,7 +51,8 @@ final class AggregationService {
         aiProcessor: AIProcessing? = nil,
         now: @escaping () -> Date = { .now },
         logoResolver: @escaping LogoResolver = AggregationService.defaultLogoResolver,
-        settings: AppSettings = AppSettings()
+        settings: AppSettings = AppSettings(),
+        starredRegistry: StarredRegistry = .shared
     ) {
         self.context = context
         self.makeAggregator = makeAggregator
@@ -58,6 +60,7 @@ final class AggregationService {
         self.now = now
         self.logoResolver = logoResolver
         self.settings = settings
+        self.starredRegistry = starredRegistry
     }
 
     /// Map an arbitrary error to a clear, non-empty user-facing string.
@@ -266,8 +269,10 @@ final class AggregationService {
         }
         guard let refreshed else { return 0 }
         let processed = await currentAIProcessor().process([refreshed], ai: config.options.ai)
-        let inserted = ArticleUpsert.apply(processed, to: feed, starredTag: starredTag(),
-                                           context: context, now: now())
+        let inserted = ArticleUpsert.apply(
+            processed, to: feed, starredTag: starredTag(),
+            starredIdentifiers: starredRegistry.identifiers(forFeedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType),
+            context: context, now: now())
         try? context.save()
         return inserted
     }
@@ -391,7 +396,9 @@ final class AggregationService {
     ) -> Int {
         guard let feed = self[feedID, as: Feed.self] else { return 0 }
         return ArticleUpsert.apply(
-            processed, to: feed, starredTag: starredTag(), context: context, now: now,
+            processed, to: feed, starredTag: starredTag(),
+            starredIdentifiers: starredRegistry.identifiers(forFeedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType),
+            context: context, now: now,
             // Every processed article is pre-parsed; the inline fallback is defensive and never hit.
             blocksFor: { blocks[$0.identifier] ?? ArticleUpsert.defaultBlocks(for: $0) }
         )
