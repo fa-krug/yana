@@ -4,9 +4,23 @@ ENV["LC_ALL"] ||= "en_US.UTF-8"
 default_platform(:ios)
 
 platform :ios do
-  desc "Capture and frame App Store screenshots (en-US, 6.9\" iPhone)"
+  desc "Capture and frame App Store screenshots (en-US + de-DE, 6.9\" iPhone)"
   lane :screenshots do
-    capture_screenshots
+    # Capture each locale in its own snapshot pass, erasing the simulator before each pass.
+    # This keeps every locale deterministic and self-contained:
+    #  - the status-bar override (9:41, full signal — set in the Snapfile) is freshly applied
+    #    per locale (a single multi-language capture lets it lapse on the second locale's
+    #    relaunch, leaving the real wall-clock time);
+    #  - the ScreenshotSeed fixture re-seeds and re-parks the reader on the hero article, so
+    #    reader position from the previous locale's run can't leak into 01_Reader.
+    %w[en-US de-DE].each_with_index do |language, index|
+      capture_screenshots(
+        languages: [language],
+        erase_simulator: true,
+        reinstall_app: true,
+        clear_previous_screenshots: index.zero?
+      )
+    end
     frame_screenshots(white: false)
   end
 end

@@ -140,7 +140,7 @@ enum ScreenshotSeed {
         ),
         FeedSpec(
             name: "Offline Hours", identifier: "https://example.com/offline-hours",
-            tagName: "Audio", tagColorHex: "#2EB8D0", monogram: "OH",
+            tagName: "Podcast", tagColorHex: "#2EB8D0", monogram: "OH",
             url: "https://example.com/offline-hours",
             articles: [
                 ArticleSpec(

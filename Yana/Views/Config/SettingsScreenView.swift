@@ -257,6 +257,7 @@ struct SettingsScreenView: View {
                 Label("Active Provider", systemImage: "sparkles")
                     .labelStyle(.tintedIcon(.purple))
             }
+            .accessibilityIdentifier("settings.aiSection")
 
             providerConfig
         }
@@ -552,5 +553,12 @@ struct SettingsScreenView: View {
         mistralKey = KeychainService.loadAPIKey(for: .mistralAPIKey) ?? ""
         qwenKey = KeychainService.loadAPIKey(for: .qwenAPIKey) ?? ""
         deepseekKey = KeychainService.loadAPIKey(for: .deepseekAPIKey) ?? ""
+
+        // Under the screenshot launch arg, ensure a provider is selected so the API-key /
+        // model / Test fields are visible. Does not affect normal app behavior.
+        if ProcessInfo.processInfo.arguments.contains("-UITEST_SCREENSHOTS"),
+           settings.activeAIProvider == .none {
+            settings.activeAIProvider = .openai
+        }
     }
 }

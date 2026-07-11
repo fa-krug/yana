@@ -19,12 +19,12 @@ directly).
 wide with `sips`:
 
 ```sh
-fastlane screenshots            # regenerates fastlane/screenshots/en-US/*.png
+fastlane screenshots            # regenerates fastlane/screenshots/en-US/*.png (+ de-DE)
 SRC="fastlane/screenshots/en-US"; DST="docs/site/assets/img"
 sips --resampleWidth 640 "$SRC/iPhone 17 Pro Max-01_Reader.png"   --out "$DST/hero.png"
 sips --resampleWidth 640 "$SRC/iPhone 17 Pro Max-02_Timeline.png" --out "$DST/screen-timeline.png"
-sips --resampleWidth 640 "$SRC/iPhone 17 Pro Max-03_Search.png"   --out "$DST/screen-search.png"
-sips --resampleWidth 640 "$SRC/iPhone 17 Pro Max-04_Feeds.png"    --out "$DST/screen-feeds.png"
+sips --resampleWidth 640 "$SRC/iPhone 17 Pro Max-04_Search.png"   --out "$DST/screen-search.png"
+sips --resampleWidth 640 "$SRC/iPhone 17 Pro Max-03_Feeds.png"    --out "$DST/screen-feeds.png"
 ```
 
 Use the raw captures, **not** the device-framed `*_framed.png` — the site rounds the
