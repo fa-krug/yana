@@ -451,21 +451,33 @@ final class ReaderArticleViewController: UIViewController,
         return vc
     }
 
-    /// Instantiate the neighbors around `index`, biased toward the last travel direction, so a
-    /// burst of swipes lands on already-built pages.
+    /// Instantiate *and lay out* the neighbors around `index`, biased toward the last travel
+    /// direction, so a swipe lands on an already-built-and-sized page (no mid-gesture TextKit work).
     private func prewarmNeighbors(around index: Int) {
         let targets = PrewarmPlan.indices(
             current: index, count: articles.count,
             radius: Self.prewarmRadius, direction: lastDirection
         )
         for i in targets {
-            let vc = makePage(for: i)         // inserts into cache
-            vc?.loadViewIfNeeded()            // force viewDidLoad → build the hosting view off-screen
+            guard let vc = makePage(for: i) else { continue }   // inserts into cache
+            vc.loadViewIfNeeded()             // force viewDidLoad → build the hosting view off-screen
+            // Lay the page out at the width it will occupy on screen, right now (idle time after a
+            // transition), so the hosting controller instantiates and TextKit-sizes all of its
+            // SelectableText (UITextView) blocks off-screen. `loadViewIfNeeded` alone leaves the view
+            // at zero bounds, so SwiftUI defers that layout until the page scrolls into view — i.e.
+            // onto the main thread mid-swipe, which made the pager hitch under the user's finger.
+            // Paying it here moves the cost off the swipe. Only meaningful once this VC's own view is
+            // laid out (a real width to propose); during launch `configure` defers prewarm a runloop
+            // so `view.bounds` is valid.
+            if view.bounds.width > 0 {
+                vc.view.frame = view.bounds
+                vc.view.layoutIfNeeded()
+            }
             // Decode the neighbor's lead image into the shared cache now, so when the user swipes to
             // it the header image is already in memory and renders on the first frame instead of
             // popping in after an async disk read. Building the hosting view off-screen does not run
             // SwiftUI's `.task`, so the image must be warmed imperatively here.
-            if let vc { preloadLeadImage(of: vc.article) }
+            preloadLeadImage(of: vc.article)
         }
     }
 
