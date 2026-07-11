@@ -13,7 +13,16 @@ enum AppContainer {
     static let shared: ModelContainer = {
         do {
             return try StartupTrace.measure("ModelContainer.init") {
-                try ModelContainer(for: Feed.self, Tag.self, Article.self)
+                // The SwiftData store is ALWAYS local-only. The app has CloudKit
+                // entitlements, but we deliberately do NOT let SwiftData mirror this
+                // store to CloudKit: that would sync article bodies (which we never
+                // want) and would crash under NSPersistentCloudKitContainer, which
+                // forbids the non-optional cascade relationship on Feed/Article.
+                // iCloud sync of *configuration* is handled separately, out of band,
+                // by ConfigSyncService via a single CloudKit config record.
+                let config = ModelConfiguration(cloudKitDatabase: .none)
+                return try ModelContainer(for: Feed.self, Tag.self, Article.self,
+                                         configurations: config)
             }
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
