@@ -240,6 +240,7 @@ struct ReaderScreen: View {
         article.setStarred(!article.isStarred, using: starredTag)
         try? modelContext.save()
         Haptics.impact(.light)
+        ConfigSyncService.shared.requestPush()
     }
 
     private func copyLink(_ article: Article) {

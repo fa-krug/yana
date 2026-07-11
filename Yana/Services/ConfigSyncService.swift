@@ -134,6 +134,13 @@ final class ConfigSyncService {
 
     private let log = Logger(subsystem: "de.fa-krug.Yana", category: "ConfigSync")
 
+    /// Shared instance wired to the production CloudKit store and the app's main context.
+    static let shared = ConfigSyncService(
+        store: CloudKitConfigStore(),
+        context: AppContainer.shared.mainContext,
+        settings: AppSettings()
+    )
+
     init(
         store: ConfigStore,
         context: ModelContext,
@@ -248,6 +255,16 @@ final class ConfigSyncService {
             try? await ckStore.registerSubscriptionIfNeeded()
         }
         await pull()
+    }
+
+    // MARK: Stop
+
+    /// Cancel any pending debounced push and clear the device-local last-synced feed-keys snapshot
+    /// so that re-enabling sync later performs a fresh union merge rather than issuing spurious deletions.
+    func stop() {
+        pendingPush?.cancel()
+        pendingPush = nil
+        defaults.removeObject(forKey: Self.lastFeedKeysDefaultsKey)
     }
 
     // MARK: Last-synced snapshot
