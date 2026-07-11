@@ -5,6 +5,15 @@ final class ScreenshotUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    /// Resolve a button by any of its known localized labels. The screenshot run captures both
+    /// en-US and de-DE, so navigation controls whose titles are localized (e.g. "Settings" ⇄
+    /// "Einstellungen") must be matched across locales. A single predicate query avoids a
+    /// per-label `waitForExistence` stall.
+    @MainActor
+    private func button(in app: XCUIApplication, labeledAnyOf labels: [String]) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+    }
+
     @MainActor
     func testCaptureScreenshots() throws {
         let app = XCUIApplication()
@@ -35,7 +44,8 @@ final class ScreenshotUITests: XCTestCase {
         snapshot("02_Timeline")
 
         // Dismiss the article-list sheet (search not typed yet — navigate to Feeds first).
-        if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+        let cancel = button(in: app, labeledAnyOf: ["Cancel", "Abbrechen"])
+        if cancel.exists { cancel.tap() }
         app.swipeDown(velocity: .fast)
         // Let the sheet-dismiss animation finish; the reader's nav bar frame is briefly
         // unreliable to XCUITest mid-transition (hit point resolves to {-1, -1}).
@@ -51,7 +61,9 @@ final class ScreenshotUITests: XCTestCase {
         }
         XCTAssertTrue(menu.isHittable, "reader.menu exists but is not hittable after reveal tap")
         menu.tap()
-        app.buttons["Settings"].tap()
+        let settingsItem = button(in: app, labeledAnyOf: ["Settings", "Einstellungen"])
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 10), "Settings menu item missing")
+        settingsItem.tap()
         let feeds = app.otherElements["settings.feeds"].exists
             ? app.otherElements["settings.feeds"]
             : app.buttons["settings.feeds"]
@@ -67,7 +79,7 @@ final class ScreenshotUITests: XCTestCase {
         let navBacks = app.navigationBars.buttons.element(boundBy: 0)
         if navBacks.waitForExistence(timeout: 5) { navBacks.tap() }
         // Dismiss the Settings sheet (swipe down or tap Done/close button).
-        let doneButton = app.buttons["Done"]
+        let doneButton = button(in: app, labeledAnyOf: ["Done", "Fertig"])
         if doneButton.waitForExistence(timeout: 5) {
             doneButton.tap()
         } else {
@@ -99,7 +111,8 @@ final class ScreenshotUITests: XCTestCase {
         snapshot("04_Search")
 
         // Shot 5 — Settings › AI section. Dismiss the article-list sheet and re-open Settings.
-        if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+        let cancel2 = button(in: app, labeledAnyOf: ["Cancel", "Abbrechen"])
+        if cancel2.exists { cancel2.tap() }
         app.swipeDown(velocity: .fast)
         Thread.sleep(forTimeInterval: 1.0)
 
@@ -111,7 +124,9 @@ final class ScreenshotUITests: XCTestCase {
         }
         XCTAssertTrue(menu2.isHittable, "reader.menu not hittable before AI shot")
         menu2.tap()
-        app.buttons["Settings"].tap()
+        let settingsItem2 = button(in: app, labeledAnyOf: ["Settings", "Einstellungen"])
+        XCTAssertTrue(settingsItem2.waitForExistence(timeout: 10), "Settings menu item missing before AI shot")
+        settingsItem2.tap()
 
         // The AI section carries .accessibilityIdentifier("settings.aiSection") in
         // SettingsScreenView, but it sits below the fold in a lazily-rendered SwiftUI Form:
