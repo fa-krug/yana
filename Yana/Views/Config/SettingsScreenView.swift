@@ -52,6 +52,7 @@ struct SettingsScreenView: View {
             aiProviderSection
             aiKnobsSection
             librarySection
+            iCloudSyncSection
             aboutSection
         }
         .navigationTitle("Settings")
@@ -463,6 +464,27 @@ struct SettingsScreenView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
             }
+        }
+    }
+
+    // MARK: iCloud Sync
+
+    private var iCloudSyncSection: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { settings.iCloudSyncEnabled },
+                set: { newValue in
+                    settings.iCloudSyncEnabled = newValue
+                    KeychainService.migrateSynchronizable(to: newValue)
+                }
+            )) {
+                Label(String(localized: "Sync via iCloud"), systemImage: "icloud")
+                    .labelStyle(.tintedIcon(.blue))
+            }
+        } header: {
+            Text("iCloud Sync")
+        } footer: {
+            Text("Syncs feeds, tags, settings, and API keys across your devices via iCloud. Article contents are not synced — they re-download on each device.")
         }
     }
 
