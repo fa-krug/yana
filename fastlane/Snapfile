@@ -4,7 +4,7 @@ devices([
   "iPhone 17 Pro Max"
 ])
 
-languages(["en-US"])
+languages(["en-US", "de-DE"])
 
 scheme("Yana")
 

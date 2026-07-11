@@ -2,6 +2,11 @@
   "default": {
     "background": "background.png",
     "padding": 80,
+    "keyword": {
+      "font": "OpenSans-Bold.ttf",
+      "color": "#C9B8FF",
+      "font_size": 110
+    },
     "title": {
       "font": "OpenSans-Bold.ttf",
       "color": "#FFFFFF",
