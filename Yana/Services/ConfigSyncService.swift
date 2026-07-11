@@ -237,7 +237,12 @@ final class ConfigSyncService {
         // 4. Settings.
         settings.applySyncedSettings(document.settingsData)
 
-        // 5. Starred set.
+        // 5. Starred set. The remote set is authoritative (last-writer-wins): this replaces the
+        // local starred state rather than unioning it. A star toggled locally within the debounce
+        // window before an interleaving pull can therefore be dropped if the incoming document
+        // predates it — an accepted limitation of the single-record model, not a bug. Stars
+        // re-converge on the next push; if losing a local star ever proves annoying in practice,
+        // switch this to a union-on-pull.
         starred.update(to: ConfigDocument.decodeStarred(document.starredData))
         starred.applyToLocalArticles(in: context)
 
