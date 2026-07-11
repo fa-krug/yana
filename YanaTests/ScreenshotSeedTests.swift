@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 struct ScreenshotSeedTests {
     private func inMemoryContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: Feed.self, Tag.self, Article.self, configurations: config)
         return ModelContext(container)
     }

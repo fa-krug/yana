@@ -3077,6 +3077,36 @@
           }
         }
       }
+    },
+    "Sync via iCloud": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Via iCloud synchronisieren"
+          }
+        }
+      }
+    },
+    "iCloud Sync": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud-Synchronisierung"
+          }
+        }
+      }
+    },
+    "Syncs feeds, tags, settings, and API keys across your devices via iCloud. Article contents are not synced — they re-download on each device.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synchronisiert Feeds, Tags, Einstellungen und API-Schlüssel über iCloud auf all deinen Geräten. Artikelinhalte werden nicht synchronisiert – sie werden auf jedem Gerät neu geladen."
+          }
+        }
+      }
     }
   },
   "version": "1.1"

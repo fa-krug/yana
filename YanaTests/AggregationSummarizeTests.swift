@@ -7,7 +7,7 @@ import Testing
 @Suite("AggregationService.summarize")
 struct AggregationSummarizeTests {
     private func makeContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
         let context = ModelContext(container)
         context.insert(Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true))
