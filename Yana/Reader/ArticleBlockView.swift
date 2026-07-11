@@ -70,10 +70,22 @@ struct ArticleBlockView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                ForEach(Array(bodyBlocks.enumerated()), id: \.offset) { _, block in
-                    BlockNodeView(block: block, bodySize: bodySize, design: font.uiDesign,
-                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                  onPlayVideo: onPlayVideo)
+                ForEach(bodySegments) { segment in
+                    switch segment.kind {
+                    case .textRun(let blocks):
+                        // A run of consecutive paragraphs/headings rendered by a single UITextView
+                        // (see ReaderAttributedText.make(blocks:)) — one hosted text view for a whole
+                        // stretch of prose instead of one per block, the reader's main per-page cost.
+                        SelectableText(
+                            attributedText: ReaderAttributedText.make(blocks: blocks, baseSize: bodySize,
+                                                                      design: font.uiDesign),
+                            onOpenLink: onOpenLink
+                        )
+                    case .single(let block):
+                        BlockNodeView(block: block, bodySize: bodySize, design: font.uiDesign,
+                                      leadImageRef: leadImageRef, onOpenLink: onOpenLink,
+                                      onPlayVideo: onPlayVideo)
+                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -96,6 +108,35 @@ struct ArticleBlockView: View {
     /// The blocks are rendered as-is, except the AI summary card is injected after a leading image
     /// (the lead media) so it sits between the image and the body — matching the prior reader.
     private var bodyBlocks: [Block] { article.blocks }
+
+    /// The top-level body split into render segments: maximal runs of consecutive flowing-text
+    /// blocks (paragraphs + headings) coalesced into one `SelectableText`, with every other block
+    /// (image, embed, list, blockquote, code, divider) standing alone. Collapsing prose runs into a
+    /// single hosted `UITextView` — instead of one per block — is the reader's biggest per-page cost
+    /// reduction while keeping full, edit-menu text selection.
+    private var bodySegments: [BodySegment] {
+        var segments: [BodySegment] = []
+        var run: [Block] = []
+        var id = 0
+        func flushRun() {
+            guard !run.isEmpty else { return }
+            segments.append(BodySegment(id: id, kind: .textRun(run)))
+            id += 1
+            run = []
+        }
+        for block in bodyBlocks {
+            switch block {
+            case .paragraph, .heading:
+                run.append(block)
+            default:
+                flushRun()
+                segments.append(BodySegment(id: id, kind: .single(block)))
+                id += 1
+            }
+        }
+        flushRun()
+        return segments
+    }
 
     /// Ref of the lead image (when the first block is an image), so `BlockNodeView` can skip it in
     /// the body — the header renders it once, between the title and the summary.
@@ -184,6 +225,18 @@ struct ArticleBlockView: View {
 
 }
 
+/// One render unit of the article body: either a coalesced run of consecutive text blocks (rendered
+/// by a single `SelectableText`) or a standalone non-text block. `id` is the block's position in the
+/// segment list, stable for the life of a given article body.
+private struct BodySegment: Identifiable {
+    enum Kind {
+        case textRun([Block])
+        case single(Block)
+    }
+    let id: Int
+    let kind: Kind
+}
+
 /// Renders a single `Block`, recursing into list items and blockquote contents. This is a nominal
 /// `View` (not a `@ViewBuilder` function) on purpose: a `some View`-returning function that calls
 /// itself yields "opaque return type defined in terms of itself". Recursing through a named type
@@ -197,41 +250,24 @@ private struct BlockNodeView: View {
     let leadImageRef: String?
     let onOpenLink: (URL) -> Void
     let onPlayVideo: (Embed) -> Void
-    /// Top-level flowing text renders in a `UITextView` (`SelectableText`) for full, reliable text
-    /// selection. Text nested inside a list item or blockquote stays a SwiftUI `Text` — its baseline
-    /// alignment and color treatment matter there, and it is still selectable via the ambient
-    /// `.textSelection(.enabled)`.
-    var selectable: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         switch block {
+        // Top-level paragraphs/headings never reach here — `ArticleBlockView` coalesces them into a
+        // single `SelectableText` per run. These two cases only fire for text *nested* inside a list
+        // item or blockquote, which stays a SwiftUI `Text` (its baseline alignment and dark-mode
+        // color treatment matter there) and is selectable via the ambient `.textSelection(.enabled)`.
         case .paragraph(let runs):
-            if selectable {
-                SelectableText(
-                    attributedText: ReaderAttributedText.make(runs: runs, baseSize: bodySize, design: design),
-                    onOpenLink: onOpenLink
-                )
-            } else {
-                Text(attributedString(from: runs))
-                    .font(.system(size: bodySize))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(attributedString(from: runs))
+                .font(.system(size: bodySize))
+                .fixedSize(horizontal: false, vertical: true)
         case .heading(let level, let runs):
-            if selectable {
-                SelectableText(
-                    attributedText: ReaderAttributedText.make(runs: runs, baseSize: headingSize(level),
-                                                              weight: .bold, design: design),
-                    onOpenLink: onOpenLink
-                )
+            Text(attributedString(from: runs))
+                .font(.system(size: headingSize(level), weight: .bold))
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
-            } else {
-                Text(attributedString(from: runs))
-                    .font(.system(size: headingSize(level), weight: .bold))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 4)
-            }
         case .list(let ordered, let items):
             listView(ordered: ordered, items: items)
         case .blockquote(let inner):
@@ -269,7 +305,7 @@ private struct BlockNodeView: View {
                         ForEach(Array(itemBlocks.enumerated()), id: \.offset) { _, b in
                             BlockNodeView(block: b, bodySize: bodySize, design: design,
                                           leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                          onPlayVideo: onPlayVideo, selectable: false)
+                                          onPlayVideo: onPlayVideo)
                         }
                     }
                 }
@@ -285,7 +321,7 @@ private struct BlockNodeView: View {
                 ForEach(Array(inner.enumerated()), id: \.offset) { _, b in
                     BlockNodeView(block: b, bodySize: bodySize, design: design,
                                   leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                  onPlayVideo: onPlayVideo, selectable: false)
+                                  onPlayVideo: onPlayVideo)
                 }
             }
             .padding(.leading, 12)
