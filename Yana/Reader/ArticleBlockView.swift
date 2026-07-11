@@ -54,6 +54,8 @@ struct ArticleBlockView: View {
     var onOpenLink: (URL) -> Void = { _ in }
     /// Tapping a video embed plays it full-screen in-app rather than opening the website.
     var onPlayVideo: (Embed) -> Void = { _ in }
+    /// Tapping an image opens it full-screen with pinch-to-zoom.
+    var onShowImage: (String) -> Void = { _ in }
     var onRefresh: (() -> Void)?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -84,7 +86,7 @@ struct ArticleBlockView: View {
                     case .single(let block):
                         BlockNodeView(block: block, bodySize: bodySize, design: font.uiDesign,
                                       leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                      onPlayVideo: onPlayVideo)
+                                      onPlayVideo: onPlayVideo, onShowImage: onShowImage)
                     }
                 }
             }
@@ -163,7 +165,7 @@ struct ArticleBlockView: View {
             // Lead image (if the first block is an image) renders before the summary.
             if case let .image(ref, caption)? = bodyBlocks.first {
                 BlockImageView(ref: ref, caption: caption, bodySize: bodySize,
-                               design: font.uiDesign, onOpenLink: onOpenLink)
+                               design: font.uiDesign, onOpenLink: onOpenLink, onShowImage: onShowImage)
             }
             summaryCard
         }
@@ -250,6 +252,7 @@ private struct BlockNodeView: View {
     let leadImageRef: String?
     let onOpenLink: (URL) -> Void
     let onPlayVideo: (Embed) -> Void
+    let onShowImage: (String) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -276,7 +279,7 @@ private struct BlockNodeView: View {
             // The lead image is rendered in the header; skip it here to avoid a duplicate.
             if ref != leadImageRef {
                 BlockImageView(ref: ref, caption: caption, bodySize: bodySize,
-                               design: design, onOpenLink: onOpenLink)
+                               design: design, onOpenLink: onOpenLink, onShowImage: onShowImage)
             }
         case .embed(let embed):
             EmbedCardView(embed: embed, baseSize: bodySize, onOpen: openExternal, onPlayVideo: onPlayVideo)
@@ -305,7 +308,7 @@ private struct BlockNodeView: View {
                         ForEach(Array(itemBlocks.enumerated()), id: \.offset) { _, b in
                             BlockNodeView(block: b, bodySize: bodySize, design: design,
                                           leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                          onPlayVideo: onPlayVideo)
+                                          onPlayVideo: onPlayVideo, onShowImage: onShowImage)
                         }
                     }
                 }
@@ -321,7 +324,7 @@ private struct BlockNodeView: View {
                 ForEach(Array(inner.enumerated()), id: \.offset) { _, b in
                     BlockNodeView(block: b, bodySize: bodySize, design: design,
                                   leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                  onPlayVideo: onPlayVideo)
+                                  onPlayVideo: onPlayVideo, onShowImage: onShowImage)
                 }
             }
             .padding(.leading, 12)
@@ -353,10 +356,14 @@ private struct BlockImageView: View {
     let bodySize: CGFloat
     var design: UIFontDescriptor.SystemDesign = .default
     var onOpenLink: (URL) -> Void = { _ in }
+    /// Tapping the image (not the caption) opens it full-screen with pinch-to-zoom.
+    var onShowImage: (String) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ReaderImageView(ref: ref)
+                .contentShape(Rectangle())
+                .onTapGesture { onShowImage(ref) }
             let captionRuns = caption.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             if !captionRuns.isEmpty {
                 SelectableText(

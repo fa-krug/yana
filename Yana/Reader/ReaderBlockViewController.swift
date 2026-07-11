@@ -77,8 +77,15 @@ final class ReaderBlockViewController: UIViewController {
             summaryPending: summaryPending,
             onOpenLink: { [weak self] url in self?.openExternally(url) },
             onPlayVideo: { [weak self] embed in self?.playVideo(embed) },
+            onShowImage: { [weak self] ref in self?.showImage(ref) },
             onRefresh: onRefresh
         )
+    }
+
+    /// Open an image full-screen with pinch-to-zoom.
+    private func showImage(_ ref: String) {
+        let viewer = ReaderImageViewerViewController(ref: ref)
+        (topmostPresenter ?? self).present(viewer, animated: true)
     }
 
     /// Play a video embed full-screen in-app. Falls back to opening the embed's URL externally when
