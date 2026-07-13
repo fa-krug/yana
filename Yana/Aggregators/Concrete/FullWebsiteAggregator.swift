@@ -49,8 +49,15 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
             let extracted: String
             if usesFirstContentMatch {
                 // Single-selector, first-match extraction: the page repeats the body class for
-                // related stories, so only the first (main-article) block is kept.
-                extracted = try HTMLUtils.extractMainContent(raw, selector: contentSelector, removeSelectors: removeSelectors)
+                // related stories, so only the first (main-article) block is kept. When the
+                // scraper's dedicated container is absent (e.g. a paywall/magazine gate page whose
+                // DOM differs), don't dump the whole <body> — that surfaces the site navigation and
+                // teaser chrome as the article. Fall back to RSS content instead.
+                guard let firstMatch = try HTMLUtils.extractMainContentIfPresent(
+                    raw, selector: contentSelector, removeSelectors: removeSelectors) else {
+                    throw AggregatorError.contentFetch("no content match for \(contentSelector)")
+                }
+                extracted = firstMatch
             } else {
                 // Fall back to the built-in defaults when the user cleared the content list entirely.
                 let contentSelectors = opts.contentSelectors.isEmpty
