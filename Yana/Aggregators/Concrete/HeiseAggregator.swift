@@ -27,6 +27,13 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
 
     override var contentSelector: String { "#meldung, .StoryContent" }
 
+    /// Extract only the first (main-article) container — `#meldung` (an `<article id="meldung">`)
+    /// or the older `.StoryContent`. Heise pages carry many sibling `<article>` teaser cards and a
+    /// page-chrome `.article-content`, so the generic OR-union of the default selectors would pull
+    /// related-story teasers and site navigation into the body. First-match on the dedicated
+    /// container isolates the story; a page lacking it falls back to RSS content (see `enrich`).
+    override var usesFirstContentMatch: Bool { true }
+
     override var selectorsToRemove: [String] {
         [".ad-label", ".ad", ".article-sidebar", "section",
          "a[name='meldung.ho.bottom.zurstartseite']",

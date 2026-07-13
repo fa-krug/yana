@@ -196,6 +196,21 @@ enum HTMLUtils {
         return try content.html()
     }
 
+    /// Like `extractMainContent(_:selector:removeSelectors:)` but returns `nil` when the selector
+    /// matches nothing, instead of silently falling back to the whole `<body>`. Scrapers with a
+    /// dedicated content container use this so a page whose DOM differs (e.g. a paywall/magazine
+    /// gate page) falls back to RSS content rather than surfacing the site navigation/chrome as the
+    /// article body.
+    static func extractMainContentIfPresent(_ html: String, selector: String, removeSelectors: [String]) throws -> String? {
+        let doc = try parse(html)
+        try removeTemplates(doc)
+        guard let content = try? doc.select(selector).first() else { return nil }
+        for sel in removeSelectors {
+            for el in try content.select(sel) { try el.remove() }
+        }
+        return try content.html()
+    }
+
     /// OR-union extraction: combine every element matching any of `contentSelectors` into one
     /// body (to gather content distributed across several containers), dropping matches nested
     /// inside another match so overlaps aren't duplicated. Falls back to `<body>` when nothing

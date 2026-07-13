@@ -66,6 +66,40 @@ struct HeiseAggregatorTests {
         #expect(!a.content.contains("${lead}"))
     }
 
+    @Test func extractsMeldungAndIgnoresSiblingTeasers() async throws {
+        // Heise pages carry the story in `#meldung` (an <article id="meldung">) plus many sibling
+        // <article> teaser cards. First-match on the dedicated container must keep only the story.
+        let page = """
+        <html><body>\
+        <article id="meldung"><p>The real story body</p></article>\
+        <article data-component="TeaserContainer"><p>Related teaser junk</p></article>\
+        </body></html>
+        """
+        let agg = StubHeise(entries: [entry("Story")], page: page, forum: "",
+                            options: { var o = HeiseOptions(); o.includeComments = false; return o }(),
+                            store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("The real story body"))
+        #expect(!a.content.contains("Related teaser junk"))   // sibling teaser excluded
+    }
+
+    @Test func fallsBackToRSSWhenNoStoryContainer() async throws {
+        // A page whose DOM lacks `#meldung`/`.StoryContent` (e.g. a paywall/magazine gate page)
+        // must NOT dump the site navigation as the body — it falls back to the RSS feed content.
+        let page = """
+        <html><body><nav><ul>\
+        <li>Newsticker</li><li>Hintergründe</li><li>Ratgeber</li>\
+        </ul><a>Alle Magazine im Browser lesen</a></nav></body></html>
+        """
+        let agg = StubHeise(entries: [entry("Gate page")], page: page, forum: "",
+                            options: { var o = HeiseOptions(); o.includeComments = false; return o }(),
+                            store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("summary"))                 // RSS feed content preserved
+        #expect(!a.content.contains("Newsticker"))             // navigation NOT surfaced
+        #expect(!a.content.contains("Alle Magazine im Browser lesen"))
+    }
+
     @Test func skipsTitlesInSkipList() async throws {
         let agg = StubHeise(entries: [entry("heise+ exclusive"), entry("Keeper")],
                             page: "<article class=\"StoryContent\"><p>x</p></article>", forum: "",
