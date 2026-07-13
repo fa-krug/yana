@@ -26,6 +26,7 @@ enum ArticleUpsert {
         _ aggregated: [AggregatedArticle],
         to feed: Feed,
         starredTag: Tag?,
+        starredIdentifiers: Set<String> = [],
         context: ModelContext,
         now: Date,
         jitter: () -> TimeInterval = { .random(in: 0..<importJitterWindow) },
@@ -78,6 +79,13 @@ enum ArticleUpsert {
                 article.feed = feed
                 context.insert(article)
                 article.tags = feed.tags
+                // If the sync registry already has a starred mark for this article, star it on insert.
+                if !starredIdentifiers.isEmpty,
+                   starredIdentifiers.contains(item.identifier),
+                   let starredTag,
+                   !article.tags.contains(where: { $0.id == starredTag.id }) {
+                    article.tags.append(starredTag)
+                }
                 // Track it so a duplicate identifier later in the same batch updates, not re-inserts.
                 byIdentifier[item.identifier] = article
                 inserted += 1

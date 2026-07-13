@@ -35,7 +35,7 @@ struct FeedEditorModelTests {
     }
 
     @Test func applyWritesFieldsAndMatchedTags() throws {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: Feed.self, Tag.self, Article.self, configurations: config)
         let context = ModelContext(container)
         let tech = Tag(name: "Tech"); let fun = Tag(name: "Fun")

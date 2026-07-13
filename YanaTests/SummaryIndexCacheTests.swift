@@ -7,7 +7,7 @@ import Testing
 @Suite("SummaryIndexCache")
 struct SummaryIndexCacheTests {
     private func makeContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
         return ModelContext(container)
     }

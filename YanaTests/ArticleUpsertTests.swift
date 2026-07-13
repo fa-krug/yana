@@ -7,7 +7,7 @@ import Testing
 @Suite("ArticleUpsert")
 struct ArticleUpsertTests {
     private func makeContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
         return ModelContext(container)
     }
@@ -120,5 +120,27 @@ struct ArticleUpsertTests {
         let secondCount = ArticleUpsert.apply([aggregated("x1"), aggregated("x3")], to: feed, starredTag: nil, context: context, now: .now)
         #expect(secondCount == 1)
         #expect(feed.articles.count == 3)
+    }
+
+    @Test func starredIdentifiersStarsNewlyInsertedArticle() throws {
+        let context = try makeContext()
+        let starred = Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true)
+        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "f")
+        context.insert(feed); context.insert(starred)
+
+        // Insert two articles: only "x1" is in the starredIdentifiers set.
+        ArticleUpsert.apply(
+            [aggregated("x1"), aggregated("x2")],
+            to: feed, starredTag: starred,
+            starredIdentifiers: ["x1"],
+            context: context, now: .now
+        )
+
+        let byId = Dictionary(uniqueKeysWithValues: feed.articles.map { ($0.identifier, $0) })
+        let a1 = try #require(byId["x1"])
+        let a2 = try #require(byId["x2"])
+
+        #expect(a1.isStarred == true)   // in the set → starred on insert
+        #expect(a2.isStarred == false)  // not in the set → not starred
     }
 }
