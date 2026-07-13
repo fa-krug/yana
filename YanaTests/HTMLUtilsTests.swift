@@ -75,6 +75,38 @@ struct HTMLUtilsTests {
         #expect(!out.contains(">B<"))
     }
 
+    @Test func removeTemplatesDropsTemplateContent() throws {
+        let doc = try HTMLUtils.parse("<body><p>Real</p><template><article><p>${title}</p></article></template></body>")
+        try HTMLUtils.removeTemplates(doc)
+        let html = try HTMLUtils.bodyHTML(doc)
+        #expect(html.contains("Real"))
+        #expect(!html.contains("${title}"))
+        #expect(!html.contains("<template"))
+    }
+
+    @Test func extractMainContentSkipsTemplateNestedMatches() throws {
+        // Mirrors Heise's `upscore-reco-template` boxes: an `<article>` teaser with unrendered
+        // `${...}` placeholders lives inside a `<template>` and must not leak into the body.
+        let html = "<html><body>"
+            + "<template id=\"reco\"><article><span>${intro}</span><span>${title}</span>"
+            + "<p>${lead}</p></article></template>"
+            + "<article><p>Real body</p></article></body></html>"
+        let out = try HTMLUtils.extractMainContent(html, contentSelectors: ["article"], removeSelectors: [])
+        #expect(out.contains("Real body"))
+        #expect(!out.contains("${intro}"))
+        #expect(!out.contains("${title}"))
+        #expect(!out.contains("${lead}"))
+    }
+
+    @Test func extractMainContentSingleSelectorSkipsTemplateNestedMatches() throws {
+        let html = "<html><body>"
+            + "<template><article><p>${title}</p></article></template>"
+            + "<article><p>Real body</p></article></body></html>"
+        let out = try HTMLUtils.extractMainContent(html, selector: "article", removeSelectors: [])
+        #expect(out.contains("Real body"))
+        #expect(!out.contains("${title}"))
+    }
+
     @Test func extractMainContentFallsBackToBodyWhenNoMatch() throws {
         let html = "<html><body><p>Only body</p></body></html>"
         let out = try HTMLUtils.extractMainContent(html, contentSelectors: [".missing"], removeSelectors: [])

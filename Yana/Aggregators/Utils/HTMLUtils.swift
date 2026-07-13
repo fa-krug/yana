@@ -57,6 +57,16 @@ enum HTMLUtils {
         }
     }
 
+    /// Remove `<template>` elements. Template content is inert by the HTML spec — a browser never
+    /// renders it, it exists only to be cloned by JavaScript — but SwiftSoup exposes its children as
+    /// ordinary selectable DOM. Without this, a content selector like `article` matches the
+    /// `<article>` teasers inside sites' client-side templates (e.g. Heise's `upscore-reco-template`
+    /// recommendation boxes), leaking their raw `${intro}`/`${title}`/`${lead}` placeholders into the
+    /// extracted body. Run before content extraction so nested templates never reach the reader.
+    static func removeTemplates(_ doc: Document) throws {
+        for el in try doc.select("template") { try el.remove() }
+    }
+
     /// Strip inline event handlers (`onclick`, `onerror`, …) and `javascript:`/`vbscript:` URLs from
     /// `href`/`src`, so nothing executes when the body is rendered with JavaScript enabled.
     static func removeUnsafeAttributes(_ doc: Document) throws {
@@ -100,6 +110,7 @@ enum HTMLUtils {
     /// inline styles, sanitize class names, drop comments and empty paragraphs/spans, and compact.
     /// Centralized so every aggregator's content pipeline stays consistent.
     static func finishSanitization(_ doc: Document) throws {
+        try removeTemplates(doc)
         try removeUnsafeAttributes(doc)
         try removeInlineStyles(doc)
         try sanitizeClassNames(doc)
@@ -177,6 +188,7 @@ enum HTMLUtils {
 
     static func extractMainContent(_ html: String, selector: String, removeSelectors: [String]) throws -> String {
         let doc = try parse(html)
+        try removeTemplates(doc)
         let content: Element = (try? doc.select(selector).first()) ?? doc.body() ?? doc
         for sel in removeSelectors {
             for el in try content.select(sel) { try el.remove() }
@@ -190,6 +202,7 @@ enum HTMLUtils {
     /// matches. Then removes every element matching any of `removeSelectors` from the result.
     static func extractMainContent(_ html: String, contentSelectors: [String], removeSelectors: [String]) throws -> String {
         let doc = try parse(html)
+        try removeTemplates(doc)
 
         // Collect matches for every selector, preserving document order and de-duplicating the
         // same element matched by multiple selectors.

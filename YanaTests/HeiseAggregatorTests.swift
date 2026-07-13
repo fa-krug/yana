@@ -46,6 +46,26 @@ struct HeiseAggregatorTests {
         #expect(agg.requestedArticleURL?.contains("seite=all") == true)
     }
 
+    @Test func stripsRecommendationTemplatePlaceholders() async throws {
+        // Heise pages carry `<template id="upscore-reco-template-*">` recommendation boxes whose
+        // `<article>` teasers hold unrendered `${intro}/${title}/${lead}` placeholders. A browser
+        // never renders template content, but the scraper must not leak it into the reader body.
+        let page = """
+        <html><body>\
+        <template id="upscore-reco-template-free"><article class="a-article-teaser">\
+        <span>${intro}</span><span>${title}</span><p>${lead}</p></article></template>\
+        <article class="StoryContent"><p>Real body</p></article></body></html>
+        """
+        let agg = StubHeise(entries: [entry("Article with reco template")], page: page, forum: "",
+                            options: { var o = HeiseOptions(); o.includeComments = false; return o }(),
+                            store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Real body"))
+        #expect(!a.content.contains("${intro}"))
+        #expect(!a.content.contains("${title}"))
+        #expect(!a.content.contains("${lead}"))
+    }
+
     @Test func skipsTitlesInSkipList() async throws {
         let agg = StubHeise(entries: [entry("heise+ exclusive"), entry("Keeper")],
                             page: "<article class=\"StoryContent\"><p>x</p></article>", forum: "",
