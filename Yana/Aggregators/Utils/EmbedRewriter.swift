@@ -87,6 +87,9 @@ enum EmbedRewriter {
     }
 
     static func rewriteEmbeds(in doc: Document) throws {
+        // Recover consent-gated embeds into live iframes first, so the loop below rewrites them
+        // into facades just like a normal in-content embed.
+        try unwrapConsentGatedEmbeds(in: doc)
         for iframe in try doc.select("iframe") {
             let src = try iframe.attr("src")
             if let id = extractYouTubeID(from: src) {
@@ -97,6 +100,28 @@ enum EmbedRewriter {
                 // localizes it and the reader plays the animated GIF.
                 let img = try SwiftSoup.parseBodyFragment("<img src=\"\(gifURL)\" alt=\"Giphy\">").body()!.child(0)
                 try iframe.replaceWith(img)
+            }
+        }
+    }
+
+    /// WordPress' "Embed Privacy" plugin (widespread on German sites, e.g. Caschy's Blog) replaces a
+    /// video `<iframe>` with a `.embed-privacy-container` consent gate: the real player only lives as
+    /// a string inside a `<script>` template, which the sanitizer strips — so all that survives is the
+    /// visible boilerplate ("Hier klicken, um den Inhalt von YouTube anzuzeigen. … Inhalt von YouTube
+    /// immer anzeigen"), which then leaks into the article as stray paragraphs. Recover the canonical
+    /// URL from the always-present "open directly" footer link (`.embed-privacy-url a`, a real anchor
+    /// that survives sanitization) and swap the whole gate for a live `<iframe>` so the caller's rewrite
+    /// pass turns it into a proper facade. If no recognizable URL is found, drop the gate so its consent
+    /// text doesn't survive.
+    private static func unwrapConsentGatedEmbeds(in doc: Document) throws {
+        for container in try doc.select(".embed-privacy-container") {
+            let href = try container.select(".embed-privacy-url a[href]").first()?.attr("href")
+            if let href, let id = extractYouTubeID(from: href) {
+                let iframe = try SwiftSoup.parseBodyFragment(
+                    "<iframe src=\"https://www.youtube.com/embed/\(id)\"></iframe>").body()!.child(0)
+                try container.replaceWith(iframe)
+            } else {
+                try container.remove()
             }
         }
     }
