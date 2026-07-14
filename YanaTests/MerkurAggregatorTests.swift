@@ -67,6 +67,25 @@ struct MerkurAggregatorTests {
         #expect(!a.content.contains("PROMONOISE"))
     }
 
+    @Test func removesGoogleAndYouTubeFollowButtons() async throws {
+        // IPPEN's "Uns auf Google/YouTube folgen" follow-us buttons are standalone anchors
+        // in the story flow (not inside the removed .id-Story-interactionBar), so they must be
+        // stripped explicitly or they leak in as the article's first paragraph.
+        let page = """
+        <html><body><div class="idjs-Story"><div class="idjs-StoryElements">\
+        <a href="https://profile.google.com/x" class="id-Story-googleFollowButton id-Story-googleFollowButton--default">\
+        <span class="id-Story-googleFollowButton-text">Uns auf Google folgen</span></a>\
+        <a href="https://youtube.com/x" class="id-Story-youtubeFollowButton">\
+        <span>Uns auf YouTube folgen</span></a>\
+        <p>Echter Artikeltext</p></div></div></body></html>
+        """
+        let agg = StubMerkur(entries: [entry()], page: page, options: MerkurOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("Echter Artikeltext"))
+        #expect(!a.content.contains("Uns auf Google folgen"))
+        #expect(!a.content.contains("Uns auf YouTube folgen"))
+    }
+
     @Test func identifierChoicesHas18RegionalFeeds() {
         #expect(MerkurAggregator.identifierChoices.count == 18)
         #expect(MerkurAggregator.identifierChoices.first?.value == "https://www.merkur.de/rssfeed.rdf")
