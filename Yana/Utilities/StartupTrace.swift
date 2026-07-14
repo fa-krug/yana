@@ -20,7 +20,7 @@ enum StartupTrace {
 
     /// Monotonic reference captured at first use (the earliest measured stage), so each line can
     /// report "+Nms since launch" — useful for spotting gaps between stages, not just stage cost.
-    nonisolated(unsafe) private static let origin = ContinuousClock.now
+    private static let origin = ContinuousClock.now
 
     /// Measure a synchronous stage.
     static func measure<T>(_ name: StaticString, _ body: () throws -> T) rethrows -> T {

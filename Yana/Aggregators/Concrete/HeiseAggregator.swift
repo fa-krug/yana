@@ -108,7 +108,7 @@ class HeiseAggregator: FullWebsiteAggregator, @unchecked Sendable {
     override func processFullContent(_ html: String, article: AggregatedArticle, header: HeaderElement?) async throws -> String {
         let doc = try HTMLUtils.parse(html)
         try EmbedRewriter.rewriteEmbeds(in: doc)
-        if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
+        if let dedup = header?.dedupURL { _ = try? HTMLUtils.removeImageByURL(doc, url: dedup) }
         // Empty-element removal (server: p/div/span with no text and no images).
         try HTMLUtils.removeEmptyElements(doc, tags: ["p", "div", "span"])
         try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))

@@ -417,7 +417,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
 
     private func stripImage(from html: String, url: String) -> String {
         guard let doc = try? HTMLUtils.parse(html) else { return html }
-        try? HTMLUtils.removeImageByURL(doc, url: url)
+        _ = try? HTMLUtils.removeImageByURL(doc, url: url)
         // Also drop a bare anchor whose href equals the header url (direct-image link posts).
         if let anchors = try? doc.select("a[href]") {
             for a in anchors where (try? a.attr("href")) == url { try? a.remove() }

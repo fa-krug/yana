@@ -34,10 +34,12 @@ struct TagFilterView: View {
                             Label { Text(tag.name) } icon: { TagColorDot(colorHex: tag.colorHex) }
                         }
                     }
-                    toggleRow(String(localized: "Untagged"), isActive: includeUntagged) { active in
-                        includeUntagged = active
-                        settings.includeUntagged = active
-                    }
+                    toggleRow(String(localized: "Untagged"), isOn: Binding(
+                        get: { includeUntagged },
+                        set: { active in
+                            includeUntagged = active
+                            settings.includeUntagged = active
+                        }))
                 }
 
                 if !feeds.isEmpty {
@@ -82,7 +84,7 @@ struct TagFilterView: View {
         settings.includeUntagged = true
     }
 
-    private func toggleRow(_ name: String, isActive: Bool, set: @escaping (Bool) -> Void) -> some View {
-        Toggle(name, isOn: Binding(get: { isActive }, set: set))
+    private func toggleRow(_ name: String, isOn: Binding<Bool>) -> some View {
+        Toggle(name, isOn: isOn)
     }
 }

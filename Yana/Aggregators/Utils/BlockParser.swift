@@ -19,10 +19,10 @@ enum BlockParser {
     /// link `href`s to absolute URLs so native taps open the right page.
     static func blocks(fromHTML html: String, baseURL: URL? = nil) -> [Block] {
         guard !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              let doc = try? SwiftSoup.parse(html),
-              let body = try? doc.body() ?? doc else {
+              let doc = try? SwiftSoup.parse(html) else {
             return []
         }
+        let body = doc.body() ?? doc
         return convert(body, baseURL: baseURL)
     }
 
