@@ -3107,6 +3107,46 @@
           }
         }
       }
+    },
+    "Sign in to iCloud in Settings to sync.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zum Synchronisieren in den Einstellungen bei iCloud anmelden."
+          }
+        }
+      }
+    },
+    "iCloud is unreachable. Check your connection.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud ist nicht erreichbar. Verbindung prüfen."
+          }
+        }
+      }
+    },
+    "Your iCloud storage is full.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein iCloud-Speicher ist voll."
+          }
+        }
+      }
+    },
+    "iCloud access is restricted for this account.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der iCloud-Zugriff ist für dieses Konto eingeschränkt."
+          }
+        }
+      }
     }
   },
   "version": "1.1"

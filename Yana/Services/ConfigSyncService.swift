@@ -127,6 +127,12 @@ final class ConfigSyncService {
     private let starred: StarredRegistry
     @ObservationIgnored private let defaults: UserDefaults
 
+    /// Human-readable description of the most recent push/pull failure, or `nil` after a success.
+    /// Surfaced in the iCloud Sync settings section so failures aren't silently swallowed —
+    /// without this, a failing CloudKit write (no iCloud account, unprovisioned container, etc.)
+    /// looks identical to "nothing to sync".
+    private(set) var lastSyncError: String?
+
     private static let lastFeedKeysDefaultsKey = "sync.lastFeedKeys"
     private static let debounceInterval: Duration = .seconds(2)
 
@@ -187,17 +193,21 @@ final class ConfigSyncService {
         do {
             try await store.save(document)
             setLastFeedKeys(currentLocalFeedKeys())
+            lastSyncError = nil
         } catch ConfigStoreError.conflict {
             await pull()
             let rebuilt = buildDocument()
             do {
                 try await store.save(rebuilt)
                 setLastFeedKeys(currentLocalFeedKeys())
+                lastSyncError = nil
             } catch {
                 log.error("Push retry after conflict failed: \(String(describing: error))")
+                lastSyncError = Self.describe(error)
             }
         } catch {
             log.error("Push failed: \(String(describing: error))")
+            lastSyncError = Self.describe(error)
         }
     }
 
@@ -209,8 +219,10 @@ final class ConfigSyncService {
         do {
             guard let document = try await store.fetch() else { return }
             reconcile(document)
+            lastSyncError = nil
         } catch {
             log.error("Pull failed: \(String(describing: error))")
+            lastSyncError = Self.describe(error)
         }
     }
 
@@ -286,5 +298,28 @@ final class ConfigSyncService {
 
     private func setLastFeedKeys(_ keys: Set<String>) {
         defaults.set(Array(keys), forKey: Self.lastFeedKeysDefaultsKey)
+    }
+
+    // MARK: Error description
+
+    /// Map a sync failure to a short, user-readable message. CloudKit's most common actionable
+    /// failures (no signed-in account, network) get a tailored line; everything else falls back
+    /// to the localized error description.
+    static func describe(_ error: Error) -> String {
+        if let ck = error as? CKError {
+            switch ck.code {
+            case .notAuthenticated:
+                return String(localized: "Sign in to iCloud in Settings to sync.")
+            case .networkUnavailable, .networkFailure:
+                return String(localized: "iCloud is unreachable. Check your connection.")
+            case .quotaExceeded:
+                return String(localized: "Your iCloud storage is full.")
+            case .managedAccountRestricted, .permissionFailure:
+                return String(localized: "iCloud access is restricted for this account.")
+            default:
+                break
+            }
+        }
+        return error.localizedDescription
     }
 }

@@ -58,6 +58,15 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.news
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Yana uses Face ID to protect your reading data."
+      configs:
+        # APNs environment for the Push Notifications capability (aps-environment
+        # entitlement). Required for CloudKit's CKDatabaseSubscription silent pushes
+        # to wake the app and pull config changes across devices. Debug builds use the
+        # development APNs sandbox; archived/TestFlight/App Store builds use production.
+        Debug:
+          APS_ENVIRONMENT: development
+        Release:
+          APS_ENVIRONMENT: production
 
   YanaTests:
     type: bundle.unit-test

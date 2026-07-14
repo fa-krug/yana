@@ -493,7 +493,14 @@ struct SettingsScreenView: View {
         } header: {
             Text("iCloud Sync")
         } footer: {
-            Text("Syncs feeds, tags, settings, and API keys across your devices via iCloud. Article contents are not synced — they re-download on each device.")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Syncs feeds, tags, settings, and API keys across your devices via iCloud. Article contents are not synced — they re-download on each device.")
+                if settings.iCloudSyncEnabled, let error = ConfigSyncService.shared.lastSyncError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.footnote)
+                }
+            }
         }
     }
 
