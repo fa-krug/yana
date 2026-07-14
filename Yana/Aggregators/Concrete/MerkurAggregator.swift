@@ -43,7 +43,10 @@ class MerkurAggregator: FullWebsiteAggregator, @unchecked Sendable {
          ".id-Story-timestamp", ".id-Story-authors", ".id-Story-interactionBar", ".id-Comments",
          ".id-ClsPrevention", "egy-discussion", "figcaption", "script", "style",
          "iframe:not([src*='youtube.com']):not([src*='youtu.be'])", "noscript", "svg",
-         ".id-StoryElement-intestitialLink", ".id-StoryElement-embed--fanq"]
+         ".id-StoryElement-intestitialLink", ".id-StoryElement-embed--fanq",
+         // "Uns auf Google/YouTube folgen" follow-us buttons: standalone InteractionBar anchors
+         // (e.g. .id-Story-googleFollowButton) that live in the story flow, not the interaction bar.
+         "[class*=FollowButton]"]
     }
 
     override func fetchEntries() async throws -> [FeedEntry] {
