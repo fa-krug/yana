@@ -60,7 +60,7 @@ enum SelectorSuggester {
                 // Snapshot the keys before mutating (removeAttr edits the same collection).
                 for key in attrs.asList().map({ $0.getKey() })
                 where !selectorAttributes.contains(key.lowercased()) {
-                    try? el.removeAttr(key)
+                    _ = try? el.removeAttr(key)
                 }
             }
         }

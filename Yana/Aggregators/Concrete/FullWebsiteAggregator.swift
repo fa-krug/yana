@@ -100,7 +100,7 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
             // og:image and the in-body derivative can be different files (e.g. Golem); when the URL
             // match misses, fall back to removing the leading lead figure.
             if !((try? HTMLUtils.removeImageByURL(doc, url: dedup)) ?? false) {
-                try? HTMLUtils.removeLeadingLeadImage(doc)
+                _ = try? HTMLUtils.removeLeadingLeadImage(doc)
             }
         }
         try HTMLUtils.removeUnsafeTags(doc)

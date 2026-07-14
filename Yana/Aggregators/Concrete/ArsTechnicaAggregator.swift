@@ -75,7 +75,7 @@ class ArsTechnicaAggregator: FullWebsiteAggregator, @unchecked Sendable {
         let doc = try HTMLUtils.parse(html)
         try HTMLUtils.removeEmptyElements(doc, tags: ["p", "div", "span"])
         try EmbedRewriter.rewriteEmbeds(in: doc)
-        if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
+        if let dedup = header?.dedupURL { _ = try? HTMLUtils.removeImageByURL(doc, url: dedup) }
         try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))
         try HTMLUtils.sanitizeClassNames(doc)
         try HTMLUtils.removeComments(doc)

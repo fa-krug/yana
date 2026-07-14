@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // well after this task runs), so move its fetch + save off the synchronous launch path.
         // Save only when an insert actually happened — no per-launch context flush.
         Task { @MainActor in
-            await StartupTrace.measure("Tag.ensureBuiltIns") {
+            StartupTrace.measure("Tag.ensureBuiltIns") {
                 let context = AppContainer.shared.mainContext
                 if Tag.ensureBuiltIns(in: context) {
                     try? context.save()

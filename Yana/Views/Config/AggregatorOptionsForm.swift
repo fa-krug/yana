@@ -23,23 +23,23 @@ struct AggregatorOptionsForm: View {
             case .heise(let o):
                 heiseSection(o)
             case .merkur(let o):
-                toggleSection(isOn: o.removeEmptyElements, label: "Remove Empty Elements") {
-                    var n = o; n.removeEmptyElements = $0; options = .merkur(n)
-                }
+                toggleSection("Remove Empty Elements", isOn: Binding(
+                    get: { o.removeEmptyElements },
+                    set: { var n = o; n.removeEmptyElements = $0; options = .merkur(n) }))
             case .tagesschau(let o):
                 tagesschauSection(o)
             case .explosm(let o):
-                toggleSection(isOn: o.showAltText, label: "Show Alt Text") {
-                    var n = o; n.showAltText = $0; options = .explosm(n)
-                }
+                toggleSection("Show Alt Text", isOn: Binding(
+                    get: { o.showAltText },
+                    set: { var n = o; n.showAltText = $0; options = .explosm(n) }))
             case .darkLegacy(let o):
-                toggleSection(isOn: o.showAltText, label: "Show Alt Text") {
-                    var n = o; n.showAltText = $0; options = .darkLegacy(n)
-                }
+                toggleSection("Show Alt Text", isOn: Binding(
+                    get: { o.showAltText },
+                    set: { var n = o; n.showAltText = $0; options = .darkLegacy(n) }))
             case .caschysBlog(let o):
-                toggleSection(isOn: o.skipAds, label: "Skip Advertisements") {
-                    var n = o; n.skipAds = $0; options = .caschysBlog(n)
-                }
+                toggleSection("Skip Advertisements", isOn: Binding(
+                    get: { o.skipAds },
+                    set: { var n = o; n.skipAds = $0; options = .caschysBlog(n) }))
             case .theVerge:
                 EmptyView()
             case .arsTechnica:
@@ -99,9 +99,9 @@ struct AggregatorOptionsForm: View {
 
     // MARK: - Per-type sections
 
-    private func toggleSection(isOn: Bool, label: LocalizedStringKey, set: @escaping (Bool) -> Void) -> some View {
+    private func toggleSection(_ label: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
         Section("Options") {
-            Toggle(label, isOn: Binding(get: { isOn }, set: set))
+            Toggle(label, isOn: isOn)
         }
     }
 

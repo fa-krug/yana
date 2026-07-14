@@ -184,7 +184,7 @@ class MactechnewsAggregator: FullWebsiteAggregator, @unchecked Sendable {
         }
 
         try EmbedRewriter.rewriteEmbeds(in: doc)
-        if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
+        if let dedup = header?.dedupURL { _ = try? HTMLUtils.removeImageByURL(doc, url: dedup) }
         try await rewriteImages(in: doc, store: store, baseURL: base)
         try HTMLUtils.sanitizeClassNames(doc)
         try HTMLUtils.removeComments(doc)

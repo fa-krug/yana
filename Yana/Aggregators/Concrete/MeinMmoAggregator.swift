@@ -159,7 +159,7 @@ class MeinMmoAggregator: FullWebsiteAggregator, @unchecked Sendable {
         try HTMLUtils.removeEmptyElements(doc, tags: ["p", "div"])
         try EmbedRewriter.rewriteEmbeds(in: doc)   // normalize any remaining YouTube iframes
         // Drop the lead image from the body when it's promoted to the header (avoids a dupe).
-        if let dedup = header?.dedupURL { try? HTMLUtils.removeImageByURL(doc, url: dedup) }
+        if let dedup = header?.dedupURL { _ = try? HTMLUtils.removeImageByURL(doc, url: dedup) }
         try await rewriteImages(in: doc, store: store, baseURL: URL(string: article.url))
         try HTMLUtils.sanitizeClassNames(doc)
         try HTMLUtils.removeComments(doc)
