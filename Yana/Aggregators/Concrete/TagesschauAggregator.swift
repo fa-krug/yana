@@ -91,10 +91,18 @@ class TagesschauAggregator: FullWebsiteAggregator, @unchecked Sendable {
             article.rawContent = raw
             let extracted = try Self.extractTagesschauContent(raw)
             let mediaHeader = try? Self.extractMediaHeader(raw)
-            // Some Tagesschau pages are interactive widgets (e.g. the DWD weather warnings page)
-            // that carry no textabsatz paragraphs and no media player. Importing the empty page
-            // extraction would yield a blank article, so fall back to the RSS content instead.
+            // Some Tagesschau pages carry no textabsatz paragraphs and no media player. This happens
+            // for two reasons: (1) interactive widgets (e.g. the DWD weather-warnings page), and
+            // (2) regional feeds syndicate items that link straight to an external ARD-broadcaster
+            // page (mdr.de, ndr.de, …) whose template uses none of tagesschau.de's own markup.
+            // For (2) the article body is still there in a generic `<article>`/`main` container, so
+            // try the generic full-website extraction before degrading to the short RSS teaser;
+            // only when neither yields real content (e.g. the DWD widget) do we fall back to RSS.
             guard !extracted.isEmpty || mediaHeader != nil else {
+                if let generic = try? await genericContentIfPresent(from: raw, article: article) {
+                    article.content = generic
+                    return article
+                }
                 article.content = try await processContent(rssContent, article: article, headerHTML: nil)
                 return article
             }

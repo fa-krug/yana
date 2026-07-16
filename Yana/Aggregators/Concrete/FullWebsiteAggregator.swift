@@ -89,6 +89,32 @@ class FullWebsiteAggregator: RSSPipelineAggregator, @unchecked Sendable {
         try await enrich(seed, entry: FeedEntry())
     }
 
+    /// Generic main-content extraction from already-fetched HTML, for scrapers whose site-specific
+    /// extraction found nothing on the fetched page. Tagesschau's regional feeds, for instance,
+    /// syndicate items that link straight to an external ARD-broadcaster page (mdr.de, ndr.de, …)
+    /// whose template carries none of tagesschau.de's own `textabsatz`/MediaPlayer markup. Rather
+    /// than degrade such an article to its short RSS teaser, the caller falls back to the generic
+    /// `<article>`/`main` extraction here. Returns `nil` when no recognizable content container is
+    /// present (or it holds no real text), so the caller can still fall back to RSS content instead
+    /// of surfacing page chrome.
+    func genericContentIfPresent(from raw: String, article: AggregatedArticle) async throws -> String? {
+        let opts = websiteOptions
+        let contentSelectors = opts.contentSelectors.isEmpty
+            ? WebsiteOptions.defaultContentSelectors : opts.contentSelectors
+        let selector = contentSelectors.joined(separator: ", ")
+        let removeSelectors = selectorsToRemove + opts.ignoreSelectors
+        guard let extracted = try HTMLUtils.extractMainContentIfPresent(
+            raw, selector: selector, removeSelectors: removeSelectors) else { return nil }
+        // Require some real text so a container that is only a byline/breadcrumb doesn't override the
+        // RSS fallback (and the DWD-style widget page, which has no container at all, still uses RSS).
+        let textLength = (try? HTMLUtils.parse(extracted).text().count) ?? 0
+        guard textLength >= 80 else { return nil }
+        let header = await HeaderElementExtractor.extract(
+            articleURL: article.url, title: article.title, store: store,
+            credentials: credentials, pageHTML: raw)
+        return try await processFullContent(extracted, article: article, header: header)
+    }
+
     /// Like base processContent but de-dups the header image from the body and prepends the header.
     func processFullContent(_ html: String, article: AggregatedArticle, header: HeaderElement?) async throws -> String {
         let doc = try HTMLUtils.parse(html)

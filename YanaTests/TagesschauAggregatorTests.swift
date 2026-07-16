@@ -129,6 +129,35 @@ struct TagesschauAggregatorTests {
         #expect(a.content.contains("Der Deutsche Wetterdienst warnt vor Hitze."))
     }
 
+    @Test func extractsExternalBroadcasterBodyInsteadOfRSSTeaser() async throws {
+        // Tagesschau regional feeds syndicate items that link straight to an external ARD-broadcaster
+        // page (mdr.de, ndr.de, …). Those pages carry none of tagesschau.de's `textabsatz`/MediaPlayer
+        // markup — the body lives in a generic <article> of classless <p>s. The tagesschau-specific
+        // extraction finds nothing, so without a generic fallback the article degrades to the short
+        // RSS teaser (an all-but-empty reader). The generic <article> extraction must recover it.
+        let rssTeaser = "<p>Kurzer Teaser.[<a href=\"https://www.mdr.de/x-100.html\">mehr</a>]</p>"
+        let entry = FeedEntry(
+            title: "Abschieben, kündigen, sparen – Die Pläne der AfD für Sachsen-Anhalt",
+            link: "https://www.mdr.de/nachrichten/sachsen-anhalt/landtagswahl/afd-100-tage-100.html",
+            content: rssTeaser, summary: rssTeaser, entryDescription: nil, published: .now, author: "",
+            enclosures: [], itunesDuration: nil, itunesImage: nil, mediaThumbnails: [])
+        let page = """
+        <html><body>
+        <header class="nav">Navigation</header>
+        <article>
+          <h1>Abschieben, kündigen, sparen – Die Pläne der AfD für Sachsen-Anhalt</h1>
+          <p>Die AfD in Sachsen-Anhalt hat ihr 100-Tage-Programm vorgestellt.</p>
+          <p>Kernpunkte sind Abschiebungen, Kündigungen und Sparmaßnahmen im Landeshaushalt.</p>
+        </article>
+        </body></html>
+        """
+        let agg = StubTS(entries: [entry], page: page, options: TagesschauOptions(), store: tempStore())
+        let a = try #require(try await agg.aggregate().first)
+        #expect(a.content.contains("100-Tage-Programm vorgestellt"))
+        #expect(a.content.contains("Abschiebungen, Kündigungen und Sparmaßnahmen"))
+        #expect(!a.content.contains("Kurzer Teaser"))   // recovered the body, not the teaser
+    }
+
     @Test func identifierChoicesMatchServerList() {
         #expect(TagesschauAggregator.identifierChoices.count == 42)
     }
