@@ -166,6 +166,13 @@ final class ReaderArticleViewController: UIViewController,
             self, selector: #selector(handleMemoryWarning),
             name: UIApplication.didReceiveMemoryWarningNotification, object: nil
         )
+        // Re-warm the prewarmed neighbor pages when the app returns from the background (see
+        // rewarmNeighborsAfterReturn) — the counterpart to viewDidAppear, which fires when a
+        // full-screen in-app browser / video player is dismissed but not on a plain app switch.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification, object: nil
+        )
 
         // Tap the nav bar to hide bars (NNW behavior).
         let tapZone = UIView()
@@ -191,10 +198,54 @@ final class ReaderArticleViewController: UIViewController,
         displayedPage?.reload()
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Skip the first appearance (launch): `configure` already warms the neighbors. Re-warm only
+        // on *return* appearances — e.g. dismissing a full-screen in-app browser (SFSafariViewController)
+        // or the in-app video player, which detach and purge the reader's off-screen pages while up.
+        guard hasAppearedOnce else { hasAppearedOnce = true; return }
+        rewarmNeighborsAfterReturn()
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         // Don't keep reading after the reader is left.
         speech.stop()
+    }
+
+    /// Flips true after the first `viewDidAppear` so only *return* appearances trigger a neighbor
+    /// re-warm (the launch appearance is already covered by `configure`).
+    private var hasAppearedOnce = false
+
+    /// Rebuild the prewarmed neighbor pages after the reader returns to use — from the background (an
+    /// app switch) or from a full-screen in-app browser / video player. While the reader's views are
+    /// detached and a memory-hungry `WKWebView` runs on top, iOS purges the off-screen neighbor
+    /// pages' layer backing and TextKit glyph layout. `UIPageViewController` keeps holding those
+    /// now-empty pages (it re-queries neighbors only on a `setViewControllers` call or a completed
+    /// swipe), so the next swipe regenerates that layout synchronously on the main thread under the
+    /// user's finger — the "lag swiping to the next article after a while in the web view" users hit.
+    /// Drop the stale neighbors, force the pager to re-query fresh ones, then lay them out off the
+    /// swipe path so the next swipe lands on an already-built page again.
+    private func rewarmNeighborsAfterReturn() {
+        guard !isShowingEmptyState, !isPagerBusy, view.window != nil, view.bounds.width > 0,
+              let displayed = displayedPage else { return }
+        // Evict the ±radius neighbors so the forced re-query rebuilds them fresh — handing back a
+        // purged, still-cached page would leave the hitch in place.
+        for i in PrewarmPlan.indices(current: index, count: articles.count,
+                                     radius: Self.prewarmRadius, direction: lastDirection)
+        where articles.indices.contains(i) {
+            pageCache.removeValue(for: articles[i].identifier)
+        }
+        // Re-assert the current page so the pager re-queries (and adopts) the rebuilt neighbors.
+        pageController.setViewControllers([displayed], direction: .forward, animated: false)
+        recordWiredNeighbors()
+        // Build + lay out the fresh neighbors at full width and warm their lead images, exactly as a
+        // completed swipe does — moving the TextKit work off the next gesture.
+        prewarmNeighbors(around: index)
+    }
+
+    @objc private func handleWillEnterForeground() {
+        rewarmNeighborsAfterReturn()
     }
 
     // MARK: - Chrome
