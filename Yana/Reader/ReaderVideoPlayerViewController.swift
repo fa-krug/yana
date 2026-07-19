@@ -76,7 +76,12 @@ final class ReaderVideoPlayerViewController: UIViewController {
     private init(embedURL: URL) {
         self.embedURL = embedURL
         super.init(nibName: nil, bundle: nil)
-        modalPresentationStyle = .fullScreen
+        // Present *over* the reader (not as a full-screen cover): a `.fullScreen` presentation makes
+        // UIKit detach the reader's views from the window, so iOS purges the off-screen pages' layer
+        // backing / TextKit layout while this player's WKWebView runs on top — making the next swipe
+        // after dismissal rebuild that layout under the user's finger. `.overFullScreen` keeps the
+        // reader and its prewarmed neighbors alive behind the player, so nothing reloads on return.
+        modalPresentationStyle = .overFullScreen
         modalTransitionStyle = .crossDissolve
     }
 
