@@ -201,8 +201,10 @@ final class ReaderArticleViewController: UIViewController,
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         // Skip the first appearance (launch): `configure` already warms the neighbors. Re-warm only
-        // on *return* appearances — e.g. dismissing a full-screen in-app browser (SFSafariViewController)
-        // or the in-app video player, which detach and purge the reader's off-screen pages while up.
+        // on *return* appearances. The in-app browser and the WKWebView video player now present
+        // `.overFullScreen`, so they no longer detach the reader (its pages stay warm and this fires
+        // only if some other presentation actually covered the reader full-screen — e.g. the native
+        // full-screen `AVPlayerViewController` for a direct video stream); it's a safety net now.
         guard hasAppearedOnce else { hasAppearedOnce = true; return }
         rewarmNeighborsAfterReturn()
     }
@@ -218,9 +220,11 @@ final class ReaderArticleViewController: UIViewController,
     private var hasAppearedOnce = false
 
     /// Rebuild the prewarmed neighbor pages after the reader returns to use — from the background (an
-    /// app switch) or from a full-screen in-app browser / video player. While the reader's views are
-    /// detached and a memory-hungry `WKWebView` runs on top, iOS purges the off-screen neighbor
-    /// pages' layer backing and TextKit glyph layout. `UIPageViewController` keeps holding those
+    /// app switch) or from a presentation that covered the reader full-screen (the native
+    /// `AVPlayerViewController`). The in-app browser and WKWebView video player present
+    /// `.overFullScreen` and keep the reader alive behind them, so they no longer need this; but when
+    /// the reader's views *are* detached and a memory-hungry `WKWebView` runs on top, iOS purges the
+    /// off-screen neighbor pages' layer backing and TextKit glyph layout. `UIPageViewController` keeps holding those
     /// now-empty pages (it re-queries neighbors only on a `setViewControllers` call or a completed
     /// swipe), so the next swipe regenerates that layout synchronously on the main thread under the
     /// user's finger — the "lag swiping to the next article after a while in the web view" users hit.

@@ -48,7 +48,17 @@ enum ReaderLinkPolicy {
             if useSystemBrowser {
                 UIApplication.shared.open(url)
             } else if let presenter = presenter() {
-                presenter.present(SFSafariViewController(url: url), animated: true)
+                let safari = SFSafariViewController(url: url)
+                // Present *over* the reader rather than as a full-screen cover. A `.fullScreen`
+                // presentation makes UIKit detach the reader's views from the window once the
+                // transition completes, so iOS reclaims the off-screen pages' layer backing and
+                // TextKit glyph layout while the browser's WKWebView runs on top — leaving the next
+                // swipe to rebuild that layout synchronously under the user's finger (the "can't
+                // instantly swipe after returning from the web view" lag). `.overFullScreen` keeps
+                // the reader — the visible page and its prewarmed ±1 neighbors — alive in the
+                // hierarchy behind the browser, so nothing is reloaded on return.
+                safari.modalPresentationStyle = .overFullScreen
+                presenter.present(safari, animated: true)
             }
         }
     }
