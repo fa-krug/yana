@@ -23,6 +23,14 @@ final class ReaderImageCache: @unchecked Sendable {
     /// runs) share one disk read instead of decoding the same file twice.
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
+    /// Bounds how many images decode at once. The reader body renders every block up front (a
+    /// non-lazy `VStack`), so an image-heavy article — e.g. a multi-page Heise story — would
+    /// otherwise fire a full-bitmap decode for *every* image simultaneously. Each decode transiently
+    /// allocates the source bitmap plus a ≤`maxPixelSize` thumbnail, so a big enough burst spikes
+    /// memory past the cache budget and the app is jetsammed (no crash report). Serializing decodes a
+    /// few at a time lets the `NSCache` cost limit + LRU eviction bound the resident set between them.
+    private static let decodeGate = AsyncSemaphore(limit: 3)
+
     /// Cap for the decoded in-memory copy. Reader images never render wider than the content column,
     /// so decoding to ~1600px (rather than the on-disk ≤2000px original) cuts decode time and memory
     /// while staying sharp at every iPhone content width and visually indistinguishable on iPad.
@@ -71,6 +79,11 @@ final class ReaderImageCache: @unchecked Sendable {
     /// Reads and decodes the image for a `yana-img://<hash>` ref from the local `ImageStore`, or a
     /// remote URL fallback. Runs entirely off the main thread.
     private static func load(_ ref: String) async -> UIImage? {
+        // Hold a decode slot for the whole read+decode so only a few images allocate their bitmaps
+        // at the same time (the rest queue on the gate).
+        await decodeGate.acquire()
+        defer { decodeGate.release() }
+
         let prefix = "\(ReaderWeb.imageScheme)://"
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
