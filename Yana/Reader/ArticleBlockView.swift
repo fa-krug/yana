@@ -41,8 +41,10 @@ struct ReaderArticle: Equatable {
 }
 
 /// Native SwiftUI renderer for an article's `[Block]` body — replaces the WebView + themed-HTML
-/// reader page. Renders top-to-bottom in a scroll view: heading + dateline, the AI summary card
-/// (after the lead image), then each block. Top-level flowing text renders through `SelectableText`
+/// reader page. Renders top-to-bottom in a scroll view (a `LazyVStack`, so only on-screen blocks are
+/// built/laid out and only their images decode — a very large article never materializes all at
+/// once): heading + dateline, the AI summary card (after the lead image), then each block. Top-level
+/// flowing text renders through `SelectableText`
 /// (a hosted `UITextView`) so it is fully selectable with the system edit menu; text nested in a
 /// list/blockquote stays SwiftUI `Text` (selectable via the ambient `.textSelection`). Dynamic Type
 /// and accessibility come for free; links and embeds open externally via `onOpenLink`.
@@ -70,7 +72,13 @@ struct ArticleBlockView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            // LazyVStack (not VStack): only the segments scrolled into view are instantiated and laid
+            // out, and each image's decoding `.task` fires only when its block appears. A very large
+            // article — e.g. a multi-page Heise story with many inline images — otherwise laid out
+            // every block and decoded every image at once, spiking memory enough to get the app
+            // jetsammed (no crash report). It also keeps off-screen neighbor prewarm (`layoutIfNeeded`)
+            // cheap, since only the initially-visible slice is laid out.
+            LazyVStack(alignment: .leading, spacing: 16) {
                 header
                 ForEach(bodySegments) { segment in
                     switch segment.kind {

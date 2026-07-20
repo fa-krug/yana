@@ -23,6 +23,14 @@ final class ReaderImageCache: @unchecked Sendable {
     /// runs) share one disk read instead of decoding the same file twice.
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
+    /// Bounds how many images decode at once. The reader body renders every block up front (a
+    /// non-lazy `VStack`), so an image-heavy article — e.g. a multi-page Heise story — would
+    /// otherwise fire a full-bitmap decode for *every* image simultaneously. Each decode transiently
+    /// allocates the source bitmap plus a ≤`maxPixelSize` thumbnail, so a big enough burst spikes
+    /// memory past the cache budget and the app is jetsammed (no crash report). Serializing decodes a
+    /// few at a time lets the `NSCache` cost limit + LRU eviction bound the resident set between them.
+    private static let decodeGate = AsyncSemaphore(limit: 3)
+
     /// Cap for the decoded in-memory copy. Reader images never render wider than the content column,
     /// so decoding to ~1600px (rather than the on-disk ≤2000px original) cuts decode time and memory
     /// while staying sharp at every iPhone content width and visually indistinguishable on iPad.
@@ -71,6 +79,11 @@ final class ReaderImageCache: @unchecked Sendable {
     /// Reads and decodes the image for a `yana-img://<hash>` ref from the local `ImageStore`, or a
     /// remote URL fallback. Runs entirely off the main thread.
     private static func load(_ ref: String) async -> UIImage? {
+        // Hold a decode slot for the whole read+decode so only a few images allocate their bitmaps
+        // at the same time (the rest queue on the gate).
+        await decodeGate.acquire()
+        defer { decodeGate.release() }
+
         let prefix = "\(ReaderWeb.imageScheme)://"
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
@@ -117,27 +130,58 @@ final class ReaderImageCache: @unchecked Sendable {
 
     /// Frames of an animated GIF are held in memory decoded, so cap them below the still-image
     /// budget — reader GIFs are small and a large canvas × many frames would balloon memory.
-    private static let maxAnimatedPixelSize = 600
+    private static let maxAnimatedPixelSize = 480
     /// Never keep more than this many frames; a runaway GIF plays truncated rather than exhausting memory.
     private static let maxAnimatedFrames = 240
+    /// Hard ceiling on the total decoded bytes of one animated image's frames. All frames are held
+    /// resident at once (that's what makes a `UIImage` animate), so without a byte budget a long GIF
+    /// at `maxAnimatedPixelSize` would allocate hundreds of MB in a single spike and get the app
+    /// jetsammed — with no crash report — the moment it is decoded. The reader preloads lead images
+    /// *off-screen* while prewarming neighbor pages, so such a GIF could kill the app on launch
+    /// before it was ever displayed (a permanent crash-on-startup loop). Keeping the resident set
+    /// under this bound trades a truncated (shorter-looping) GIF for a live app.
+    private static let maxAnimatedBytes = 32 * 1024 * 1024
+
+    /// How many frames of an animated image to keep, so the resident frame set stays under the
+    /// memory budget. Pure (no ImageIO) so it can be unit-tested. Keeps at least 2 frames whenever
+    /// the source has them (so the result still animates rather than silently degrading to a still),
+    /// and never exceeds `maxFrames`.
+    static func animatedFrameLimit(perFrameBytes: Int, availableFrames: Int,
+                                   budgetBytes: Int, maxFrames: Int) -> Int {
+        let cap = min(availableFrames, maxFrames)
+        guard cap > 1 else { return cap }
+        guard perFrameBytes > 0 else { return cap }
+        let byBudget = max(2, budgetBytes / perFrameBytes)
+        return min(cap, byBudget)
+    }
 
     /// Builds a playable animated `UIImage` from a multi-frame GIF source, downsampling each frame.
     /// Returns nil for still images (single frame or non-GIF) so the caller falls back to the
     /// still-image thumbnail path.
     private static func animatedImage(from source: CGImageSource) -> UIImage? {
         guard let type = CGImageSourceGetType(source), UTType(type as String) == .gif else { return nil }
-        let count = min(CGImageSourceGetCount(source), maxAnimatedFrames)
-        guard count > 1 else { return nil }
+        let available = CGImageSourceGetCount(source)
+        guard available > 1 else { return nil }
 
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceThumbnailMaxPixelSize: maxAnimatedPixelSize,
         ]
-        var frames: [UIImage] = []
-        frames.reserveCapacity(count)
-        var totalDuration = 0.0
-        for index in 0..<count {
+        // Decode the first frame to learn the per-frame decoded size, then bound how many frames we
+        // keep *before* decoding the rest — so the peak allocation during decode is also capped, not
+        // just the final image.
+        guard let firstCG = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+            ?? CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        let perFrameBytes = firstCG.bytesPerRow * firstCG.height
+        let limit = animatedFrameLimit(perFrameBytes: perFrameBytes, availableFrames: available,
+                                       budgetBytes: maxAnimatedBytes, maxFrames: maxAnimatedFrames)
+        guard limit > 1 else { return nil }
+
+        var frames: [UIImage] = [UIImage(cgImage: firstCG)]
+        frames.reserveCapacity(limit)
+        var totalDuration = frameDelay(source, 0)
+        for index in 1..<limit {
             guard let cg = CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary)
                 ?? CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
             frames.append(UIImage(cgImage: cg))
