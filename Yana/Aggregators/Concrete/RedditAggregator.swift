@@ -93,14 +93,18 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         // For crossposts the media often lives on the outer wrapper, not the resolved parent.
         if let videoHTML = await makeVideoHTML(post: post, outer: outer) {
             headerHTML = videoHTML
-        } else {
-            // The outer crosspost wrapper carries preview/thumbnail that Reddit omits from the
-            // nested parent entry, so consult it as a fallback for the header image.
-            let headerURL = await headerImageURL(for: post, fallback: outer)
-            if let headerURL { body = stripImage(from: body, url: headerURL) }
-            if options.includeHeaderImage, let headerURL {
-                headerHTML = try await makeHeaderHTML(headerURL, title: post.title)
-            }
+        } else if options.includeHeaderImage,
+                  // The outer crosspost wrapper carries preview/thumbnail that Reddit omits from the
+                  // nested parent entry, so consult it as a fallback for the header image.
+                  let headerURL = await headerImageURL(for: post, fallback: outer),
+                  let header = try await makeHeaderHTML(headerURL, title: post.title) {
+            headerHTML = header
+            // Strip the body's duplicate copy only once a header was actually rendered for it.
+            // For a direct-image/GIF link post the image lives *only* in the body (added by
+            // `addLinkMedia`); stripping it whenever a header URL merely existed — even with header
+            // images disabled or the header download failed — removed the sole image with nothing to
+            // replace it, so the GIF/image vanished entirely ("the gif is not loaded").
+            body = stripImage(from: body, url: headerURL)
         }
         // Localize inline body images (gallery, GIFs, selftext, comment images) to cached
         // `yana-img://` references, mirroring the RSS pipeline — so Reddit content is cached,
@@ -356,7 +360,11 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
         return nil
     }
 
-    private func makeHeaderHTML(_ url: String, title: String) async throws -> String {
+    /// Build the lead header markup for `url`, or nil when it can't be produced (an unreachable/oversized
+    /// image the store drops, or a tweet whose embed fetch fails). Returning nil — rather than an empty
+    /// string — lets `buildArticle` tell "no header" apart from "header rendered", so it only strips the
+    /// body's duplicate image when a header actually replaced it.
+    private func makeHeaderHTML(_ url: String, title: String) async throws -> String? {
         // YouTube / Twitter headers embed; here we localize a direct image.
         if let id = EmbedRewriter.extractYouTubeID(from: url) {
             return "<header style=\"margin-bottom: 1.5em;\">\(EmbedRewriter.youTubeEmbedHTML(videoID: id))</header>"
@@ -365,7 +373,7 @@ final class RedditAggregator: Aggregator, @unchecked Sendable {
             return "<header style=\"margin-bottom: 1.5em;\">\(html)</header>"
         }
         guard let remote = URL(string: url), let hash = await store.store(remoteURL: remote, isHeader: true) else {
-            return ""
+            return nil
         }
         return ContentFormatter.headerImageHTML(src: "\(ReaderWeb.imageScheme)://\(hash)", alt: title)
     }

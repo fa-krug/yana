@@ -124,7 +124,7 @@ struct RedditAggregatorTests {
         opts.minAgeHours = 0
         // includeHeaderImage = true so makeHeaderHTML is called; the Twitter embed path
         // calls EmbedRewriter.tweetEmbedHTML which hits the network and returns nil in tests
-        // (no real fxtwitter server), so makeHeaderHTML returns "".  What matters is that
+        // (no real fxtwitter server), so makeHeaderHTML returns nil.  What matters is that
         // the thumbnail URL is NOT selected as the header instead.
         opts.includeHeaderImage = true
         let config = FeedConfig(type: .reddit, identifier: "swift", dailyLimit: 25,
@@ -551,6 +551,40 @@ struct RedditAggregatorTests {
         #expect(!rec.urls.contains(preview), "the static preview poster must not be fetched")
         let refCount = a.content.components(separatedBy: "\(ReaderWeb.imageScheme)://").count - 1
         #expect(refCount == 1, "the Giphy GIF must appear exactly once, got \(refCount)")
+    }
+
+    /// A direct-image / GIF *link post* keeps its image even when header images are disabled. The
+    /// image lives only in the body (added by `addLinkMedia`); the old code stripped that body copy
+    /// whenever a header URL existed but only re-added a header when `includeHeaderImage` was on — so
+    /// with headers off (or a failed header fetch) the GIF was removed with nothing to replace it and
+    /// vanished ("the gif is not loaded"). It must now survive as a localized inline body image.
+    @Test func directGifLinkPostKeepsImageWhenHeaderDisabled() async throws {
+        let rec = FetchRecorder()
+        let gif = "https://i.redd.it/he_was_a_good_man.gif"
+        let listing = """
+        {"data":{"children":[
+          {"data":{"id":"gd1","title":"He was a good man","selftext":"",
+                   "url":"\(gif)","permalink":"/r/memes/comments/gd1/he_was_a_good_man/",
+                   "created_utc":\(recentUTC),"author":"memer","score":500,"num_comments":20,
+                   "is_self":false,"is_gallery":false,"is_video":false,"thumbnail":"default"}}
+        ]}}
+        """
+        var opts = RedditOptions(); opts.minComments = 5; opts.minAgeHours = 0
+        opts.includeHeaderImage = false        // the regression trigger
+        let config = FeedConfig(type: .reddit, identifier: "memes", dailyLimit: 25,
+                                options: .reddit(opts), collectedToday: 0)
+        let creds = AggregatorCredentials(redditClientID: "id", redditClientSecret: "secret", youtubeAPIKey: nil)
+        let client = RedditClient(clientID: "id", clientSecret: "secret", userAgent: "Yana/1.0") { request in
+            let url = request.url!.absoluteString
+            if url.contains("access_token") { return Data(self.tokenJSON.utf8) }
+            if url.contains("/comments/") { return Data(self.commentsJSON.utf8) }
+            return Data(listing.utf8)
+        }
+        let a = try #require(try await RedditAggregator(config: config, credentials: creds,
+                                                        store: recordingStore(rec), client: client).aggregate().first)
+        #expect(rec.urls.contains(gif), "the GIF must still be downloaded and cached")
+        #expect(a.content.contains("\(ReaderWeb.imageScheme)://"), "the GIF must render as a localized inline image")
+        #expect(!a.content.contains(gif), "the remote GIF URL must be localized away, not left raw")
     }
 
     // MARK: - Inline image localization

@@ -15,8 +15,17 @@ enum HTTPClient {
     /// poster alike). Other hosts ignore `Accept` and serve the image regardless.
     static let imageAccept = "image/*,*/*;q=0.8"
 
-    /// Hard ceiling on a single response body. Untrusted feeds/images must not exhaust memory.
+    /// Hard ceiling on a single text response body (feeds, article pages). Untrusted content must
+    /// not exhaust memory; 25 MB is already far larger than any real feed/page.
     static let maxResponseBytes = 25 * 1024 * 1024   // 25 MB
+
+    /// Higher ceiling for image fetches. Reddit/other GIFs routinely run past 25 MB (a single
+    /// r/memes GIF is commonly ~30–50 MB), and the old shared 25 MB cap rejected them before a byte
+    /// was read — so the image was dropped and the post rendered with no media at all. The reader
+    /// bounds GIF *decode* memory independently (downsamples frames to 480 px, caps the resident
+    /// frame set at 32 MB, truncating longer GIFs), so accepting a larger *source* file is safe; the
+    /// only cost is holding the compressed bytes transiently while fetching and on disk.
+    static let maxImageResponseBytes = 64 * 1024 * 1024   // 64 MB
 
     /// Pure helper (unit-testable): true when the accumulated byte count exceeds the cap.
     static func exceedsCap(received: Int, cap: Int) -> Bool { received > cap }
@@ -38,8 +47,9 @@ enum HTTPClient {
     }
 
     static func fetchData(_ url: URL, timeout: TimeInterval = 30,
-                          accept: String = htmlAccept) async throws -> (data: Data, contentType: String?) {
-        try await send(makeRequest(url: url, timeout: timeout, accept: accept))
+                          accept: String = htmlAccept,
+                          maxBytes: Int = maxResponseBytes) async throws -> (data: Data, contentType: String?) {
+        try await send(makeRequest(url: url, timeout: timeout, accept: accept), maxBytes: maxBytes)
     }
 
     static func fetchJSON(_ request: URLRequest) async throws -> Data {
@@ -50,12 +60,13 @@ enum HTTPClient {
         return try await send(request).data
     }
 
-    private static func send(_ request: URLRequest, maxAttempts: Int = 3) async throws
+    private static func send(_ request: URLRequest, maxAttempts: Int = 3,
+                             maxBytes: Int = maxResponseBytes) async throws
     -> (data: Data, contentType: String?) {
         var lastError: Error = AggregatorError.contentFetch("unknown")
         for attempt in 0..<maxAttempts {
             do {
-                return try await performRequest(request)
+                return try await performRequest(request, maxBytes: maxBytes)
             } catch let error as AggregatorError {
                 if case .articleSkip = error { throw error }   // 4xx: do not retry
                 lastError = error
@@ -70,21 +81,21 @@ enum HTTPClient {
     }
 
     /// Perform a single request: stream the body under the size cap and map the HTTP status.
-    private static func performRequest(_ request: URLRequest) async throws
+    private static func performRequest(_ request: URLRequest, maxBytes: Int = maxResponseBytes) async throws
     -> (data: Data, contentType: String?) {
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         // Cheap early-reject: if the server declares a body larger than the cap, fail before
         // streaming a single byte. (A server that lies/omits Content-Length is still bounded by
         // the streaming guard below — at the cost of per-byte iteration for in-cap bodies.)
         if response.expectedContentLength != NSURLSessionTransferSizeUnknown,
-           exceedsCap(received: Int(response.expectedContentLength), cap: maxResponseBytes) {
-            throw AggregatorError.contentFetch("declared response size exceeded \(maxResponseBytes) bytes")
+           exceedsCap(received: Int(response.expectedContentLength), cap: maxBytes) {
+            throw AggregatorError.contentFetch("declared response size exceeded \(maxBytes) bytes")
         }
         var data = Data()
         for try await byte in bytes {
             data.append(byte)
-            if exceedsCap(received: data.count, cap: maxResponseBytes) {
-                throw AggregatorError.contentFetch("response exceeded \(maxResponseBytes) bytes")
+            if exceedsCap(received: data.count, cap: maxBytes) {
+                throw AggregatorError.contentFetch("response exceeded \(maxBytes) bytes")
             }
         }
         guard let http = response as? HTTPURLResponse else { return (data, nil) }
