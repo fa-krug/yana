@@ -18,6 +18,12 @@ final class ReaderBlockViewController: UIViewController {
 
     var summaryPending = false { didSet { if summaryPending != oldValue { rebuild() } } }
 
+    /// Set by the pager on the page it is about to *display* so that page's first paint renders the
+    /// body as plain text and upgrades to the selectable `UITextView` a runloop later (keeping the
+    /// TextKit layout off the first-paint path). Consumed once by the first `makeRootView`; prewarmed
+    /// neighbors leave it false so they render straight to `SelectableText`, laid out off-screen.
+    var startsWithFastText = false
+
     private var topTapZone: UIView!
     private var bottomTapZone: UIView!
     /// Desired full-screen tap-zone state, remembered so it survives `viewDidLoad` (the pager may set
@@ -70,11 +76,16 @@ final class ReaderBlockViewController: UIViewController {
     @objc private func rebuild() { host?.rootView = makeRootView() }
 
     private func makeRootView() -> ArticleBlockView {
-        ArticleBlockView(
+        // Consume-once: only the very first render (the page the pager is about to show) defers the
+        // selectable upgrade. Later rebuilds (font/size change, reload) go straight to selectable.
+        let deferSelectable = startsWithFastText
+        startsWithFastText = false
+        return ArticleBlockView(
             article: ReaderArticle(article),
             textSize: settings.articleTextSize,
             font: settings.articleFont,
             summaryPending: summaryPending,
+            deferSelectableText: deferSelectable,
             onOpenLink: { [weak self] url in self?.openExternally(url) },
             onPlayVideo: { [weak self] embed in self?.playVideo(embed) },
             onShowImage: { [weak self] ref in self?.showImage(ref) },

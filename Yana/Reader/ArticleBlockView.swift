@@ -53,6 +53,12 @@ struct ArticleBlockView: View {
     let textSize: ArticleTextSize
     var font: ArticleFont = .system
     var summaryPending: Bool = false
+    /// When true, each coalesced text run first paints as plain SwiftUI `Text` (cheap to instantiate
+    /// and size) and upgrades to the hosted `UITextView` (`SelectableText`) one runloop later, so the
+    /// UITextView's TextKit layout stays off the first-paint path. The pager sets this only for the
+    /// page it is about to display; prewarmed neighbors render straight to `SelectableText` so their
+    /// off-screen layout (forced by prewarm) still lands the swipe on a ready, selectable page.
+    var deferSelectableText: Bool = false
     var onOpenLink: (URL) -> Void = { _ in }
     /// Tapping a video embed plays it full-screen in-app rather than opening the website.
     var onPlayVideo: (Embed) -> Void = { _ in }
@@ -86,11 +92,10 @@ struct ArticleBlockView: View {
                         // A run of consecutive paragraphs/headings rendered by a single UITextView
                         // (see ReaderAttributedText.make(blocks:)) — one hosted text view for a whole
                         // stretch of prose instead of one per block, the reader's main per-page cost.
-                        SelectableText(
-                            attributedText: ReaderAttributedText.make(blocks: blocks, baseSize: bodySize,
-                                                                      design: font.uiDesign),
-                            onOpenLink: onOpenLink
-                        )
+                        // TextRunView renders it as plain SwiftUI Text first when `deferSelectableText`
+                        // is set, then upgrades to the selectable UITextView after first paint.
+                        TextRunView(blocks: blocks, bodySize: bodySize, uiDesign: font.uiDesign,
+                                    deferSelectable: deferSelectableText, onOpenLink: onOpenLink)
                     case .single(let block):
                         BlockNodeView(block: block, bodySize: bodySize, design: font.uiDesign,
                                       leadImageRef: leadImageRef, onOpenLink: onOpenLink,
@@ -245,6 +250,83 @@ private struct BodySegment: Identifiable {
     }
     let id: Int
     let kind: Kind
+}
+
+/// Renders one coalesced run of flowing-text blocks (paragraphs + headings). To keep first paint
+/// cheap, it can render the run as plain SwiftUI `Text` first — fast to instantiate and size — and
+/// then upgrade to the hosted `UITextView` (`SelectableText`) one runloop later, moving the
+/// UITextView's TextKit glyph layout off the first-paint path. Selection (with the system edit menu)
+/// becomes available a hair after the text is on screen. When `deferSelectable` is false (prewarmed
+/// neighbors, whose off-screen layout is forced by the pager) it renders `SelectableText` straight
+/// away so the swipe lands on an already-laid-out, selectable page.
+///
+/// The static and selectable renderings use matching sizes/spacing (`StaticTextRun` mirrors
+/// `ReaderAttributedText.make(blocks:)`), so the upgrade swaps glyph-for-glyph without a reflow.
+private struct TextRunView: View {
+    let blocks: [Block]
+    let bodySize: CGFloat
+    let uiDesign: UIFontDescriptor.SystemDesign
+    let onOpenLink: (URL) -> Void
+    @State private var selectable: Bool
+
+    init(blocks: [Block], bodySize: CGFloat, uiDesign: UIFontDescriptor.SystemDesign,
+         deferSelectable: Bool, onOpenLink: @escaping (URL) -> Void) {
+        self.blocks = blocks
+        self.bodySize = bodySize
+        self.uiDesign = uiDesign
+        self.onOpenLink = onOpenLink
+        _selectable = State(initialValue: !deferSelectable)
+    }
+
+    var body: some View {
+        Group {
+            if selectable {
+                SelectableText(
+                    attributedText: ReaderAttributedText.make(blocks: blocks, baseSize: bodySize,
+                                                              design: uiDesign),
+                    onOpenLink: onOpenLink
+                )
+            } else {
+                StaticTextRun(blocks: blocks, bodySize: bodySize)
+            }
+        }
+        .task {
+            // Upgrade to the selectable UITextView one runloop after the cheap Text first paint.
+            guard !selectable else { return }
+            await Task.yield()
+            selectable = true
+        }
+    }
+}
+
+/// The plain, non-selectable first-paint rendering of a coalesced text run: per-block SwiftUI `Text`
+/// with the same sizes and inter-block spacing that `ReaderAttributedText.make(blocks:)` bakes into
+/// the `SelectableText` it is later swapped for, so the upgrade doesn't move any text. The chosen
+/// typeface reaches these via the ambient `.fontDesign` applied in `ArticleBlockView`.
+private struct StaticTextRun: View {
+    let blocks: [Block]
+    let bodySize: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .paragraph(let runs):
+                    Text(attributedString(from: runs))
+                        .font(.system(size: bodySize))
+                        .fixedSize(horizontal: false, vertical: true)
+                case .heading(let level, let runs):
+                    Text(attributedString(from: runs))
+                        .font(.system(size: ReaderAttributedText.headingSize(bodySize, level), weight: .bold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                default:
+                    EmptyView()   // coalesced runs only ever hold paragraphs/headings
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 /// Renders a single `Block`, recursing into list items and blockquote contents. This is a nominal
