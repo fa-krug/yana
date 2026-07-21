@@ -380,6 +380,8 @@ final class ReaderArticleViewController: UIViewController,
         guard !articles.isEmpty else { applyEmptyState(); return }
         applyPopulatedChrome()
         if let page = makePage(for: self.index) {
+            // First paint of the shown page renders body text cheaply, then upgrades to selectable.
+            page.startsWithFastText = true
             // Warm the visible page's lead image before it is shown so its header renders on the
             // first frame instead of popping in after the page appears (the reveal gate in
             // ArticleBlockView waits on this).
@@ -439,6 +441,9 @@ final class ReaderArticleViewController: UIViewController,
         }
 
         guard let page = makePage(for: target) else { updateStarItem(); return }
+        // First paint of a newly displayed page (e.g. a jump from the article list) renders body
+        // text cheaply, then upgrades to selectable. A cached, already-rendered page ignores this.
+        page.startsWithFastText = true
         speech.stop()
         preloadLeadImage(of: page.article)
         pageController.setViewControllers([page], direction: .forward, animated: false)
@@ -537,10 +542,13 @@ final class ReaderArticleViewController: UIViewController,
     }
 
     /// Warm the article's lead image (the first block, when it is an image) into `ReaderImageCache`.
+    /// Reads the denormalized `leadImageRef` column rather than decoding the whole `[Block]` body:
+    /// this runs several times per swipe (once per prewarmed neighbor plus the transition warm), and
+    /// a full-body JSON decode each time was pure waste when all it needed was the first image ref.
     private func preloadLeadImage(of article: Article) {
-        if case let .image(ref, _)? = article.blocks.first {
-            ReaderImageCache.shared.preload(ref)
-        }
+        let ref = article.leadImageRef
+        guard !ref.isEmpty else { return }
+        ReaderImageCache.shared.preload(ref)
     }
 
     // MARK: - Actions

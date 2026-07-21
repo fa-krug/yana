@@ -23,6 +23,13 @@ final class Article {
     /// The body flattened to visible text: the search surface (`ArticleSearch`/`ArticleListSearch`)
     /// and the read-aloud surface. Derived once at import / conversion from the blocks.
     var plainText: String = ""
+    /// Denormalized ref of the lead image (the first block when it is an image), else empty. Kept in
+    /// sync by the `blocks` setter so the reader can warm the header image ahead of a swipe WITHOUT
+    /// decoding the whole `[Block]` body just to peek at its first element — that peek ran several
+    /// times per swipe (prewarm × neighbors + transition), each a full JSON decode. Empty for
+    /// articles imported before this column existed; they simply skip the warm-up (harmless) and age
+    /// out under retention. Defaulted for lightweight SwiftData migration.
+    var leadImageRef: String = ""
     var date: Date = Date.now
     var author: String = ""
     var iconURL: String?
@@ -62,6 +69,7 @@ final class Article {
         set {
             blockData = (try? JSONEncoder().encode(newValue)) ?? Data()
             plainText = BlockParser.plainText(newValue)
+            if case let .image(ref, _)? = newValue.first { leadImageRef = ref } else { leadImageRef = "" }
         }
     }
 

@@ -48,6 +48,12 @@ struct SelectableText: UIViewRepresentable {
 
     /// Report the height the text needs at the width SwiftUI proposes, so the block lays out at its
     /// natural height inside the vertical stack (iOS 16+ representable sizing).
+    ///
+    /// `sizeThatFits` runs a full synchronous TextKit layout to measure height, and SwiftUI calls it
+    /// on every layout pass. The body width is stable and the string only changes on a font/size
+    /// change or reload, so memoize the last measurement (keyed by width + string) on the coordinator
+    /// — the pager's repeated passes and the post-prewarm on-screen appearance then reuse the height
+    /// instead of re-laying out the glyphs each time.
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
         let width: CGFloat
         if let proposed = proposal.width, proposed.isFinite, proposed > 0 {
@@ -55,14 +61,28 @@ struct SelectableText: UIViewRepresentable {
         } else {
             width = uiView.bounds.width > 0 ? uiView.bounds.width : 1000
         }
+        let cache = context.coordinator
+        if let cachedWidth = cache.measuredWidth, abs(cachedWidth - width) < 0.5,
+           let cachedHeight = cache.measuredHeight,
+           let cachedString = cache.measuredString, cachedString.isEqual(uiView.attributedText) {
+            return CGSize(width: width, height: cachedHeight)
+        }
         let fitting = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-        return CGSize(width: width, height: ceil(fitting.height))
+        let height = ceil(fitting.height)
+        cache.measuredWidth = width
+        cache.measuredHeight = height
+        cache.measuredString = uiView.attributedText
+        return CGSize(width: width, height: height)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(onOpenLink: onOpenLink) }
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var onOpenLink: (URL) -> Void
+        /// Memoized `sizeThatFits` result (see the method) — reused while width + string are unchanged.
+        var measuredWidth: CGFloat?
+        var measuredHeight: CGFloat?
+        var measuredString: NSAttributedString?
         init(onOpenLink: @escaping (URL) -> Void) { self.onOpenLink = onOpenLink }
 
         /// Route link taps through the reader's link policy instead of letting the text view open
