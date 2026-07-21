@@ -19,6 +19,17 @@ struct HTTPClientTests {
         #expect(HTTPClient.exceedsCap(received: 0, cap: 10) == false)
     }
 
+    /// Image fetches use a larger cap than text fetches: a common Reddit GIF (~26 MB — the reported
+    /// `i.redd.it/*.gif` on r/memes was 27,569,319 bytes) must clear the image cap, or it is rejected
+    /// before download and the post renders with no media at all. The text cap stays tight.
+    @Test func imageResponseCapClearsLargeRedditGIF() {
+        #expect(HTTPClient.maxImageResponseBytes > HTTPClient.maxResponseBytes)
+        #expect(!HTTPClient.exceedsCap(received: 27_569_319, cap: HTTPClient.maxImageResponseBytes),
+                "a ~26 MB Reddit GIF must fit under the image cap")
+        #expect(HTTPClient.exceedsCap(received: 27_569_319, cap: HTTPClient.maxResponseBytes),
+                "the same GIF exceeds the tighter text cap — which is why images need their own")
+    }
+
     /// Image fetches must advertise an image-preferring `Accept`. Reddit's `*.redd.it` CDN
     /// content-negotiates on `Accept` and 307-redirects a `text/html` preference to an HTML
     /// media-viewer page instead of the raw image — so an image fetch advertising text/html receives

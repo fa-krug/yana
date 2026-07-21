@@ -49,8 +49,10 @@ enum ImageCompressor {
     }
 
     /// Ceiling on a preserved animated GIF; larger GIFs fall through to a static first frame so a
-    /// runaway file can't dominate the on-disk image cache.
-    private static let maxAnimatedGIFBytes = 25 * 1024 * 1024
+    /// runaway file can't dominate the on-disk image cache. Matches `HTTPClient.maxImageResponseBytes`
+    /// so any GIF we're willing to fetch we're also willing to keep animated — a common r/memes GIF
+    /// (~30–50 MB) would otherwise download fine yet freeze into a still frame.
+    private static let maxAnimatedGIFBytes = 64 * 1024 * 1024
 
     /// True when the source is a GIF carrying more than one frame (i.e. actually animated).
     private static func isAnimatedGIF(_ source: CGImageSource) -> Bool {
