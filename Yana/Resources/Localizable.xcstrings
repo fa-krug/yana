@@ -3078,12 +3078,32 @@
         }
       }
     },
+    "Sync Timeline Position": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Timeline-Position synchronisieren"
+          }
+        }
+      }
+    },
     "Sync via iCloud": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Via iCloud synchronisieren"
+          }
+        }
+      }
+    },
+    "Also syncs your current position in the timeline, jumping to the closest article on your other devices.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synchronisiert auch die aktuelle Position in der Timeline und springt auf deinen anderen Geräten zum nächstgelegenen Artikel."
           }
         }
       }

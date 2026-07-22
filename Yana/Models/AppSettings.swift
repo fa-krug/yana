@@ -78,6 +78,10 @@ final class AppSettings {
     static let articleTextSizeDidChange = Notification.Name("YanaArticleTextSizeDidChange")
     /// Posted when `articleFont` changes so the reader can re-render live (no app restart).
     static let articleFontDidChange = Notification.Name("YanaArticleFontDidChange")
+    /// Posted when `timelinePositionTimestamp` changes (local swipe or a synced pull) so the
+    /// reader can jump to the closest article. Cross-instance safe: `ConfigSyncService` and the
+    /// reader hold separate `AppSettings` instances but share this global notification.
+    static let timelinePositionDidChange = Notification.Name("YanaTimelinePositionDidChange")
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -142,6 +146,7 @@ final class AppSettings {
         static let disabledFeedNames = "settings.disabledFeedNames"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
+        static let timelinePositionTimestamp = "settings.timelinePositionTimestamp"
         // Reader
         static let articleTextSize = "settings.articleTextSize"
         static let articleFont = "settings.articleFont"
@@ -153,6 +158,7 @@ final class AppSettings {
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
         // iCloud sync (device-local, never synced)
         static let iCloudSyncEnabled = "settings.iCloudSyncEnabled"
+        static let syncTimelinePositionEnabled = "settings.syncTimelinePositionEnabled"
     }
 
     // MARK: iCloud Sync
@@ -161,6 +167,14 @@ final class AppSettings {
     var iCloudSyncEnabled: Bool {
         get { access(keyPath: \.iCloudSyncEnabled); return defaults.bool(forKey: Key.iCloudSyncEnabled) }
         set { withMutation(keyPath: \.iCloudSyncEnabled) { defaults.set(newValue, forKey: Key.iCloudSyncEnabled) } }
+    }
+
+    /// Opt-in sub-toggle: when on (and iCloud sync is enabled), the current timeline position is
+    /// synced across devices as a timestamp. Device-local — the toggle itself is not synced, so each
+    /// device decides whether to participate; only the position timestamp rides the payload.
+    var syncTimelinePositionEnabled: Bool {
+        get { access(keyPath: \.syncTimelinePositionEnabled); return defaults.bool(forKey: Key.syncTimelinePositionEnabled) }
+        set { withMutation(keyPath: \.syncTimelinePositionEnabled) { defaults.set(newValue, forKey: Key.syncTimelinePositionEnabled) } }
     }
 
     // MARK: Sync serialization
@@ -196,6 +210,10 @@ final class AppSettings {
         var articleFont: Int?
         var useSystemBrowser: Bool?
         var articleFullscreenEnabled: Bool?
+        /// Current timeline reading position as a Unix timestamp (`Date.timeIntervalSince1970`).
+        /// Present only when this device has `syncTimelinePositionEnabled` on; a receiving device
+        /// jumps to the article whose `createdAt` is closest to it.
+        var timelinePosition: Double?
     }
 
     /// Snapshot the current synced settings into JSON-encoded `Data`.
@@ -227,7 +245,8 @@ final class AppSettings {
             articleTextSize: articleTextSize.rawValue,
             articleFont: articleFont.rawValue,
             useSystemBrowser: useSystemBrowser,
-            articleFullscreenEnabled: articleFullscreenEnabled
+            articleFullscreenEnabled: articleFullscreenEnabled,
+            timelinePosition: syncTimelinePositionEnabled ? timelinePositionTimestamp?.timeIntervalSince1970 : nil
         )
         return (try? JSONEncoder().encode(snapshot)) ?? Data()
     }
@@ -269,6 +288,11 @@ final class AppSettings {
         }
         if let v = decoded.useSystemBrowser { useSystemBrowser = v }
         if let v = decoded.articleFullscreenEnabled { articleFullscreenEnabled = v }
+        // Apply an incoming timeline position only if this device opted in; setting it posts
+        // `timelinePositionDidChange`, which the reader observes to jump to the closest article.
+        if syncTimelinePositionEnabled, let v = decoded.timelinePosition {
+            timelinePositionTimestamp = Date(timeIntervalSince1970: v)
+        }
     }
 
     var activeAIProvider: AIProvider {
@@ -486,5 +510,28 @@ final class AppSettings {
     var timelineAnchorIdentifier: String? {
         get { access(keyPath: \.timelineAnchorIdentifier); return defaults.string(forKey: Key.timelineAnchorIdentifier) }
         set { withMutation(keyPath: \.timelineAnchorIdentifier) { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) } }
+    }
+
+    /// Timestamp of the current timeline reading position (the anchored article's `createdAt`).
+    /// Used by iCloud sync to carry the position across devices as a comparable value; a receiving
+    /// device jumps to the article whose `createdAt` is closest. Setting it posts
+    /// `timelinePositionDidChange` so the reader can react.
+    var timelinePositionTimestamp: Date? {
+        get {
+            access(keyPath: \.timelinePositionTimestamp)
+            guard let raw = defaults.object(forKey: Key.timelinePositionTimestamp) as? Double else { return nil }
+            return Date(timeIntervalSince1970: raw)
+        }
+        set {
+            let changed = newValue != timelinePositionTimestamp
+            withMutation(keyPath: \.timelinePositionTimestamp) {
+                if let newValue {
+                    defaults.set(newValue.timeIntervalSince1970, forKey: Key.timelinePositionTimestamp)
+                } else {
+                    defaults.removeObject(forKey: Key.timelinePositionTimestamp)
+                }
+            }
+            if changed { NotificationCenter.default.post(name: Self.timelinePositionDidChange, object: self) }
+        }
     }
 }
