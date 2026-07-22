@@ -24,6 +24,12 @@ final class BackgroundRefreshManager {
     private let intervalProvider: @MainActor () -> TimeInterval
     private let now: () -> Date
 
+    #if targetEnvironment(macCatalyst)
+    /// The Mac has no `BGTaskScheduler` background-refresh; a repeating activity scheduler drives
+    /// periodic updates while the app is running instead (paired with a refresh-on-launch).
+    private var macScheduler: NSBackgroundActivityScheduler?
+    #endif
+
     /// Guards against the refresh and processing tasks both firing close together: the first to
     /// run does the aggregation; the other just re-arms. Each handler builds its own
     /// `AggregationService`, so that service's `isUpdating` flag can't coordinate the two — the
@@ -78,8 +84,22 @@ final class BackgroundRefreshManager {
     /// so isolation is inferred from the enclosing context), and the synthesized main-actor
     /// precondition traps (EXC_BREAKPOINT) the moment iOS runs the task off the main thread.
     func register() {
+        #if targetEnvironment(macCatalyst)
+        // No BGTaskScheduler background-refresh on the Mac — nothing to register. Scheduling is
+        // handled by `schedule()` via `NSBackgroundActivityScheduler`.
+        #else
         registerHandler(for: Self.taskIdentifier)
         registerHandler(for: Self.processingTaskIdentifier)
+        #endif
+    }
+
+    /// Run one refresh immediately. Used on the Mac at launch (and window focus) since the desktop
+    /// model is "the app tends to stay open" rather than woken by the system. Best-effort; silent.
+    func runNow() {
+        Task { @MainActor in
+            let service = AggregationService(context: container.mainContext)
+            await Self.runRefresh(service: service)
+        }
     }
 
     /// Register one launch handler. Both the app-refresh and processing tasks run the same work;
@@ -108,6 +128,9 @@ final class BackgroundRefreshManager {
     /// the app-refresh task keeps lightweight feeds current frequently, while the processing task
     /// is the long window that lets AI-heavy feeds finish their AI pass instead of being dropped.
     func schedule() {
+        #if targetEnvironment(macCatalyst)
+        scheduleMac()
+        #else
         let begin = Self.nextBeginDate(from: now(), interval: intervalProvider())
 
         let refresh = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
@@ -121,7 +144,32 @@ final class BackgroundRefreshManager {
         processing.requiresNetworkConnectivity = true
         processing.requiresExternalPower = false
         try? BGTaskScheduler.shared.submit(processing)
+        #endif
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// Arm (or re-arm) a repeating background activity that runs `runRefresh` at the configured
+    /// interval while the Mac app is running. Re-armed each call so an interval change takes effect.
+    private func scheduleMac() {
+        let scheduler = macScheduler ?? NSBackgroundActivityScheduler(identifier: Self.taskIdentifier)
+        macScheduler = scheduler
+        scheduler.repeats = true
+        let interval = intervalProvider()
+        scheduler.interval = interval > 0 ? interval : Self.minimumInterval
+        scheduler.qualityOfService = .utility
+        scheduler.schedule { completion in
+            // The activity block runs on a private queue; hop to the main actor for the run. Mirror
+            // the BGTask handler's `nonisolated(unsafe)` hand-off of the (non-Sendable) completion.
+            nonisolated(unsafe) let completion = completion
+            Task { @MainActor [weak self] in
+                guard let self else { completion(.finished); return }
+                let service = AggregationService(context: self.container.mainContext)
+                await Self.runRefresh(service: service)
+                completion(.finished)
+            }
+        }
+    }
+    #endif
 
     /// Run one background refresh, then reschedule. Always completes the task and never
     /// throws out — a background failure must be silent (spec §6).

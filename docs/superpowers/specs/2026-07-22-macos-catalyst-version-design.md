@@ -160,13 +160,19 @@ read-aloud on a newly selected article explicitly switches it.
   new-article notification when enabled.
 - The iOS `BGAppRefreshTask` registration is compiled/guarded so it is not attempted on Mac.
 
-### 7. Shared handler extraction
+### 7. Shared timeline engine (`TimelineModel`)
 
-`ReaderScreen` currently owns `triggerRefresh`, `toggleStar`, `summarize`, `forceUpdateArticle`,
-`copyLink`, `saveAnchor`, `reanchorToCurrentArticle`, `openArticle`, `recomputeFilter`,
-`applyTimeline`. To avoid duplicating these in `MacRootView`, extract the timeline/action logic into
-a shared `@MainActor @Observable` view-model (e.g. `TimelineModel`) that both `ReaderScreen` (iOS)
-and `MacRootView` (Mac) drive. This is an internal refactor with no behavior change on iOS.
+`ReaderScreen` owns `triggerRefresh`, `toggleStar`, `summarize`, `forceUpdateArticle`, `copyLink`,
+the anchor/filter logic (`applyTimeline`/`recomputeFilter`/`reanchor`), and `createFeed`. A
+`@MainActor @Observable` `TimelineModel` re-expresses that same logic so `MacRootView` and its
+toolbar/menu commands drive one source of truth.
+
+**Scoping note (as built):** `TimelineModel` is introduced as the Mac window's engine, and
+`ReaderScreen` (iOS) is left **unchanged**. Refactoring the delicate, well-tested iOS anchor logic
+onto the shared model without a build/test environment carried more regression risk than the small
+amount of mirrored action code it removes, so adopting `TimelineModel` in `ReaderScreen` is deferred
+to a follow-up (to be done on a Mac where the iOS reader can be re-verified). The two
+implementations are intentionally line-for-line parallel to keep that follow-up mechanical.
 
 ## Touch-idiom → Mac substitutions
 
