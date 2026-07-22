@@ -110,7 +110,9 @@ struct YanaApp: App {
         #if targetEnvironment(macCatalyst)
         // Mac menu-bar commands (article navigation, star, read-aloud, update).
         .commands { YanaCommands() }
+        #endif
 
+        #if targetEnvironment(macCatalyst)
         // The standard Mac Settings window (⌘,) hosts the same Settings screen the iOS sheet shows.
         Settings {
             NavigationStack {
