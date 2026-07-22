@@ -490,11 +490,28 @@ struct SettingsScreenView: View {
                 Label(String(localized: "Sync via iCloud"), systemImage: "icloud")
                     .labelStyle(.tintedIcon(.blue))
             }
+            if settings.iCloudSyncEnabled {
+                Toggle(isOn: Binding(
+                    get: { settings.syncTimelinePositionEnabled },
+                    set: { newValue in
+                        settings.syncTimelinePositionEnabled = newValue
+                        // Push right away so the current position propagates on enable (and the
+                        // field is cleared from the payload on disable).
+                        Task { await ConfigSyncService.shared.push() }
+                    }
+                )) {
+                    Label(String(localized: "Sync Timeline Position"), systemImage: "arrow.up.arrow.down")
+                        .labelStyle(.tintedIcon(.blue))
+                }
+            }
         } header: {
             Text("iCloud Sync")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Syncs feeds, tags, settings, and API keys across your devices via iCloud. Article contents are not synced — they re-download on each device.")
+                if settings.iCloudSyncEnabled {
+                    Text("Also syncs your current position in the timeline, jumping to the closest article on your other devices.")
+                }
                 if settings.iCloudSyncEnabled, let error = ConfigSyncService.shared.lastSyncError {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)

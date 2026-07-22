@@ -177,4 +177,76 @@ struct SettingsSyncTests {
         s.iCloudSyncEnabled = true
         #expect(AppSettings(defaults: defaults).iCloudSyncEnabled == true)
     }
+
+    // MARK: Timeline position sync
+
+    @Test func timelinePositionSyncsWhenEnabled() throws {
+        let target = Date(timeIntervalSince1970: 1_700_000_000)
+        let src = AppSettings(defaults: freshDefaults(label: "pos-src"))
+        src.syncTimelinePositionEnabled = true
+        src.timelinePositionTimestamp = target
+
+        let data = src.exportSyncedSettings()
+
+        let dst = AppSettings(defaults: freshDefaults(label: "pos-dst"))
+        dst.syncTimelinePositionEnabled = true
+        dst.applySyncedSettings(data)
+
+        #expect(dst.timelinePositionTimestamp == target)
+    }
+
+    @Test func timelinePositionExcludedFromPayloadWhenDisabled() throws {
+        let src = AppSettings(defaults: freshDefaults(label: "pos-off-src"))
+        src.syncTimelinePositionEnabled = false
+        src.timelinePositionTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let data = src.exportSyncedSettings()
+        let synced = try #require(try? JSONDecoder().decode(AppSettings.SyncedSettings.self, from: data))
+        #expect(synced.timelinePosition == nil)
+    }
+
+    @Test func timelinePositionNotAppliedWhenReceiverOptedOut() throws {
+        let src = AppSettings(defaults: freshDefaults(label: "pos-recv-src"))
+        src.syncTimelinePositionEnabled = true
+        src.timelinePositionTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let data = src.exportSyncedSettings()
+
+        // Receiver has NOT opted in: an incoming position must be ignored.
+        let dst = AppSettings(defaults: freshDefaults(label: "pos-recv-dst"))
+        dst.syncTimelinePositionEnabled = false
+        dst.applySyncedSettings(data)
+
+        #expect(dst.timelinePositionTimestamp == nil)
+    }
+
+    @Test func syncTimelinePositionEnabledIsNeverInPayload() throws {
+        let src = AppSettings(defaults: freshDefaults(label: "pos-flag"))
+        src.syncTimelinePositionEnabled = true
+
+        let data = src.exportSyncedSettings()
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("syncTimelinePositionEnabled"))
+    }
+
+    @Test func applyingDifferentTimelinePositionPostsNotification() throws {
+        let src = AppSettings(defaults: freshDefaults(label: "pos-notif-src"))
+        src.syncTimelinePositionEnabled = true
+        src.timelinePositionTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let data = src.exportSyncedSettings()
+
+        let dst = AppSettings(defaults: freshDefaults(label: "pos-notif-dst"))
+        dst.syncTimelinePositionEnabled = true
+
+        nonisolated(unsafe) var posted = false
+        let token = NotificationCenter.default.addObserver(
+            forName: AppSettings.timelinePositionDidChange,
+            object: nil,
+            queue: nil
+        ) { _ in posted = true }
+
+        dst.applySyncedSettings(data)
+        NotificationCenter.default.removeObserver(token)
+
+        #expect(posted)
+    }
 }

@@ -12,6 +12,12 @@ protocol TimelineIdentifiable {
     var identifier: String { get }
 }
 
+/// Items carrying the timeline-ordering timestamp (`Article.createdAt`), used to resolve a
+/// synced position to the closest article across devices where identifiers may not line up.
+protocol TimelineTimestamped {
+    var timestamp: Date { get }
+}
+
 extension Article: TimelineFilterable {
     var filterTagNames: [String] { tags.map(\.name) }
     var filterFeedName: String? { feed?.name }
@@ -19,12 +25,20 @@ extension Article: TimelineFilterable {
 
 extension Article: TimelineIdentifiable {}
 
+extension Article: TimelineTimestamped {
+    var timestamp: Date { createdAt }
+}
+
 extension ArticleSummary: TimelineFilterable {
     var filterTagNames: [String] { Array(tagNames) }
     var filterFeedName: String? { feedName.isEmpty ? nil : feedName }
 }
 
 extension ArticleSummary: TimelineIdentifiable {}
+
+extension ArticleSummary: TimelineTimestamped {
+    var timestamp: Date { createdAt }
+}
 
 /// Filters the timeline by active tags. OR semantics: an item is shown if it has at
 /// least one tag that is *not* disabled. Untagged items are shown only when
@@ -67,5 +81,17 @@ enum TimelinePageIndex {
 enum TimelineAnchor {
     static func index<T: TimelineIdentifiable>(for identifier: String?, in items: [T]) -> Int {
         TimelinePageIndex.index(of: identifier, in: items) ?? max(0, items.count - 1)
+    }
+}
+
+/// Resolves a synced timeline position (a timestamp) to the index of the article whose
+/// `timestamp` is nearest — the cross-device "jump to the closest article" behavior. Returns
+/// `nil` for an empty list.
+enum TimelineClosest {
+    static func index<T: TimelineTimestamped>(closestTo target: Date, in items: [T]) -> Int? {
+        guard !items.isEmpty else { return nil }
+        return items.indices.min { lhs, rhs in
+            abs(items[lhs].timestamp.timeIntervalSince(target)) < abs(items[rhs].timestamp.timeIntervalSince(target))
+        }
     }
 }

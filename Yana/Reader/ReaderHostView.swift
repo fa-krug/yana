@@ -147,8 +147,30 @@ struct ReaderScreen: View {
         )
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }   // wait for a non-empty delivery to anchor
-        appState.currentIndex = resolved.anchorIndex
+        // With position sync on, a synced timestamp wins over the local identifier anchor: on a
+        // second device the identifier may not resolve, so jump to the closest article by time.
+        if settings.syncTimelinePositionEnabled,
+           let target = settings.timelinePositionTimestamp,
+           let i = TimelineClosest.index(closestTo: target, in: resolved.articles) {
+            appState.currentIndex = i
+            settings.timelineAnchorIdentifier = resolved.articles[i].identifier
+        } else {
+            appState.currentIndex = resolved.anchorIndex
+        }
         didRestoreAnchor = true
+    }
+
+    /// Jump the reader to the article closest to the synced timeline position. Driven by
+    /// `timelinePositionDidChange` (posted when a pull applies a remote position). Sets
+    /// `currentIndex` directly — never via `saveAnchor` — so a remote jump can't loop back into a
+    /// push. Also re-points the identifier anchor so a later reanchor stays on the landed article.
+    private func jumpToSyncedTimelinePosition() {
+        guard didRestoreAnchor,
+              settings.syncTimelinePositionEnabled,
+              let target = settings.timelinePositionTimestamp,
+              let i = TimelineClosest.index(closestTo: target, in: filteredArticles) else { return }
+        appState.currentIndex = i
+        settings.timelineAnchorIdentifier = filteredArticles[i].identifier
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -233,6 +255,9 @@ struct ReaderScreen: View {
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
+        .onReceive(NotificationCenter.default.publisher(for: AppSettings.timelinePositionDidChange)) { _ in
+            jumpToSyncedTimelinePosition()
+        }
     }
 
     private func toggleStar(_ article: Article) {
@@ -285,6 +310,12 @@ struct ReaderScreen: View {
         let articles = filteredArticles
         guard articles.indices.contains(index) else { return }
         settings.timelineAnchorIdentifier = articles[index].identifier
+        // Record the position as a timestamp and push it when position sync is on. requestPush is
+        // itself gated on iCloudSyncEnabled and debounced, so this coalesces rapid swipes.
+        if settings.syncTimelinePositionEnabled {
+            settings.timelinePositionTimestamp = articles[index].createdAt
+            ConfigSyncService.shared.requestPush()
+        }
     }
 
     /// Keep the displayed article selected across timeline mutations (refresh / reload / retention
