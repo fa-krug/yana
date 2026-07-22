@@ -49,6 +49,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
         StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
+        #if targetEnvironment(macCatalyst)
+        // The Mac isn't woken by the system for background refresh, so kick off one update at launch
+        // (the repeating NSBackgroundActivityScheduler covers the rest while the app stays open).
+        backgroundRefresh.runNow()
+        #endif
 
         // Tag bootstrap is idempotent and not needed before first paint (the Starred tag is only
         // consulted on a user star action, by the tag-filter list, and on upsert — all reached
@@ -102,5 +107,19 @@ struct YanaApp: App {
                 }
         }
         .modelContainer(AppContainer.shared)
+        #if targetEnvironment(macCatalyst)
+        // Mac menu-bar commands (article navigation, star, read-aloud, update).
+        .commands { YanaCommands() }
+
+        // The standard Mac Settings window (⌘,) hosts the same Settings screen the iOS sheet shows.
+        Settings {
+            NavigationStack {
+                SettingsScreenView(onRestartOnboarding: {})
+            }
+            .environment(articleStore)
+            .modelContainer(AppContainer.shared)
+            .frame(minWidth: 520, minHeight: 600)
+        }
+        #endif
     }
 }

@@ -4,6 +4,15 @@
 <dict>
 	<key>aps-environment</key>
 	<string>$(APS_ENVIRONMENT)</string>
+	<!-- macOS (Mac Catalyst) only: App Sandbox is required for a Mac App Store build and is
+	     ignored on iOS. `network.client` lets the sandboxed Mac app fetch feeds; `files.user-selected`
+	     lets OPML import/export reach files the user picks. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)de.fa-krug.Yana</string>

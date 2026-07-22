@@ -51,8 +51,16 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Yana/Entitlements/Yana-iOS.entitlements
         INFOPLIST_FILE: Yana/Info-iOS.plist
         GENERATE_INFOPLIST_FILE: false
-        TARGETED_DEVICE_FAMILY: "1"
-        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: true
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # Ship a real Mac app via Mac Catalyst (not the "Designed for iPad" runtime).
+        # The Mac build mirrors the iOS 26 deployment target -> macOS 26. Keeping the same
+        # PRODUCT_BUNDLE_IDENTIFIER across platforms (DERIVE = NO) means the Mac build shares the
+        # iCloud.de.fa-krug.Yana CloudKit container + Keychain, so ConfigSyncService syncs config
+        # iPhone <-> Mac with no extra code. macOS-only entitlements (App Sandbox, network client,
+        # user-selected files) live in the shared entitlements file and are ignored on iOS.
+        SUPPORTS_MACCATALYST: true
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: false
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

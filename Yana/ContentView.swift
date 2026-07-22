@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @Bindable var appState: AppState
@@ -12,23 +13,34 @@ struct ContentView: View {
         return args.contains("-UITEST_SKIP_ONBOARDING") || args.contains("-UITEST_SCREENSHOTS")
     }
 
+    /// The Mac (Mac Catalyst) build shows a two-column window with a permanent article-list sidebar;
+    /// iPhone/iPad keep the full-screen swipe reader. `WelcomeView` (onboarding) is presented by
+    /// whichever root is active.
+    private var isMac: Bool { UIDevice.current.userInterfaceIdiom == .mac }
+
     var body: some View {
-        ReaderScreen(appState: appState)
-            .fullScreenCover(isPresented: $appState.showWelcome) {
-                WelcomeView(onFinish: {
-                    settings.hasCompletedOnboarding = true
-                    appState.showWelcome = false
-                })
-                .interactiveDismissDisabled()
+        Group {
+            if isMac {
+                MacRootView(appState: appState)
+            } else {
+                ReaderScreen(appState: appState)
+                    .fullScreenCover(isPresented: $appState.showWelcome) {
+                        WelcomeView(onFinish: {
+                            settings.hasCompletedOnboarding = true
+                            appState.showWelcome = false
+                        })
+                        .interactiveDismissDisabled()
+                    }
             }
-            .onAppear {
-                // Test hook: force the first-launch flow regardless of persisted state.
-                if ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_ONBOARDING") {
-                    settings.hasCompletedOnboarding = false
-                }
-                if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
-                    appState.showWelcome = true
-                }
+        }
+        .onAppear {
+            // Test hook: force the first-launch flow regardless of persisted state.
+            if ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_ONBOARDING") {
+                settings.hasCompletedOnboarding = false
             }
+            if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
+                appState.showWelcome = true
+            }
+        }
     }
 }
