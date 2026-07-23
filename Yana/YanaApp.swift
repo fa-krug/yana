@@ -109,19 +109,9 @@ struct YanaApp: App {
         .modelContainer(AppContainer.shared)
         #if targetEnvironment(macCatalyst)
         // Mac menu-bar commands (article navigation, star, read-aloud, update).
+        // The SwiftUI `Settings` scene is macOS-only (unavailable in Mac Catalyst), so the Settings
+        // screen is presented as a sheet from `MacRootView` (a ⌘, toolbar button) instead.
         .commands { YanaCommands() }
-        #endif
-
-        #if targetEnvironment(macCatalyst)
-        // The standard Mac Settings window (⌘,) hosts the same Settings screen the iOS sheet shows.
-        Settings {
-            NavigationStack {
-                SettingsScreenView(onRestartOnboarding: {})
-            }
-            .environment(articleStore)
-            .modelContainer(AppContainer.shared)
-            .frame(minWidth: 520, minHeight: 600)
-        }
         #endif
     }
 }

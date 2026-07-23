@@ -150,6 +150,15 @@ final class TimelineModel {
         #endif
     }
 
+    /// Open the article's original web page in the default browser. On the Mac the desktop
+    /// expectation is the system browser, so this opens the URL directly rather than an in-app sheet.
+    func openWebsite(_ article: Article) {
+        #if canImport(UIKit)
+        guard let url = URL(string: article.url) else { return }
+        UIApplication.shared.open(url)
+        #endif
+    }
+
     func summarize(_ article: Article) {
         guard let modelContext, !isSummarizing else { return }
         isSummarizing = true

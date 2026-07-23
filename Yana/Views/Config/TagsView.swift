@@ -53,7 +53,11 @@ struct TagsView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingCreateTag = true } label: { Image(systemName: "plus") }
             }
+            #if !targetEnvironment(macCatalyst)
+            // The Mac has no edit mode: rows reorder by dragging and delete by swiping, so the
+            // localized "Edit" button (which the compact Mac nav bar truncates to "B…") is dropped.
             ToolbarItem(placement: .topBarLeading) { EditButton() }
+            #endif
         }
         .sheet(isPresented: $showingCreateTag) {
             NavigationStack { TagEditorView(tag: nil) }
