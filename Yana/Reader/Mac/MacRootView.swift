@@ -194,30 +194,29 @@ private struct MacSidebarView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            List(selection: $model.selection) {
-                ForEach(displayed) { summary in
-                    MacArticleRow(summary: summary)
-                        .tag(summary.identifier)
-                }
-            }
-            .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
-            .overlay {
-                if displayed.isEmpty {
-                    if searchText.isEmpty {
-                        ContentUnavailableView("No Articles", systemImage: "tray",
-                                               description: Text("No articles yet. Add feeds, then update."))
-                    } else {
-                        ContentUnavailableView.search(text: searchText)
-                    }
-                }
-            }
-            .safeAreaInset(edge: .top) { MacFilterBar(settings: settings) }
-            .onChange(of: model.selection) { _, id in
-                guard let id else { return }
-                withAnimation(nil) { proxy.scrollTo(id, anchor: nil) }
+        // The List must be the DIRECT child of the NavigationSplitView sidebar column for the system
+        // to give it the source-list chrome (translucent material, inset rounded selection, no
+        // separators). Wrapping it in a ScrollViewReader defeats that, so we let the List drive its
+        // own selection-follow scrolling rather than a reader proxy.
+        List(selection: $model.selection) {
+            ForEach(displayed) { summary in
+                MacArticleRow(summary: summary)
+                    .tag(summary.identifier)
             }
         }
+        .listStyle(.sidebar)
+        .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
+        .overlay {
+            if displayed.isEmpty {
+                if searchText.isEmpty {
+                    ContentUnavailableView("No Articles", systemImage: "tray",
+                                           description: Text("No articles yet. Add feeds, then update."))
+                } else {
+                    ContentUnavailableView.search(text: searchText)
+                }
+            }
+        }
+        .safeAreaInset(edge: .top) { MacFilterBar(settings: settings) }
         .task(id: searchText) {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
@@ -291,7 +290,6 @@ private struct MacFilterBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.bar)
     }
 
     private func toggle(_ title: String, isOn: Bool, set: @escaping (Bool) -> Void) -> some View {
@@ -299,15 +297,20 @@ private struct MacFilterBar: View {
     }
 }
 
-/// Compact sidebar row: feed logo, title, feed name · date, and a star marker.
+/// Sidebar row: feed logo, title, feed name · date, and a star marker. The logo is top-aligned so it
+/// lines up with the first title line rather than floating against a two-line title.
 private struct MacArticleRow: View {
     let summary: ArticleSummary
 
     var body: some View {
-        HStack(spacing: 10) {
-            FeedLogoView(hash: summary.feedLogoHash)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(summary.title).font(.headline).lineLimit(2)
+        HStack(alignment: .top, spacing: 12) {
+            FeedLogoView(hash: summary.feedLogoHash, size: 34)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(summary.title)
+                    .font(.headline)
+                    .lineLimit(3)
+                    .lineSpacing(1.5)
+                    .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 6) {
                     if !summary.feedName.isEmpty {
                         Text(summary.feedName).fontWeight(.medium).foregroundStyle(Color.accentColor)
