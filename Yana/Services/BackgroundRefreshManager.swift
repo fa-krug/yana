@@ -25,9 +25,10 @@ final class BackgroundRefreshManager {
     private let now: () -> Date
 
     #if targetEnvironment(macCatalyst)
-    /// The Mac has no `BGTaskScheduler` background-refresh; a repeating activity scheduler drives
-    /// periodic updates while the app is running instead (paired with a refresh-on-launch).
-    private var macScheduler: NSBackgroundActivityScheduler?
+    /// The Mac has no `BGTaskScheduler` background-refresh, and `NSBackgroundActivityScheduler` is
+    /// unavailable in Mac Catalyst — so a cancellable repeating `Task` drives periodic updates while
+    /// the app is running instead (paired with a refresh-on-launch via `runNow()`).
+    private var macRefreshLoop: Task<Void, Never>?
     #endif
 
     /// Guards against the refresh and processing tasks both firing close together: the first to
@@ -148,24 +149,21 @@ final class BackgroundRefreshManager {
     }
 
     #if targetEnvironment(macCatalyst)
-    /// Arm (or re-arm) a repeating background activity that runs `runRefresh` at the configured
-    /// interval while the Mac app is running. Re-armed each call so an interval change takes effect.
+    /// Arm (or re-arm) a repeating loop that runs `runRefresh` at the configured interval while the
+    /// Mac app is running. Re-armed each call (cancel + restart) so an interval change takes effect.
+    /// `NSBackgroundActivityScheduler` is unavailable in Mac Catalyst, so this is a plain awaiting
+    /// loop on the main actor; the desktop model keeps the app open, and launch/focus call `runNow()`.
     private func scheduleMac() {
-        let scheduler = macScheduler ?? NSBackgroundActivityScheduler(identifier: Self.taskIdentifier)
-        macScheduler = scheduler
-        scheduler.repeats = true
+        macRefreshLoop?.cancel()
         let interval = intervalProvider()
-        scheduler.interval = interval > 0 ? interval : Self.minimumInterval
-        scheduler.qualityOfService = .utility
-        scheduler.schedule { completion in
-            // The activity block runs on a private queue; hop to the main actor for the run. Mirror
-            // the BGTask handler's `nonisolated(unsafe)` hand-off of the (non-Sendable) completion.
-            nonisolated(unsafe) let completion = completion
-            Task { @MainActor [weak self] in
-                guard let self else { completion(.finished); return }
+        let clamped = interval > 0 ? interval : Self.minimumInterval
+        let nanos = UInt64(clamped * 1_000_000_000)
+        macRefreshLoop = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: nanos)
+                guard !Task.isCancelled, let self else { break }
                 let service = AggregationService(context: self.container.mainContext)
                 await Self.runRefresh(service: service)
-                completion(.finished)
             }
         }
     }

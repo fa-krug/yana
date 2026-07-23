@@ -36,6 +36,18 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
         onMove != nil && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// On Mac Catalyst the automatic placement crams the search field into the compact toolbar row
+    /// next to the other bar buttons, which throws off the field's internal vertical text centering.
+    /// A dedicated always-on drawer gives it a full-width row at its natural height. iOS keeps
+    /// `.automatic` (the search field already renders correctly there).
+    private static var searchPlacement: SearchFieldPlacement {
+        #if targetEnvironment(macCatalyst)
+        .navigationBarDrawer(displayMode: .always)
+        #else
+        .automatic
+        #endif
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             List {
@@ -48,7 +60,7 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
                 .onDelete(perform: onDelete)
                 .onMove(perform: reorderEnabled ? onMove : nil)
             }
-            .searchable(text: $searchText, prompt: searchPrompt)
+            .searchable(text: $searchText, placement: Self.searchPlacement, prompt: searchPrompt)
             .overlay {
                 if items.isEmpty {
                     if searchText.isEmpty {

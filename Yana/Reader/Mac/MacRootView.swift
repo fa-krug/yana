@@ -14,9 +14,16 @@ struct MacRootView: View {
     @State private var settings = AppSettings()
     @State private var speech = ReaderSpeechController()
     @State private var showingCreateFeed = false
+    @State private var showingSettings = false
+    /// Keep the article-list sidebar open by default (and after relaunch) — it is the primary
+    /// navigation on the Mac, not a collapsible drawer.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    /// Mirrors the busy state so the toolbar spinner can animate in/out (the source observable is
+    /// mutated outside an animation transaction, so we re-drive it here inside `withAnimation`).
+    @State private var showSpinner = false
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             MacSidebarView(model: model, settings: settings, onCreateFeed: { showingCreateFeed = true })
                 .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
                 .navigationTitle("Yana")
@@ -25,12 +32,24 @@ struct MacRootView: View {
                 .toolbar { toolbar }
         }
         .toast($model.toast)
-        .focusedValue(\.timelineModel, model)
-        .focusedValue(\.readerSpeech, speech)
+        // Scene-wide (not tied to which view has focus) so ⌘↑/⌘↓ move the article even when the
+        // UIKit reader in the detail pane holds first responder. `settingsOpen` stands them down.
+        .focusedSceneValue(\.timelineModel, model)
+        .focusedSceneValue(\.readerSpeech, speech)
+        .focusedSceneValue(\.settingsOpen, showingSettings)
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
                 FeedEditorView(feed: nil) { newFeed in model.createFeed(newFeed) }
             }
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsScreenView(onRestartOnboarding: {
+                    showingSettings = false
+                    appState.showWelcome = true
+                })
+            }
+            .frame(minWidth: 520, minHeight: 600)
         }
         .fullScreenCover(isPresented: $appState.showWelcome) {
             WelcomeView(onFinish: {
@@ -44,6 +63,9 @@ struct MacRootView: View {
             model.applyTimeline()
         }
         .onChange(of: store.summaries) { _, _ in model.applyTimeline() }
+        .onChange(of: UpdateActivity.shared.isUpdating || model.isSummarizing) { _, busy in
+            withAnimation(.snappy) { showSpinner = busy }
+        }
         .onChange(of: settings.disabledTagNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.includeUntagged) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.disabledFeedNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
@@ -66,42 +88,72 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if UpdateActivity.shared.isUpdating || model.isSummarizing {
-                ProgressView().controlSize(.small)
-            }
-            Button { model.triggerRefresh() } label: {
-                Label("Update all", systemImage: "arrow.clockwise")
-            }
-            .help(Text("Update all"))
-
-            if let article = model.selectedArticle() {
-                Button { model.toggleStar(article) } label: {
-                    Label(article.isStarred ? "Unstar" : "Star",
-                          systemImage: article.isStarred ? "star.fill" : "star")
+            // Reload, star, play, website — one joined group. While an update/summarize runs, the
+            // reload arrow spins in place. The toolbar item set never changes, so Mac Catalyst does
+            // not rebuild (and flicker) the bar the way a toggling spinner segment would.
+            ControlGroup {
+                Button { model.triggerRefresh() } label: {
+                    Label("Update all", systemImage: "arrow.clockwise")
+                        .symbolEffect(.rotate, options: .repeat(.continuous), isActive: showSpinner)
                 }
-                .help(Text(article.isStarred ? "Unstar" : "Star"))
+                .help(Text("Update all"))
 
-                Button { toggleSpeech(article) } label: {
+                Button {
+                    if let article = model.selectedArticle() { model.toggleStar(article) }
+                } label: {
+                    Label(isSelectedStarred ? "Unstar" : "Star",
+                          systemImage: isSelectedStarred ? "star.fill" : "star")
+                }
+                .help(Text(isSelectedStarred ? "Unstar" : "Star"))
+                .disabled(model.selectedSummary == nil)
+
+                Button {
+                    if let article = model.selectedArticle() { toggleSpeech(article) }
+                } label: {
                     Label("Read Aloud",
                           systemImage: speech.state == .speaking ? "pause.circle" : "play.circle")
                 }
                 .help(Text("Read Aloud"))
+                .disabled(model.selectedSummary == nil)
 
-                Menu {
+                Button {
+                    if let article = model.selectedArticle() { model.openWebsite(article) }
+                } label: {
+                    Label("Open Page", systemImage: "safari")
+                }
+                .help(Text("Open Page"))
+                .disabled(model.selectedSummary == nil)
+            }
+            // Give the joined group room to breathe — the default size packs the icons too tightly.
+            .controlSize(.large)
+
+            Menu {
+                Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                    .keyboardShortcut(",", modifiers: .command)
+                if model.selectedSummary != nil {
+                    Divider()
                     if model.aiReady {
-                        Button { model.summarize(article) } label: { Label("Summarize", systemImage: "sparkles") }
+                        Button {
+                            if let article = model.selectedArticle() { model.summarize(article) }
+                        } label: { Label("Summarize", systemImage: "sparkles") }
                             .disabled(model.isSummarizing)
                     }
-                    Button { model.forceUpdateArticle(article) } label: {
+                    Button {
+                        if let article = model.selectedArticle() { model.forceUpdateArticle(article) }
+                    } label: {
                         Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")
                     }
-                    Button { model.copyLink(article) } label: { Label("Copy link", systemImage: "link") }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
+                    Button {
+                        if let article = model.selectedArticle() { model.copyLink(article) }
+                    } label: { Label("Copy link", systemImage: "link") }
                 }
+            } label: {
+                Label("More", systemImage: "ellipsis.circle")
             }
         }
     }
+
+    private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
 
     /// Start narrating the selected article when idle; otherwise pause/resume. Speech is owned at the
     /// window level (not the swappable detail child), so it keeps reading the article it was started
