@@ -46,6 +46,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         }
         #endif
         StartupTrace.event("didFinishLaunching.begin")
+        // Restore the Keychain iCloud-sync domain from the persisted setting before anything can
+        // save a key. `synchronizeWithICloud` is a process-lifetime static that defaults to false
+        // and is otherwise only set when the Settings toggle flips — so without this, a relaunch
+        // (or a second device that enabled sync via config pull) would save newly entered API keys
+        // to the local-only domain even though iCloud sync is on.
+        KeychainService.restoreSynchronizableFlag(iCloudSyncEnabled: AppSettings().iCloudSyncEnabled)
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
         StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
