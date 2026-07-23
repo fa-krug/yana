@@ -119,4 +119,13 @@ enum KeychainService: Sendable {
 
         return true
     }
+
+    /// Restores the process-lifetime `synchronizeWithICloud` domain from the persisted iCloud-sync
+    /// preference at launch. Unlike `migrateSynchronizable`, this only sets the flag — it does not
+    /// re-save existing keys (nothing has been saved yet this launch). Without it the flag resets
+    /// to `false` on every relaunch, so a key entered before the Settings toggle is next touched
+    /// would land in the local-only domain even though sync is on.
+    static func restoreSynchronizableFlag(iCloudSyncEnabled enabled: Bool) {
+        synchronizeWithICloud = enabled
+    }
 }

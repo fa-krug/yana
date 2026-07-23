@@ -178,6 +178,16 @@ struct ArticleListView: View {
         searchResults = matches.map(ArticleSummary.init)
     }
 
+    /// The Mac's roomier rows read better with a touch more space between title and subline;
+    /// iOS keeps the compact 4pt to preserve its denser timeline-adjacent look.
+    private var rowLineSpacing: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        6
+        #else
+        4
+        #endif
+    }
+
     private func row(_ summary: ArticleSummary) -> some View {
         let isCurrent = summary.identifier == currentArticleID
         return HStack(spacing: 12) {
@@ -185,7 +195,7 @@ struct ArticleListView: View {
                 .fill(isCurrent ? Color.accentColor : Color.clear)
                 .frame(width: 3)
             FeedLogoView(hash: summary.feedLogoHash)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: rowLineSpacing) {
                 Text(summary.title).font(.headline).lineLimit(2)
                 HStack(spacing: 6) {
                     if !summary.feedName.isEmpty {

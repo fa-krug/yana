@@ -36,6 +36,17 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
         onMove != nil && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Mac Catalyst renders `List` rows with AppKit's tight default metrics, which crams the
+    /// config lists (Articles/Feeds/Tags) into a cramped, hard-to-scan wall of text. Give each
+    /// row extra vertical breathing room on the Mac; iOS keeps SwiftUI's native row insets (nil).
+    private var rowInsets: EdgeInsets? {
+        #if targetEnvironment(macCatalyst)
+        EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
+        #else
+        nil
+        #endif
+    }
+
     /// On Mac Catalyst the automatic placement crams the search field into the compact toolbar row
     /// next to the other bar buttons, which throws off the field's internal vertical text centering.
     /// A dedicated always-on drawer gives it a full-width row at its natural height. iOS keeps
@@ -53,6 +64,7 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
             List {
                 ForEach(items) { item in
                     row(item)
+                        .listRowInsets(rowInsets)
                         .swipeActions(edge: .leading) {
                             leadingActions(item)
                         }
