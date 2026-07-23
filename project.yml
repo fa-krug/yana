@@ -51,7 +51,10 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Yana/Entitlements/Yana-iOS.entitlements
         INFOPLIST_FILE: Yana/Info-iOS.plist
         GENERATE_INFOPLIST_FILE: false
-        TARGETED_DEVICE_FAMILY: "1,2"
+        # 1,2 = iPhone/iPad; 6 = Mac. Family 6 opts the Mac Catalyst build into the
+        # native Mac idiom ("Optimize Interface for Mac") instead of the scaled-iPad
+        # idiom. iOS ignores 6, so the iPhone/iPad build stays a universal 1,2 app.
+        TARGETED_DEVICE_FAMILY: "1,2,6"
         # Ship a real Mac app via Mac Catalyst (not the "Designed for iPad" runtime).
         # The Mac build mirrors the iOS 26 deployment target -> macOS 26. Keeping the same
         # PRODUCT_BUNDLE_IDENTIFIER across platforms (DERIVE = NO) means the Mac build shares the
