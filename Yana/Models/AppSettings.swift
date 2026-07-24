@@ -159,6 +159,7 @@ final class AppSettings {
         // iCloud sync (device-local, never synced)
         static let iCloudSyncEnabled = "settings.iCloudSyncEnabled"
         static let syncTimelinePositionEnabled = "settings.syncTimelinePositionEnabled"
+        static let isPassiveDevice = "settings.isPassiveDevice"
     }
 
     // MARK: iCloud Sync
@@ -175,6 +176,14 @@ final class AppSettings {
     var syncTimelinePositionEnabled: Bool {
         get { access(keyPath: \.syncTimelinePositionEnabled); return defaults.bool(forKey: Key.syncTimelinePositionEnabled) }
         set { withMutation(keyPath: \.syncTimelinePositionEnabled) { defaults.set(newValue, forKey: Key.syncTimelinePositionEnabled) } }
+    }
+
+    /// When on, this device is a passive iCloud mirror: it never runs background aggregation and
+    /// never runs retention/deletions — it consumes the shared article set. Manual fetches still
+    /// work. Device-local — never included in the synced payload (it describes this device's role).
+    var isPassiveDevice: Bool {
+        get { access(keyPath: \.isPassiveDevice); return defaults.bool(forKey: Key.isPassiveDevice) }
+        set { withMutation(keyPath: \.isPassiveDevice) { defaults.set(newValue, forKey: Key.isPassiveDevice) } }
     }
 
     // MARK: Sync serialization
