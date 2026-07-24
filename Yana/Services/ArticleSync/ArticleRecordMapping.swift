@@ -42,20 +42,18 @@ enum ArticleRecordApply {
         feedsByKey: [String: Feed]
     ) -> Article {
         let feed = feedsByKey[feedKey(feedIdentifier: record.feedIdentifier, aggregatorType: record.aggregatorType)]
-
-        // Find an existing local article with this UID's identifier under the same feed.
         let identifier = record.articleIdentifier
-        let existing: Article?
-        if let feed {
-            existing = feed.articles.first { $0.identifier == identifier }
-        } else {
-            let descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == identifier })
-            existing = (try? context.fetch(descriptor))?.first {
-                $0.feed == nil
-                    && $0.syncFeedIdentifier == record.feedIdentifier
-                    && $0.syncAggregatorType == record.aggregatorType
-            }
+
+        // An unlinked orphan for this exact identity (a record that synced before its feed existed)
+        // is promoted rather than duplicated: prefer a linked article under the feed, else adopt a
+        // feed-less article whose stored identity matches.
+        let orphanDescriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == identifier })
+        let unlinkedMatch = (try? context.fetch(orphanDescriptor))?.first {
+            $0.feed == nil
+                && $0.syncFeedIdentifier == record.feedIdentifier
+                && $0.syncAggregatorType == record.aggregatorType
         }
+        let existing = (feed?.articles.first { $0.identifier == identifier }) ?? unlinkedMatch
 
         let article = existing ?? {
             let created = Article(

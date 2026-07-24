@@ -135,4 +135,23 @@ struct ArticleRecordMappingTests {
         context.insert(article)
         #expect(ArticleUID.make(for: article) == "feed-1|feed_content|a-1")
     }
+
+    @Test("A record re-applied after its feed appears promotes the orphan, no duplicate")
+    func orphanPromotedNotDuplicated() throws {
+        let context = try makeContext()
+        let record = SyncedArticleRecord(
+            uid: "feed-1|feed_content|a-1", feedIdentifier: "feed-1", aggregatorType: "feed_content",
+            articleIdentifier: "a-1", title: "One", url: "https://x/1", author: "", summary: "",
+            plainText: "", leadImageRef: "", iconURL: nil, date: .now, createdAt: .now, blockData: Data(),
+            isStarred: false, tagNames: [], imageHashes: [])
+        let orphan = ArticleRecordApply.apply(record, into: context, starredTag: nil, feedsByKey: [:])
+        try context.save()
+        #expect(orphan.feed == nil)
+        let feed = makeFeed(context)
+        let promoted = ArticleRecordApply.apply(record, into: context, starredTag: nil,
+                                                feedsByKey: ["feed-1|feed_content": feed])
+        #expect(promoted === orphan)
+        #expect(promoted.feed === feed)
+        #expect(try context.fetch(FetchDescriptor<Article>()).count == 1)
+    }
 }
