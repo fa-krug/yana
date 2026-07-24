@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Treat any remote notification as a CloudKit config-change ping.
         Task { @MainActor in
             await ConfigSyncService.shared.pull()
+            await ArticleSyncService.shared.pull()
             completionHandler(.newData)
         }
     }
@@ -125,6 +126,7 @@ struct YanaApp: App {
                     BlockMigration.run(container: AppContainer.shared)
                     // Register CloudKit subscription + pull on launch (no-op when sync is off).
                     await ConfigSyncService.shared.start()
+                    await ArticleSyncService.shared.pull()
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).

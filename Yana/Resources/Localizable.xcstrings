@@ -3098,12 +3098,32 @@
         }
       }
     },
-    "Syncs feeds, tags, settings, and API keys across your devices via iCloud. Article contents are not synced — they re-download on each device.": {
+    "Syncs feeds, tags, settings, API keys, and full articles (including images) across your devices via iCloud.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Synchronisiert Feeds, Tags, Einstellungen und API-Schlüssel über iCloud auf all deinen Geräten. Artikelinhalte werden nicht synchronisiert – sie werden auf jedem Gerät neu geladen."
+            "value": "Synchronisiert Feeds, Tags, Einstellungen, API-Schlüssel und vollständige Artikel (inklusive Bilder) über iCloud auf allen Geräten."
+          }
+        }
+      }
+    },
+    "A passive device never fetches in the background and relies on iCloud for its articles.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein passives Gerät ruft nichts im Hintergrund ab und bezieht seine Artikel aus iCloud."
+          }
+        }
+      }
+    },
+    "Passive Device": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passives Gerät"
           }
         }
       }

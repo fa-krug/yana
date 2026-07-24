@@ -485,6 +485,8 @@ struct SettingsScreenView: View {
                         Task {
                             await ConfigSyncService.shared.start()
                             await ConfigSyncService.shared.push()
+                            await ArticleSyncService.shared.pull()
+                            if !settings.isPassiveDevice { await ArticleSyncService.shared.pushAll() }
                         }
                     } else {
                         ConfigSyncService.shared.stop()
@@ -494,11 +496,23 @@ struct SettingsScreenView: View {
                 Label(String(localized: "Sync via iCloud"), systemImage: "icloud")
                     .labelStyle(.tintedIcon(.blue))
             }
+            if settings.iCloudSyncEnabled {
+                Toggle(isOn: Binding(
+                    get: { settings.isPassiveDevice },
+                    set: { settings.isPassiveDevice = $0 }
+                )) {
+                    Label(String(localized: "Passive Device"), systemImage: "icloud.and.arrow.down")
+                        .labelStyle(.tintedIcon(.blue))
+                }
+            }
         } header: {
             Text("iCloud Sync")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Syncs feeds, tags, settings, and API keys across your devices via iCloud. Article contents are not synced — they re-download on each device.")
+                Text("Syncs feeds, tags, settings, API keys, and full articles (including images) across your devices via iCloud.")
+                if settings.iCloudSyncEnabled {
+                    Text("A passive device never fetches in the background and relies on iCloud for its articles.")
+                }
                 if settings.iCloudSyncEnabled, let error = ConfigSyncService.shared.lastSyncError {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
