@@ -183,6 +183,15 @@ private struct MacSidebarView: View {
     @State private var debouncedSearch = ""
     @State private var searchResults: [ArticleSummary]?
 
+    /// Extra vertical room per sidebar row — the AppKit-backed source list packs rows tightly by
+    /// default, so the article list reads as a cramped wall of text. iOS never renders this view.
+    private static let rowInsets = EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12)
+
+    /// A calmer selection fill than the raw accent: the brand lavender mixed toward black so the
+    /// focused pill reads as a deep violet instead of a glaring neon block, while white row text
+    /// stays legible on top. `mix` resolves per-appearance, so it tracks light/dark like the accent.
+    private static var selectionTint: Color { Color.accentColor.mix(with: .black, by: 0.3) }
+
     /// Browsing shows the model's filtered timeline; a live search swaps in predicate-fetched rows,
     /// re-run through the same tag/feed filter so the sidebar stays a subset of the reader timeline.
     private var displayed: [ArticleSummary] {
@@ -201,10 +210,16 @@ private struct MacSidebarView: View {
         List(selection: $model.selection) {
             ForEach(displayed) { summary in
                 MacArticleRow(summary: summary)
+                    .listRowInsets(Self.rowInsets)
                     .tag(summary.identifier)
             }
         }
         .listStyle(.sidebar)
+        // The selection highlight follows the tint. The brand accent is a bright lavender that
+        // fills the whole selected pill at full saturation — glaring against the dark sidebar — so
+        // damp it toward a deeper violet for the sidebar only. Derived from the accent so it stays
+        // on-brand and adapts to light/dark; iOS is untouched (this is the Mac window).
+        .tint(Self.selectionTint)
         .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
         .overlay {
             if displayed.isEmpty {

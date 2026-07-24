@@ -14,6 +14,18 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Yana</string>
+	<!-- Declaring multiple-scene support is the only Apple-supported way to stop Mac Catalyst
+	     from quitting when the last window closes: with a single scene, closing the window
+	     terminates the app; with multiple scenes it keeps running (reopen a window from the
+	     Dock or ⌘N). Catalyst owns the NSApplicationDelegate, so overriding
+	     applicationShouldTerminateAfterLastWindowClosed directly isn't possible. SwiftUI's
+	     WindowGroup provides the scene; we only need the flag. On iPhone/iPad this also enables
+	     user-initiated multi-window (Stage Manager / Split View), which is a benign opt-in. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.news</string>
 	<key>UIBackgroundModes</key>
