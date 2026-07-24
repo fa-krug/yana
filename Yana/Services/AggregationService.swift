@@ -462,8 +462,13 @@ final class AggregationService {
     }
 
     private func cleanupAndSave() {
-        let retentionDays = AppSettings().retentionDays
-        RetentionCleanup.run(context: context, retentionDays: retentionDays, now: now())
+        let settings = AppSettings()
+        // Passive devices never run retention or initiate deletions — they only mirror.
+        guard !settings.isPassiveDevice else { return }
+        let deletedUIDs = RetentionCleanup.run(context: context, retentionDays: settings.retentionDays, now: now())
         try? context.save()
+        if !deletedUIDs.isEmpty {
+            Task { [articleSync] in await articleSync.deleteRemote(uids: deletedUIDs) }
+        }
     }
 }

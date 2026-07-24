@@ -143,6 +143,19 @@ final class ArticleSyncService {
         }
     }
 
+    /// Tombstone the given UIDs in the zone. Gated; no-op when off or empty.
+    func deleteRemote(uids: [String]) async {
+        guard settings.iCloudSyncEnabled, !uids.isEmpty else { return }
+        do {
+            try await store.delete(articleUIDs: uids)
+            for uid in uids { canonicalCreatedAtByUID[uid] = nil }
+            lastSyncError = nil
+        } catch {
+            log.error("Article delete failed: \(String(describing: error))")
+            lastSyncError = ConfigSyncService.describe(error)
+        }
+    }
+
     // MARK: Image hydration
 
     /// Download any image blobs referenced by the given records that are missing locally, writing
