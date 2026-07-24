@@ -56,7 +56,8 @@ struct MacSettingsWindow: View {
         case .about:
             Form {
                 AboutSettingsSection(onRestartOnboarding: {
-                    // Completed in Task 7: open the Welcome window, then close Settings.
+                    openWindow(id: WindowID.welcome, value: true)
+                    dismiss()
                 })
             }
         }

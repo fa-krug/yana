@@ -36,13 +36,6 @@ struct MacRootView: View {
         // UIKit reader in the detail pane holds first responder.
         .focusedSceneValue(\.timelineModel, model)
         .focusedSceneValue(\.readerSpeech, speech)
-        .fullScreenCover(isPresented: $appState.showWelcome) {
-            WelcomeView(onFinish: {
-                settings.hasCompletedOnboarding = true
-                appState.showWelcome = false
-            })
-            .interactiveDismissDisabled()
-        }
         .onAppear {
             model.configure(modelContext: modelContext, store: store)
             model.applyTimeline()

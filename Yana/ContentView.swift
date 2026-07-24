@@ -4,6 +4,8 @@ import UIKit
 struct ContentView: View {
     @Bindable var appState: AppState
 
+    @Environment(\.openWindow) private var openWindow
+
     @State private var settings = AppSettings()
 
     /// Suppress the first-launch welcome during UI-test / screenshot runs so it never covers the
@@ -39,7 +41,11 @@ struct ContentView: View {
                 settings.hasCompletedOnboarding = false
             }
             if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
-                appState.showWelcome = true
+                if isMac {
+                    openWindow(id: WindowID.welcome, value: true)
+                } else {
+                    appState.showWelcome = true
+                }
             }
         }
     }

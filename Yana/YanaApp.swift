@@ -165,6 +165,17 @@ struct YanaApp: App {
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 560, height: 640)
+
+        // Onboarding as its own window, replacing the `.fullScreenCover` used on iOS. `Window(id:)`
+        // is `@available(iOS, unavailable)` and does not compile under Mac Catalyst (which builds
+        // against the iOS SDK), so this uses the same value-based `WindowGroup` singleton pattern as
+        // the Settings window above: bind `for: Bool.self` and always open/pass the constant `true`.
+        WindowGroup(id: WindowID.welcome, for: Bool.self) { _ in
+            WelcomeWindowRoot(appState: appState)
+                .environment(articleStore)
+        }
+        .modelContainer(AppContainer.shared)
+        .defaultSize(width: 720, height: 640)
         #endif
     }
 }
