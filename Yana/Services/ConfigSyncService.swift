@@ -4,22 +4,12 @@ import CloudKit
 import os
 
 /// The single payload synced across a user's devices. Carries the feed/tag configuration
-/// (as OPML), the allow-listed non-secret settings, and the starred-article set — but never
-/// article bodies. All three fields serialize to CloudKit as simple values.
+/// (as OPML) and the allow-listed non-secret settings — but never article bodies. Starred marks
+/// ride along on synced article records instead of this document. Both fields serialize to
+/// CloudKit as simple values.
 struct ConfigDocument: Sendable, Equatable {
     var opml: String
     var settingsData: Data
-    var starredData: Data
-
-    /// Encode a starred set as JSON `Data`.
-    static func encodeStarred(_ marks: Set<StarredMark>) -> Data {
-        (try? JSONEncoder().encode(marks)) ?? Data()
-    }
-
-    /// Decode JSON `Data` back into a starred set (empty on failure).
-    static func decodeStarred(_ data: Data) -> Set<StarredMark> {
-        (try? JSONDecoder().decode(Set<StarredMark>.self, from: data)) ?? []
-    }
 }
 
 /// Abstraction over the remote store so the service is unit-testable without CloudKit.
@@ -79,7 +69,6 @@ final class CloudKitConfigStore: ConfigStore {
         let record = cachedRecord ?? CKRecord(recordType: Self.recordType, recordID: recordID)
         record["opml"] = document.opml as CKRecordValue
         record["settingsData"] = document.settingsData as CKRecordValue
-        record["starredData"] = document.starredData as CKRecordValue
         do {
             let saved = try await database.save(record)
             cachedRecord = saved
@@ -91,8 +80,7 @@ final class CloudKitConfigStore: ConfigStore {
     private static func document(from record: CKRecord) -> ConfigDocument {
         let opml = record["opml"] as? String ?? ""
         let settingsData = record["settingsData"] as? Data ?? Data()
-        let starredData = record["starredData"] as? Data ?? Data()
-        return ConfigDocument(opml: opml, settingsData: settingsData, starredData: starredData)
+        return ConfigDocument(opml: opml, settingsData: settingsData)
     }
 
     /// Create a silent database subscription once (guarded by a device-local flag), so remote
@@ -129,7 +117,6 @@ final class ConfigSyncService {
     @ObservationIgnored private lazy var store: ConfigStore = makeStore()
     private let context: ModelContext
     private let settings: AppSettings
-    private let starred: StarredRegistry
     @ObservationIgnored private let defaults: UserDefaults
 
     /// Human-readable description of the most recent push/pull failure, or `nil` after a success.
@@ -158,13 +145,11 @@ final class ConfigSyncService {
         store: @autoclosure @escaping () -> ConfigStore,
         context: ModelContext,
         settings: AppSettings,
-        starred: StarredRegistry = .shared,
         defaults: UserDefaults = .standard
     ) {
         self.makeStore = store
         self.context = context
         self.settings = settings
-        self.starred = starred
         self.defaults = defaults
     }
 
@@ -174,8 +159,7 @@ final class ConfigSyncService {
     func buildDocument() -> ConfigDocument {
         ConfigDocument(
             opml: FeedPortability.exportOPML(context: context),
-            settingsData: settings.exportSyncedSettings(),
-            starredData: ConfigDocument.encodeStarred(StarredRegistry.collect(from: context))
+            settingsData: settings.exportSyncedSettings()
         )
     }
 
@@ -256,16 +240,7 @@ final class ConfigSyncService {
         // 4. Settings.
         settings.applySyncedSettings(document.settingsData)
 
-        // 5. Starred set. The remote set is authoritative (last-writer-wins): this replaces the
-        // local starred state rather than unioning it. A star toggled locally within the debounce
-        // window before an interleaving pull can therefore be dropped if the incoming document
-        // predates it — an accepted limitation of the single-record model, not a bug. Stars
-        // re-converge on the next push; if losing a local star ever proves annoying in practice,
-        // switch this to a union-on-pull.
-        starred.update(to: ConfigDocument.decodeStarred(document.starredData))
-        starred.applyToLocalArticles(in: context)
-
-        // 6. Persist + record the new snapshot.
+        // 5. Persist + record the new snapshot.
         try? context.save()
         setLastFeedKeys(incomingKeys)
     }

@@ -59,21 +59,18 @@ struct ConfigSyncServiceTests {
         store: FakeConfigStore,
         context: ModelContext,
         enabled: Bool = true
-    ) -> (ConfigSyncService, AppSettings, StarredRegistry, UserDefaults) {
+    ) -> (ConfigSyncService, AppSettings, UserDefaults) {
         let settingsDefaults = makeSuite()
-        let starredDefaults = makeSuite()
         let syncDefaults = makeSuite()
         let settings = AppSettings(defaults: settingsDefaults)
         settings.iCloudSyncEnabled = enabled
-        let starred = StarredRegistry(defaults: starredDefaults)
         let service = ConfigSyncService(
             store: store,
             context: context,
             settings: settings,
-            starred: starred,
             defaults: syncDefaults
         )
-        return (service, settings, starred, syncDefaults)
+        return (service, settings, syncDefaults)
     }
 
     /// Like `makeService`, but wires the store through a `StoreBuildCounter` factory so a test can
@@ -83,21 +80,18 @@ struct ConfigSyncServiceTests {
         counter: StoreBuildCounter,
         context: ModelContext,
         enabled: Bool
-    ) -> (ConfigSyncService, AppSettings, StarredRegistry, UserDefaults) {
+    ) -> (ConfigSyncService, AppSettings, UserDefaults) {
         let settingsDefaults = makeSuite()
-        let starredDefaults = makeSuite()
         let syncDefaults = makeSuite()
         let settings = AppSettings(defaults: settingsDefaults)
         settings.iCloudSyncEnabled = enabled
-        let starred = StarredRegistry(defaults: starredDefaults)
         let service = ConfigSyncService(
             store: counter.makeStore(),
             context: context,
             settings: settings,
-            starred: starred,
             defaults: syncDefaults
         )
-        return (service, settings, starred, syncDefaults)
+        return (service, settings, syncDefaults)
     }
 
     @discardableResult
@@ -122,8 +116,8 @@ struct ConfigSyncServiceTests {
     @Test func disabledGateDoesNothing() async throws {
         let context = try makeContext()
         let store = FakeConfigStore()
-        store.document = ConfigDocument(opml: OPMLCodec.encode([]), settingsData: Data(), starredData: Data())
-        let (service, _, _, _) = makeService(store: store, context: context, enabled: false)
+        store.document = ConfigDocument(opml: OPMLCodec.encode([]), settingsData: Data())
+        let (service, _, _) = makeService(store: store, context: context, enabled: false)
 
         await service.push()
         await service.pull()
@@ -138,7 +132,7 @@ struct ConfigSyncServiceTests {
     @Test func disabledSyncNeverConstructsStore() async throws {
         let context = try makeContext()
         let builds = StoreBuildCounter()
-        let (service, _, _, _) = makeCountingService(counter: builds, context: context, enabled: false)
+        let (service, _, _) = makeCountingService(counter: builds, context: context, enabled: false)
 
         service.requestPush()
         await service.push()
@@ -152,7 +146,7 @@ struct ConfigSyncServiceTests {
     @Test func enabledSyncConstructsStoreOnceLazily() async throws {
         let context = try makeContext()
         let builds = StoreBuildCounter()
-        let (service, _, _, _) = makeCountingService(counter: builds, context: context, enabled: true)
+        let (service, _, _) = makeCountingService(counter: builds, context: context, enabled: true)
 
         #expect(builds.count == 0) // not built just by constructing the service
         await service.pull()
@@ -165,24 +159,14 @@ struct ConfigSyncServiceTests {
 
     @Test func pushBuildsFaithfulDocument() async throws {
         let context = try makeContext()
-        let feedA = makeFeed("https://a.example/feed", in: context)
+        makeFeed("https://a.example/feed", in: context)
         makeFeed("https://b.example/feed", in: context)
 
-        // A starred article on feed A — buildDocument collects the starred set from the context.
-        Tag.ensureBuiltIns(in: context)
-        let starredTag = try #require((try? context.fetch(FetchDescriptor<Yana.Tag>(predicate: #Predicate { $0.isBuiltIn })))?.first)
-        let article = Article(title: "T", identifier: "art-1", url: "https://a.example/1")
-        article.feed = feedA
-        context.insert(article)
-        article.setStarred(true, using: starredTag)
-        try context.save()
-
         let store = FakeConfigStore()
-        let (service, settings, _, _) = makeService(store: store, context: context)
+        let (service, settings, _) = makeService(store: store, context: context)
 
         // A synced setting.
         settings.retentionDays = 99
-        let mark = StarredMark(feedIdentifier: "https://a.example/feed", aggregatorType: "feed_content", articleIdentifier: "art-1")
 
         await service.push()
 
@@ -196,9 +180,6 @@ struct ConfigSyncServiceTests {
         // Settings decode to the set value.
         let synced = try #require(try? JSONDecoder().decode(AppSettings.SyncedSettings.self, from: doc.settingsData))
         #expect(synced.retentionDays == 99)
-
-        // Starred data contains the mark.
-        #expect(ConfigDocument.decodeStarred(doc.starredData).contains(mark))
     }
 
     // MARK: - Pull adds a feed
@@ -210,8 +191,8 @@ struct ConfigSyncServiceTests {
             OPMLFeed(name: "New", identifier: "https://new.example/feed", aggregatorType: "feed_content",
                      optionsJSONBase64: "", tags: [], dailyLimit: nil, enabled: true)
         ])
-        store.document = ConfigDocument(opml: opml, settingsData: Data(), starredData: Data())
-        let (service, _, _, _) = makeService(store: store, context: context)
+        store.document = ConfigDocument(opml: opml, settingsData: Data())
+        let (service, _, _) = makeService(store: store, context: context)
 
         #expect(feedIdentifiers(in: context).isEmpty)
         await service.pull()
@@ -227,7 +208,7 @@ struct ConfigSyncServiceTests {
         makeFeed("C", in: context) // purely-local, never synced
 
         let store = FakeConfigStore()
-        let (service, _, _, syncDefaults) = makeService(store: store, context: context)
+        let (service, _, syncDefaults) = makeService(store: store, context: context)
 
         // Prime last-synced snapshot to {A, B}.
         syncDefaults.set(["A|feed_content", "B|feed_content"], forKey: "sync.lastFeedKeys")
@@ -237,7 +218,7 @@ struct ConfigSyncServiceTests {
             OPMLFeed(name: "A", identifier: "A", aggregatorType: "feed_content",
                      optionsJSONBase64: "", tags: [], dailyLimit: nil, enabled: true)
         ])
-        store.document = ConfigDocument(opml: opml, settingsData: Data(), starredData: Data())
+        store.document = ConfigDocument(opml: opml, settingsData: Data())
 
         await service.pull()
 
@@ -247,19 +228,14 @@ struct ConfigSyncServiceTests {
         #expect(ids.contains("C"))  // preserved (never synced)
     }
 
-    // MARK: - Settings + starred applied on pull
+    // MARK: - Settings applied on pull
 
-    @Test func settingsAndStarredAppliedOnPull() async throws {
+    @Test func settingsAppliedOnPull() async throws {
         let context = try makeContext()
-        // A local feed + article to be starred.
-        let feed = makeFeed("https://a.example/feed", in: context)
-        let article = Article(title: "T", identifier: "art-1", url: "https://a.example/1")
-        article.feed = feed
-        context.insert(article)
-        try context.save()
+        makeFeed("https://a.example/feed", in: context)
 
         let store = FakeConfigStore()
-        let (service, settings, starred, _) = makeService(store: store, context: context)
+        let (service, settings, _) = makeService(store: store, context: context)
         settings.retentionDays = 30
 
         // Build a settings payload with a changed value.
@@ -268,18 +244,15 @@ struct ConfigSyncServiceTests {
         synced.retentionDays = 7
         changed = try JSONEncoder().encode(synced)
 
-        let mark = StarredMark(feedIdentifier: "https://a.example/feed", aggregatorType: "feed_content", articleIdentifier: "art-1")
         let opml = OPMLCodec.encode([
             OPMLFeed(name: "A", identifier: "https://a.example/feed", aggregatorType: "feed_content",
                      optionsJSONBase64: "", tags: [], dailyLimit: nil, enabled: true)
         ])
-        store.document = ConfigDocument(opml: opml, settingsData: changed, starredData: ConfigDocument.encodeStarred([mark]))
+        store.document = ConfigDocument(opml: opml, settingsData: changed)
 
         await service.pull()
 
         #expect(settings.retentionDays == 7)
-        #expect(starred.contains(mark))
-        #expect(article.isStarred)
     }
 
     // MARK: - Conflict path
@@ -295,12 +268,11 @@ struct ConfigSyncServiceTests {
                 OPMLFeed(name: "A", identifier: "A", aggregatorType: "feed_content",
                          optionsJSONBase64: "", tags: [], dailyLimit: nil, enabled: true)
             ]),
-            settingsData: Data(),
-            starredData: Data()
+            settingsData: Data()
         )
         store.throwConflictOnNextSave = true
 
-        let (service, _, _, _) = makeService(store: store, context: context)
+        let (service, _, _) = makeService(store: store, context: context)
 
         await service.push()
 

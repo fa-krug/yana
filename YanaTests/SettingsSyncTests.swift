@@ -178,64 +178,36 @@ struct SettingsSyncTests {
         #expect(AppSettings(defaults: defaults).iCloudSyncEnabled == true)
     }
 
-    // MARK: Timeline position sync
+    // MARK: Timeline anchor sync
 
-    @Test func timelinePositionSyncsWhenEnabled() throws {
-        let target = Date(timeIntervalSince1970: 1_700_000_000)
-        let src = AppSettings(defaults: freshDefaults(label: "pos-src"))
-        src.syncTimelinePositionEnabled = true
-        src.timelinePositionTimestamp = target
-
-        let data = src.exportSyncedSettings()
-
-        let dst = AppSettings(defaults: freshDefaults(label: "pos-dst"))
-        dst.syncTimelinePositionEnabled = true
-        dst.applySyncedSettings(data)
-
-        #expect(dst.timelinePositionTimestamp == target)
+    @Test("Synced settings carry the timeline anchor UID, not a timestamp")
+    func anchorUIDSynced() {
+        let d = UserDefaults(suiteName: "SettingsSync.anchor.\(UUID().uuidString)")!
+        let s = AppSettings(defaults: d)
+        s.iCloudSyncEnabled = true
+        s.timelineAnchorIdentifier = "post-42"
+        let json = String(data: s.exportSyncedSettings(), encoding: .utf8) ?? ""
+        #expect(json.contains("timelineAnchorUID"))
+        #expect(json.contains("post-42"))
+        #expect(!json.contains("timelinePosition"))
     }
 
-    @Test func timelinePositionExcludedFromPayloadWhenDisabled() throws {
-        let src = AppSettings(defaults: freshDefaults(label: "pos-off-src"))
-        src.syncTimelinePositionEnabled = false
-        src.timelinePositionTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
-
-        let data = src.exportSyncedSettings()
-        let synced = try #require(try? JSONDecoder().decode(AppSettings.SyncedSettings.self, from: data))
-        #expect(synced.timelinePosition == nil)
+    @Test("Applying an anchor UID sets the local timeline anchor identifier")
+    func applyAnchorUID() {
+        let d = UserDefaults(suiteName: "SettingsSync.applyAnchor.\(UUID().uuidString)")!
+        let s = AppSettings(defaults: d)
+        let payload = #"{"timelineAnchorUID":"post-7"}"#.data(using: .utf8)!
+        s.applySyncedSettings(payload)
+        #expect(s.timelineAnchorIdentifier == "post-7")
     }
 
-    @Test func timelinePositionNotAppliedWhenReceiverOptedOut() throws {
-        let src = AppSettings(defaults: freshDefaults(label: "pos-recv-src"))
-        src.syncTimelinePositionEnabled = true
-        src.timelinePositionTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
+    @Test func applyingDifferentAnchorUIDPostsNotification() throws {
+        let src = AppSettings(defaults: freshDefaults(label: "anchor-notif-src"))
+        src.iCloudSyncEnabled = true
+        src.timelineAnchorIdentifier = "post-99"
         let data = src.exportSyncedSettings()
 
-        // Receiver has NOT opted in: an incoming position must be ignored.
-        let dst = AppSettings(defaults: freshDefaults(label: "pos-recv-dst"))
-        dst.syncTimelinePositionEnabled = false
-        dst.applySyncedSettings(data)
-
-        #expect(dst.timelinePositionTimestamp == nil)
-    }
-
-    @Test func syncTimelinePositionEnabledIsNeverInPayload() throws {
-        let src = AppSettings(defaults: freshDefaults(label: "pos-flag"))
-        src.syncTimelinePositionEnabled = true
-
-        let data = src.exportSyncedSettings()
-        let json = try #require(String(data: data, encoding: .utf8))
-        #expect(!json.contains("syncTimelinePositionEnabled"))
-    }
-
-    @Test func applyingDifferentTimelinePositionPostsNotification() throws {
-        let src = AppSettings(defaults: freshDefaults(label: "pos-notif-src"))
-        src.syncTimelinePositionEnabled = true
-        src.timelinePositionTimestamp = Date(timeIntervalSince1970: 1_700_000_000)
-        let data = src.exportSyncedSettings()
-
-        let dst = AppSettings(defaults: freshDefaults(label: "pos-notif-dst"))
-        dst.syncTimelinePositionEnabled = true
+        let dst = AppSettings(defaults: freshDefaults(label: "anchor-notif-dst"))
 
         nonisolated(unsafe) var posted = false
         let token = NotificationCenter.default.addObserver(

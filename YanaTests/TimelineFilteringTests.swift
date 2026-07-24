@@ -12,12 +12,6 @@ struct TimelineFilteringTests {
         return a
     }
 
-    private func article(_ id: String, createdAt: Date) -> Article {
-        let a = Article(title: id, identifier: id, url: "https://x.com/\(id)")
-        a.createdAt = createdAt
-        return a
-    }
-
     @Test func untaggedRespectsToggle() {
         let a = article("a", tags: [])
         #expect(TagFilter.apply(to: [a], disabledTagNames: [], includeUntagged: true).count == 1)
@@ -45,24 +39,5 @@ struct TimelineFilteringTests {
         #expect(TimelineAnchor.index(for: "missing", in: list) == 1)
         #expect(TimelineAnchor.index(for: nil, in: list) == 1)
         #expect(TimelineAnchor.index(for: nil, in: [] as [Article]) == 0)
-    }
-
-    @Test func closestByTimestampPicksNearestArticle() {
-        let base = Date(timeIntervalSince1970: 1_700_000_000)
-        let a = article("a", createdAt: base)                       // t+0
-        let b = article("b", createdAt: base.addingTimeInterval(100)) // t+100
-        let c = article("c", createdAt: base.addingTimeInterval(300)) // t+300
-        let list = [a, b, c]
-
-        // Exact match.
-        #expect(TimelineClosest.index(closestTo: base, in: list) == 0)
-        // Between b and c, closer to b.
-        #expect(TimelineClosest.index(closestTo: base.addingTimeInterval(160), in: list) == 1)
-        // Beyond the newest -> clamps to the last.
-        #expect(TimelineClosest.index(closestTo: base.addingTimeInterval(10_000), in: list) == 2)
-        // Before the oldest -> clamps to the first.
-        #expect(TimelineClosest.index(closestTo: base.addingTimeInterval(-10_000), in: list) == 0)
-        // Empty list.
-        #expect(TimelineClosest.index(closestTo: base, in: [] as [Article]) == nil)
     }
 }
