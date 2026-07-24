@@ -55,11 +55,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
         StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
-        #if targetEnvironment(macCatalyst)
-        // The Mac isn't woken by the system for background refresh, so kick off one update at launch
-        // (the repeating NSBackgroundActivityScheduler covers the rest while the app stays open).
-        backgroundRefresh.runNow()
-        #endif
 
         // Tag bootstrap is idempotent and not needed before first paint (the Starred tag is only
         // consulted on a user star action, by the tag-filter list, and on upsert — all reached
@@ -78,6 +73,26 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         StartupTrace.event("didFinishLaunching.end")
         return true
     }
+
+    #if targetEnvironment(macCatalyst)
+    /// Delay before the Mac's one-shot launch refresh, long enough that the window is up and first
+    /// paint is done before the refresh starts.
+    private static let launchRefreshDelay: Duration = .seconds(3)
+
+    /// Run one refresh shortly after launch — but off the synchronous launch path and past first
+    /// paint. The Mac isn't woken by the system for background refresh, so this keeps content fresh
+    /// on open; the repeating loop armed by `schedule()` covers the rest while the app stays open.
+    /// Deferring it (rather than calling `runNow()` from `didFinishLaunching`) is what keeps cold
+    /// start smooth: a full `updateAll()` runs the feed fetch plus `@MainActor` upserts, and each
+    /// save triggers a debounced full `ArticleStore` re-index — all of which would otherwise contend
+    /// with the window's first paint.
+    func scheduleLaunchRefresh() {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.launchRefreshDelay)
+            self?.backgroundRefresh.runNow()
+        }
+    }
+    #endif
 
     func application(
         _ application: UIApplication,
@@ -110,6 +125,11 @@ struct YanaApp: App {
                     BlockMigration.run(container: AppContainer.shared)
                     // Register CloudKit subscription + pull on launch (no-op when sync is off).
                     await ConfigSyncService.shared.start()
+                    #if targetEnvironment(macCatalyst)
+                    // Kick the Mac's launch refresh now that the window is up — deferred so it
+                    // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
+                    appDelegate.scheduleLaunchRefresh()
+                    #endif
                 }
         }
         .modelContainer(AppContainer.shared)
