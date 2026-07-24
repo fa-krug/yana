@@ -154,12 +154,29 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
                 log.debug("Leaving record save error to auto-retry: \(failure.error, privacy: .public)")
             }
         }
+        for (recordID, error) in event.failedRecordDeletes {
+            switch error.code {
+            case .unknownItem, .zoneNotFound, .userDeletedZone:
+                // The item (or its whole zone) is already gone, so the delete is effectively done.
+                // Drop it (and clean up any lingering cache/temp entry) without re-queuing.
+                forget(recordName: recordID.recordName)
+            case .serverRecordChanged:
+                // Server copy diverged; re-queue the delete so the tombstone still applies.
+                recordChanges.append(.deleteRecord(recordID))
+            default:
+                // Transient/other: leave it for CKSyncEngine's own auto-retry.
+                log.debug("Leaving record delete error to auto-retry: \(error, privacy: .public)")
+            }
+        }
         if !databaseChanges.isEmpty { syncEngine.state.add(pendingDatabaseChanges: databaseChanges) }
         if !recordChanges.isEmpty { syncEngine.state.add(pendingRecordZoneChanges: recordChanges) }
     }
 
-    /// Zone save failures surface here. Re-queue a failed zone creation (idempotent; CKSyncEngine
-    /// dedupes pending changes) unless the error is transient, in which case the engine retries it.
+    /// Zone save failures surface here. Mirror the conservative record-save policy: leave genuinely
+    /// transient errors to CKSyncEngine's own auto-retry, re-queue the idempotent zone save only for
+    /// the recoverable divergence case, and for anything else (`.quotaExceeded`, `.permissionFailure`,
+    /// `.badContainer`, `.invalidArguments`, …) log and drop — re-queuing a permanent failure would
+    /// loop forever with no chance of ever succeeding.
     private func handleSentDatabaseChanges(_ event: CKSyncEngine.Event.SentDatabaseChanges,
                                            syncEngine: CKSyncEngine) {
         var databaseChanges: [CKSyncEngine.PendingDatabaseChange] = []
@@ -167,9 +184,14 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
             switch failure.error.code {
             case .networkFailure, .networkUnavailable, .serviceUnavailable, .zoneBusy,
                  .requestRateLimited, .notAuthenticated, .operationCancelled:
+                // Transient: the engine keeps the change pending and retries it itself.
                 log.debug("Leaving zone save error to auto-retry: \(failure.error, privacy: .public)")
-            default:
+            case .serverRecordChanged:
+                // Zone metadata diverged; the idempotent zone save is safe to re-queue so ours applies.
                 databaseChanges.append(.saveZone(CKRecordZone(zoneID: failure.zone.zoneID)))
+            default:
+                // Permanent/unexpected: re-queuing can never succeed, so don't. Log as an error.
+                log.error("Unexpected zone save failure, not re-queuing: \(failure.error, privacy: .public)")
             }
         }
         if !databaseChanges.isEmpty { syncEngine.state.add(pendingDatabaseChanges: databaseChanges) }
@@ -190,13 +212,17 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         let scope = context.options.scope
         let pending = syncEngine.state.pendingRecordZoneChanges.filter { scope.contains($0) }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: pending) { [weak self] recordID in
-            await self?.batchRecord(for: recordID)
+            await self?.batchRecord(for: recordID, syncEngine: syncEngine)
         }
     }
 
     /// Build the `CKRecord` for a pending change from the in-memory caches (main-actor state). Called
-    /// from the engine's `@Sendable` record provider, which hops here via `await`.
-    private func batchRecord(for recordID: CKRecord.ID) -> CKRecord? {
+    /// from the engine's `@Sendable` record provider, which hops here via `await`. If neither cache
+    /// can produce the record, the pending change is orphaned — after a process restart mid-sync the
+    /// in-memory caches are empty, so a queued `saveRecord` whose data is gone would return `nil`
+    /// forever and silently wedge the record. Following Apple's CKSyncEngine sample, we remove that
+    /// pending change from the engine so it stops being retried, then return `nil`.
+    private func batchRecord(for recordID: CKRecord.ID, syncEngine: CKSyncEngine) -> CKRecord? {
         let name = recordID.recordName
         if let article = articleRecordCache[name] {
             return Self.ckRecord(from: article, zoneID: zoneID)
@@ -204,6 +230,8 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         if let image = pendingImageUploads[name] {
             return ckRecord(from: image)
         }
+        log.error("No cached data for pending save \(name, privacy: .public); removing orphaned pending change")
+        syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(recordID)])
         return nil
     }
 
