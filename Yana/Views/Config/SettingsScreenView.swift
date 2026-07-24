@@ -1,14 +1,6 @@
 import AVFoundation
 import SwiftUI
 
-/// Per-section credential-test state shown in Settings.
-enum TestStatus: Equatable {
-    case idle
-    case testing
-    case valid
-    case invalid(String)   // localized message
-}
-
 /// Full-parity settings: sources (Reddit/YouTube), AI providers + knobs, library prefs.
 /// Secrets are read from / written to the Keychain via local @State; non-secret prefs go to
 /// `AppSettings` (UserDefaults).
