@@ -88,4 +88,51 @@ struct ArticleRecordMappingTests {
         #expect(article.feed == nil)
         #expect(article.identifier == "a-1")
     }
+
+    @Test("apply stores the feed identity on the created article")
+    func applyStoresIdentity() throws {
+        let context = try makeContext()
+        let feed = makeFeed(context)   // identifier "feed-1", aggregatorType .feedContent
+        let record = SyncedArticleRecord(
+            uid: "feed-1|feed_content|a-5", feedIdentifier: "feed-1", aggregatorType: "feed_content",
+            articleIdentifier: "a-5", title: "Five", url: "https://x/5", author: "", summary: "",
+            plainText: "", leadImageRef: "", iconURL: nil, date: .now, createdAt: .now, blockData: Data(),
+            isStarred: false, tagNames: [], imageHashes: [])
+        let article = ArticleRecordApply.apply(record, into: context, starredTag: nil,
+                                               feedsByKey: ["feed-1|feed_content": feed])
+        #expect(article.syncFeedIdentifier == "feed-1")
+        #expect(article.syncAggregatorType == "feed_content")
+    }
+
+    @Test("Two unlinked feeds with a colliding identifier stay separate")
+    func unlinkedCollisionStaysSeparate() throws {
+        let context = try makeContext()
+        func rec(_ feed: String) -> SyncedArticleRecord {
+            SyncedArticleRecord(
+                uid: "\(feed)|feed_content|dup", feedIdentifier: feed, aggregatorType: "feed_content",
+                articleIdentifier: "dup", title: "from \(feed)", url: "https://x/dup", author: "", summary: "",
+                plainText: "", leadImageRef: "", iconURL: nil, date: .now, createdAt: .now, blockData: Data(),
+                isStarred: false, tagNames: [], imageHashes: [])
+        }
+        let a = ArticleRecordApply.apply(rec("feed-A"), into: context, starredTag: nil, feedsByKey: [:])
+        try context.save()   // persist so the second apply's fetch can see the first
+        let b = ArticleRecordApply.apply(rec("feed-B"), into: context, starredTag: nil, feedsByKey: [:])
+        #expect(a !== b)
+        let all = try context.fetch(FetchDescriptor<Article>())
+        #expect(all.count == 2)
+        #expect(a.title == "from feed-A")
+        #expect(b.title == "from feed-B")
+        #expect(a.syncFeedIdentifier == "feed-A")
+        #expect(b.syncFeedIdentifier == "feed-B")
+    }
+
+    @Test("ArticleUID.make(for:) derives the UID from stored identity even when unlinked")
+    func uidFromStoredIdentity() throws {
+        let context = try makeContext()
+        let article = Article(title: "T", identifier: "a-1", url: "https://x/1")
+        article.syncFeedIdentifier = "feed-1"
+        article.syncAggregatorType = "feed_content"
+        context.insert(article)
+        #expect(ArticleUID.make(for: article) == "feed-1|feed_content|a-1")
+    }
 }

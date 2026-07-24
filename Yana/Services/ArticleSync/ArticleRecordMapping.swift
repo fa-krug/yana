@@ -6,29 +6,21 @@ extension SyncedArticleRecord {
     /// can't be formed). Runs on the main actor — reads the non-Sendable `Article`.
     @MainActor
     init?(article: Article) {
-        guard let feed = article.feed else { return nil }
+        let feedIdentifier = article.syncFeedIdentifier.isEmpty ? article.feed?.identifier : article.syncFeedIdentifier
+        let aggregatorType = article.syncAggregatorType.isEmpty ? article.feed?.aggregatorType : article.syncAggregatorType
+        guard let feedIdentifier, let aggregatorType else { return nil }
         let blocks = article.blocks
         self.init(
-            uid: ArticleUID.make(
-                feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
-                articleIdentifier: article.identifier, date: article.date, title: article.title),
-            feedIdentifier: feed.identifier,
-            aggregatorType: feed.aggregatorType,
+            uid: ArticleUID.make(feedIdentifier: feedIdentifier, aggregatorType: aggregatorType,
+                                 articleIdentifier: article.identifier, date: article.date, title: article.title),
+            feedIdentifier: feedIdentifier,
+            aggregatorType: aggregatorType,
             articleIdentifier: article.identifier,
-            title: article.title,
-            url: article.url,
-            author: article.author,
-            summary: article.summary,
-            plainText: article.plainText,
-            leadImageRef: article.leadImageRef,
-            iconURL: article.iconURL,
-            date: article.date,
-            createdAt: article.createdAt,
-            blockData: article.blockData,
-            isStarred: article.isStarred,
-            tagNames: article.tags.map(\.name),
-            imageHashes: ArticleImageRefs.hashes(in: blocks)
-        )
+            title: article.title, url: article.url, author: article.author, summary: article.summary,
+            plainText: article.plainText, leadImageRef: article.leadImageRef, iconURL: article.iconURL,
+            date: article.date, createdAt: article.createdAt, blockData: article.blockData,
+            isStarred: article.isStarred, tagNames: article.tags.map(\.name),
+            imageHashes: ArticleImageRefs.hashes(in: blocks))
     }
 }
 
@@ -58,7 +50,11 @@ enum ArticleRecordApply {
             existing = feed.articles.first { $0.identifier == identifier }
         } else {
             let descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == identifier })
-            existing = (try? context.fetch(descriptor))?.first { $0.feed == nil }
+            existing = (try? context.fetch(descriptor))?.first {
+                $0.feed == nil
+                    && $0.syncFeedIdentifier == record.feedIdentifier
+                    && $0.syncAggregatorType == record.aggregatorType
+            }
         }
 
         let article = existing ?? {
@@ -80,6 +76,8 @@ enum ArticleRecordApply {
         article.plainText = record.plainText
         article.leadImageRef = record.leadImageRef
         article.date = record.date
+        article.syncFeedIdentifier = record.feedIdentifier
+        article.syncAggregatorType = record.aggregatorType
         if let feed { article.feed = feed }
 
         // Tags: snapshot the feed's tags (the article's tagNames ride for reference/future use),
@@ -89,5 +87,18 @@ enum ArticleRecordApply {
             article.setStarred(record.isStarred, using: starredTag)
         }
         return article
+    }
+}
+
+extension ArticleUID {
+    /// Derive the canonical UID from an article's stored feed identity (falling back to its linked
+    /// feed). Returns nil for a legacy article with neither stored identity nor a linked feed.
+    @MainActor
+    static func make(for article: Article) -> String? {
+        let feedIdentifier = article.syncFeedIdentifier.isEmpty ? article.feed?.identifier : article.syncFeedIdentifier
+        let aggregatorType = article.syncAggregatorType.isEmpty ? article.feed?.aggregatorType : article.syncAggregatorType
+        guard let feedIdentifier, let aggregatorType else { return nil }
+        return make(feedIdentifier: feedIdentifier, aggregatorType: aggregatorType,
+                    articleIdentifier: article.identifier, date: article.date, title: article.title)
     }
 }

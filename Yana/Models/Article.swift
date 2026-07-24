@@ -43,6 +43,13 @@ final class Article {
 
     var feed: Feed?
 
+    /// The owning feed's identity, denormalized so a synced article that arrives before its feed
+    /// (or whose feed was deleted) can still be identified, deduped by UID, and re-linked when the
+    /// feed appears. Set at import (from the feed) and on sync apply (from the record). Empty only
+    /// for articles imported before this column existed. Defaulted for lightweight SwiftData migration.
+    var syncFeedIdentifier: String = ""
+    var syncAggregatorType: String = ""
+
     init(
         title: String,
         identifier: String,
