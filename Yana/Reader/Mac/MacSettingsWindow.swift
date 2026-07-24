@@ -6,7 +6,6 @@ import SwiftUI
 /// `SettingsPane`s; the detail shows the selected pane. Each pane reuses the same section views as
 /// the iOS Form, regrouped for the desktop.
 struct MacSettingsWindow: View {
-    @Bindable var appState: AppState
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @State private var selection: SettingsPane? = .general
