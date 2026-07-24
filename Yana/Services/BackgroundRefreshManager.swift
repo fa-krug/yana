@@ -23,6 +23,7 @@ final class BackgroundRefreshManager {
     private let container: ModelContainer
     private let intervalProvider: @MainActor () -> TimeInterval
     private let now: () -> Date
+    private let isPassive: @MainActor () -> Bool
 
     #if targetEnvironment(macCatalyst)
     /// The Mac has no `BGTaskScheduler` background-refresh, and `NSBackgroundActivityScheduler` is
@@ -40,11 +41,13 @@ final class BackgroundRefreshManager {
     init(
         container: ModelContainer,
         intervalProvider: @escaping @MainActor () -> TimeInterval = { AppSettings().backgroundInterval },
-        now: @escaping () -> Date = { .now }
+        now: @escaping () -> Date = { .now },
+        isPassive: @escaping @MainActor () -> Bool = { AppSettings().isPassiveDevice }
     ) {
         self.container = container
         self.intervalProvider = intervalProvider
         self.now = now
+        self.isPassive = isPassive
     }
 
     /// Pure: the earliest begin date for the next request. Clamps non-positive intervals
@@ -85,7 +88,7 @@ final class BackgroundRefreshManager {
     /// so isolation is inferred from the enclosing context), and the synthesized main-actor
     /// precondition traps (EXC_BREAKPOINT) the moment iOS runs the task off the main thread.
     func register() {
-        guard !AppSettings().isPassiveDevice else { return }
+        guard !isPassive() else { return }
         #if targetEnvironment(macCatalyst)
         // No BGTaskScheduler background-refresh on the Mac — nothing to register. Scheduling is
         // handled by `schedule()` via `NSBackgroundActivityScheduler`.
@@ -98,7 +101,7 @@ final class BackgroundRefreshManager {
     /// Run one refresh immediately. Used on the Mac at launch (and window focus) since the desktop
     /// model is "the app tends to stay open" rather than woken by the system. Best-effort; silent.
     func runNow() {
-        guard !AppSettings().isPassiveDevice else { return }
+        guard !isPassive() else { return }
         Task { @MainActor in
             let service = AggregationService(context: container.mainContext)
             await Self.runRefresh(service: service)
@@ -131,7 +134,7 @@ final class BackgroundRefreshManager {
     /// the app-refresh task keeps lightweight feeds current frequently, while the processing task
     /// is the long window that lets AI-heavy feeds finish their AI pass instead of being dropped.
     func schedule() {
-        guard !AppSettings().isPassiveDevice else { return }
+        guard !isPassive() else { return }
         #if targetEnvironment(macCatalyst)
         scheduleMac()
         #else
@@ -157,7 +160,7 @@ final class BackgroundRefreshManager {
     /// `NSBackgroundActivityScheduler` is unavailable in Mac Catalyst, so this is a plain awaiting
     /// loop on the main actor; the desktop model keeps the app open, and launch/focus call `runNow()`.
     private func scheduleMac() {
-        guard !AppSettings().isPassiveDevice else { return }
+        guard !isPassive() else { return }
         macRefreshLoop?.cancel()
         let interval = intervalProvider()
         let clamped = interval > 0 ? interval : Self.minimumInterval
