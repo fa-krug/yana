@@ -46,6 +46,14 @@ final class AggregationService {
     private let starredRegistry: StarredRegistry
     private let articleSync: ArticleSyncService
 
+    /// UIDs of articles inserted/updated by the operation currently in flight. Reset at the start
+    /// of each public run entry point, accumulated via `ArticleUpsert.apply`'s `onUpsert` callback,
+    /// and flushed (then cleared) by `pushRecentlyChanged()` — so a run only pushes what it actually
+    /// touched, never the whole library. Otherwise a push after e.g. `forceReload(article:)` (which
+    /// has no preceding pull) would re-upload every locally-present article, resurrecting any that
+    /// another device already tombstoned remotely. Main-actor-only state (this class is `@MainActor`).
+    private var pendingPushUIDs: Set<String> = []
+
     init(
         context: ModelContext,
         makeAggregator: @escaping AggregatorFactory = { AggregatorRegistry.shared.makeAggregator($0, credentials: $1) },
@@ -158,6 +166,7 @@ final class AggregationService {
     @discardableResult
     func updateAll() async -> Int {
         lastRunFailures = []
+        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false; updateProgress.reset() }
         await articleSync.pull()
@@ -212,6 +221,7 @@ final class AggregationService {
     func update(feed: Feed) async -> Int {
         guard settings.isSourceEnabled(feed.type) else { return 0 }
         lastRunFailures = []
+        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false }
         await articleSync.pull()
@@ -228,6 +238,7 @@ final class AggregationService {
     func forceReload(feed: Feed) async -> Int {
         guard settings.isSourceEnabled(feed.type) else { return 0 }
         lastRunFailures = []
+        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false }
         let inserted = await aggregate(feed: feed, force: true)
@@ -252,6 +263,7 @@ final class AggregationService {
     func forceReload(article: Article) async -> Int {
         guard let feed = article.feed else { return 0 }
         lastRunFailures = []
+        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false }
 
@@ -281,7 +293,8 @@ final class AggregationService {
             processed, to: feed, starredTag: starredTag(),
             starredIdentifiers: starredRegistry.identifiers(forFeedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType),
             context: context, now: now(),
-            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) })
+            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) },
+            onUpsert: { [weak self] uid in self?.pendingPushUIDs.insert(uid) })
         try? context.save()
         await pushRecentlyChanged()
         return inserted
@@ -305,7 +318,9 @@ final class AggregationService {
         guard let summary = processed.first?.summary, !summary.isEmpty else { return false }
         article.summary = summary
         try? context.save()
-        await pushRecentlyChanged()
+        // `summarize` doesn't go through `ArticleUpsert.apply` (it sets `article.summary` directly),
+        // so there's nothing in `pendingPushUIDs` to flush — push just this article instead.
+        if let uid = ArticleUID.make(for: article) { await articleSync.push(uids: [uid]) }
         return true
     }
 
@@ -412,7 +427,8 @@ final class AggregationService {
             context: context, now: now,
             // Every processed article is pre-parsed; the inline fallback is defensive and never hit.
             blocksFor: { blocks[$0.identifier] ?? ArticleUpsert.defaultBlocks(for: $0) },
-            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) }
+            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) },
+            onUpsert: { [weak self] uid in self?.pendingPushUIDs.insert(uid) }
         )
     }
 
@@ -434,12 +450,12 @@ final class AggregationService {
         try? context.save()
     }
 
-    /// Push all local articles' current state to article sync. Simpler and safe: article sync
-    /// dedups by UID and skips unchanged records at the CloudKit layer, and this runs only after a
-    /// user/background refresh, not per article.
+    /// Push the articles touched by the just-finished operation (not the whole library), so a
+    /// locally-present-but-remotely-tombstoned article is never re-uploaded (no resurrection).
     private func pushRecentlyChanged() async {
-        let all = (try? context.fetch(FetchDescriptor<Article>())) ?? []
-        await articleSync.push(uids: all.compactMap { ArticleUID.make(for: $0) })
+        let uids = Array(pendingPushUIDs)
+        pendingPushUIDs = []
+        await articleSync.push(uids: uids)
     }
 
     /// Thrown by the per-article sink to stop the aggregator once the run cap is reached.

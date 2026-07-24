@@ -31,7 +31,8 @@ enum ArticleUpsert {
         now: Date,
         jitter: () -> TimeInterval = { .random(in: 0..<importJitterWindow) },
         blocksFor: (AggregatedArticle) -> [Block] = ArticleUpsert.defaultBlocks,
-        canonicalCreatedAt: (String) -> Date? = { _ in nil }
+        canonicalCreatedAt: (String) -> Date? = { _ in nil },
+        onUpsert: (String) -> Void = { _ in }
     ) -> Int {
         // Build the dedup index once (O(n)) instead of scanning the relationship per item.
         var byIdentifier: [String: Article] = [:]
@@ -44,6 +45,13 @@ enum ArticleUpsert {
             // as HTML in `item.content`). The bulk refresh path supplies these blocks pre-parsed
             // off the main actor; direct callers fall back to parsing inline (`defaultBlocks`).
             let blocks = blocksFor(item)
+            // Computed once and reused for the canonical-createdAt lookup (insert only) and the
+            // onUpsert notification (both branches), so callers can accumulate exactly the UIDs
+            // this run actually touched (see AggregationService.pendingPushUIDs).
+            let uid = ArticleUID.make(
+                feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
+                articleIdentifier: item.identifier, date: item.date, title: item.title)
+            onUpsert(uid)
             if let existing = byIdentifier[item.identifier] {
                 // Update: refresh content; re-snapshot feed tags; preserve Starred.
                 let wasStarred = existing.isStarred
@@ -79,9 +87,6 @@ enum ArticleUpsert {
                 // Adopt the canonical (first-writer) createdAt when article sync already knows this
                 // UID — i.e. another device created it in the meantime — so ordering stays stable
                 // across devices. Otherwise back-date by jitter as usual.
-                let uid = ArticleUID.make(
-                    feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
-                    articleIdentifier: item.identifier, date: item.date, title: item.title)
                 article.createdAt = canonicalCreatedAt(uid) ?? now.addingTimeInterval(-jitter())
                 article.feed = feed
                 article.syncFeedIdentifier = feed.identifier

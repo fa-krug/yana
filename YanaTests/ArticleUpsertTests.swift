@@ -143,4 +143,25 @@ struct ArticleUpsertTests {
         #expect(a1.isStarred == true)   // in the set → starred on insert
         #expect(a2.isStarred == false)  // not in the set → not starred
     }
+
+    @Test("apply reports each upserted article's UID via onUpsert (insert and update)")
+    func onUpsertReportsUIDs() throws {
+        let context = try makeContext()
+        let feed = Feed(name: "F", aggregatorType: .feedContent, identifier: "f1")
+        context.insert(feed)
+
+        var seen: [String] = []
+        ArticleUpsert.apply(
+            [aggregated("a1")], to: feed, starredTag: nil, context: context, now: .now,
+            onUpsert: { seen.append($0) }
+        )
+        #expect(seen == ["f1|feed_content|a1"])          // insert reported
+
+        seen.removeAll()
+        ArticleUpsert.apply(
+            [aggregated("a1")], to: feed, starredTag: nil, context: context, now: .now,
+            onUpsert: { seen.append($0) }
+        )
+        #expect(seen == ["f1|feed_content|a1"])          // update reported too
+    }
 }
