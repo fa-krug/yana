@@ -31,6 +31,17 @@ final class FakeConfigStore: ConfigStore {
     }
 }
 
+/// Counts how many times a store factory is invoked, so tests can assert the CloudKit store is
+/// built lazily (and never at all when sync is off).
+@MainActor
+final class StoreBuildCounter {
+    private(set) var count = 0
+    func makeStore() -> ConfigStore {
+        count += 1
+        return FakeConfigStore()
+    }
+}
+
 @MainActor
 @Suite("ConfigSyncService")
 struct ConfigSyncServiceTests {
@@ -57,6 +68,30 @@ struct ConfigSyncServiceTests {
         let starred = StarredRegistry(defaults: starredDefaults)
         let service = ConfigSyncService(
             store: store,
+            context: context,
+            settings: settings,
+            starred: starred,
+            defaults: syncDefaults
+        )
+        return (service, settings, starred, syncDefaults)
+    }
+
+    /// Like `makeService`, but wires the store through a `StoreBuildCounter` factory so a test can
+    /// observe whether/when the store is constructed. The `@autoclosure` store argument means the
+    /// factory only runs on first actual store access.
+    private func makeCountingService(
+        counter: StoreBuildCounter,
+        context: ModelContext,
+        enabled: Bool
+    ) -> (ConfigSyncService, AppSettings, StarredRegistry, UserDefaults) {
+        let settingsDefaults = makeSuite()
+        let starredDefaults = makeSuite()
+        let syncDefaults = makeSuite()
+        let settings = AppSettings(defaults: settingsDefaults)
+        settings.iCloudSyncEnabled = enabled
+        let starred = StarredRegistry(defaults: starredDefaults)
+        let service = ConfigSyncService(
+            store: counter.makeStore(),
             context: context,
             settings: settings,
             starred: starred,
@@ -95,6 +130,35 @@ struct ConfigSyncServiceTests {
 
         #expect(store.savedDocuments.isEmpty)
         #expect(store.fetchCount == 0)
+    }
+
+    /// The store (and, in production, its `CKContainer`) must not be constructed at all when sync is
+    /// disabled — that CloudKit init is unconditional launch cost for a default-off feature. Every
+    /// sync entry point is gated on `iCloudSyncEnabled`, so with sync off none of them may touch it.
+    @Test func disabledSyncNeverConstructsStore() async throws {
+        let context = try makeContext()
+        let builds = StoreBuildCounter()
+        let (service, _, _, _) = makeCountingService(counter: builds, context: context, enabled: false)
+
+        service.requestPush()
+        await service.push()
+        await service.pull()
+        await service.start()
+
+        #expect(builds.count == 0)
+    }
+
+    /// With sync enabled the store is built lazily on first use and reused (constructed exactly once).
+    @Test func enabledSyncConstructsStoreOnceLazily() async throws {
+        let context = try makeContext()
+        let builds = StoreBuildCounter()
+        let (service, _, _, _) = makeCountingService(counter: builds, context: context, enabled: true)
+
+        #expect(builds.count == 0) // not built just by constructing the service
+        await service.pull()
+        #expect(builds.count == 1) // built on first use
+        await service.pull()
+        #expect(builds.count == 1) // reused, not rebuilt
     }
 
     // MARK: - Push builds a faithful document

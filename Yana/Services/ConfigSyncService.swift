@@ -121,7 +121,12 @@ final class CloudKitConfigStore: ConfigStore {
 @MainActor
 @Observable
 final class ConfigSyncService {
-    private let store: ConfigStore
+    /// Factory for the remote store, invoked lazily on first use. Deferring construction keeps the
+    /// production `CloudKitConfigStore` (and its `CKContainer`) off the launch path entirely when
+    /// iCloud sync is disabled — the default — since every entry point that touches `store` is gated
+    /// on `iCloudSyncEnabled` and returns before reaching it.
+    @ObservationIgnored private let makeStore: () -> ConfigStore
+    @ObservationIgnored private lazy var store: ConfigStore = makeStore()
     private let context: ModelContext
     private let settings: AppSettings
     private let starred: StarredRegistry
@@ -140,7 +145,9 @@ final class ConfigSyncService {
 
     private let log = Logger(subsystem: "de.fa-krug.Yana", category: "ConfigSync")
 
-    /// Shared instance wired to the production CloudKit store and the app's main context.
+    /// Shared instance wired to the production CloudKit store and the app's main context. The
+    /// `CloudKitConfigStore()` argument is an `@autoclosure`, so it is NOT evaluated here — the
+    /// `CKContainer` is built only on first store access, which never happens while sync is off.
     static let shared = ConfigSyncService(
         store: CloudKitConfigStore(),
         context: AppContainer.shared.mainContext,
@@ -148,13 +155,13 @@ final class ConfigSyncService {
     )
 
     init(
-        store: ConfigStore,
+        store: @autoclosure @escaping () -> ConfigStore,
         context: ModelContext,
         settings: AppSettings,
         starred: StarredRegistry = .shared,
         defaults: UserDefaults = .standard
     ) {
-        self.store = store
+        self.makeStore = store
         self.context = context
         self.settings = settings
         self.starred = starred
