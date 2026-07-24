@@ -30,7 +30,8 @@ enum ArticleUpsert {
         context: ModelContext,
         now: Date,
         jitter: () -> TimeInterval = { .random(in: 0..<importJitterWindow) },
-        blocksFor: (AggregatedArticle) -> [Block] = ArticleUpsert.defaultBlocks
+        blocksFor: (AggregatedArticle) -> [Block] = ArticleUpsert.defaultBlocks,
+        canonicalCreatedAt: (String) -> Date? = { _ in nil }
     ) -> Int {
         // Build the dedup index once (O(n)) instead of scanning the relationship per item.
         var byIdentifier: [String: Article] = [:]
@@ -61,6 +62,8 @@ enum ArticleUpsert {
                     existing.tags.append(starredTag)
                 }
                 // createdAt left untouched — preserves the reader's timeline position.
+                existing.syncFeedIdentifier = feed.identifier
+                existing.syncAggregatorType = feed.aggregatorType
             } else {
                 // Insert: snapshot the feed's current tags.
                 let article = Article(
@@ -73,10 +76,16 @@ enum ArticleUpsert {
                     summary: item.summary
                 )
                 article.blocks = blocks           // sets blockData + plainText
-                // Back-date by a small random offset so a run's inserts scatter across the
-                // jitter window, interleaving feeds on the timeline rather than clustering.
-                article.createdAt = now.addingTimeInterval(-jitter())
+                // Adopt the canonical (first-writer) createdAt when article sync already knows this
+                // UID — i.e. another device created it in the meantime — so ordering stays stable
+                // across devices. Otherwise back-date by jitter as usual.
+                let uid = ArticleUID.make(
+                    feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
+                    articleIdentifier: item.identifier, date: item.date, title: item.title)
+                article.createdAt = canonicalCreatedAt(uid) ?? now.addingTimeInterval(-jitter())
                 article.feed = feed
+                article.syncFeedIdentifier = feed.identifier
+                article.syncAggregatorType = feed.aggregatorType
                 context.insert(article)
                 article.tags = feed.tags
                 // If the sync registry already has a starred mark for this article, star it on insert.

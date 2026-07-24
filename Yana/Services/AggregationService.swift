@@ -44,6 +44,7 @@ final class AggregationService {
     private let logoResolver: LogoResolver
     private let settings: AppSettings
     private let starredRegistry: StarredRegistry
+    private let articleSync: ArticleSyncService
 
     init(
         context: ModelContext,
@@ -52,7 +53,8 @@ final class AggregationService {
         now: @escaping () -> Date = { .now },
         logoResolver: @escaping LogoResolver = AggregationService.defaultLogoResolver,
         settings: AppSettings = AppSettings(),
-        starredRegistry: StarredRegistry = .shared
+        starredRegistry: StarredRegistry = .shared,
+        articleSync: ArticleSyncService = .shared
     ) {
         self.context = context
         self.makeAggregator = makeAggregator
@@ -61,6 +63,7 @@ final class AggregationService {
         self.logoResolver = logoResolver
         self.settings = settings
         self.starredRegistry = starredRegistry
+        self.articleSync = articleSync
     }
 
     /// Map an arbitrary error to a clear, non-empty user-facing string.
@@ -157,6 +160,7 @@ final class AggregationService {
         lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false; updateProgress.reset() }
+        await articleSync.pull()
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
         let feeds = ((try? context.fetch(descriptor)) ?? [])
             .filter { settings.isSourceEnabled($0.type) }
@@ -199,6 +203,7 @@ final class AggregationService {
         }
 
         cleanupAndSave()
+        await pushRecentlyChanged()
         return inserted
     }
 
@@ -209,8 +214,10 @@ final class AggregationService {
         lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }
+        await articleSync.pull()
         let inserted = await aggregate(feed: feed)
         cleanupAndSave()
+        await pushRecentlyChanged()
         return inserted
     }
 
@@ -225,6 +232,7 @@ final class AggregationService {
         defer { isUpdating = false }
         let inserted = await aggregate(feed: feed, force: true)
         try? context.save()
+        await pushRecentlyChanged()
         return inserted
     }
 
@@ -272,8 +280,10 @@ final class AggregationService {
         let inserted = ArticleUpsert.apply(
             processed, to: feed, starredTag: starredTag(),
             starredIdentifiers: starredRegistry.identifiers(forFeedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType),
-            context: context, now: now())
+            context: context, now: now(),
+            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) })
         try? context.save()
+        await pushRecentlyChanged()
         return inserted
     }
 
@@ -295,6 +305,7 @@ final class AggregationService {
         guard let summary = processed.first?.summary, !summary.isEmpty else { return false }
         article.summary = summary
         try? context.save()
+        await pushRecentlyChanged()
         return true
     }
 
@@ -400,7 +411,8 @@ final class AggregationService {
             starredIdentifiers: starredRegistry.identifiers(forFeedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType),
             context: context, now: now,
             // Every processed article is pre-parsed; the inline fallback is defensive and never hit.
-            blocksFor: { blocks[$0.identifier] ?? ArticleUpsert.defaultBlocks(for: $0) }
+            blocksFor: { blocks[$0.identifier] ?? ArticleUpsert.defaultBlocks(for: $0) },
+            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) }
         )
     }
 
@@ -420,6 +432,14 @@ final class AggregationService {
     /// in-memory inserts intact for the next save attempt.
     private func save() {
         try? context.save()
+    }
+
+    /// Push all local articles' current state to article sync. Simpler and safe: article sync
+    /// dedups by UID and skips unchanged records at the CloudKit layer, and this runs only after a
+    /// user/background refresh, not per article.
+    private func pushRecentlyChanged() async {
+        let all = (try? context.fetch(FetchDescriptor<Article>())) ?? []
+        await articleSync.push(uids: all.compactMap { ArticleUID.make(for: $0) })
     }
 
     /// Thrown by the per-article sink to stop the aggregator once the run cap is reached.
