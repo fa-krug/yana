@@ -15,6 +15,7 @@ final class ArticleSyncService {
     private let context: ModelContext
     private let settings: AppSettings
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let imageStore: ImageStore
 
     /// UID → canonical `createdAt` learned from pulled records, so a locally aggregated insert with
     /// the same UID adopts the first-writer time instead of back-dating a fresh one.
@@ -34,12 +35,14 @@ final class ArticleSyncService {
         store: @autoclosure @escaping () -> ArticleZoneStore,
         context: ModelContext,
         settings: AppSettings,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        imageStore: ImageStore = .shared
     ) {
         self.makeStore = store
         self.context = context
         self.settings = settings
         self.defaults = defaults
+        self.imageStore = imageStore
     }
 
     // MARK: Pull
@@ -80,11 +83,80 @@ final class ArticleSyncService {
                 context.delete(article)
             }
         }
+
+        // Hydrate referenced images off the reconcile path (best-effort, non-blocking).
+        let incoming = changes.articles
+        if !incoming.isEmpty {
+            Task { [weak self] in await self?.hydrateImages(for: incoming) }
+        }
+
         try? context.save()
     }
 
     /// The canonical (first-writer) createdAt for a UID, if a pull has seen it.
     func canonicalCreatedAt(forUID uid: String) -> Date? { canonicalCreatedAtByUID[uid] }
+
+    // MARK: Push
+
+    /// Upload every local article (migration / enable path).
+    func pushAll() async {
+        guard settings.iCloudSyncEnabled else { return }
+        let all = (try? context.fetch(FetchDescriptor<Article>())) ?? []
+        await pushArticles(all)
+    }
+
+    /// Upload the local articles with the given UIDs (post-aggregation path).
+    func push(uids: [String]) async {
+        guard settings.iCloudSyncEnabled, !uids.isEmpty else { return }
+        let wanted = Set(uids)
+        let all = (try? context.fetch(FetchDescriptor<Article>())) ?? []
+        let matching = all.filter { ArticleUID.make(for: $0).map(wanted.contains) ?? false }
+        await pushArticles(matching)
+    }
+
+    private func pushArticles(_ articles: [Article]) async {
+        var records: [SyncedArticleRecord] = []
+        var imageHashes = Set<String>()
+        for article in articles {
+            guard let record = SyncedArticleRecord(article: article) else { continue }
+            records.append(record)
+            imageHashes.formUnion(record.imageHashes)
+        }
+        guard !records.isEmpty else { return }
+
+        // Gather the referenced image blobs from the local store (write-once dedup by hash).
+        var images: [SyncedImageRecord] = []
+        for hash in imageHashes {
+            if let data = await imageStore.rawData(forHash: hash) {
+                let ext = await imageStore.recordedExt(forHash: hash)
+                images.append(SyncedImageRecord(hash: hash, ext: ext, data: data))
+            }
+        }
+
+        do {
+            try await store.upsert(articles: records, images: images)
+            for record in records { canonicalCreatedAtByUID[record.uid] = record.createdAt }
+            lastSyncError = nil
+        } catch {
+            log.error("Article push failed: \(String(describing: error))")
+            lastSyncError = ConfigSyncService.describe(error)
+        }
+    }
+
+    // MARK: Image hydration
+
+    /// Download any image blobs referenced by the given records that are missing locally, writing
+    /// them into the local `ImageStore` so `yana-img://` refs resolve. Failures are non-fatal — a
+    /// body still renders, just without that image until a later pull.
+    func hydrateImages(for records: [SyncedArticleRecord]) async {
+        var needed = Set<String>()
+        for record in records { needed.formUnion(record.imageHashes) }
+        for hash in needed where !(await imageStore.fileExists(forHash: hash)) {
+            if let image = try? await store.fetchImage(hash: hash) {
+                _ = await imageStore.storeData(image.data, ext: image.ext)
+            }
+        }
+    }
 
     // MARK: Helpers
 

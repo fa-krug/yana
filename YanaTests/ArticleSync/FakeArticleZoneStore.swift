@@ -11,6 +11,7 @@ final class FakeArticleZoneStore: ArticleZoneStore {
     private(set) var images: [String: SyncedImageRecord] = [:]
     private(set) var deletedUIDs: [String] = []
     private(set) var uploadedImageHashes: [String] = []
+    var articlesUIDsForTest: [String] { Array(articles.keys) }
 
     func fetchChanges() async throws -> ArticleZoneChanges {
         let changes = pendingChanges

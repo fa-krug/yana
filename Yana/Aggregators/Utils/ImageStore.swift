@@ -65,6 +65,21 @@ actor ImageStore {
         return directory.appendingPathComponent("\(hash).img")
     }
 
+    /// Whether a blob for this hash already exists on disk.
+    func fileExists(forHash hash: String) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(forHash: hash).path)
+    }
+
+    /// Raw bytes for a stored hash, or nil when absent. Used by article sync to upload the blob.
+    func rawData(forHash hash: String) -> Data? {
+        let url = fileURL(forHash: hash)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try? Data(contentsOf: url)
+    }
+
+    /// The recorded file extension for a hash (defaults to "img" when unknown).
+    func recordedExt(forHash hash: String) -> String { extensions[hash] ?? "img" }
+
     func purgeOrphans(keepingHashes: Set<String>) {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         for file in files {
