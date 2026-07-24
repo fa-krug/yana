@@ -766,11 +766,16 @@ final class ArticleSyncService {
             ArticleRecordApply.apply(record, into: context, starredTag: starredTag, feedsByKey: feedsByKey)
         }
 
+        // Re-link any orphan (feed == nil) articles whose stored identity now matches a present
+        // feed — covers records that synced before their feed arrived via config sync.
+        relinkOrphans(feedsByKey: feedsByKey, starredTag: starredTag)
+
         if !changes.deletedUIDs.isEmpty {
             let deleted = Set(changes.deletedUIDs)
             let all = (try? context.fetch(FetchDescriptor<Article>())) ?? []
-            for article in all where deleted.contains(uid(for: article)) {
-                canonicalCreatedAtByUID[uid(for: article)] = nil
+            for article in all {
+                guard let uid = ArticleUID.make(for: article), deleted.contains(uid) else { continue }
+                canonicalCreatedAtByUID[uid] = nil
                 context.delete(article)
             }
         }
@@ -782,13 +787,19 @@ final class ArticleSyncService {
 
     // MARK: Helpers
 
-    private func uid(for article: Article) -> String {
-        guard let feed = article.feed else {
-            return ArticleUID.make(feedIdentifier: "", aggregatorType: "", articleIdentifier: article.identifier,
-                                   date: article.date, title: article.title)
+    /// Link orphan articles (feed == nil) to a now-present feed by their stored sync identity.
+    private func relinkOrphans(feedsByKey: [String: Feed], starredTag: Tag?) {
+        let orphans = (try? context.fetch(FetchDescriptor<Article>(predicate: #Predicate { $0.feed == nil }))) ?? []
+        for article in orphans where !article.syncFeedIdentifier.isEmpty {
+            let key = ArticleRecordApply.feedKey(
+                feedIdentifier: article.syncFeedIdentifier, aggregatorType: article.syncAggregatorType)
+            guard let feed = feedsByKey[key] else { continue }
+            article.feed = feed
+            article.tags = feed.tags
+            if let starredTag, article.isStarred, !article.tags.contains(where: { $0.id == starredTag.id }) {
+                article.tags.append(starredTag)
+            }
         }
-        return ArticleUID.make(feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
-                               articleIdentifier: article.identifier, date: article.date, title: article.title)
     }
 
     private func feedsByKey() -> [String: Feed] {
@@ -1122,7 +1133,7 @@ git commit -m "Add article-sync push and content-addressed image sync"
 
 ---
 
-## Task 5: Pre-insert re-check (canonical createdAt adoption)
+## Task 5: Pre-insert re-check (canonical createdAt adoption) + populate stored feed identity
 
 **Files:**
 - Modify: `Yana/Services/ArticleUpsert.swift`
@@ -1130,8 +1141,10 @@ git commit -m "Add article-sync push and content-addressed image sync"
 - Create: `YanaTests/ArticleSync/PreInsertRecheckTests.swift`
 
 **Interfaces:**
-- Consumes: `ArticleSyncService.canonicalCreatedAt(forUID:)`, `ArticleUID`.
+- Consumes: `ArticleSyncService.canonicalCreatedAt(forUID:)`, `ArticleUID`, `ArticleUID.make(for:)`, `Article.syncFeedIdentifier`/`syncAggregatorType`.
 - Produces: `ArticleUpsert.apply(...)` gains a trailing `canonicalCreatedAt: (String) -> Date? = { _ in nil }` parameter; when it returns a non-nil date for a to-be-inserted article's UID, that date is used as `createdAt` instead of the jittered back-date. `AggregationService` pulls article sync before a run and pushes new UIDs after, and passes the canonical-createdAt lookup into every `ArticleUpsert.apply` call.
+
+**Also in this task — populate stored feed identity (from the mid-Task-2 design decision):** `ArticleUpsert.apply` must set `article.syncFeedIdentifier = feed.identifier` and `article.syncAggregatorType = feed.aggregatorType` on **both** the insert and update branches (so every imported article carries its origin, enabling sync UID derivation and orphan re-linking). Add a test asserting a freshly upserted article has these fields set. And replace `pushRecentlyChanged`'s inline UID derivation with `ArticleUID.make(for:)` (skip articles it returns nil for).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1273,14 +1286,7 @@ In `update(feed:)`, `forceReload(feed:)`, `forceReload(article:)`, and `summariz
     /// user/background refresh, not per article.
     private func pushRecentlyChanged() async {
         let all = (try? context.fetch(FetchDescriptor<Article>())) ?? []
-        await articleSync.push(uids: all.map { article in
-            guard let feed = article.feed else {
-                return ArticleUID.make(feedIdentifier: "", aggregatorType: "", articleIdentifier: article.identifier,
-                                       date: article.date, title: article.title)
-            }
-            return ArticleUID.make(feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
-                                   articleIdentifier: article.identifier, date: article.date, title: article.title)
-        })
+        await articleSync.push(uids: all.compactMap { ArticleUID.make(for: $0) })
     }
 ```
 
@@ -1381,11 +1387,7 @@ enum RetentionCleanup {
         let candidates = (try? context.fetch(descriptor)) ?? []
         var deletedUIDs: [String] = []
         for article in candidates where !article.isStarred {
-            if let feed = article.feed {
-                deletedUIDs.append(ArticleUID.make(
-                    feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
-                    articleIdentifier: article.identifier, date: article.date, title: article.title))
-            }
+            if let uid = ArticleUID.make(for: article) { deletedUIDs.append(uid) }
             context.delete(article)
         }
         return deletedUIDs
