@@ -121,19 +121,42 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   background loader, then stays in sync via a coalesced `ModelContext.didSave` observer;
   consumed by both the reader and `ArticleListView` in place of per-view `@Query`s; the reader
   resolves each page's full `Article` (with its `[Block]` body) on demand by `persistentID`) —
-  and the optional **iCloud config-sync** stack: `ConfigSyncService` (`@MainActor @Observable`,
-  gated on the opt-in `AppSettings.iCloudSyncEnabled`) syncs the *configuration* — feeds+tags (as
-  OPML via `FeedPortability`), the allow-listed non-secret settings (`AppSettings.SyncedSettings`),
-  and starred marks — as a **single record in the user's private CloudKit database** via the
-  `ConfigStore` protocol (`CloudKitConfigStore` in production; a fake in tests). It debounce-pushes
-  on config mutations, pulls on launch + a silent CloudKit subscription, and reconciles with an
-  additive OPML import plus a device-local "last-synced feed keys" snapshot driving deletion
-  reconcile (conflicts → pull, rebuild, retry once). **Article bodies never sync** — the SwiftData
-  store is deliberately local-only (`ModelConfiguration(cloudKitDatabase: .none)`; never SwiftData's
-  own CloudKit mirroring), so each device re-fetches bodies. `StarredRegistry` (`@MainActor`,
-  `.shared`) holds the lightweight starred identities `(feedIdentifier, aggregatorType,
-  articleIdentifier)` device-locally, collects them from the store for push, re-applies them at
-  import (`ArticleUpsert`) and on pull. API-key secrets ride along via **iCloud Keychain**
+  and the optional **iCloud sync** stack, split into a config layer and an article layer.
+  `ConfigSyncService` (`@MainActor @Observable`, gated on the opt-in `AppSettings.iCloudSyncEnabled`)
+  syncs the *configuration* — feeds+tags (as OPML via `FeedPortability`) and the allow-listed
+  non-secret settings (`AppSettings.SyncedSettings`, now including the exact timeline anchor —
+  `timelineAnchorUID`, the synced article's identifier — so a receiving device jumps to the same
+  article instead of the old timestamp + closest-match heuristic) — as a **single record in the
+  user's private CloudKit database** via the `ConfigStore` protocol (`CloudKitConfigStore` in
+  production; a fake in tests). It debounce-pushes on config mutations, pulls on launch + a silent
+  CloudKit subscription, and reconciles with an additive OPML import plus a device-local
+  "last-synced feed keys" snapshot driving deletion reconcile (conflicts → pull, rebuild, retry
+  once). `ArticleSyncService` (`Yana/Services/ArticleSync/`; `@MainActor @Observable`, `.shared`,
+  same `iCloudSyncEnabled` gate) syncs full **article bodies and images** across devices via
+  **`CKSyncEngine`** over a dedicated `Articles` record zone (`CloudKitArticleZoneStore`, behind the
+  testable `ArticleZoneStore` protocol — a fake in tests): `SyncedArticle` records (recordName = the
+  canonical `ArticleUID`, `feedIdentifier|aggregatorType|articleIdentifier`, with a
+  `SHA256(date+title)` fallback for the third segment when the source gives no identifier) carry
+  the `[Block]` body and `isStarred`; `SyncedImage` records (recordName = content hash, blob as a
+  `CKAsset`) carry write-once, content-addressed image blobs pulled into the local `ImageStore` on
+  demand. `Article` stores `syncFeedIdentifier`/`syncAggregatorType` so an article synced before its
+  feed arrives locally can still be identified, deduped, and re-linked once the feed shows up.
+  Conflict rule: `createdAt` is **first-writer-wins** (keeps the stable timeline order), everything
+  else — body, title, starred, etc. — is **last-writer-wins**; `AggregationService` pulls before and
+  pushes after a run so a locally aggregated insert re-checks against anything synced meanwhile and
+  adopts the canonical `createdAt`. **Starred now rides on the `SyncedArticle` record**
+  (`isStarred`) instead of the config document — `ConfigDocument`'s old `starredData` field is
+  retired. Retention deletions propagate: an active device tombstones aged-out `SyncedArticle`
+  records on cleanup; the opt-in **`AppSettings.isPassiveDevice`** flag (device-local, never synced)
+  marks a device as an iCloud mirror that runs **no background aggregation**
+  (`BackgroundRefreshManager`) **and no retention cleanup** (`AggregationService`) — manual
+  update/reload still work, and new/starred/deleted articles from other devices still arrive via
+  pull. The **SwiftData store itself is still local-only**
+  (`ModelConfiguration(cloudKitDatabase: .none)`) — this is CloudKit sync built by hand via
+  `CKSyncEngine`/`ConfigStore`/`ArticleZoneStore`, never SwiftData's own CloudKit mirroring.
+  `StarredRegistry` (`@MainActor`, `.shared`) still holds the lightweight starred identities
+  `(feedIdentifier, aggregatorType, articleIdentifier)` device-locally and re-applies them at import
+  (`ArticleUpsert`), independent of the sync layers. API-key secrets ride along via **iCloud Keychain**
   (`KeychainService` writes `kSecAttrSynchronizable` only while the toggle is on, migrating on flip;
   the flag is a process-lifetime static restored from the persisted setting at launch via
   `restoreSynchronizableFlag`, so keys entered after a relaunch still land in the synced domain).
@@ -237,7 +260,7 @@ before use, with Apple Intelligence checked for on-device availability instead.
 - **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background refresh
 - **Credential validation** ✅ — per-section **Test** buttons in Settings that verify Reddit, YouTube, and AI-provider keys (and Apple Intelligence availability) via a minimal auth probe, classifying failures as invalid credentials / network / unexpected response
 - **Read-aloud** ✅ — `ReaderSpeechController` reads articles aloud with a voice matching the article's language, continues from the lock screen / Control Center, and exposes a voice picker in the Reader settings section
-- **iCloud config sync** ✅ — opt-in (off by default) sync of the configuration — feeds, tags, allow-listed settings, starred marks, and API keys — across a user's devices via a single CloudKit private-DB record + iCloud Keychain (`ConfigSyncService`/`StarredRegistry`). Article bodies are never synced (re-fetched per device); the SwiftData store stays local-only. Requires the `iCloud.de.fa-krug.Yana` container (schema auto-creates in CloudKit Development on first write; **deploy to Production before release**).
+- **iCloud sync** ✅ — opt-in (off by default), two layers across a user's devices: `ConfigSyncService` syncs feeds, tags, allow-listed settings (including the exact timeline anchor), and API keys (via iCloud Keychain) as a single CloudKit private-DB record; `ArticleSyncService` syncs full article bodies and images (with starred state) via `CKSyncEngine` into a dedicated `Articles` zone, so the same articles — read them or not — appear on every synced device. An opt-in passive-device toggle turns a device into an iCloud-only mirror with no background aggregation and no retention cleanup. The SwiftData store itself stays local-only (no SwiftData CloudKit mirroring — both layers are hand-built). Requires the `iCloud.de.fa-krug.Yana` container (schema auto-creates in CloudKit Development on first write; **deploy to Production before release**).
 - **Open source** ✅ — MIT-licensed (`LICENSE`); Settings › About links the source repo and issue board, and credits NetNewsWire for the reader view; App Store copy lives under `docs/app-store/`
 - **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
 - **Multiple libraries** — support multiple independent local feed libraries/profiles
