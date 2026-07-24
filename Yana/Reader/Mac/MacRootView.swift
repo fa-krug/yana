@@ -14,7 +14,6 @@ struct MacRootView: View {
     @State private var model = TimelineModel()
     @State private var settings = AppSettings()
     @State private var speech = ReaderSpeechController()
-    @State private var showingCreateFeed = false
     /// Keep the article-list sidebar open by default (and after relaunch) — it is the primary
     /// navigation on the Mac, not a collapsible drawer.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -24,7 +23,8 @@ struct MacRootView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            MacSidebarView(model: model, settings: settings, onCreateFeed: { showingCreateFeed = true })
+            MacSidebarView(model: model, settings: settings,
+                           onCreateFeed: { openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create) })
                 .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
                 .navigationTitle("Yana")
         } detail: {
@@ -36,11 +36,6 @@ struct MacRootView: View {
         // UIKit reader in the detail pane holds first responder.
         .focusedSceneValue(\.timelineModel, model)
         .focusedSceneValue(\.readerSpeech, speech)
-        .sheet(isPresented: $showingCreateFeed) {
-            NavigationStack {
-                FeedEditorView(feed: nil) { newFeed in model.createFeed(newFeed) }
-            }
-        }
         .fullScreenCover(isPresented: $appState.showWelcome) {
             WelcomeView(onFinish: {
                 settings.hasCompletedOnboarding = true
@@ -63,7 +58,7 @@ struct MacRootView: View {
 
     @ViewBuilder private var detail: some View {
         if model.filteredArticles.isEmpty {
-            MacEmptyLibraryView(onCreateFeed: { showingCreateFeed = true })
+            MacEmptyLibraryView(onCreateFeed: { openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create) })
         } else {
             MacReaderDetailView(
                 articles: model.filteredArticles,

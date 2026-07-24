@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct FeedsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
     @Query(sort: \Feed.name) private var feeds: [Feed]
     @State private var isImporting = false
     @State private var isImportingOPML = false
@@ -69,11 +70,20 @@ struct FeedsView: View {
                 .disabled(!settings.isSourceEnabled(feed.type))
             }
         ) { feed in
+            #if targetEnvironment(macCatalyst)
+            Button {
+                openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.edit(feed.persistentModelID))
+            } label: {
+                row(feed)
+            }
+            .buttonStyle(.plain)
+            #else
             NavigationLink {
                 FeedEditorView(feed: feed)
             } label: {
                 row(feed)
             }
+            #endif
         }
         .overlay {
             if isImportingOPML {
@@ -93,7 +103,11 @@ struct FeedsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    #if targetEnvironment(macCatalyst)
+                    openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create)
+                    #else
                     showingCreateFeed = true
+                    #endif
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -122,6 +136,7 @@ struct FeedsView: View {
                 }
             }
         }
+        #if !targetEnvironment(macCatalyst)
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
                 FeedEditorView(feed: nil) { newFeed in
@@ -132,6 +147,7 @@ struct FeedsView: View {
                 }
             }
         }
+        #endif
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [UTType(filenameExtension: "opml") ?? .xml, .xml],

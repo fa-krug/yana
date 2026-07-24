@@ -6,7 +6,7 @@ import UIKit
 #endif
 
 /// Shared timeline engine for the Mac window: filtering, selection/anchor memory, and the article
-/// actions (refresh, star, summarize, force-update, copy link, create feed). Mirrors the logic
+/// actions (refresh, star, summarize, force-update, copy link). Mirrors the logic
 /// `ReaderScreen` runs on iOS, so the two surfaces behave identically; it is factored out here so
 /// `MacRootView` and its toolbar/menu commands can drive one source of truth instead of duplicating
 /// handlers.
@@ -213,16 +213,6 @@ final class TimelineModel {
             } else {
                 self.toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: nil))
             }
-        }
-    }
-
-    /// Fetch a freshly created feed right away so its articles replace the empty state.
-    func createFeed(_ feed: Feed) {
-        guard let modelContext, feed.enabled else { return }
-        UpdateActivity.shared.restart {
-            let count = await AggregationService(context: modelContext).update(feed: feed)
-            guard !Task.isCancelled else { return }
-            self.toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
         }
     }
 }
