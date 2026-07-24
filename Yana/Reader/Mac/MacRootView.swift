@@ -88,44 +88,43 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            // Reload, star, play, website — one joined group. While an update/summarize runs, the
-            // reload arrow spins in place. The toolbar item set never changes, so Mac Catalyst does
-            // not rebuild (and flicker) the bar the way a toggling spinner segment would.
-            ControlGroup {
-                Button { model.triggerRefresh() } label: {
-                    Label("Update all", systemImage: "arrow.clockwise")
-                        .symbolEffect(.rotate, options: .repeat(.continuous), isActive: showSpinner)
-                }
-                .help(Text("Update all"))
-
-                Button {
-                    if let article = model.selectedArticle() { model.toggleStar(article) }
-                } label: {
-                    Label(isSelectedStarred ? "Unstar" : "Star",
-                          systemImage: isSelectedStarred ? "star.fill" : "star")
-                }
-                .help(Text(isSelectedStarred ? "Unstar" : "Star"))
-                .disabled(model.selectedSummary == nil)
-
-                Button {
-                    if let article = model.selectedArticle() { toggleSpeech(article) }
-                } label: {
-                    Label("Read Aloud",
-                          systemImage: speech.state == .speaking ? "pause.circle" : "play.circle")
-                }
-                .help(Text("Read Aloud"))
-                .disabled(model.selectedSummary == nil)
-
-                Button {
-                    if let article = model.selectedArticle() { model.openWebsite(article) }
-                } label: {
-                    Label("Open Page", systemImage: "safari")
-                }
-                .help(Text("Open Page"))
-                .disabled(model.selectedSummary == nil)
+            // Reload, star, play, website — individual toolbar buttons. These were a joined
+            // `ControlGroup`, but a `ControlGroup` nested in a Mac Catalyst window toolbar renders
+            // its content EMPTY after the toolbar re-validates (e.g. once a sync repopulates the
+            // detail pane) — leaving a blank pill while the sibling `Menu` below stays fine. Plain
+            // toolbar buttons don't hit that bug. The item set stays constant, so the bar still
+            // doesn't rebuild/flicker; while an update/summarize runs, the reload arrow spins in place.
+            Button { model.triggerRefresh() } label: {
+                Label("Update all", systemImage: "arrow.clockwise")
+                    .symbolEffect(.rotate, options: .repeat(.continuous), isActive: showSpinner)
             }
-            // Give the joined group room to breathe — the default size packs the icons too tightly.
-            .controlSize(.large)
+            .help(Text("Update all"))
+
+            Button {
+                if let article = model.selectedArticle() { model.toggleStar(article) }
+            } label: {
+                Label(isSelectedStarred ? "Unstar" : "Star",
+                      systemImage: isSelectedStarred ? "star.fill" : "star")
+            }
+            .help(Text(isSelectedStarred ? "Unstar" : "Star"))
+            .disabled(model.selectedSummary == nil)
+
+            Button {
+                if let article = model.selectedArticle() { toggleSpeech(article) }
+            } label: {
+                Label("Read Aloud",
+                      systemImage: speech.state == .speaking ? "pause.circle" : "play.circle")
+            }
+            .help(Text("Read Aloud"))
+            .disabled(model.selectedSummary == nil)
+
+            Button {
+                if let article = model.selectedArticle() { model.openWebsite(article) }
+            } label: {
+                Label("Open Page", systemImage: "safari")
+            }
+            .help(Text("Open Page"))
+            .disabled(model.selectedSummary == nil)
 
             Menu {
                 Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
