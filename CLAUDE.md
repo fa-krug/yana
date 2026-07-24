@@ -162,6 +162,24 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   `restoreSynchronizableFlag`, so keys entered after a relaunch still land in the synced domain).
 - **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref (tapping an image opens it full-screen with pinch-to-zoom, double-tap-to-zoom and swipe-down-to-dismiss via `ReaderImageViewerViewController`); video embeds shown as tappable poster cards and tweet embeds as text cards — tapping a video plays it full-screen in-app via `ReaderVideoPlayerViewController` (YouTube/Dailymotion in a `WKWebView` privacy-mode player; a direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController`), while tweets/unplayable embeds open externally). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer; picks the most natural installed voice matching the article's detected language, keeps playing when the screen is locked or the app is backgrounded, and wires up Now Playing / remote play-pause controls). A dedicated **Reader** settings section exposes text size, font, the read-aloud voice, and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
 - **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings. The Settings screen (`SettingsScreenView`) ends with an **About** section (`aboutSection`) linking the source repo, the issue board (for source/bug requests), and a NetNewsWire credit for the reader view.
+- **Mac Catalyst windowing** (`Yana/Reader/Mac/`): on the Mac idiom, `ContentView` swaps the
+  iPhone/iPad full-screen swipe reader for `MacRootView` — a permanent two-column
+  `NavigationSplitView` (article-list sidebar + reader detail) — and presents the Welcome
+  (onboarding), feed editor, and Settings screens as **separate windows** instead of the
+  `.fullScreenCover`/sheets iOS uses. Both the macOS-only `Settings` scene and the singleton
+  `Window(id:)` scene are unavailable under Mac Catalyst (it compiles against the iOS SDK), so
+  `YanaApp` declares three extra value-based `WindowGroup`s keyed by the stable identifiers in
+  `WindowID`, each opened via `openWindow(id:value:)`: `WindowID.settings` and `WindowID.welcome`
+  bind `for: Bool.self` and always pass the constant `true` so SwiftUI dedupes to one window
+  instead of opening a new one per call; `WindowID.feedEditor` binds `for: FeedEditorTarget.self`
+  so every `.create` shares one window and each `.edit(id)` gets its own. `MacSettingsWindow` is a
+  two-pane sidebar over `SettingsPane` (General/Reader/Feeds/Tags/Integrations/AI/About — General
+  folds in Notifications/Library/iCloud); `WelcomeWindowRoot`/`FeedEditorWindowRoot` host the same
+  `WelcomeView`/`FeedEditorView` iOS uses. Each window is its own SwiftUI hierarchy, so they
+  coordinate through shared observable state (`AppState`, `ArticleStore`, `AppSettings`) passed in
+  at scene creation rather than closures back to a presenting view. `MacCommands.swift` adds the
+  Mac menu-bar commands (article navigation, star, read-aloud, update-all), reading the frontmost
+  window's `TimelineModel`/`ReaderSpeechController` via `FocusedValues` that `MacRootView` publishes.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure

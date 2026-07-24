@@ -6,7 +6,6 @@ import SwiftUI
 /// from iOS — where the list is a sheet over a full-screen swipe pager — while everything below the
 /// UI (aggregation, sync, the block reader) is shared.
 struct MacRootView: View {
-    @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
     @Environment(\.openWindow) private var openWindow
