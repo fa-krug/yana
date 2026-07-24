@@ -128,4 +128,26 @@ struct ArticleSyncPullTests {
         await service.pull()               // no incoming records; relink pass should still run
         #expect(orphan.feed === feed)
     }
+
+    @Test("Relinking a starred orphan preserves its Starred tag")
+    func relinkPreservesStarred() async throws {
+        let context = try makeContext()
+        Yana.Tag.ensureBuiltIns(in: context)
+        let starredTag = try #require(
+            (try context.fetch(FetchDescriptor<Yana.Tag>(predicate: #Predicate { $0.isBuiltIn }))).first)
+        let feed = Feed(name: "F", aggregatorType: .feedContent, identifier: "f1")
+        context.insert(feed)
+        let orphan = Article(title: "Star", identifier: "a1", url: "https://x/a1")
+        orphan.syncFeedIdentifier = "f1"; orphan.syncAggregatorType = "feed_content"
+        context.insert(orphan)
+        orphan.setStarred(true, using: starredTag)   // starred while still feed == nil
+        try context.save()
+
+        let store = FakeArticleZoneStore()
+        let (service, _) = makeService(store, context)
+        await service.pull()                          // no incoming records; relink pass runs
+
+        #expect(orphan.feed === feed)
+        #expect(orphan.isStarred)                     // must survive the relink
+    }
 }

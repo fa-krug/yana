@@ -95,9 +95,10 @@ final class ArticleSyncService {
             let key = ArticleRecordApply.feedKey(
                 feedIdentifier: article.syncFeedIdentifier, aggregatorType: article.syncAggregatorType)
             guard let feed = feedsByKey[key] else { continue }
+            let wasStarred = article.isStarred      // read BEFORE tags are overwritten (isStarred is computed from tags)
             article.feed = feed
             article.tags = feed.tags
-            if let starredTag, article.isStarred, !article.tags.contains(where: { $0.id == starredTag.id }) {
+            if wasStarred, let starredTag, !article.tags.contains(where: { $0.id == starredTag.id }) {
                 article.tags.append(starredTag)
             }
         }
