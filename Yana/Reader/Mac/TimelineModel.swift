@@ -141,7 +141,9 @@ final class TimelineModel {
         guard let modelContext, let starredTag else { return }
         article.setStarred(!article.isStarred, using: starredTag)
         try? modelContext.save()
-        ConfigSyncService.shared.requestPush()
+        if let uid = ArticleUID.make(for: article) {
+            Task { await ArticleSyncService.shared.push(uids: [uid]) }
+        }
     }
 
     func copyLink(_ article: Article) {

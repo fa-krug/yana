@@ -253,7 +253,9 @@ struct ReaderScreen: View {
         article.setStarred(!article.isStarred, using: starredTag)
         try? modelContext.save()
         Haptics.impact(.light)
-        ConfigSyncService.shared.requestPush()
+        if let uid = ArticleUID.make(for: article) {
+            Task { await ArticleSyncService.shared.push(uids: [uid]) }
+        }
     }
 
     private func copyLink(_ article: Article) {

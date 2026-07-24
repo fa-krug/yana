@@ -518,6 +518,11 @@ struct SettingsScreenView: View {
                         .foregroundStyle(.orange)
                         .font(.footnote)
                 }
+                if settings.iCloudSyncEnabled, let error = ArticleSyncService.shared.lastSyncError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.footnote)
+                }
             }
         }
     }

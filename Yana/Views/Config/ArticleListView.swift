@@ -94,7 +94,9 @@ struct ArticleListView: View {
                     article.setStarred(!article.isStarred, using: starredTag)
                     try? modelContext.save()
                     Haptics.impact(.light)
-                    ConfigSyncService.shared.requestPush()
+                    if let uid = ArticleUID.make(for: article) {
+                        Task { await ArticleSyncService.shared.push(uids: [uid]) }
+                    }
                 } label: {
                     Label(summary.isStarred ? "Unstar" : "Star",
                           systemImage: summary.isStarred ? "star.slash" : "star")

@@ -75,6 +75,25 @@ struct ArticleRecordMappingTests {
         #expect(article.createdAt == Date(timeIntervalSince1970: 100))    // first-writer-wins
     }
 
+    @Test("Applying an earlier createdAt on an existing article wins (min converges)")
+    func applyEarlierCreatedAtWins() throws {
+        let context = try makeContext()
+        let feed = makeFeed(context)
+        let existing = Article(title: "E", identifier: "a-3", url: "https://x/3")
+        existing.feed = feed
+        existing.createdAt = Date(timeIntervalSince1970: 500)
+        context.insert(existing)
+        let record = SyncedArticleRecord(
+            uid: "feed-1|feed_content|a-3", feedIdentifier: "feed-1", aggregatorType: "feed_content",
+            articleIdentifier: "a-3", title: "E2", url: "https://x/3", author: "", summary: "",
+            plainText: "", leadImageRef: "", iconURL: nil,
+            date: .now, createdAt: Date(timeIntervalSince1970: 200), blockData: Data(),
+            isStarred: false, tagNames: [], imageHashes: [])
+        let a = ArticleRecordApply.apply(record, into: context, starredTag: nil,
+                                         feedsByKey: ["feed-1|feed_content": feed])
+        #expect(a.createdAt == Date(timeIntervalSince1970: 200))   // earlier wins
+    }
+
     @Test("A record whose feed is not yet present is created unlinked")
     func applyUnlinkedWhenFeedMissing() throws {
         let context = try makeContext()

@@ -24,9 +24,10 @@ extension SyncedArticleRecord {
     }
 }
 
-/// Upserts a single `SyncedArticleRecord` into local SwiftData. `createdAt` is first-writer-wins
-/// (an existing article keeps its own); everything else is last-writer-wins. The feed is linked by
-/// its `(identifier|aggregatorType)` key from `feedsByKey`, or left nil (held unlinked) when the
+/// Upserts a single `SyncedArticleRecord` into local SwiftData. `createdAt` converges to the
+/// earliest value seen (min-wins) so independently-aggregated copies of the same article settle on
+/// the same timeline slot; everything else is last-writer-wins. The feed is linked by its
+/// `(identifier|aggregatorType)` key from `feedsByKey`, or left nil (held unlinked) when the
 /// feed hasn't synced yet.
 enum ArticleRecordApply {
     static func feedKey(feedIdentifier: String, aggregatorType: String) -> String {
@@ -64,7 +65,7 @@ enum ArticleRecordApply {
             return created
         }()
 
-        // Last-writer-wins body/metadata (createdAt intentionally untouched on update).
+        // Last-writer-wins body/metadata.
         article.title = record.title
         article.url = record.url
         article.author = record.author
@@ -77,6 +78,10 @@ enum ArticleRecordApply {
         article.syncFeedIdentifier = record.feedIdentifier
         article.syncAggregatorType = record.aggregatorType
         if let feed { article.feed = feed }
+
+        // First-writer-wins by convergence: both devices settle on the earliest createdAt seen,
+        // so independently-aggregated copies of the same article end up in the same timeline slot.
+        article.createdAt = min(article.createdAt, record.createdAt)
 
         // Tags: snapshot the feed's tags (the article's tagNames ride for reference/future use),
         // then reconcile Starred from the record.
