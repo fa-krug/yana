@@ -11,15 +11,9 @@ extension FocusedValues {
         get { self[ReaderSpeechKey.self] }
         set { self[ReaderSpeechKey.self] = newValue }
     }
-    /// True while the Settings sheet is presented, so article-navigation shortcuts stand down there.
-    var settingsOpen: Bool? {
-        get { self[SettingsOpenKey.self] }
-        set { self[SettingsOpenKey.self] = newValue }
-    }
 
     private struct TimelineModelKey: FocusedValueKey { typealias Value = TimelineModel }
     private struct ReaderSpeechKey: FocusedValueKey { typealias Value = ReaderSpeechController }
-    private struct SettingsOpenKey: FocusedValueKey { typealias Value = Bool }
 }
 
 /// The Mac menu-bar commands. Mirrors the reader's actions with standard shortcuts and adds
@@ -28,10 +22,8 @@ extension FocusedValues {
 struct YanaCommands: Commands {
     @FocusedValue(\.timelineModel) private var model
     @FocusedValue(\.readerSpeech) private var speech
-    @FocusedValue(\.settingsOpen) private var settingsOpen
 
-    /// Article navigation is live scene-wide, but not while the Settings sheet is up.
-    private var navDisabled: Bool { model == nil || settingsOpen == true }
+    private var navDisabled: Bool { model == nil }
 
     var body: some Commands {
         // No multi-window on Mac, so drop the default New Window / New item menu slot.

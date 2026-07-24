@@ -9,12 +9,12 @@ struct MacRootView: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
+    @Environment(\.openWindow) private var openWindow
 
     @State private var model = TimelineModel()
     @State private var settings = AppSettings()
     @State private var speech = ReaderSpeechController()
     @State private var showingCreateFeed = false
-    @State private var showingSettings = false
     /// Keep the article-list sidebar open by default (and after relaunch) — it is the primary
     /// navigation on the Mac, not a collapsible drawer.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -33,23 +33,13 @@ struct MacRootView: View {
         }
         .toast($model.toast)
         // Scene-wide (not tied to which view has focus) so ⌘↑/⌘↓ move the article even when the
-        // UIKit reader in the detail pane holds first responder. `settingsOpen` stands them down.
+        // UIKit reader in the detail pane holds first responder.
         .focusedSceneValue(\.timelineModel, model)
         .focusedSceneValue(\.readerSpeech, speech)
-        .focusedSceneValue(\.settingsOpen, showingSettings)
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
                 FeedEditorView(feed: nil) { newFeed in model.createFeed(newFeed) }
             }
-        }
-        .sheet(isPresented: $showingSettings) {
-            NavigationStack {
-                SettingsScreenView(onRestartOnboarding: {
-                    showingSettings = false
-                    appState.showWelcome = true
-                })
-            }
-            .frame(minWidth: 520, minHeight: 600)
         }
         .fullScreenCover(isPresented: $appState.showWelcome) {
             WelcomeView(onFinish: {
@@ -127,7 +117,7 @@ struct MacRootView: View {
             .disabled(model.selectedSummary == nil)
 
             Menu {
-                Button { showingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                Button { openWindow(id: WindowID.settings, value: true) } label: { Label("Settings", systemImage: "gearshape") }
                     .keyboardShortcut(",", modifiers: .command)
                 if model.selectedSummary != nil {
                     Divider()

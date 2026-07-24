@@ -137,9 +137,24 @@ struct YanaApp: App {
         .modelContainer(AppContainer.shared)
         #if targetEnvironment(macCatalyst)
         // Mac menu-bar commands (article navigation, star, read-aloud, update).
-        // The SwiftUI `Settings` scene is macOS-only (unavailable in Mac Catalyst), so the Settings
-        // screen is presented as a sheet from `MacRootView` (a ⌘, toolbar button) instead.
         .commands { YanaCommands() }
+        #endif
+
+        #if targetEnvironment(macCatalyst)
+        // The SwiftUI `Settings` scene AND the singleton `Window` scene are both macOS-only
+        // (unavailable in Mac Catalyst, which compiles against the iOS SDK), so the Settings screen
+        // is presented as its own `WindowGroup` instead, opened via `openWindow(id:)` (⌘, and the
+        // More-menu Settings item in `MacRootView`). A plain `WindowGroup(id:)` with no `for:` value
+        // opens a NEW window on every `openWindow(id:)` call — not a singleton. The documented
+        // singleton path is value-based: bind `for: Bool.self` and always open/pass the same
+        // constant (`true`) — SwiftUI matches on that value and refocuses the existing window
+        // instead of creating a duplicate.
+        WindowGroup(id: WindowID.settings, for: Bool.self) { _ in
+            MacSettingsWindow(appState: appState)
+                .environment(articleStore)
+        }
+        .modelContainer(AppContainer.shared)
+        .defaultSize(width: 720, height: 620)
         #endif
     }
 }
