@@ -23,6 +23,11 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     private var pendingImageUploads: [String: SyncedImageRecord] = [:]   // hash -> record awaiting send
     // Cache of records to serialize when the engine asks for a batch (recordName -> struct).
     private var articleRecordCache: [String: SyncedArticleRecord] = [:]
+    // Image-hash -> temp file backing a `CKAsset`, deleted once the record is confirmed saved or dropped.
+    private var imageTempFiles: [String: URL] = [:]
+    // Dedicated subdirectory for image `CKAsset` temp files so we can wipe leftovers on launch.
+    private let assetTempDir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("YanaArticleSyncAssets", isDirectory: true)
     private let log = Logger(subsystem: "de.fa-krug.Yana", category: "ArticleSync")
 
     init(container: CKContainer = CKContainer(identifier: "iCloud.de.fa-krug.Yana"),
@@ -30,6 +35,15 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         self.container = container
         self.defaults = defaults
         super.init()
+        prepareAssetTempDir()
+    }
+
+    /// Wipe any temp assets left over from a prior process so they don't accumulate across launches,
+    /// then re-create the empty subdirectory.
+    private func prepareAssetTempDir() {
+        let fm = FileManager.default
+        try? fm.removeItem(at: assetTempDir)
+        try? fm.createDirectory(at: assetTempDir, withIntermediateDirectories: true)
     }
 
     private func engine() -> CKSyncEngine {
@@ -95,12 +109,79 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
             for deletion in changes.deletions where deletion.recordType == Self.articleRecordType {
                 incoming.deletedUIDs.append(deletion.recordID.recordName)
             }
-        case .sentRecordZoneChanges, .sentDatabaseChanges, .fetchedDatabaseChanges,
+        case .sentRecordZoneChanges(let changes):
+            handleSentRecordZoneChanges(changes, syncEngine: syncEngine)
+        case .sentDatabaseChanges(let changes):
+            handleSentDatabaseChanges(changes, syncEngine: syncEngine)
+        case .fetchedDatabaseChanges,
              .willFetchChanges, .didFetchChanges, .willSendChanges, .didSendChanges,
              .willFetchRecordZoneChanges, .didFetchRecordZoneChanges, .accountChange:
             break
         @unknown default:
             break
+        }
+    }
+
+    /// CKSyncEngine reports per-record push results here (and does NOT auto-retry non-transient
+    /// errors, nor throw them from `sendChanges()`), so success pruning and error recovery both
+    /// happen in this callback. Runs on the main actor with the rest of the adapter's state.
+    private func handleSentRecordZoneChanges(_ event: CKSyncEngine.Event.SentRecordZoneChanges,
+                                             syncEngine: CKSyncEngine) {
+        // Bound the caches: a record that's been saved no longer needs to be re-serialized, and its
+        // asset temp file can go.
+        for saved in event.savedRecords {
+            forget(recordName: saved.recordID.recordName)
+        }
+
+        var recordChanges: [CKSyncEngine.PendingRecordZoneChange] = []
+        var databaseChanges: [CKSyncEngine.PendingDatabaseChange] = []
+        for failure in event.failedRecordSaves {
+            let recordID = failure.record.recordID
+            switch failure.error.code {
+            case .serverRecordChanged:
+                // Server copy diverged. Bodies are last-writer-wins, so re-queue the save to let our
+                // copy win on the next batch.
+                recordChanges.append(.saveRecord(recordID))
+            case .zoneNotFound, .userDeletedZone:
+                // The custom zone is gone. Recreate it and re-queue the failed save.
+                databaseChanges.append(.saveZone(CKRecordZone(zoneID: zoneID)))
+                recordChanges.append(.saveRecord(recordID))
+            case .unknownItem:
+                // Stale reference; drop it from the caches (and its temp file) without re-queuing.
+                forget(recordName: recordID.recordName)
+            default:
+                // Transient/other: leave it for CKSyncEngine's own auto-retry.
+                log.debug("Leaving record save error to auto-retry: \(failure.error, privacy: .public)")
+            }
+        }
+        if !databaseChanges.isEmpty { syncEngine.state.add(pendingDatabaseChanges: databaseChanges) }
+        if !recordChanges.isEmpty { syncEngine.state.add(pendingRecordZoneChanges: recordChanges) }
+    }
+
+    /// Zone save failures surface here. Re-queue a failed zone creation (idempotent; CKSyncEngine
+    /// dedupes pending changes) unless the error is transient, in which case the engine retries it.
+    private func handleSentDatabaseChanges(_ event: CKSyncEngine.Event.SentDatabaseChanges,
+                                           syncEngine: CKSyncEngine) {
+        var databaseChanges: [CKSyncEngine.PendingDatabaseChange] = []
+        for failure in event.failedZoneSaves {
+            switch failure.error.code {
+            case .networkFailure, .networkUnavailable, .serviceUnavailable, .zoneBusy,
+                 .requestRateLimited, .notAuthenticated, .operationCancelled:
+                log.debug("Leaving zone save error to auto-retry: \(failure.error, privacy: .public)")
+            default:
+                databaseChanges.append(.saveZone(CKRecordZone(zoneID: failure.zone.zoneID)))
+            }
+        }
+        if !databaseChanges.isEmpty { syncEngine.state.add(pendingDatabaseChanges: databaseChanges) }
+    }
+
+    /// Drop a record from the send caches and delete its backing asset temp file, if any. Used both
+    /// when a record is confirmed saved and when it's found to be a stale (`.unknownItem`) reference.
+    private func forget(recordName: String) {
+        articleRecordCache[recordName] = nil
+        pendingImageUploads[recordName] = nil
+        if let url = imageTempFiles.removeValue(forKey: recordName) {
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -121,9 +202,23 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
             return Self.ckRecord(from: article, zoneID: zoneID)
         }
         if let image = pendingImageUploads[name] {
-            return Self.ckRecord(from: image, zoneID: zoneID)
+            return ckRecord(from: image)
         }
         return nil
+    }
+
+    /// Serialize an image into a `CKRecord`, writing its `CKAsset` blob to a tracked temp file in the
+    /// dedicated asset subdirectory. The temp file is deleted once the record is confirmed saved (or
+    /// dropped as stale) — see `forget(recordName:)`.
+    private func ckRecord(from image: SyncedImageRecord) -> CKRecord {
+        let record = CKRecord(recordType: Self.imageRecordType,
+                              recordID: CKRecord.ID(recordName: image.hash, zoneID: zoneID))
+        record["ext"] = image.ext as CKRecordValue
+        let tmp = assetTempDir.appendingPathComponent("\(image.hash).\(image.ext)")
+        try? image.data.write(to: tmp)
+        imageTempFiles[image.hash] = tmp
+        record["blob"] = CKAsset(fileURL: tmp)
+        return record
     }
 
     // MARK: Serialization
@@ -171,15 +266,6 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
             isStarred: (record["isStarred"] as? Int ?? 0) == 1,
             tagNames: record["tagNames"] as? [String] ?? [],
             imageHashes: record["imageHashes"] as? [String] ?? [])
-    }
-
-    private static func ckRecord(from image: SyncedImageRecord, zoneID: CKRecordZone.ID) -> CKRecord {
-        let record = CKRecord(recordType: imageRecordType, recordID: CKRecord.ID(recordName: image.hash, zoneID: zoneID))
-        record["ext"] = image.ext as CKRecordValue
-        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("\(image.hash).\(image.ext)")
-        try? image.data.write(to: tmp)
-        record["blob"] = CKAsset(fileURL: tmp)
-        return record
     }
 
     private static func imageRecord(from record: CKRecord) -> SyncedImageRecord? {
