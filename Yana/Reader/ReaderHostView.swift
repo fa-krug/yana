@@ -148,6 +148,12 @@ struct ReaderScreen: View {
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }   // wait for a non-empty delivery to anchor
         appState.currentIndex = resolved.anchorIndex
+        // A synced anchor (canonical UID) resolves exactly across devices; prefer it when present.
+        if let syncUID = settings.timelineAnchorSyncUID,
+           let i = resolved.articles.firstIndex(where: { $0.uid == syncUID }) {
+            appState.currentIndex = i
+            settings.timelineAnchorIdentifier = resolved.articles[i].identifier
+        }
         didRestoreAnchor = true
     }
 
@@ -156,9 +162,10 @@ struct ReaderScreen: View {
     /// `saveAnchor` — so a remote jump can't loop back into a push.
     private func jumpToSyncedTimelinePosition() {
         guard didRestoreAnchor,
-              let uid = settings.timelineAnchorIdentifier,
-              let i = filteredArticles.firstIndex(where: { $0.identifier == uid }) else { return }
+              let syncUID = settings.timelineAnchorSyncUID,
+              let i = filteredArticles.firstIndex(where: { $0.uid == syncUID }) else { return }
         appState.currentIndex = i
+        settings.timelineAnchorIdentifier = filteredArticles[i].identifier
     }
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
@@ -269,6 +276,7 @@ struct ReaderScreen: View {
         if let i = TimelinePageIndex.index(of: summary.identifier, in: filteredArticles) {
             appState.currentIndex = i
             settings.timelineAnchorIdentifier = summary.identifier
+            settings.timelineAnchorSyncUID = summary.uid
         }
         appState.showArticleList = false
     }
@@ -300,6 +308,7 @@ struct ReaderScreen: View {
         let articles = filteredArticles
         guard articles.indices.contains(index) else { return }
         settings.timelineAnchorIdentifier = articles[index].identifier
+        settings.timelineAnchorSyncUID = articles[index].uid
         ConfigSyncService.shared.requestPush()
     }
 

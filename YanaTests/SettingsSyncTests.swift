@@ -185,7 +185,7 @@ struct SettingsSyncTests {
         let d = UserDefaults(suiteName: "SettingsSync.anchor.\(UUID().uuidString)")!
         let s = AppSettings(defaults: d)
         s.iCloudSyncEnabled = true
-        s.timelineAnchorIdentifier = "post-42"
+        s.timelineAnchorSyncUID = "post-42"
         let json = String(data: s.exportSyncedSettings(), encoding: .utf8) ?? ""
         #expect(json.contains("timelineAnchorUID"))
         #expect(json.contains("post-42"))
@@ -198,13 +198,13 @@ struct SettingsSyncTests {
         let s = AppSettings(defaults: d)
         let payload = #"{"timelineAnchorUID":"post-7"}"#.data(using: .utf8)!
         s.applySyncedSettings(payload)
-        #expect(s.timelineAnchorIdentifier == "post-7")
+        #expect(s.timelineAnchorSyncUID == "post-7")
     }
 
     @Test func applyingDifferentAnchorUIDPostsNotification() throws {
         let src = AppSettings(defaults: freshDefaults(label: "anchor-notif-src"))
         src.iCloudSyncEnabled = true
-        src.timelineAnchorIdentifier = "post-99"
+        src.timelineAnchorSyncUID = "post-99"
         let data = src.exportSyncedSettings()
 
         let dst = AppSettings(defaults: freshDefaults(label: "anchor-notif-dst"))

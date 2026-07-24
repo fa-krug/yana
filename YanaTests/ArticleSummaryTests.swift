@@ -49,4 +49,17 @@ struct ArticleSummaryTests {
         #expect(summary.filterTagNames == ["Tech"])
         #expect((summary as TimelineIdentifiable).identifier == "a2")
     }
+
+    @Test func uidIsCollisionFreeAcrossFeeds() throws {
+        let context = try makeContext()
+        let feed = Feed(name: "Acme", aggregatorType: .feedContent, identifier: "f1")
+        let article = Article(title: "Hello", identifier: "a1", url: "u")
+        article.feed = feed
+        context.insert(feed); context.insert(article)
+        try context.save()
+
+        let summary = ArticleSummary(article)
+
+        #expect(summary.uid == "f1|feed_content|a1")
+    }
 }

@@ -53,6 +53,7 @@ final class TimelineModel {
                   let i = TimelinePageIndex.index(of: id, in: filteredArticles) else { return }
             currentIndex = i
             settings.timelineAnchorIdentifier = id
+            settings.timelineAnchorSyncUID = filteredArticles[i].uid
         }
     }
 
@@ -79,6 +80,7 @@ final class TimelineModel {
         guard next != currentIndex else { return }
         currentIndex = next
         settings.timelineAnchorIdentifier = filteredArticles[next].identifier
+        settings.timelineAnchorSyncUID = filteredArticles[next].uid
     }
 
     var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
@@ -114,6 +116,12 @@ final class TimelineModel {
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }
         currentIndex = resolved.anchorIndex
+        // A synced anchor (canonical UID) resolves exactly across devices; prefer it when present.
+        if let syncUID = settings.timelineAnchorSyncUID,
+           let i = resolved.articles.firstIndex(where: { $0.uid == syncUID }) {
+            currentIndex = i
+            settings.timelineAnchorIdentifier = resolved.articles[i].identifier
+        }
         didRestoreAnchor = true
     }
 

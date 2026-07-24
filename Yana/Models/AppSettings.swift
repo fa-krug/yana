@@ -147,6 +147,7 @@ final class AppSettings {
         static let disabledFeedNames = "settings.disabledFeedNames"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
+        static let timelineAnchorSyncUID = "settings.timelineAnchorSyncUID"
         // Reader
         static let articleTextSize = "settings.articleTextSize"
         static let articleFont = "settings.articleFont"
@@ -246,7 +247,7 @@ final class AppSettings {
             articleFont: articleFont.rawValue,
             useSystemBrowser: useSystemBrowser,
             articleFullscreenEnabled: articleFullscreenEnabled,
-            timelineAnchorUID: iCloudSyncEnabled ? timelineAnchorIdentifier : nil
+            timelineAnchorUID: iCloudSyncEnabled ? timelineAnchorSyncUID : nil
         )
         return (try? JSONEncoder().encode(snapshot)) ?? Data()
     }
@@ -289,7 +290,7 @@ final class AppSettings {
         if let v = decoded.useSystemBrowser { useSystemBrowser = v }
         if let v = decoded.articleFullscreenEnabled { articleFullscreenEnabled = v }
         if let uid = decoded.timelineAnchorUID {
-            timelineAnchorIdentifier = uid
+            timelineAnchorSyncUID = uid
             NotificationCenter.default.post(name: Self.timelinePositionDidChange, object: self)
         }
     }
@@ -509,5 +510,11 @@ final class AppSettings {
     var timelineAnchorIdentifier: String? {
         get { access(keyPath: \.timelineAnchorIdentifier); return defaults.string(forKey: Key.timelineAnchorIdentifier) }
         set { withMutation(keyPath: \.timelineAnchorIdentifier) { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) } }
+    }
+    /// The canonical UID of the current anchor article, for cross-device sync (exact resolution).
+    /// Distinct from `timelineAnchorIdentifier`, which stays a per-feed identifier for local restore.
+    var timelineAnchorSyncUID: String? {
+        get { access(keyPath: \.timelineAnchorSyncUID); return defaults.string(forKey: Key.timelineAnchorSyncUID) }
+        set { withMutation(keyPath: \.timelineAnchorSyncUID) { defaults.set(newValue, forKey: Key.timelineAnchorSyncUID) } }
     }
 }
