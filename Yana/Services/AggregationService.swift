@@ -22,10 +22,6 @@ final class AggregationService {
     /// Failures recorded during the most recent `updateAll()` / `update(feed:)`.
     private(set) var lastRunFailures: [FeedFailure] = []
 
-    /// Upper bound on simultaneous in-flight feed fetches in `updateAll()`. Caps the number of
-    /// concurrent network/AI awaits so a large feed list does not spawn unbounded requests.
-    private static let maxConcurrentFeedUpdates = 5
-
     /// Resolves and caches a feed's logo, returning its content hash. Injectable for tests.
     typealias LogoResolver = @Sendable (_ config: FeedConfig, _ aggregator: any Aggregator) async -> String?
 
@@ -45,14 +41,6 @@ final class AggregationService {
     private let settings: AppSettings
     private let starredRegistry: StarredRegistry
     private let articleSync: ArticleSyncService
-
-    /// UIDs of articles inserted/updated by the operation currently in flight. Reset at the start
-    /// of each public run entry point, accumulated via `ArticleUpsert.apply`'s `onUpsert` callback,
-    /// and flushed (then cleared) by `pushRecentlyChanged()` — so a run only pushes what it actually
-    /// touched, never the whole library. Otherwise a push after e.g. `forceReload(article:)` (which
-    /// has no preceding pull) would re-upload every locally-present article, resurrecting any that
-    /// another device already tombstoned remotely. Main-actor-only state (this class is `@MainActor`).
-    private var pendingPushUIDs: Set<String> = []
 
     init(
         context: ModelContext,
@@ -162,58 +150,55 @@ final class AggregationService {
         )
     }
 
+    /// Snapshot all main-actor inputs the writer needs, as Sendable values. `AppSettings` is a
+    /// `@MainActor @Observable` class (not Sendable), so its enabled-source set is precomputed on the
+    /// main actor and the resulting `Set<AggregatorType>` is captured by the `@Sendable` closure.
+    private func makeRunInputs() -> AggregationRunInputs {
+        let marks = starredRegistry.snapshotMarks()
+        let canonical = articleSync.canonicalCreatedAtSnapshot()
+        let enabledSources = Set(AggregatorType.allCases.filter { settings.isSourceEnabled($0) })
+        return AggregationRunInputs(
+            makeAggregator: makeAggregator,
+            processor: currentAIProcessor(),
+            logoResolver: logoResolver,
+            credentials: AggregatorCredentials.resolved(),
+            now: now(),
+            starredIdentifiers: { feedIdentifier, aggregatorType in
+                Set(marks.compactMap {
+                    $0.feedIdentifier == feedIdentifier && $0.aggregatorType == aggregatorType
+                        ? $0.articleIdentifier : nil
+                })
+            },
+            canonicalCreatedAt: canonical,
+            isSourceEnabled: { enabledSources.contains($0) },
+            retentionDays: settings.retentionDays,
+            isPassiveDevice: settings.isPassiveDevice,
+            progress: { [weak self] event in
+                Task { @MainActor in
+                    guard let self else { return }
+                    switch event {
+                    case .start(let total): self.updateProgress.start(total: total)
+                    case .advance: self.updateProgress.advance()
+                    }
+                }
+            })
+    }
+
     /// Update all enabled feeds. One feed's failure never aborts the run.
     @discardableResult
     func updateAll() async -> Int {
         lastRunFailures = []
-        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false; updateProgress.reset() }
         await articleSync.pull()
-        let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
-        let feeds = ((try? context.fetch(descriptor)) ?? [])
-            .filter { settings.isSourceEnabled($0.type) }
-
-        // Flush any pending inserts so every feed has a *permanent* identifier before we capture
-        // it. We carry ids across the task boundary and re-resolve each with `context.model(for:)`;
-        // the per-feed `save()` below persists *all* pending inserts, so a temporary id captured
-        // here would be invalidated the moment another feed saves — its later re-resolution then
-        // faults on "backing data could no longer be found" (a hard SwiftData crash).
-        save()
-
-        // Run per-feed work concurrently with a bounded sliding window. Each `aggregate(feed:)`
-        // stays on the main actor, so its synchronous SwiftData reads/writes remain serialized
-        // and race-free; only the network/AI `await` suspension points interleave. We carry the
-        // `Sendable` PersistentIdentifier across the task boundary (not the non-Sendable `Feed`)
-        // and re-resolve it on the main actor inside `aggregate(feedID:)`.
-        let ids = feeds.map(\.persistentModelID)
-        updateProgress.start(total: ids.count)
-        var inserted = 0
-        await withTaskGroup(of: Int.self) { group in
-            var nextIndex = 0
-            let window = min(Self.maxConcurrentFeedUpdates, ids.count)
-            while nextIndex < window {
-                let id = ids[nextIndex]
-                group.addTask { await self.aggregate(feedID: id) }
-                nextIndex += 1
-            }
-            while let result = await group.next() {
-                updateProgress.advance()
-                inserted += result
-                // Stop scheduling new feeds once a newer update has cancelled this run;
-                // in-flight children unwind on their own as the group scope exits.
-                if Task.isCancelled { break }
-                if nextIndex < ids.count {
-                    let id = ids[nextIndex]
-                    group.addTask { await self.aggregate(feedID: id) }
-                    nextIndex += 1
-                }
-            }
-        }
-
-        cleanupAndSave()
-        await pushRecentlyChanged()
-        return inserted
+        try? context.save()                         // flush so the writer's fetch sees pending feeds
+        let writer = AggregationWriter(modelContainer: context.container)
+        let result = await writer.runUpdateAll(makeRunInputs())
+        refreshFromStore()
+        lastRunFailures = result.failures
+        await articleSync.push(uids: Array(result.touchedUIDs))
+        if !result.deletedUIDs.isEmpty { await articleSync.deleteRemote(uids: result.deletedUIDs) }
+        return result.inserted
     }
 
     /// Update a single feed.
@@ -221,14 +206,18 @@ final class AggregationService {
     func update(feed: Feed) async -> Int {
         guard settings.isSourceEnabled(feed.type) else { return 0 }
         lastRunFailures = []
-        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false }
         await articleSync.pull()
-        let inserted = await aggregate(feed: feed)
-        cleanupAndSave()
-        await pushRecentlyChanged()
-        return inserted
+        try? context.save()
+        let feedID = feed.persistentModelID
+        let writer = AggregationWriter(modelContainer: context.container)
+        let result = await writer.runUpdate(feedID: feedID, makeRunInputs())
+        refreshFromStore()
+        lastRunFailures = result.failures
+        await articleSync.push(uids: Array(result.touchedUIDs))
+        if !result.deletedUIDs.isEmpty { await articleSync.deleteRemote(uids: result.deletedUIDs) }
+        return result.inserted
     }
 
     /// Force reload a single feed: re-import every article the source currently offers,
@@ -238,17 +227,19 @@ final class AggregationService {
     func forceReload(feed: Feed) async -> Int {
         guard settings.isSourceEnabled(feed.type) else { return 0 }
         lastRunFailures = []
-        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false }
-        let inserted = await aggregate(feed: feed, force: true)
         try? context.save()
-        await pushRecentlyChanged()
-        return inserted
+        let feedID = feed.persistentModelID
+        let writer = AggregationWriter(modelContainer: context.container)
+        let result = await writer.runForceReloadFeed(feedID: feedID, makeRunInputs())
+        refreshFromStore()
+        lastRunFailures = result.failures
+        await articleSync.push(uids: Array(result.touchedUIDs))
+        return result.inserted
     }
 
     /// Re-fetch and re-process a single article by re-running its owning feed.
-    /// (Phase 4b refines this to a true single-article re-fetch.)
     @discardableResult
     func update(article: Article) async -> Int {
         guard let feed = article.feed else { return 0 }
@@ -261,43 +252,17 @@ final class AggregationService {
     /// never reloads the parent feed.
     @discardableResult
     func forceReload(article: Article) async -> Int {
-        guard let feed = article.feed else { return 0 }
+        guard article.feed != nil else { return 0 }
         lastRunFailures = []
-        pendingPushUIDs = []
         isUpdating = true
         defer { isUpdating = false }
-
-        let config = FeedConfig(feed: feed, collectedToday: 0)
-        let credentials = AggregatorCredentials.resolved()
-        guard let aggregator = makeAggregator(config, credentials) else { return 0 }
-        // Seed identity/source fields only. The body is not seeded: `refetch` always repopulates
-        // it from a fresh network fetch, so any seeded content would be overwritten anyway (the
-        // article now stores native blocks, not HTML). `summary` is a derived AI field, not source
-        // content: carrying it here would let a stale summary survive a reprocess that no longer
-        // produces one. It is regenerated by the AI pass below.
-        let seed = AggregatedArticle(
-            title: article.title, identifier: article.identifier, url: article.url,
-            rawContent: "", content: "", date: article.date,
-            author: article.author, iconURL: article.iconURL
-        )
-        let refreshed: AggregatedArticle?
-        do {
-            refreshed = try await aggregator.refetch(seed)
-        } catch {
-            if Task.isCancelled { return 0 }
-            refreshed = nil
-        }
-        guard let refreshed else { return 0 }
-        let processed = await currentAIProcessor().process([refreshed], ai: config.options.ai)
-        let inserted = ArticleUpsert.apply(
-            processed, to: feed, starredTag: starredTag(),
-            starredIdentifiers: starredRegistry.identifiers(forFeedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType),
-            context: context, now: now(),
-            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) },
-            onUpsert: { [weak self] uid in self?.pendingPushUIDs.insert(uid) })
         try? context.save()
-        await pushRecentlyChanged()
-        return inserted
+        let articleID = article.persistentModelID
+        let writer = AggregationWriter(modelContainer: context.container)
+        let result = await writer.runForceReloadArticle(articleID: articleID, makeRunInputs())
+        refreshFromStore()
+        await articleSync.push(uids: Array(result.touchedUIDs))
+        return result.inserted
     }
 
     /// Summarize a single article on demand, independent of its feed's AI options. Runs a
@@ -307,129 +272,25 @@ final class AggregationService {
     /// content). Callers should only invoke this when AI is configured (see `AIReadiness`).
     @discardableResult
     func summarize(_ article: Article) async -> Bool {
-        // Summarize from the article's visible text (its native body is blocks, not HTML); the AI
-        // processor strips chrome and caps length, and plain text summarizes fine.
-        let seed = AggregatedArticle(
-            title: article.title, identifier: article.identifier, url: article.url,
-            rawContent: "", content: article.plainText, date: article.date,
-            author: article.author, iconURL: article.iconURL
-        )
-        let processed = await currentAIProcessor().process([seed], ai: AIOptions(summarize: true))
-        guard let summary = processed.first?.summary, !summary.isEmpty else { return false }
-        article.summary = summary
         try? context.save()
-        // `summarize` doesn't go through `ArticleUpsert.apply` (it sets `article.summary` directly),
-        // so there's nothing in `pendingPushUIDs` to flush — push just this article instead.
-        if let uid = ArticleUID.make(for: article) { await articleSync.push(uids: [uid]) }
-        return true
+        let articleID = article.persistentModelID
+        let writer = AggregationWriter(modelContainer: context.container)
+        let (ok, uid) = await writer.runSummarize(articleID: articleID, makeRunInputs())
+        refreshFromStore()
+        if let uid { await articleSync.push(uids: [uid]) }
+        return ok
     }
 
-    // MARK: - Core per-feed run
+    // MARK: - Helpers
 
-    /// Resolve a feed from its `Sendable` identifier on the main actor, then run the per-feed
-    /// work. Used by `updateAll()`'s task group so the non-Sendable `Feed` never crosses an
-    /// isolation boundary.
-    @discardableResult
-    private func aggregate(feedID: PersistentIdentifier) async -> Int {
-        guard let feed = self[feedID, as: Feed.self] else { return 0 }
-        return await aggregate(feed: feed)
-    }
-
-    /// Look up a model by identifier in this service's context.
-    private subscript<T: PersistentModel>(id: PersistentIdentifier, as type: T.Type) -> T? {
-        context.model(for: id) as? T
-    }
-
-    @discardableResult
-    private func aggregate(feed: Feed, force: Bool = false) async -> Int {
-        let runNow = now()
-        let collected = collectedToday(for: feed, now: runNow)
-        let config = FeedConfig(feed: feed, collectedToday: collected, force: force)
-        let credentials = AggregatorCredentials.resolved()
-
-        guard let aggregator = makeAggregator(config, credentials) else {
-            let message = AggregatorError.notImplemented(feed.type).errorDescription ?? ""
-            feed.lastError = message
-            lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
-            return 0
-        }
-
-        // Per-article pipeline: each article is processed (intake filter → AI → upsert) and
-        // inserted into the context before the next is collected, but the context is *saved once
-        // per feed* rather than once per article. Saving after every article flushed SQLite and
-        // fired a `ModelContext.didSave` on the main thread N times per feed — and each didSave
-        // kicks a full timeline-index reload + re-filter + reader re-render. That O(articles)
-        // storm of main-thread work is what made the reader lag and stutter during a refresh.
-        // Collapsing to one save per feed keeps it O(feeds). Durability is preserved: the save in
-        // the catch below flushes whatever was collected before an interruption, so a
-        // cancelled/failed feed never loses the articles it already handed over.
-        let processor = currentAIProcessor()
-        let cap = AggregationLogic.runLimit(dailyLimit: config.dailyLimit, collectedToday: collected)
-        let feedID = feed.persistentModelID
-        var inserted = 0
-        var kept = 0
-
-        do {
-            try aggregator.validate()
-            do {
-                // The sink runs in the aggregator's (non–main-actor) region, so the SwiftData
-                // upsert — which is `@MainActor` and touches the non-Sendable `context` — is
-                // hopped onto the main actor via `upsert`, passing only Sendable values.
-                try await aggregator.aggregate { article in
-                    guard kept < cap else { throw CapReached() }        // run cap reached → stop fetching more
-                    guard force || AggregationLogic.isWithinIntakeWindow(article.date, now: runNow) else { return }
-                    let processed = await processor.process([article], ai: config.options.ai)
-                    // Parse each article's HTML into native blocks OFF the main actor before the
-                    // upsert hops back to it — the SwiftSoup parse is the heavy per-article cost and
-                    // running it on the main thread is what made the reader stutter during a refresh.
-                    let blocks = await Self.parseBlocks(processed)
-                    inserted += await self.upsert(processed, blocks: blocks, feedID: feedID, now: runNow)
-                    kept += 1
-                }
-            } catch is CapReached { /* normal stop: everything kept is upserted */ }
-            feed.lastFetchedAt = runNow
-            feed.lastError = nil
-            if feed.logoHash == nil, let hash = await logoResolver(config, aggregator) {
-                feed.logoHash = hash
-            }
-            save()                              // one save per feed: the upserted articles + feed state
-            return inserted
-        } catch {
-            // A cancelled run (the user triggered a newer update, or a background window expired) is
-            // not a feed failure: leave the existing error/state untouched so no spurious "Update
-            // Failed" surfaces. Persist whatever was collected before the interruption so it isn't lost.
-            if Task.isCancelled || error.isCancellationError {
-                save()
-                return inserted
-            }
-            let message = Self.userFacingMessage(for: error)
-            feed.lastError = message
-            lastRunFailures.append(FeedFailure(feedName: feed.name, message: message))
-            save()                              // persist the partial batch + the recorded error
-            return inserted
-        }
-    }
-
-    /// Upsert one run's processed article(s) into the context, *without* saving — the owning
-    /// `aggregate(feed:)` saves once per feed (see its comment). Runs on the main actor (the
-    /// SwiftData `context` is non-Sendable and main-actor-isolated); takes only Sendable values so
-    /// the streaming sink can call it across the actor boundary. The `blocks` were parsed off the
-    /// main actor by `parseBlocks`, so this hop does only the light SwiftData writes. Returns the
-    /// number of newly inserted articles.
-    @MainActor
-    private func upsert(
-        _ processed: [AggregatedArticle], blocks: [String: [Block]], feedID: PersistentIdentifier, now: Date
-    ) -> Int {
-        guard let feed = self[feedID, as: Feed.self] else { return 0 }
-        return ArticleUpsert.apply(
-            processed, to: feed, starredTag: starredTag(),
-            starredIdentifiers: starredRegistry.identifiers(forFeedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType),
-            context: context, now: now,
-            // Every processed article is pre-parsed; the inline fallback is defensive and never hit.
-            blocksFor: { blocks[$0.identifier] ?? ArticleUpsert.defaultBlocks(for: $0) },
-            canonicalCreatedAt: { [articleSync] uid in articleSync.canonicalCreatedAt(forUID: uid) },
-            onUpsert: { [weak self] uid in self?.pendingPushUIDs.insert(uid) }
-        )
+    /// Refresh this (main) context's registered `Feed`/`Article` objects from the store after the
+    /// background writer committed on a sibling context. `context.model(for:)` returns a cached
+    /// registered instance without re-reading the store, so scalar edits the writer made (lastError,
+    /// lastFetchedAt, logoHash, summary, refreshed body) would otherwise look stale to callers holding
+    /// the pre-run object. A fetch reconciles the registered instances with the persisted rows.
+    private func refreshFromStore() {
+        _ = try? context.fetch(FetchDescriptor<Feed>())
+        _ = try? context.fetch(FetchDescriptor<Article>())
     }
 
     /// Convert each processed article's sanitized HTML into native `[Block]`s **off the main actor**.
@@ -442,49 +303,5 @@ final class AggregationService {
             result[article.identifier] = ArticleUpsert.defaultBlocks(for: article)
         }
         return result
-    }
-
-    /// Persist pending context changes, ignoring the error — a failed save leaves the run's
-    /// in-memory inserts intact for the next save attempt.
-    private func save() {
-        try? context.save()
-    }
-
-    /// Push the articles touched by the just-finished operation (not the whole library), so a
-    /// locally-present-but-remotely-tombstoned article is never re-uploaded (no resurrection).
-    private func pushRecentlyChanged() async {
-        let uids = Array(pendingPushUIDs)
-        pendingPushUIDs = []
-        await articleSync.push(uids: uids)
-    }
-
-    /// Thrown by the per-article sink to stop the aggregator once the run cap is reached.
-    private struct CapReached: Error {}
-
-    // MARK: - Helpers
-
-    private func collectedToday(for feed: Feed, now: Date) -> Int {
-        let startOfDay = Calendar.current.startOfDay(for: now)
-        let feedID = feed.persistentModelID
-        let descriptor = FetchDescriptor<Article>(
-            predicate: #Predicate { $0.feed?.persistentModelID == feedID && $0.createdAt >= startOfDay }
-        )
-        return (try? context.fetchCount(descriptor)) ?? 0
-    }
-
-    private func starredTag() -> Tag? {
-        let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.isBuiltIn })
-        return (try? context.fetch(descriptor))?.first
-    }
-
-    private func cleanupAndSave() {
-        let settings = AppSettings()
-        // Passive devices never run retention or initiate deletions — they only mirror.
-        guard !settings.isPassiveDevice else { return }
-        let deletedUIDs = RetentionCleanup.run(context: context, retentionDays: settings.retentionDays, now: now())
-        try? context.save()
-        if !deletedUIDs.isEmpty {
-            Task { [articleSync] in await articleSync.deleteRemote(uids: deletedUIDs) }
-        }
     }
 }

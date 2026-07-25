@@ -11,11 +11,12 @@ enum ArticleUpsert {
     /// refresh cadence (300s) so separate runs never reorder relative to each other.
     static let importJitterWindow: TimeInterval = 180
 
-    /// Default block converter: the SwiftSoup HTML → `[Block]` parse. It runs on the main actor
-    /// when `apply` is called directly (tests, single-article reload), which is fine for one item.
-    /// The bulk refresh path instead pre-parses every article **off the main actor** and injects
-    /// the result via `blocksFor`, so the heavy parse never runs on the main thread during a run
-    /// (see `AggregationService.parseBlocks`).
+    /// Default block converter: the SwiftSoup HTML → `[Block]` parse. It runs wherever the caller
+    /// of `apply` is when `blocksFor` isn't supplied — on the main actor in tests, on the background
+    /// `AggregationWriter` actor for the single-article reload/summarize paths — which is fine for
+    /// one item. The bulk/writer refresh path instead pre-parses every article **off the main actor**
+    /// and injects the result via `blocksFor`, so the heavy parse never runs on the main thread
+    /// during a run (see `AggregationService.parseBlocks`).
     static func defaultBlocks(for item: AggregatedArticle) -> [Block] {
         BlockParser.blocks(fromHTML: item.content, baseURL: URL(string: item.url))
     }
