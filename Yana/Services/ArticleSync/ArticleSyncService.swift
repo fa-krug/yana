@@ -96,6 +96,10 @@ final class ArticleSyncService {
     /// The canonical (first-writer) createdAt for a UID, if a pull has seen it.
     func canonicalCreatedAt(forUID uid: String) -> Date? { canonicalCreatedAtByUID[uid] }
 
+    /// A `Sendable` copy of the canonical-`createdAt` map for handing to the background writer.
+    /// Snapshot AFTER `pull()` so newly-reconciled UIDs are included.
+    func canonicalCreatedAtSnapshot() -> [String: Date] { canonicalCreatedAtByUID }
+
     // MARK: Push
 
     /// Upload every local article (migration / enable path).
