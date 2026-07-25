@@ -80,11 +80,21 @@ platform :mac do
         (test["attachments"] || []).each do |attachment|
           name = attachment["suggestedHumanReadableName"]
           file = attachment["exportedFileName"]
-          exported[name] = File.join(attachments, file) if name && file
+          next unless name && file
+          if exported.key?(name)
+            # Keep the first occurrence and warn: last-wins would silently promote a partial
+            # capture from a retried/failed attempt over the successful one.
+            UI.important("Duplicate attachment name '#{name}' in #{locale} manifest — keeping first, ignoring '#{file}'")
+          else
+            exported[name] = File.join(attachments, file)
+          end
         end
       end
 
       locale_dir = File.join(out_root, locale)
+      # Clear before writing so a partial re-run doesn't leave stale captures from a prior
+      # run alongside this run's fresh shots — stale files would be invisible to the operator.
+      FileUtils.rm_rf(locale_dir)
       FileUtils.mkdir_p(locale_dir)
 
       base = exported["01_Reader.png"]
