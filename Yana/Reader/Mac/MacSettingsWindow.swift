@@ -14,7 +14,11 @@ struct MacSettingsWindow: View {
         NavigationSplitView {
             List(selection: $selection) {
                 ForEach(SettingsPane.allCases) { pane in
-                    Label(pane.title, systemImage: pane.systemImage).tag(pane)
+                    Label(pane.title, systemImage: pane.systemImage)
+                        .tag(pane)
+                        // Screenshot/UI-test navigation target — pane titles are localized, the
+                        // raw value is not.
+                        .accessibilityIdentifier("mac.settings.pane.\(pane.rawValue)")
                 }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
@@ -24,6 +28,7 @@ struct MacSettingsWindow: View {
                 .navigationSplitViewColumnWidth(min: 460, ideal: 520)
         }
         .toggleStyle(.switch)
+        .accessibilityIdentifier("mac.settings.window")
         .frame(minWidth: 700, minHeight: 560)
         .onDisappear { ConfigSyncService.shared.requestPush() }
     }
