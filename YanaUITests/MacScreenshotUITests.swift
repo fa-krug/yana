@@ -177,12 +177,15 @@ final class MacScreenshotUITests: XCTestCase {
     private func attach(_ screenshot: XCUIScreenshot, named name: String,
                         expectedPixelSize: CGSize?) {
         if let expected = expectedPixelSize {
-            let actualW = screenshot.image.size.width * screenshot.image.scale
-            let actualH = screenshot.image.size.height * screenshot.image.scale
-            XCTAssertEqual(actualW, expected.width,
-                           "\(name): screenshot pixel width \(actualW) ≠ expected \(expected.width)")
-            XCTAssertEqual(actualH, expected.height,
-                           "\(name): screenshot pixel height \(actualH) ≠ expected \(expected.height)")
+            guard let actual = Self.pngPixelSize(screenshot.pngRepresentation) else {
+                return XCTFail("\(name): could not read PNG dimensions from the screenshot")
+            }
+            XCTAssertEqual(actual.width, Int(expected.width),
+                           "\(name): pixel width \(actual.width) ≠ expected \(Int(expected.width)) "
+                           + "(full size \(actual.width)x\(actual.height))")
+            XCTAssertEqual(actual.height, Int(expected.height),
+                           "\(name): pixel height \(actual.height) ≠ expected \(Int(expected.height)) "
+                           + "(full size \(actual.width)x\(actual.height))")
         }
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
@@ -190,6 +193,26 @@ final class MacScreenshotUITests: XCTestCase {
         // actually want the images from.
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// Read a PNG's pixel dimensions straight from its IHDR header.
+    ///
+    /// Deliberately NOT via `XCUIScreenshot.image`: the iOS SDK types that as `UIImage`, but the
+    /// Mac Catalyst UI-test runner is a real AppKit process and hands back an `NSImage` at runtime,
+    /// so `.scale` raises "unrecognized selector". Parsing the bytes sidesteps the whole
+    /// UIImage/NSImage ambiguity and gives true pixels rather than points × scale.
+    ///
+    /// Layout: 8-byte signature, then the IHDR chunk (4-byte length, 4-byte type `IHDR`), whose
+    /// first two fields are width and height as big-endian `UInt32`.
+    private static func pngPixelSize(_ data: Data) -> (width: Int, height: Int)? {
+        guard data.count >= 24 else { return nil }
+        func be32(_ offset: Int) -> Int {
+            Int(data.dropFirst(offset).prefix(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) })
+        }
+        let width = be32(16)
+        let height = be32(20)
+        guard width > 0, height > 0 else { return nil }
+        return (width, height)
     }
 }
 #endif
