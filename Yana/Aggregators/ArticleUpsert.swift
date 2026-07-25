@@ -21,7 +21,6 @@ enum ArticleUpsert {
     }
 
     @discardableResult
-    @MainActor
     static func apply(
         _ aggregated: [AggregatedArticle],
         to feed: Feed,
