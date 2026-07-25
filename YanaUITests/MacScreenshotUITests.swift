@@ -71,7 +71,12 @@ final class MacScreenshotUITests: XCTestCase {
         attach(app.windows.firstMatch.screenshot(), named: "02_Search.png")
 
         // Clear the query so the Settings shots composite over an unfiltered timeline.
-        search.buttons.firstMatch.tap()
+        // Use select-all + delete rather than the NSSearchField clear button: the clear
+        // button only exists once text is typed AND the field has focus, so an element-
+        // based tap can raise a hard failure and abort the run — losing shots 3 and 4.
+        search.click()
+        search.typeKey("a", modifierFlags: .command)
+        search.typeKey(.delete, modifierFlags: [])
         Thread.sleep(forTimeInterval: 1.0)
 
         // Shots 3 and 4 — the Settings window, captured at its natural size. The lane composites
@@ -101,9 +106,16 @@ final class MacScreenshotUITests: XCTestCase {
 
         // Fallback: the ellipsis button in MacRootView's .primaryAction toolbar group. It has no
         // identifier, so match the SF Symbol image name XCUITest exposes as the label.
-        let overflow = app.buttons["ellipsis.circle"].exists
-            ? app.buttons["ellipsis.circle"]
-            : app.toolbars.buttons.element(boundBy: app.toolbars.buttons.count - 1)
+        // Wait for the identifier-based button FIRST before evaluating .exists — sampling .exists
+        // before the toolbar is in the accessibility tree would always return false and bind the
+        // wrong (positional) fallback, making the subsequent waitForExistence wait on a ghost element.
+        let namedOverflow = app.buttons["ellipsis.circle"]
+        let overflow: XCUIElement
+        if namedOverflow.waitForExistence(timeout: 5) {
+            overflow = namedOverflow
+        } else {
+            overflow = app.toolbars.buttons.element(boundBy: app.toolbars.buttons.count - 1)
+        }
         XCTAssertTrue(overflow.waitForExistence(timeout: 10),
                       "neither ⌘, nor the toolbar overflow could open Settings")
         overflow.click()
