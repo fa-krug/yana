@@ -160,6 +160,8 @@ final class AppSettings {
         // iCloud sync (device-local, never synced)
         static let iCloudSyncEnabled = "settings.iCloudSyncEnabled"
         static let isPassiveDevice = "settings.isPassiveDevice"
+        // Mac window layout (device-local, never synced)
+        static let macSidebarWidth = "settings.macSidebarWidth"
     }
 
     // MARK: iCloud Sync
@@ -177,6 +179,13 @@ final class AppSettings {
     var isPassiveDevice: Bool {
         get { access(keyPath: \.isPassiveDevice); return defaults.bool(forKey: Key.isPassiveDevice) }
         set { withMutation(keyPath: \.isPassiveDevice) { defaults.set(newValue, forKey: Key.isPassiveDevice) } }
+    }
+
+    /// The Mac window's remembered sidebar column width (device-local, never synced — window layout
+    /// is per-device). 0 means "unset → use the ideal default".
+    var macSidebarWidth: Double {
+        get { access(keyPath: \.macSidebarWidth); return defaults.double(forKey: Key.macSidebarWidth) }
+        set { withMutation(keyPath: \.macSidebarWidth) { defaults.set(newValue, forKey: Key.macSidebarWidth) } }
     }
 
     // MARK: Sync serialization

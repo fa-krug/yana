@@ -29,7 +29,8 @@ struct MacRootView: View {
             MacSidebarView(model: model, settings: settings,
                            onCreateFeed: { openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create) },
                            focusedPane: $focusedPane)
-                .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
+                .navigationSplitViewColumnWidth(
+                    min: SidebarWidth.min, ideal: restoredSidebarWidth, max: SidebarWidth.max)
                 .navigationTitle("Yana")
         } detail: {
             detail
@@ -139,6 +140,13 @@ struct MacRootView: View {
 
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
 
+    /// The sidebar's launch width: the last persisted value clamped to bounds, or the ideal default
+    /// when no value has been stored yet (stored value == 0 is the UserDefaults zero-default).
+    private var restoredSidebarWidth: CGFloat {
+        let stored = CGFloat(settings.macSidebarWidth)
+        return stored > 0 ? SidebarWidth.clamp(stored) : SidebarWidth.ideal
+    }
+
     /// Start narrating the selected article when idle; otherwise pause/resume. Speech is owned at the
     /// window level (not the swappable detail child), so it keeps reading the article it was started
     /// on even as the user clicks through the list — it only switches when explicitly restarted here.
@@ -229,6 +237,20 @@ private struct MacSidebarView: View {
             guard model.selectedSummary != nil else { return .ignored }
             focusedPane = .reader
             return .handled
+        }
+        .background(widthReader)
+    }
+
+    @ViewBuilder private var widthReader: some View {
+        GeometryReader { geo in
+            Color.clear
+                .onChange(of: geo.size.width) { _, newWidth in
+                    let clamped = SidebarWidth.clamp(newWidth)
+                    // Only persist meaningful changes to avoid churn on every layout tick.
+                    if abs(clamped - CGFloat(settings.macSidebarWidth)) > 1 {
+                        settings.macSidebarWidth = Double(clamped)
+                    }
+                }
         }
     }
 
