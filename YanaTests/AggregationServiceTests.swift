@@ -72,7 +72,6 @@ struct AggregationServiceTests {
         context.insert(feed)
         try context.save()
 
-        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3")])
         }
@@ -88,7 +87,6 @@ struct AggregationServiceTests {
         try context.save()
         let old = aggregated("old", date: Date.now.addingTimeInterval(-61 * 24 * 3600))
 
-        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("fresh"), old])
         }
@@ -167,7 +165,6 @@ struct AggregationServiceTests {
         context.insert(feed)
         try context.save()
 
-        let feedID = feed.persistentModelID
         let fake = FakeAIProcessor()    // identity transform
         let service = AggregationService(
             context: context,
@@ -191,7 +188,6 @@ struct AggregationServiceTests {
         context.insert(feed)
         try context.save()
 
-        let feedID = feed.persistentModelID
         // Processor drops "drop" and rewrites "keep"'s title.
         let fake = FakeAIProcessor { input in
             input.compactMap { a in
@@ -364,7 +360,6 @@ struct AggregationServiceTests {
         context.insert(feed)
         try context.save()
 
-        let feedID = feed.persistentModelID
         var item = self.aggregated("x1")
         item.content = "<p>Body text</p>"
         let article = item
@@ -466,7 +461,6 @@ struct AggregationServiceTests {
         try context.save()
         let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
 
-        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("fresh"), old])
         }
@@ -483,7 +477,6 @@ struct AggregationServiceTests {
         context.insert(feed)
         try context.save()
 
-        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3")])
         }
@@ -499,7 +492,6 @@ struct AggregationServiceTests {
         try context.save()
         let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
 
-        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3"), old])
         }
@@ -573,7 +565,6 @@ struct AggregationServiceTests {
         try context.save()
 
         let articleID = article.persistentModelID
-        let feedID = feed.persistentModelID
         let refreshed = self.aggregated("id1")          // same identifier, content "c"
         let service = AggregationService(context: context, makeAggregator: { _, _ in
             RefetchFakeAggregator(articles: [], refetchResult: refreshed)
@@ -644,7 +635,6 @@ struct AggregationServiceTests {
         context.insert(article)
         try context.save()
 
-        let feedID = feed.persistentModelID
         let service = AggregationService(context: context, makeAggregator: { _, _ in
             FakeAggregator(articles: [self.aggregated("id1")])   // same identifier → in-place refresh
         }, aiProcessor: FakeAIProcessor())
@@ -678,7 +668,6 @@ struct AggregationServiceTests {
         context.insert(rss); context.insert(reddit)
         try context.save()
 
-        let rssID = rss.persistentModelID
         let redditID = reddit.persistentModelID
         // Reddit toggle off (default) -> reddit feed skipped.
         let settings = AppSettings(defaults: freshDefaults())

@@ -35,6 +35,7 @@ actor AggregationWriter {
     // MARK: Public run entry points
 
     func runUpdateAll(_ inputs: AggregationRunInputs) async -> AggregationRunResult {
+        pendingTouched.removeAll()
         var result = AggregationRunResult()
         let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.enabled })
         let feeds = ((try? modelContext.fetch(descriptor)) ?? [])
@@ -64,6 +65,7 @@ actor AggregationWriter {
     }
 
     func runUpdate(feedID: PersistentIdentifier, _ inputs: AggregationRunInputs) async -> AggregationRunResult {
+        pendingTouched.removeAll()
         var result = AggregationRunResult()
         guard let feed = modelContext.model(for: feedID) as? Feed,
               inputs.isSourceEnabled(feed.type) else { return result }
@@ -74,6 +76,7 @@ actor AggregationWriter {
     }
 
     func runForceReloadFeed(feedID: PersistentIdentifier, _ inputs: AggregationRunInputs) async -> AggregationRunResult {
+        pendingTouched.removeAll()
         var result = AggregationRunResult()
         guard let feed = modelContext.model(for: feedID) as? Feed,
               inputs.isSourceEnabled(feed.type) else { return result }
@@ -84,6 +87,7 @@ actor AggregationWriter {
     }
 
     func runForceReloadArticle(articleID: PersistentIdentifier, _ inputs: AggregationRunInputs) async -> AggregationRunResult {
+        pendingTouched.removeAll()
         var result = AggregationRunResult()
         guard let article = modelContext.model(for: articleID) as? Article, let feed = article.feed else { return result }
         let config = FeedConfig(feed: feed, collectedToday: 0)
@@ -108,6 +112,7 @@ actor AggregationWriter {
     }
 
     func runSummarize(articleID: PersistentIdentifier, _ inputs: AggregationRunInputs) async -> (Bool, String?) {
+        pendingTouched.removeAll()
         guard let article = modelContext.model(for: articleID) as? Article else { return (false, nil) }
         let seed = AggregatedArticle(
             title: article.title, identifier: article.identifier, url: article.url,
@@ -214,6 +219,6 @@ actor AggregationWriter {
     }
 
     #if DEBUG
-    func assertContextIsNot(_ other: ModelContext) -> Bool { modelContext === other }
+    func contextIsSameAs(_ other: ModelContext) -> Bool { modelContext === other }
     #endif
 }

@@ -47,7 +47,8 @@ enum ArticleUpsert {
             let blocks = blocksFor(item)
             // Computed once and reused for the canonical-createdAt lookup (insert only) and the
             // onUpsert notification (both branches), so callers can accumulate exactly the UIDs
-            // this run actually touched (see AggregationService.pendingPushUIDs).
+            // this run actually touched. The onUpsert callback feeds AggregationWriter.pendingTouched,
+            // which is returned to the coordinator via AggregationRunResult.touchedUIDs for the iCloud push.
             let uid = ArticleUID.make(
                 feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
                 articleIdentifier: item.identifier, date: item.date, title: item.title)
