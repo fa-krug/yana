@@ -40,9 +40,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         #if DEBUG
+        // Before any seeding: a UI test that asks for a clean library must not inherit fixture data
+        // left behind by an earlier test class in the same simulator container.
+        UITestReset.resetIfRequested(into: AppContainer.shared.mainContext)
         DebugSeed.seedIfRequested(into: AppContainer.shared.mainContext)
         Task { @MainActor in
             await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)
+        }
+        // Keep the Development CloudKit schema in step with the record types in code. No-ops unless
+        // the field set actually changed (and unless iCloud sync is on), and runs at low priority
+        // off the launch path so it never delays first paint.
+        Task(priority: .utility) { @MainActor in
+            await CloudKitSchemaBootstrap().pushIfNeeded()
         }
         #endif
         StartupTrace.event("didFinishLaunching.begin")

@@ -43,7 +43,18 @@ struct ArticleZoneChanges: Sendable, Equatable {
 /// Derives the canonical, cross-device article identity. Uses the stable `(feed, type, identifier)`
 /// triple (the same key `StarredMark` uses); when a feed yields no `articleIdentifier`, a
 /// deterministic `date+title` hash fills the third segment so the UID is still unique and stable.
+///
+/// The UID doubles as the `SyncedArticle` CloudKit record name, so it must satisfy CloudKit's
+/// limits. Both segments are unbounded source-supplied strings (a feed URL and the source's
+/// link/permalink/GUID), and their concatenation can exceed the record-name limit — which makes
+/// `CKRecord.ID(recordName:)` raise an ObjC `CKException` that Swift cannot catch, aborting the
+/// process. Bounding it here rather than at the CloudKit boundary keeps every consumer in
+/// agreement: pushes, tombstones (`ArticleZoneStore.delete(articleUIDs:)`), the synced
+/// `timelineAnchorUID`, and local resolution all derive the UID through this one function.
 enum ArticleUID {
+    /// CloudKit rejects a record name longer than this, measured in UTF-16 code units.
+    static let recordNameLimit = 255
+
     static func make(
         feedIdentifier: String,
         aggregatorType: String,
@@ -53,13 +64,23 @@ enum ArticleUID {
     ) -> String {
         let third: String
         if articleIdentifier.isEmpty {
-            let seed = "\(date.timeIntervalSince1970)|\(title)"
-            let digest = SHA256.hash(data: Data(seed.utf8))
-            third = digest.map { String(format: "%02x", $0) }.joined()
+            third = hex(of: "\(date.timeIntervalSince1970)|\(title)")
         } else {
             third = articleIdentifier
         }
-        return "\(feedIdentifier)|\(aggregatorType)|\(third)"
+        let uid = "\(feedIdentifier)|\(aggregatorType)|\(third)"
+        guard uid.utf16.count > recordNameLimit else { return uid }
+        // Too long for a record name. Collapse the whole thing into a digest instead of truncating:
+        // truncation would alias two articles sharing a long prefix onto one record and silently
+        // drop one. The digest is deterministic, so every device derives the same name for the same
+        // article, and it carries no `|`, so it can never collide with a natural (three-segment)
+        // UID. Linking still works on the receiving side because the record keeps the triple in its
+        // own fields — `ArticleRecordApply` matches on those, not on the UID.
+        return "sha256:\(hex(of: uid))"
+    }
+
+    private static func hex(of string: String) -> String {
+        SHA256.hash(data: Data(string.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 

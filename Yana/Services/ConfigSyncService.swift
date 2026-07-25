@@ -65,10 +65,15 @@ final class CloudKitConfigStore: ConfigStore {
         }
     }
 
+    /// Field keys of the `ConfigDocument` record type. Named so `CloudKitSchemaBootstrap` pushes the
+    /// exact same field set this store writes, instead of a hand-copied duplicate that can drift.
+    static let opmlKey = "opml"
+    static let settingsDataKey = "settingsData"
+
     func save(_ document: ConfigDocument) async throws {
         let record = cachedRecord ?? CKRecord(recordType: Self.recordType, recordID: recordID)
-        record["opml"] = document.opml as CKRecordValue
-        record["settingsData"] = document.settingsData as CKRecordValue
+        record[Self.opmlKey] = document.opml as CKRecordValue
+        record[Self.settingsDataKey] = document.settingsData as CKRecordValue
         do {
             let saved = try await database.save(record)
             cachedRecord = saved
@@ -78,8 +83,8 @@ final class CloudKitConfigStore: ConfigStore {
     }
 
     private static func document(from record: CKRecord) -> ConfigDocument {
-        let opml = record["opml"] as? String ?? ""
-        let settingsData = record["settingsData"] as? Data ?? Data()
+        let opml = record[opmlKey] as? String ?? ""
+        let settingsData = record[settingsDataKey] as? Data ?? Data()
         return ConfigDocument(opml: opml, settingsData: settingsData)
     }
 
