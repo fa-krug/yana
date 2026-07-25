@@ -33,6 +33,9 @@ final class StarredRegistry {
 
     var all: Set<StarredMark> { marks }
 
+    /// A Sendable copy of the current marks, for handing to the background writer.
+    func snapshotMarks() -> Set<StarredMark> { marks }
+
     func contains(_ mark: StarredMark) -> Bool {
         marks.contains(mark)
     }
