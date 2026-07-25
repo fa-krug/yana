@@ -110,6 +110,18 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   The Mac surfaces carry `mac.*` accessibility identifiers purely so the test can navigate
   locale-independently; the sidebar search field is matched as `app.searchFields` because
   `.searchable` does not forward an identifier reliably.
+- **Codesigning gotchas (Mac Catalyst only — the iPhone lane ad-hoc signs and is immune):**
+  - `codesign … errSecInternalComponent` means `codesign` cannot read the signing key. Two distinct
+    causes: (a) the login keychain's signing keys lack `codesign:` in their partition list — fix with
+    `security unlock-keychain ~/Library/Keychains/login.keychain-db` then
+    `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k '<password>' ~/Library/Keychains/login.keychain-db`;
+    (b) the shell is not in the **Aqua** launchd session (check `launchctl managername`) — a
+    `Background` session is never served a signing key, so the lane must be run from a real
+    Terminal, not from an automation/agent shell.
+  - `invalid or unsupported format for signature … <Framework>.cstemp` means a PREVIOUS codesign run
+    died partway and left `.cstemp` turds inside the copied XCTest frameworks. Clear them with
+    `rm -rf <DerivedData>/Build/Products/Debug-maccatalyst` and re-run; deleting only the `.cstemp`
+    files is not enough, because the frameworks themselves are left half-signed.
 
 ### Website (GitHub Pages)
 - The project ships a self-contained marketing + legal site under `docs/site/`, deployed to GitHub
