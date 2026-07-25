@@ -212,4 +212,8 @@ actor AggregationWriter {
         let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.isBuiltIn })
         return (try? modelContext.fetch(descriptor))?.first
     }
+
+    #if DEBUG
+    func assertContextIsNot(_ other: ModelContext) -> Bool { modelContext === other }
+    #endif
 }

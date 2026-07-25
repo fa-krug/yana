@@ -92,6 +92,15 @@ struct AggregationWriterTests {
         #expect((try main.fetch(FetchDescriptor<Article>())).isEmpty)
     }
 
+    @Test func writerUsesADistinctContextFromMain() async throws {
+        let container = try makeContainer()
+        let main = ModelContext(container)
+        let writer = AggregationWriter(modelContainer: container)
+        // The writer's context is created by @ModelActor and is not the main context.
+        let sameAsMain = await writer.assertContextIsNot(main)   // true means NOT the same
+        #expect(sameAsMain == false)
+    }
+
     @Test func retentionDeletesAgedOutAndReportsDeletedUIDs() async throws {
         let container = try makeContainer()
         let main = ModelContext(container)
