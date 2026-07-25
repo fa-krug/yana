@@ -52,6 +52,12 @@ final class MacScreenshotUITests: XCTestCase {
             // AppSettings.swift); stored value: AIProvider.openai.rawValue == "openai" (line 5).
             // Uses the argument domain — nothing persists to the real UserDefaults store.
             "-settings.activeAIProvider", "openai",
+            // Mac Catalyst is AppKit-hosted and PERSISTS window state, so a Settings window left
+            // open by a previous run gets restored on the next launch — which silently changed
+            // which window `app.windows` returned first and produced a 1440x1344 capture of the
+            // restored Settings window instead of the main window. This is the standard AppKit
+            // flag to ignore saved window state, so every run starts with just the main window.
+            "-ApplePersistenceIgnoreState", "YES",
         ]
         app.launch()
 
@@ -62,7 +68,8 @@ final class MacScreenshotUITests: XCTestCase {
         XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 60),
                       "sidebar rendered no article rows")
         Thread.sleep(forTimeInterval: Self.logoSettle)
-        let mainWindow = app.windows.firstMatch
+        let mainWindow = Self.window(of: app, containing: "mac.sidebar.list")
+        XCTAssertTrue(mainWindow.waitForExistence(timeout: 15), "main window not found by content")
         attach(mainWindow.screenshot(), named: "01_Reader.png",
                expectedPixelSize: CGSize(width: 2880, height: 1800))
 
@@ -89,7 +96,7 @@ final class MacScreenshotUITests: XCTestCase {
         XCTAssertTrue(batteryRow.waitForExistence(timeout: 15),
                       "search for \"battery\" produced no matching rows (checked staticTexts labels)")
         Thread.sleep(forTimeInterval: Self.logoSettle)
-        attach(app.windows.firstMatch.screenshot(), named: "02_Search.png",
+        attach(mainWindow.screenshot(), named: "02_Search.png",
                expectedPixelSize: CGSize(width: 2880, height: 1800))
 
         // Shots 3 and 4 — the Settings window, captured at its natural size. The lane composites
@@ -99,23 +106,39 @@ final class MacScreenshotUITests: XCTestCase {
 
         try selectPane("feeds", in: app)
         Thread.sleep(forTimeInterval: Self.logoSettle)
-        let feedsTarget = settingsWindow.descendants(matching: .any)
-            .matching(identifier: "mac.settings.window").firstMatch
-        let feedsFrame = feedsTarget.exists ? feedsTarget.frame : settingsWindow.frame
-        XCTAssertTrue(feedsFrame.width >= 700 && feedsFrame.height >= 560,
-                      "Settings capture target for Feeds pane is too small: \(feedsFrame)")
+        assertPlausibleSettingsWindow(settingsWindow, pane: "feeds")
         attach(settingsWindow.screenshot(), named: "03_Feeds.overlay.png",
                expectedPixelSize: nil)
 
         try selectPane("ai", in: app)
         Thread.sleep(forTimeInterval: 1.0)
-        let aiTarget = settingsWindow.descendants(matching: .any)
-            .matching(identifier: "mac.settings.window").firstMatch
-        let aiFrame = aiTarget.exists ? aiTarget.frame : settingsWindow.frame
-        XCTAssertTrue(aiFrame.width >= 700 && aiFrame.height >= 560,
-                      "Settings capture target for AI pane is too small: \(aiFrame)")
+        assertPlausibleSettingsWindow(settingsWindow, pane: "ai")
         attach(settingsWindow.screenshot(), named: "04_AI.overlay.png",
                expectedPixelSize: nil)
+    }
+
+    /// Guard against capturing something that is not the whole Settings window. `MacSettingsWindow`
+    /// declares `minWidth: 700, minHeight: 560`, so anything smaller means the query resolved to an
+    /// inner view (SwiftUI propagates identifiers to descendants) or to the wrong window entirely.
+    @MainActor
+    private func assertPlausibleSettingsWindow(_ window: XCUIElement, pane: String) {
+        let frame = window.frame
+        XCTAssertTrue(frame.width >= 700 && frame.height >= 560,
+                      "Settings capture target for the \(pane) pane is too small: \(frame)")
+    }
+
+    /// Resolve a WINDOW by a marker identifier somewhere inside it.
+    ///
+    /// Two problems this avoids. `app.windows.firstMatch` is order-undefined, and once a Settings
+    /// window exists (including one RESTORED from a previous run) it can return that instead of the
+    /// main window — observed as a 1440x1344 capture of the Settings window where 2880x1800 was
+    /// expected. And `descendants(matching: .any).matching(identifier:)` can bind to an inner view,
+    /// because SwiftUI propagates an accessibility identifier to descendants. Constraining the query
+    /// to `.windows` and selecting by contained marker fixes both: the result is always a window,
+    /// and always the right one.
+    @MainActor
+    private static func window(of app: XCUIApplication, containing identifier: String) -> XCUIElement {
+        app.windows.containing(.any, identifier: identifier).firstMatch
     }
 
     // MARK: - Navigation
@@ -123,8 +146,11 @@ final class MacScreenshotUITests: XCTestCase {
     /// Open Settings with ⌘, falling back to the toolbar overflow menu.
     @MainActor
     private func openSettings(in app: XCUIApplication) throws -> XCUIElement {
-        let window = app.descendants(matching: .any)
-            .matching(identifier: "mac.settings.window").firstMatch
+        // Resolve the Settings WINDOW by a marker inside it (a pane row), not by the
+        // `mac.settings.window` identifier on the root view — that identifier propagates to
+        // descendants, so `firstMatch` could bind to an inner view and we would screenshot a
+        // fragment. `general` is always present: it is the first `SettingsPane` case.
+        let window = Self.window(of: app, containing: "mac.settings.pane.general")
 
         app.typeKey(",", modifierFlags: .command)
         if window.waitForExistence(timeout: 10) { return window }
