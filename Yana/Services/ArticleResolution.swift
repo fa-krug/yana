@@ -7,10 +7,11 @@ import SwiftData
 @MainActor
 enum ArticleResolution {
     static func resolve(_ summary: ArticleSummary, in context: ModelContext) -> Article? {
-        if let pid = summary.persistentID, let article = context.model(for: pid) as? Article {
-            return article
-        }
-        return fetchByIdentifier(summary.identifier, in: context)
+        // Fresh identifier fetch first — a background-committed body update is only guaranteed
+        // visible via a fetch, not a held/cached object. Falls back to the pid fast path.
+        if let article = fetchByIdentifier(summary.identifier, in: context) { return article }
+        if let pid = summary.persistentID, let article = context.model(for: pid) as? Article { return article }
+        return nil
     }
 
     static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article? {
