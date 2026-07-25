@@ -9,15 +9,42 @@ final class YanaUITests: XCTestCase {
     /// Timeout for in-flow UI transitions (navigation, sheet presentation) once the app is running.
     private static let uiTimeout: TimeInterval = 10
 
+    /// Every test here assumes an empty library. XCTest reuses one simulator app container across
+    /// test classes and runs them alphabetically, so `ScreenshotUITests` seeds its fixture library
+    /// first and that data persists — which is why these tests pass in isolation but fail in a full
+    /// run. Reset the library on launch instead of assuming a fresh container.
+    private static let resetLibrary = "-UITEST_RESET_LIBRARY"
+
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    /// Scroll `element` into view inside the Settings form.
+    ///
+    /// `app.swipeUp()` swipes from the screen centre, which in this form lands on the AI section's
+    /// slider/stepper rows and drags a *control value* instead of scrolling — the scroll then stalls
+    /// and the About section at the bottom is never reached. Dragging along the leading edge (over
+    /// row labels, which are inert) pans the form reliably. Waits for `isHittable`, not `exists`, so
+    /// the caller's tap can't land on a row that is only half on screen.
+    @MainActor
+    private func scrollToSettingsRow(_ element: XCUIElement, in app: XCUIApplication,
+                                     maxDrags: Int = 25) -> Bool {
+        let form = app.collectionViews.firstMatch.exists
+            ? app.collectionViews.firstMatch : app.scrollViews.firstMatch
+        for _ in 0..<maxDrags {
+            if element.exists, element.isHittable { return true }
+            let start = form.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.85))
+            let end = form.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.20))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        return element.exists && element.isHittable
     }
 
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
         // Skip the first-launch welcome so it doesn't cover the reader's empty state.
-        app.launchArguments += ["-UITEST_SKIP_ONBOARDING"]
+        app.launchArguments += ["-UITEST_SKIP_ONBOARDING", Self.resetLibrary]
         app.launch()
         // The app opens directly into the reader. With no feeds configured yet, the reader
         // shows its empty-state ContentUnavailableView. Assert on a stable accessibility
@@ -31,7 +58,7 @@ final class YanaUITests: XCTestCase {
     @MainActor
     func testOnboardingFeedsStepAndFinish() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-UITEST_RESET_ONBOARDING"]
+        app.launchArguments += ["-UITEST_RESET_ONBOARDING", Self.resetLibrary]
         app.launch()
 
         // Welcome → AI → Feeds via the footer Continue button.
@@ -66,7 +93,8 @@ final class YanaUITests: XCTestCase {
     @MainActor
     func testSettingsRestoreShowsWelcomeAgain() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-UITEST_SKIP_ONBOARDING"]   // start past onboarding, in the reader
+        // Reset too: seeded feeds lengthen the Settings form past the swipe budget below.
+        app.launchArguments += ["-UITEST_SKIP_ONBOARDING", Self.resetLibrary]
         app.launch()
 
         // Open Settings via the reader's overflow menu (the empty state keeps the reader chrome;
@@ -86,9 +114,8 @@ final class YanaUITests: XCTestCase {
 
         // Scroll to the restore row (About section, bottom of the form) and tap it.
         let restore = app.buttons["settings.showWelcome"]
-        var tries = 0
-        while !restore.exists, tries < 12 { app.swipeUp(); tries += 1 }
-        XCTAssertTrue(restore.waitForExistence(timeout: Self.uiTimeout))
+        XCTAssertTrue(scrollToSettingsRow(restore, in: app),
+                      "Could not scroll the Settings form to the restore row")
         restore.tap()
 
         // The welcome screen returns.

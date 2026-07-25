@@ -65,25 +65,50 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         return drained
     }
 
+    /// Build a `CKRecord.ID`, or nil when `recordName` is one CloudKit would reject. `CKRecord.ID`
+    /// validates its name by raising an ObjC `CKException`, which Swift cannot catch — an invalid
+    /// name takes the whole process down instead of failing the one record. `ArticleUID` already
+    /// bounds article UIDs and image names are content hashes, so this is a backstop: skip the
+    /// record and log, rather than abort the app.
+    private func recordID(_ recordName: String) -> CKRecord.ID? {
+        guard !recordName.isEmpty, recordName.utf16.count <= ArticleUID.recordNameLimit else {
+            log.error("""
+                Skipping record with a CloudKit-invalid record name \
+                (\(recordName.utf16.count, privacy: .public) UTF-16 units)
+                """)
+            return nil
+        }
+        return CKRecord.ID(recordName: recordName, zoneID: zoneID)
+    }
+
     func upsert(articles: [SyncedArticleRecord], images: [SyncedImageRecord]) async throws {
         // Ensure the custom zone exists before the first save.
         engine().state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
-        for image in images { pendingImageUploads[image.hash] = image }
-        for article in articles { articleRecordCache[article.uid] = article }
-        let ids = articles.map { CKRecord.ID(recordName: $0.uid, zoneID: zoneID) }
-            + images.map { CKRecord.ID(recordName: $0.hash, zoneID: zoneID) }
+        // Only cache a record once its name is known-valid, so a skipped record doesn't linger in
+        // the send caches waiting for a batch that will never ask for it.
+        var ids: [CKRecord.ID] = []
+        for article in articles {
+            guard let id = recordID(article.uid) else { continue }
+            articleRecordCache[article.uid] = article
+            ids.append(id)
+        }
+        for image in images {
+            guard let id = recordID(image.hash) else { continue }
+            pendingImageUploads[image.hash] = image
+            ids.append(id)
+        }
         engine().state.add(pendingRecordZoneChanges: ids.map { .saveRecord($0) })
         try await engine().sendChanges()
     }
 
     func delete(articleUIDs: [String]) async throws {
-        let ids = articleUIDs.map { CKRecord.ID(recordName: $0, zoneID: zoneID) }
+        let ids = articleUIDs.compactMap { recordID($0) }
         engine().state.add(pendingRecordZoneChanges: ids.map { .deleteRecord($0) })
         try await engine().sendChanges()
     }
 
     func fetchImage(hash: String) async throws -> SyncedImageRecord? {
-        let id = CKRecord.ID(recordName: hash, zoneID: zoneID)
+        guard let id = recordID(hash) else { return nil }
         do {
             let record = try await database.record(for: id)
             return Self.imageRecord(from: record)
@@ -224,11 +249,14 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     /// pending change from the engine so it stops being retried, then return `nil`.
     private func batchRecord(for recordID: CKRecord.ID, syncEngine: CKSyncEngine) -> CKRecord? {
         let name = recordID.recordName
+        // Reuse the pending change's `recordID` rather than rebuilding one from the cached struct:
+        // it is the same name, already past `recordID(_:)`'s validation, so serialization can't
+        // re-trip CloudKit's uncatchable record-name check.
         if let article = articleRecordCache[name] {
-            return Self.ckRecord(from: article, zoneID: zoneID)
+            return Self.ckRecord(from: article, recordID: recordID)
         }
         if let image = pendingImageUploads[name] {
-            return ckRecord(from: image)
+            return ckRecord(from: image, recordID: recordID)
         }
         log.error("No cached data for pending save \(name, privacy: .public); removing orphaned pending change")
         syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(recordID)])
@@ -238,9 +266,8 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     /// Serialize an image into a `CKRecord`, writing its `CKAsset` blob to a tracked temp file in the
     /// dedicated asset subdirectory. The temp file is deleted once the record is confirmed saved (or
     /// dropped as stale) — see `forget(recordName:)`.
-    private func ckRecord(from image: SyncedImageRecord) -> CKRecord {
-        let record = CKRecord(recordType: Self.imageRecordType,
-                              recordID: CKRecord.ID(recordName: image.hash, zoneID: zoneID))
+    private func ckRecord(from image: SyncedImageRecord, recordID: CKRecord.ID) -> CKRecord {
+        let record = CKRecord(recordType: Self.imageRecordType, recordID: recordID)
         record["ext"] = image.ext as CKRecordValue
         let tmp = assetTempDir.appendingPathComponent("\(image.hash).\(image.ext)")
         try? image.data.write(to: tmp)
@@ -256,8 +283,10 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         return try? JSONDecoder().decode(CKSyncEngine.State.Serialization.self, from: data)
     }
 
-    private static func ckRecord(from a: SyncedArticleRecord, zoneID: CKRecordZone.ID) -> CKRecord {
-        let record = CKRecord(recordType: articleRecordType, recordID: CKRecord.ID(recordName: a.uid, zoneID: zoneID))
+    /// Internal rather than private so `CloudKitSchemaBootstrap` can push a sample record built by
+    /// this exact mapping — the pushed schema then cannot drift from what the app really writes.
+    static func ckRecord(from a: SyncedArticleRecord, recordID: CKRecord.ID) -> CKRecord {
+        let record = CKRecord(recordType: articleRecordType, recordID: recordID)
         record["feedIdentifier"] = a.feedIdentifier as CKRecordValue
         record["aggregatorType"] = a.aggregatorType as CKRecordValue
         record["articleIdentifier"] = a.articleIdentifier as CKRecordValue
