@@ -96,8 +96,8 @@ struct AggregationWriterTests {
         let container = try makeContainer()
         let main = ModelContext(container)
         let writer = AggregationWriter(modelContainer: container)
-        // The writer's context is created by @ModelActor and is not the main context.
-        let sameAsMain = await writer.assertContextIsNot(main)   // true means NOT the same
+        // distinct context → not the same → false
+        let sameAsMain = await writer.contextIsSameAs(main)
         #expect(sameAsMain == false)
     }
 

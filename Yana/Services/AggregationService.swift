@@ -173,6 +173,9 @@ final class AggregationService {
             isSourceEnabled: { enabledSources.contains($0) },
             retentionDays: settings.retentionDays,
             isPassiveDevice: settings.isPassiveDevice,
+            // Each event hops to the main actor in its own Task, so ordering isn't guaranteed;
+            // UpdateProgress currently has no UI consumer, so this is presently unobservable.
+            // Funnel through an ordered path before any view reads updateProgress.
             progress: { [weak self] event in
                 Task { @MainActor in
                     guard let self else { return }
