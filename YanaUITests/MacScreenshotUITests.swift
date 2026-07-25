@@ -43,6 +43,15 @@ final class MacScreenshotUITests: XCTestCase {
             // Force the app locale; there is no simulator language setting to lean on.
             "-AppleLanguages", "(\(languageCode))",
             "-AppleLocale", localeIdentifier,
+            // Suppress iCloud sync so it cannot interfere with seeded state.
+            // Uses the argument domain — nothing persists to the real UserDefaults store.
+            "-settings.iCloudSyncEnabled", "0",
+            // Force the active AI provider to OpenAI so the AI pane shows a deterministic
+            // set of fields (API key + URL + model) regardless of any prior user config.
+            // Key: AppSettings.Key.activeAIProvider ("settings.activeAIProvider", line 118 in
+            // AppSettings.swift); stored value: AIProvider.openai.rawValue == "openai" (line 5).
+            // Uses the argument domain — nothing persists to the real UserDefaults store.
+            "-settings.activeAIProvider", "openai",
         ]
         app.launch()
 
@@ -54,7 +63,8 @@ final class MacScreenshotUITests: XCTestCase {
                       "sidebar rendered no article rows")
         Thread.sleep(forTimeInterval: Self.logoSettle)
         let mainWindow = app.windows.firstMatch
-        attach(mainWindow.screenshot(), named: "01_Reader.png")
+        attach(mainWindow.screenshot(), named: "01_Reader.png",
+               expectedPixelSize: CGSize(width: 2880, height: 1800))
 
         // Shot 2 — search. The field is matched by element type, not identifier: `.searchable`
         // does not forward an accessibilityIdentifier reliably, and searchFields is already
@@ -65,19 +75,15 @@ final class MacScreenshotUITests: XCTestCase {
         search.typeText("battery")
         // 250ms debounce in MacSidebarView, plus the predicate fetch.
         Thread.sleep(forTimeInterval: 1.5)
-        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 15),
-                      "search for \"battery\" produced no rows")
+        // Assert that at least one result cell whose label contains "battery" appeared.
+        let batteryCell = app.cells.matching(
+            NSPredicate(format: "label CONTAINS[cd] 'battery'")
+        ).firstMatch
+        XCTAssertTrue(batteryCell.waitForExistence(timeout: 15),
+                      "search for \"battery\" produced no matching rows (case-insensitive label check)")
         Thread.sleep(forTimeInterval: Self.logoSettle)
-        attach(app.windows.firstMatch.screenshot(), named: "02_Search.png")
-
-        // Clear the query so the Settings shots composite over an unfiltered timeline.
-        // Use select-all + delete rather than the NSSearchField clear button: the clear
-        // button only exists once text is typed AND the field has focus, so an element-
-        // based tap can raise a hard failure and abort the run — losing shots 3 and 4.
-        search.click()
-        search.typeKey("a", modifierFlags: .command)
-        search.typeKey(.delete, modifierFlags: [])
-        Thread.sleep(forTimeInterval: 1.0)
+        attach(app.windows.firstMatch.screenshot(), named: "02_Search.png",
+               expectedPixelSize: CGSize(width: 2880, height: 1800))
 
         // Shots 3 and 4 — the Settings window, captured at its natural size. The lane composites
         // these over 01_Reader. Capturing the main window while Settings floats over it risks the
@@ -86,11 +92,23 @@ final class MacScreenshotUITests: XCTestCase {
 
         try selectPane("feeds", in: app)
         Thread.sleep(forTimeInterval: Self.logoSettle)
-        attach(settingsWindow.screenshot(), named: "03_Feeds.overlay.png")
+        let feedsTarget = settingsWindow.descendants(matching: .any)
+            .matching(identifier: "mac.settings.window").firstMatch
+        let feedsFrame = feedsTarget.exists ? feedsTarget.frame : settingsWindow.frame
+        XCTAssertTrue(feedsFrame.width >= 700 && feedsFrame.height >= 560,
+                      "Settings capture target for Feeds pane is too small: \(feedsFrame)")
+        attach(settingsWindow.screenshot(), named: "03_Feeds.overlay.png",
+               expectedPixelSize: nil)
 
         try selectPane("ai", in: app)
         Thread.sleep(forTimeInterval: 1.0)
-        attach(settingsWindow.screenshot(), named: "04_AI.overlay.png")
+        let aiTarget = settingsWindow.descendants(matching: .any)
+            .matching(identifier: "mac.settings.window").firstMatch
+        let aiFrame = aiTarget.exists ? aiTarget.frame : settingsWindow.frame
+        XCTAssertTrue(aiFrame.width >= 700 && aiFrame.height >= 560,
+                      "Settings capture target for AI pane is too small: \(aiFrame)")
+        attach(settingsWindow.screenshot(), named: "04_AI.overlay.png",
+               expectedPixelSize: nil)
     }
 
     // MARK: - Navigation
@@ -105,16 +123,23 @@ final class MacScreenshotUITests: XCTestCase {
         if window.waitForExistence(timeout: 10) { return window }
 
         // Fallback: the ellipsis button in MacRootView's .primaryAction toolbar group. It has no
-        // identifier, so match the SF Symbol image name XCUITest exposes as the label.
-        // Wait for the identifier-based button FIRST before evaluating .exists — sampling .exists
-        // before the toolbar is in the accessibility tree would always return false and bind the
-        // wrong (positional) fallback, making the subsequent waitForExistence wait on a ghost element.
-        let namedOverflow = app.buttons["ellipsis.circle"]
+        // identifier, so match the SF Symbol image name or its localized label across locales.
+        // Wait for the named button FIRST before evaluating .exists — sampling .exists before the
+        // toolbar is in the accessibility tree would always return false and bind the wrong
+        // (positional) fallback, making the subsequent waitForExistence wait on a ghost element.
+        let namedOverflow = app.buttons.matching(
+            NSPredicate(format: "label IN %@", ["ellipsis.circle", "More", "Mehr"])
+        ).firstMatch
         let overflow: XCUIElement
         if namedOverflow.waitForExistence(timeout: 5) {
             overflow = namedOverflow
         } else {
-            overflow = app.toolbars.buttons.element(boundBy: app.toolbars.buttons.count - 1)
+            let count = app.toolbars.buttons.count
+            guard count > 0 else {
+                XCTFail("Toolbar overflow fallback: no toolbar buttons found — cannot open Settings")
+                throw XCTSkip("No toolbar buttons available for Settings fallback")
+            }
+            overflow = app.toolbars.buttons.element(boundBy: count - 1)
         }
         XCTAssertTrue(overflow.waitForExistence(timeout: 10),
                       "neither ⌘, nor the toolbar overflow could open Settings")
@@ -140,8 +165,25 @@ final class MacScreenshotUITests: XCTestCase {
 
     // MARK: - Attachments
 
+    /// Attach a screenshot as a test artifact.
+    ///
+    /// - Parameters:
+    ///   - screenshot: The screenshot to attach.
+    ///   - name: The attachment file name (used by the lane's export step).
+    ///   - expectedPixelSize: When non-nil, the screenshot's pixel dimensions must match exactly.
+    ///     Pass the expected size for full-window captures; pass `nil` for overlay captures whose
+    ///     size varies with the floating window bounds.
     @MainActor
-    private func attach(_ screenshot: XCUIScreenshot, named name: String) {
+    private func attach(_ screenshot: XCUIScreenshot, named name: String,
+                        expectedPixelSize: CGSize?) {
+        if let expected = expectedPixelSize {
+            let actualW = screenshot.image.size.width * screenshot.image.scale
+            let actualH = screenshot.image.size.height * screenshot.image.scale
+            XCTAssertEqual(actualW, expected.width,
+                           "\(name): screenshot pixel width \(actualW) ≠ expected \(expected.width)")
+            XCTAssertEqual(actualH, expected.height,
+                           "\(name): screenshot pixel height \(actualH) ≠ expected \(expected.height)")
+        }
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         // Without .keepAlways the attachment is discarded on success — which is every run we
