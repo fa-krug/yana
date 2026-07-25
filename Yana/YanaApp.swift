@@ -43,6 +43,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Before any seeding: a UI test that asks for a clean library must not inherit fixture data
         // left behind by an earlier test class in the same simulator container.
         UITestReset.resetIfRequested(into: AppContainer.shared.mainContext)
+        // Must run before ConfigSyncService.start() (called in the WindowGroup scene .task) so that
+        // iCloudSyncEnabled is already false when the sync service initialises.
+        MacScreenshotWindow.quietBackgroundWorkIfRequested()
         DebugSeed.seedIfRequested(into: AppContainer.shared.mainContext)
         Task { @MainActor in
             await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)

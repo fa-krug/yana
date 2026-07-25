@@ -67,7 +67,9 @@ enum MacScreenshotWindow {
         // so the window is still a normal, resizable window for anyone watching the run.
         scene.sizeRestrictions?.minimumSize = target
         scene.sizeRestrictions?.maximumSize = target
-        let currentOrigin = scene.coordinateSpace.bounds.origin
+        // Use the scene's true current position so the window stays where the user last left it.
+        // `effectiveGeometry.systemFrame` is iOS 16+ and available on Mac Catalyst.
+        let currentOrigin = scene.effectiveGeometry.systemFrame.origin
         scene.requestGeometryUpdate(.Mac(systemFrame: CGRect(origin: currentOrigin, size: target))) { _ in }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
