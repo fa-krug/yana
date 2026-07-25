@@ -20,6 +20,21 @@ enum AppContainer {
                 // forbids the non-optional cascade relationship on Feed/Article.
                 // iCloud sync of *configuration* is handled separately, out of band,
                 // by ConfigSyncService via a single CloudKit config record.
+                #if DEBUG
+                // Screenshot-capture runs get a throwaway store in the temp directory so
+                // the developer's real Mac library is never touched. The file is deleted
+                // before each run so every capture starts from an empty, seed-only state.
+                // This is also why ScreenshotSeed can write fixture data without risk of
+                // polluting a live library.
+                if MacScreenshotWindow.isRequested {
+                    let storeURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("yana-screenshots.store")
+                    try? FileManager.default.removeItem(at: storeURL)
+                    let config = ModelConfiguration(url: storeURL, cloudKitDatabase: .none)
+                    return try ModelContainer(for: Feed.self, Tag.self, Article.self,
+                                             configurations: config)
+                }
+                #endif
                 let config = ModelConfiguration(cloudKitDatabase: .none)
                 return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                          configurations: config)
@@ -43,9 +58,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Before any seeding: a UI test that asks for a clean library must not inherit fixture data
         // left behind by an earlier test class in the same simulator container.
         UITestReset.resetIfRequested(into: AppContainer.shared.mainContext)
-        // Must run before ConfigSyncService.start() (called in the WindowGroup scene .task) so that
-        // iCloudSyncEnabled is already false when the sync service initialises.
-        MacScreenshotWindow.quietBackgroundWorkIfRequested()
         DebugSeed.seedIfRequested(into: AppContainer.shared.mainContext)
         Task { @MainActor in
             await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)
