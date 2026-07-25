@@ -94,13 +94,21 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   running the reset before the seed.
 - `-UITEST_MAC_SCREENSHOTS` (`Yana/Utilities/MacScreenshotWindow.swift`) pins the main window to
   1440×900pt — 2880×1800 at 2x — suppresses the Mac launch refresh (whose spinner and error toast
-  would otherwise land in a frame), and forces iCloud sync **off**: the app under test shares the
+  would otherwise land in a frame), and suppresses iCloud sync via a launch argument (not a persisted
+  setting, so the developer's real sync preference is never modified): the app under test shares the
   real `de.fa-krug.Yana` container, so a developer's synced feeds would otherwise appear mid-capture.
-- Gotchas: exact sizing assumes a **Retina (2x) display** — the compositor upscales on a 1x host
-  rather than emitting an invalid size. Both `YanaTests` and `YanaUITests` must keep
+- The capture run uses a **throwaway SwiftData store** in the system temp directory
+  (`yana-screenshots.store` + its `-wal`/`-shm` siblings, deleted before each run). The developer's
+  real Mac library under `~/Library/Application Support/` is never touched.
+- Gotchas: exact sizing **requires a Retina (2x) display** — the lane fails loudly if the direct
+  shots are not exactly 2880×1800, and the compositor fails loudly if the base image has the wrong
+  aspect ratio. Neither falls back silently. Both `YanaTests` and `YanaUITests` must keep
   `SUPPORTS_MACCATALYST`, because `xcodebuild` builds every test target in the scheme even with
-  `-only-testing`. The Mac surfaces carry `mac.*` accessibility identifiers purely so the test can
-  navigate locale-independently; the sidebar search field is matched as `app.searchFields` because
+  `-only-testing`. Per-locale isolation works via `-UITEST_RESET_LIBRARY` (not `erase_simulator`,
+  which has no Mac equivalent); UserDefaults and Keychain carry over between runs, which is why the
+  test pins settings via a UserDefaults argument domain rather than relying on persisted state.
+  The Mac surfaces carry `mac.*` accessibility identifiers purely so the test can navigate
+  locale-independently; the sidebar search field is matched as `app.searchFields` because
   `.searchable` does not forward an identifier reliably.
 
 ### Website (GitHub Pages)

@@ -42,9 +42,6 @@ struct MacRootView: View {
             #if DEBUG
             // Pin the window to a fixed size when capturing App Store screenshots. Main window
             // only — the Settings window is captured at its natural size and composited.
-            // (`quietBackgroundWorkIfRequested()` is NOT called here: it already runs from
-            // AppDelegate.didFinishLaunching, which is the only point guaranteed to precede
-            // ConfigSyncService.start().)
             MacScreenshotWindow.applyWindowGeometryIfRequested()
             #endif
         }

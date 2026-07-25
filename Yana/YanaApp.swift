@@ -29,7 +29,13 @@ enum AppContainer {
                 if MacScreenshotWindow.isRequested {
                     let storeURL = FileManager.default.temporaryDirectory
                         .appendingPathComponent("yana-screenshots.store")
+                    // Remove the store file and its WAL/SHM siblings so every capture run
+                    // starts from a completely clean state (SQLite leaves -wal and -shm files
+                    // behind after a crash or forced-quit, and SwiftData will refuse to open
+                    // if those files exist without the main store).
                     try? FileManager.default.removeItem(at: storeURL)
+                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("wal"))
+                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("shm"))
                     let config = ModelConfiguration(url: storeURL, cloudKitDatabase: .none)
                     return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                              configurations: config)

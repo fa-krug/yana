@@ -81,7 +81,7 @@ The Settings window is left at its natural 720×620 — it is the overlay, not t
 
 Added purely to make navigation deterministic and locale-independent (EN/DE labels differ):
 
-- `MacRootView` — `mac.window.root`, `mac.sidebar.list`, `mac.sidebar.search`
+- `MacRootView` — `mac.window.root`, `mac.sidebar.list`, `app.searchFields`
 - `MacSettingsWindow` — `mac.settings.window`, and `mac.settings.pane.<SettingsPane.rawValue>`
   on each of the seven pane rows
 
@@ -109,7 +109,7 @@ seed re-parks it on the hero article.
 | Shot | Action | Attachment |
 |---|---|---|
 | `01_Reader` | Wait for `mac.sidebar.list`; settle 2s for async feed logos (`FeedLogoView` has no cache) | `01_Reader.png` |
-| `02_Search` | Type "battery" into `mac.sidebar.search`; wait for result rows; then clear | `02_Search.png` |
+| `02_Search` | Type "battery" into `app.searchFields`; wait for result rows; then clear | `02_Search.png` |
 | `03_Feeds` | ⌘, → wait for `mac.settings.window` → click `mac.settings.pane.feeds` | `03_Feeds.overlay.png` |
 | `04_AI` | Click `mac.settings.pane.ai` | `04_AI.overlay.png` |
 

@@ -43,6 +43,17 @@ func loadImage(_ path: String) -> CGImage {
 let base = loadImage(basePath)
 let overlay = loadImage(overlayPath)
 
+// Verify the base has the expected 2880:1800 (= 8:5) aspect ratio.
+// A base from a non-Retina display or a wrong window size would silently produce a
+// stretched or cropped composite — fail loudly so the operator knows to re-run on a
+// Retina (2x) display with the correct window geometry.
+let baseAspect = Double(base.width) / Double(base.height)
+let expectedAspect = Double(canvas.width) / Double(canvas.height)
+if abs(baseAspect - expectedAspect) > 0.002 {
+    fail("base image is \(base.width)x\(base.height) (aspect \(String(format: "%.4f", baseAspect))), " +
+         "expected 2880:1800 aspect (8:5) — capture requires a Retina (2x) display and correct window geometry")
+}
+
 guard let context = CGContext(
     data: nil,
     width: Int(canvas.width),
@@ -50,13 +61,12 @@ guard let context = CGContext(
     bitsPerComponent: 8,
     bytesPerRow: 0,
     space: CGColorSpace(name: CGColorSpace.sRGB)!,
-    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
 ) else { fail("could not create the drawing context") }
 
 context.interpolationQuality = .high
 
-// Base fills the canvas. Scaling here is what makes a non-Retina host still produce a valid
-// (if upscaled) App Store image instead of a wrong-sized one.
+// Base fills the canvas.
 context.draw(base, in: CGRect(origin: .zero, size: canvas))
 
 // Overlay, centred, scaled to a fixed fraction of the canvas so both Settings shots line up
@@ -84,9 +94,6 @@ context.draw(overlay, in: overlayRect)
 context.restoreGState()
 
 guard let output = context.makeImage() else { fail("could not render the composite") }
-guard output.width == Int(canvas.width), output.height == Int(canvas.height) else {
-    fail("composite is \(output.width)x\(output.height), expected 2880x1800")
-}
 
 let outURL = URL(fileURLWithPath: outPath)
 guard let destination = CGImageDestinationCreateWithURL(

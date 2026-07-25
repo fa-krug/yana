@@ -59,8 +59,13 @@ platform :mac do
 
       # Not `scan`/`run_tests`: that action assumes a simulator destination. A direct xcodebuild
       # invocation is the only way to drive the Mac Catalyst destination.
+      #
+      # `-project` is required because fastlane's `sh` runs from the repo root (due to the
+      # `chdir` in `lane_context`), not the `fastlane/` subdirectory — so xcodebuild would
+      # otherwise find no project file in its working directory.
       sh(
         "xcodebuild", "test",
+        "-project", File.join(repo_root, "Yana.xcodeproj"),
         "-scheme", "Yana",
         "-destination", "platform=macOS,variant=Mac Catalyst",
         "-only-testing:YanaUITests/MacScreenshotUITests/#{test_method}",
@@ -106,6 +111,12 @@ platform :mac do
         if overlay_name.nil?
           source = exported["#{shot}.png"]
           UI.user_error!("#{shot}.png missing from #{locale} run") unless source
+          # Verify the direct shot is exactly 2880x1800 — any other size means the capture ran
+          # on a non-Retina display or the window geometry helper failed.
+          dims = `sips -g pixelWidth -g pixelHeight #{source.shellescape}`.scan(/\d+$/).map(&:to_i)
+          UI.user_error!(
+            "#{shot}.png is #{dims[0]}x#{dims[1]}, expected 2880x1800 — capture requires a Retina (2x) display"
+          ) unless dims == [2880, 1800]
           FileUtils.cp(source, target)
         else
           overlay = exported[overlay_name]
