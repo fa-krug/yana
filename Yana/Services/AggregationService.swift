@@ -260,7 +260,7 @@ final class AggregationService {
         let articleID = article.persistentModelID
         let writer = AggregationWriter(modelContainer: context.container)
         let result = await writer.runForceReloadArticle(articleID: articleID, makeRunInputs())
-        refreshFromStore()
+        reconcileArticle(articleID)
         await articleSync.push(uids: Array(result.touchedUIDs))
         return result.inserted
     }
@@ -276,21 +276,35 @@ final class AggregationService {
         let articleID = article.persistentModelID
         let writer = AggregationWriter(modelContainer: context.container)
         let (ok, uid) = await writer.runSummarize(articleID: articleID, makeRunInputs())
-        refreshFromStore()
+        reconcileArticle(articleID)
         if let uid { await articleSync.push(uids: [uid]) }
         return ok
     }
 
     // MARK: - Helpers
 
-    /// Refresh this (main) context's registered `Feed`/`Article` objects from the store after the
-    /// background writer committed on a sibling context. `context.model(for:)` returns a cached
-    /// registered instance without re-reading the store, so scalar edits the writer made (lastError,
-    /// lastFetchedAt, logoHash, summary, refreshed body) would otherwise look stale to callers holding
-    /// the pre-run object. A fetch reconciles the registered instances with the persisted rows.
+    /// Refresh this (main) context's registered `Feed` objects from the store after the background
+    /// writer committed on a sibling context. `context.model(for:)` returns a cached registered
+    /// instance without re-reading the store, so scalar edits the writer made (lastError,
+    /// lastFetchedAt, logoHash) would otherwise look stale to callers holding the pre-run feed. A
+    /// same-type fetch reconciles the registered instances with the persisted rows.
+    ///
+    /// Feeds are few, so this whole-table fetch is cheap. Per-article reconciliation is bounded to
+    /// the single touched row in the single-article paths (`forceReload(article:)`, `summarize`) —
+    /// this deliberately does NOT fetch the whole `Article` table, which would reintroduce the
+    /// O(library-size) main-thread cost the background writer exists to remove.
     private func refreshFromStore() {
         _ = try? context.fetch(FetchDescriptor<Feed>())
-        _ = try? context.fetch(FetchDescriptor<Article>())
+    }
+
+    /// Reconcile only the single touched `Article` after the writer committed on a sibling context,
+    /// so callers reading its scalars via `context.model(for: articleID)` (e.g. `plainText`,
+    /// `summary`) see the writer's edits instead of the stale cached instance. Bounded to one row.
+    private func reconcileArticle(_ articleID: PersistentIdentifier) {
+        var descriptor = FetchDescriptor<Article>(
+            predicate: #Predicate { $0.persistentModelID == articleID })
+        descriptor.fetchLimit = 1
+        _ = try? context.fetch(descriptor)
     }
 
     /// Convert each processed article's sanitized HTML into native `[Block]`s **off the main actor**.
