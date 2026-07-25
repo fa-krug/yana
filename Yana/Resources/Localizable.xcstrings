@@ -2272,6 +2272,17 @@
         }
       }
     },
+    "Updating": {
+      "comment": "Accessibility label for the toolbar progress spinner shown while an update is in progress.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird aktualisiert"
+          }
+        }
+      }
+    },
     "Update Failed": {
       "localizations": {
         "de": {

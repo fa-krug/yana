@@ -23,6 +23,8 @@ struct MacRootView: View {
     /// Mirrors the busy state so the toolbar spinner can animate in/out (the source observable is
     /// mutated outside an animation transaction, so we re-drive it here inside `withAnimation`).
     @State private var showSpinner = false
+    /// Keeps the spinner up for a minimum interval so a sub-second update doesn't flash it.
+    @State private var spinnerHoldTask: Task<Void, Never>?
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -48,7 +50,20 @@ struct MacRootView: View {
         }
         .onChange(of: store.summaries) { _, _ in model.applyTimeline() }
         .onChange(of: UpdateActivity.shared.isUpdating || model.isSummarizing) { _, busy in
-            withAnimation(.snappy) { showSpinner = busy }
+            if busy {
+                spinnerHoldTask?.cancel()
+                spinnerHoldTask = nil
+                withAnimation(.easeInOut(duration: 0.2)) { showSpinner = true }
+            } else {
+                // Hold the spinner briefly so a sub-second update doesn't flash on and off.
+                spinnerHoldTask?.cancel()
+                spinnerHoldTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled,
+                          !(UpdateActivity.shared.isUpdating || model.isSummarizing) else { return }
+                    withAnimation(.easeInOut(duration: 0.2)) { showSpinner = false }
+                }
+            }
         }
         .onChange(of: settings.disabledTagNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.includeUntagged) { _, _ in model.recomputeFilter(); model.clampIndex() }
@@ -73,45 +88,49 @@ struct MacRootView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            // Reload, star, play, website — individual toolbar buttons. These were a joined
-            // `ControlGroup`, but a `ControlGroup` nested in a Mac Catalyst window toolbar renders
-            // its content EMPTY after the toolbar re-validates (e.g. once a sync repopulates the
-            // detail pane) — leaving a blank pill while the sibling `Menu` below stays fine. Plain
-            // toolbar buttons don't hit that bug. The item set stays constant, so the bar still
-            // doesn't rebuild/flicker; while an update/summarize runs, the reload arrow spins in place.
-            Button { model.triggerRefresh() } label: {
-                Label("Update all", systemImage: "arrow.clockwise")
-                    .symbolEffect(.rotate, options: .repeat(.continuous), isActive: showSpinner)
-            }
-            .help(Text("Update all"))
+        // Always-present spinner — shown via opacity only, so the toolbar item set never changes
+        // (adding/removing an item is what makes Mac Catalyst re-validate and flicker). Sized to
+        // match the pill's buttons.
+        ToolbarItem(placement: .primaryAction) {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: 24, height: 24)
+                .opacity(showSpinner ? 1 : 0)
+                .accessibilityLabel(Text("Updating"))
+                .accessibilityHidden(!showSpinner)
+        }
 
-            Button {
-                if let article = model.selectedArticle() { model.toggleStar(article) }
-            } label: {
-                Label(isSelectedStarred ? "Unstar" : "Star",
-                      systemImage: isSelectedStarred ? "star.fill" : "star")
+        // The primary actions as one joined segmented pill (hand-rolled — NOT a ControlGroup,
+        // which renders empty in a Catalyst toolbar after re-validation).
+        ToolbarItem(placement: .primaryAction) {
+            HStack(spacing: 0) {
+                pillButton(isSelectedStarred ? "Unstar" : "Star",
+                           systemImage: isSelectedStarred ? "star.fill" : "star",
+                           disabled: model.selectedSummary == nil) {
+                    if let article = model.selectedArticle() { model.toggleStar(article) }
+                }
+                pillDivider
+                pillButton("Read Aloud",
+                           systemImage: speech.state == .speaking ? "pause.circle" : "play.circle",
+                           disabled: model.selectedSummary == nil) {
+                    if let article = model.selectedArticle() { toggleSpeech(article) }
+                }
+                pillDivider
+                pillButton("Open Page", systemImage: "safari",
+                           disabled: model.selectedSummary == nil) {
+                    if let article = model.selectedArticle() { model.openWebsite(article) }
+                }
+                pillDivider
+                pillButton("Update all", systemImage: "arrow.clockwise", disabled: false) {
+                    model.triggerRefresh()
+                }
             }
-            .help(Text(isSelectedStarred ? "Unstar" : "Star"))
-            .disabled(model.selectedSummary == nil)
+            .background(
+                Capsule(style: .continuous).fill(.quaternary.opacity(0.6))
+            )
+        }
 
-            Button {
-                if let article = model.selectedArticle() { toggleSpeech(article) }
-            } label: {
-                Label("Read Aloud",
-                      systemImage: speech.state == .speaking ? "pause.circle" : "play.circle")
-            }
-            .help(Text("Read Aloud"))
-            .disabled(model.selectedSummary == nil)
-
-            Button {
-                if let article = model.selectedArticle() { model.openWebsite(article) }
-            } label: {
-                Label("Open Page", systemImage: "safari")
-            }
-            .help(Text("Open Page"))
-            .disabled(model.selectedSummary == nil)
-
+        ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button { openWindow(id: WindowID.settings, value: true) } label: { Label("Settings", systemImage: "gearshape") }
                     .keyboardShortcut(",", modifiers: .command)
@@ -125,9 +144,7 @@ struct MacRootView: View {
                     }
                     Button {
                         if let article = model.selectedArticle() { model.forceUpdateArticle(article) }
-                    } label: {
-                        Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")
-                    }
+                    } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
                     Button {
                         if let article = model.selectedArticle() { model.copyLink(article) }
                     } label: { Label("Copy link", systemImage: "link") }
@@ -139,6 +156,25 @@ struct MacRootView: View {
     }
 
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
+
+    /// One segment of the hand-rolled toolbar pill: an icon-only borderless button with a tooltip.
+    private func pillButton(_ title: LocalizedStringKey, systemImage: String,
+                            disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+                .frame(width: 34, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(disabled)
+        .help(Text(title))
+    }
+
+    /// A hairline between pill segments, inset vertically so it reads as a divider, not a full edge.
+    private var pillDivider: some View {
+        Divider().frame(height: 16)
+    }
 
     /// The sidebar's launch width: the last persisted value clamped to bounds, or the ideal default
     /// when no value has been stored yet (stored value == 0 is the UserDefaults zero-default). This
