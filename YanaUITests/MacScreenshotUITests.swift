@@ -151,8 +151,17 @@ final class MacScreenshotUITests: XCTestCase {
         XCTAssertTrue(overflow.waitForExistence(timeout: 10),
                       "neither ⌘, nor the toolbar overflow could open Settings")
         overflow.click()
-        let item = app.menuItems.matching(NSPredicate(format: "label IN %@",
-                                                     ["Settings", "Einstellungen"])).firstMatch
+        // Match on `identifier` (and `title` as a belt-and-braces alternative), NOT `label`: a
+        // macOS NSMenuItem carries its text in `title` and leaves `label` empty, so a label-based
+        // predicate never matches. Verified against a captured accessibility hierarchy, where the
+        // item came back as:
+        //   MenuItem, 0x…, identifier: 'settings', title: 'Settings'
+        // The identifier is derived from the command, so it stays 'settings' in every locale —
+        // which is why it is preferred over the localized title.
+        let item = app.menuItems.matching(
+            NSPredicate(format: "identifier == 'settings' OR title IN %@",
+                        ["Settings", "Einstellungen"])
+        ).firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 10), "Settings menu item missing")
         item.click()
 
