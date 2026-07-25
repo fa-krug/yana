@@ -75,12 +75,19 @@ final class MacScreenshotUITests: XCTestCase {
         search.typeText("battery")
         // 250ms debounce in MacSidebarView, plus the predicate fetch.
         Thread.sleep(forTimeInterval: 1.5)
-        // Assert that at least one result cell whose label contains "battery" appeared.
-        let batteryCell = app.cells.matching(
+        // Assert a result row actually matching the query appeared — not merely that rows exist,
+        // since the unfiltered list has rows too.
+        //
+        // Match `staticTexts`, NOT `cells`: on the Catalyst source list the Cell element carries no
+        // label of its own (verified against a captured accessibility hierarchy — the cells came
+        // back as bare `Cell, 0x…, {{610,288},{340,71}}`). `MacArticleRow`'s
+        // `.accessibilityElement(children: .combine)` label lands on a child StaticText instead,
+        // e.g. 'Feed logo, The truth about fast charging and battery health, Overtake, ·, July 25, 2026'.
+        let batteryRow = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS[cd] 'battery'")
         ).firstMatch
-        XCTAssertTrue(batteryCell.waitForExistence(timeout: 15),
-                      "search for \"battery\" produced no matching rows (case-insensitive label check)")
+        XCTAssertTrue(batteryRow.waitForExistence(timeout: 15),
+                      "search for \"battery\" produced no matching rows (checked staticTexts labels)")
         Thread.sleep(forTimeInterval: Self.logoSettle)
         attach(app.windows.firstMatch.screenshot(), named: "02_Search.png",
                expectedPixelSize: CGSize(width: 2880, height: 1800))

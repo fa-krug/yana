@@ -79,13 +79,19 @@ platform :mac do
       UI.user_error!("no manifest at #{manifest_path}") unless File.exist?(manifest_path)
 
       # manifest.json maps each attachment's suggested name to the file actually written on
-      # disk (names are uniquified), so resolve through it rather than guessing filenames.
+      # disk, so resolve through it rather than guessing filenames.
+      #
+      # XCTest does NOT preserve the name we set verbatim: an attachment named "01_Reader.png"
+      # comes back as "01_Reader_0_188684A9-1F57-461C-8D5D-67B8A31AC266.png" (an index plus a
+      # UUID inserted before the extension). Strip that suffix so lookups can use the plain
+      # shot name. Verified against a real .xcresult — matching exactly would always miss.
       exported = {}
       JSON.parse(File.read(manifest_path)).each do |test|
         (test["attachments"] || []).each do |attachment|
-          name = attachment["suggestedHumanReadableName"]
+          raw = attachment["suggestedHumanReadableName"]
           file = attachment["exportedFileName"]
-          next unless name && file
+          next unless raw && file
+          name = raw.sub(/_\d+_[0-9A-Fa-f-]{36}(\.[A-Za-z0-9]+)\z/, '\1')
           if exported.key?(name)
             # Keep the first occurrence and warn: last-wins would silently promote a partial
             # capture from a retried/failed attempt over the successful one.
