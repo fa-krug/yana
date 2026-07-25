@@ -52,6 +52,15 @@ struct YanaCommands: Commands {
             Button(speechTitle) { toggleSpeech() }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(model?.selectedSummary == nil)
+
+            Divider()
+
+            Button("Open in Browser") { if let a = model?.selectedArticle() { model?.openWebsite(a) } }
+                .disabled(model?.selectedSummary == nil)
+            Button("Copy link") { if let a = model?.selectedArticle() { model?.copyLink(a) } }
+                .disabled(model?.selectedSummary == nil)
+            Button("Reload") { if let a = model?.selectedArticle() { model?.forceUpdateArticle(a) } }
+                .disabled(model?.selectedSummary == nil)
         }
     }
 
