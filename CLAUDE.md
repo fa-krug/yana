@@ -97,9 +97,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO,
   `AggregatorRegistry`, and `ArticleSearch` (pure case/diacritic-insensitive matcher over
   title/content/author/feed name). Concrete aggregators are added incrementally.
-- **Services** (`Yana/Services/`): `AggregationService` (orchestrates feed updates and
-  upserts into SwiftData; `updateAll()`/`update(feed:)` return the count of newly inserted
-  articles), `KeychainService` (stores aggregator API keys), the AI
+- **Services** (`Yana/Services/`): `AggregationService` (`@MainActor` coordinator that orchestrates feed updates and delegates the write path to the `@ModelActor` `AggregationWriter` (its own background `ModelContext`), so article upserts, per-feed saves, and retention run off the main thread; `updateAll()`/`update(feed:)` return the count of newly inserted articles; the reader and `ArticleStore` observe committed changes via fresh fetches — the `ModelContext.didSave` observer still fires for the background context's saves, and `ArticleResolution` resolves by a fresh persistent-id-scoped fetch), `KeychainService` (stores aggregator API keys), the AI
   post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini/Mistral/Qwen/DeepSeek JSON-mode calls;
   Mistral/Qwen/DeepSeek use the OpenAI-compatible API with a custom `apiBaseURL`) and
   `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert;
