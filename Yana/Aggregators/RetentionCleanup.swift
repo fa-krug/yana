@@ -5,9 +5,11 @@ import SwiftData
 /// returns the canonical UIDs of everything it deleted so the caller can propagate the deletion to
 /// iCloud. (Spec §2 — age is the only cleanup criterion; there is no read/unread state.)
 enum RetentionCleanup {
-    @MainActor
+    /// `nonisolated`: operates purely on the passed-in `ModelContext`, so it runs on whichever
+    /// actor owns that context — the main-actor `AggregationService` or the background
+    /// `AggregationWriter` on its own context.
     @discardableResult
-    static func run(context: ModelContext, retentionDays: Int, now: Date) -> [String] {
+    nonisolated static func run(context: ModelContext, retentionDays: Int, now: Date) -> [String] {
         let cutoff = now.addingTimeInterval(-Double(retentionDays) * 24 * 3600)
         let descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.createdAt < cutoff })
         let candidates = (try? context.fetch(descriptor)) ?? []

@@ -11,7 +11,9 @@ struct FeedConfig: Sendable {
     /// Number of articles already imported for this feed since the start of today.
     var collectedToday: Int
 
-    @MainActor
+    /// Build a snapshot from a SwiftData `Feed`. Callable from any actor: `Feed` is a plain
+    /// `@Model` (not main-actor-isolated), so its properties are read on whichever context/actor
+    /// owns the feed — the main-actor `AggregationService` or the background `AggregationWriter`.
     init(feed: Feed, collectedToday: Int, force: Bool = false) {
         self.type = feed.type
         self.identifier = feed.identifier

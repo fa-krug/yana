@@ -96,8 +96,11 @@ enum ArticleRecordApply {
 extension ArticleUID {
     /// Derive the canonical UID from an article's stored feed identity (falling back to its linked
     /// feed). Returns nil for a legacy article with neither stored identity nor a linked feed.
-    @MainActor
-    static func make(for article: Article) -> String? {
+    ///
+    /// `nonisolated`: it only reads plain `@Model` properties (an `Article` is not main-actor
+    /// isolated), so callers on any actor — the main-actor sync/service code or the background
+    /// `AggregationWriter`, each holding the article on its own context — can derive the UID.
+    nonisolated static func make(for article: Article) -> String? {
         let feedIdentifier = article.syncFeedIdentifier.isEmpty ? article.feed?.identifier : article.syncFeedIdentifier
         let aggregatorType = article.syncAggregatorType.isEmpty ? article.feed?.aggregatorType : article.syncAggregatorType
         guard let feedIdentifier, let aggregatorType else { return nil }
