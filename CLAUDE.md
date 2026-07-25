@@ -180,6 +180,13 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   at scene creation rather than closures back to a presenting view. `MacCommands.swift` adds the
   Mac menu-bar commands (article navigation, star, read-aloud, update-all), reading the frontmost
   window's `TimelineModel`/`ReaderSpeechController` via `FocusedValues` that `MacRootView` publishes.
+  Sidebar rows (`MacArticleRow`) expose a right-click **context menu** (Star/Unstar, Open in Browser,
+  Copy Link, Reload, and Summarize when AI is configured) and a hover highlight on unselected rows.
+  The window uses a Mail-style two-pane keyboard focus model (`MacFocusPane`): Return moves focus from
+  the sidebar into the reader, Esc returns it to the sidebar; the same article actions (Open in Browser,
+  Copy Link, Reload) are also surfaced in the Article menu for discoverability. The sidebar width is
+  remembered across launches via `AppSettings.macSidebarWidth` (device-local, never synced), with
+  bounds/clamping handled by `SidebarWidth` (`Yana/Reader/Mac/SidebarWidth.swift`).
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
