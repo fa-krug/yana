@@ -33,9 +33,14 @@ enum AppContainer {
                     // starts from a completely clean state (SQLite leaves -wal and -shm files
                     // behind after a crash or forced-quit, and SwiftData will refuse to open
                     // if those files exist without the main store).
-                    try? FileManager.default.removeItem(at: storeURL)
-                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("wal"))
-                    try? FileManager.default.removeItem(at: storeURL.appendingPathExtension("shm"))
+                    // SQLite names the siblings `<store>-wal` / `<store>-shm` — a HYPHEN suffix on
+                    // the full filename, not a dot extension. `appendingPathExtension` would
+                    // produce `…store.wal`, which matches nothing and leaves the real files behind.
+                    for suffix in ["", "-wal", "-shm"] {
+                        let sibling = storeURL.deletingLastPathComponent()
+                            .appendingPathComponent(storeURL.lastPathComponent + suffix)
+                        try? FileManager.default.removeItem(at: sibling)
+                    }
                     let config = ModelConfiguration(url: storeURL, cloudKitDatabase: .none)
                     return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                              configurations: config)
