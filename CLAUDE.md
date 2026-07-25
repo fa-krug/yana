@@ -66,6 +66,43 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   run no longer persists — a manual `xcrun simctl shutdown all; xcrun simctl erase all` is only needed
   if you capture outside the lane.
 
+### macOS App Store screenshots
+- `fastlane mac screenshots_mac` — capture the Mac App Store screenshots (**en-US + de-DE**,
+  **2880×1800**, the largest allowed Mac size). Output: `fastlane/screenshots_mac/{en-US,de-DE}/`,
+  committed like the iPhone set.
+- **This shares nothing with the iPhone lane, by necessity:** `capture_screenshots` (fastlane
+  snapshot) drives iOS Simulator destinations only and cannot target Mac Catalyst, and
+  `frame_screenshots` (frameit) has no Mac device frames. So the Mac path is its own test
+  (`YanaUITests/MacScreenshotUITests.swift`), its own lane, and its own output directory — kept
+  **outside** `fastlane/screenshots/` so the iOS lane's `frame_screenshots` never sees it.
+- 4-shot set (numeric key = App Store order): `01_Reader` (main window — sidebar + hero article)
+  → `02_Search` (sidebar search for "battery") → `03_Feeds` (Settings › Feeds) → `04_AI`
+  (Settings › AI). Keep these keys in sync between `MacScreenshotUITests.swift` and `MAC_SHOTS`
+  in the Fastfile.
+- Shots are **plain captures — no device frame, no gradient, no captions** (the Mac App Store
+  convention). Localization comes from the app chrome itself, forced via `-AppleLanguages` /
+  `-AppleLocale` launch arguments.
+- How it works: the test attaches each window capture as an `XCTAttachment`
+  (`lifetime = .keepAlways`) — the only sandbox-safe route out, since the Catalyst test runner
+  cannot write outside its container. The lane then runs `xcresulttool export attachments`,
+  resolves names through the emitted `manifest.json`, and composites the two Settings shots over
+  the `01_Reader` capture with `fastlane/mac_composite.swift` (CoreGraphics; `sips` cannot
+  composite and ImageMagick would be a new dependency).
+- Content is the same DEBUG-only offline fixture as the iPhone set (`ScreenshotSeed`, via
+  `-UITEST_SCREENSHOTS`). Per-locale isolation replaces `erase_simulator`: there is no simulator
+  to erase, so the test passes `-UITEST_RESET_LIBRARY` alongside it and relies on `YanaApp`
+  running the reset before the seed.
+- `-UITEST_MAC_SCREENSHOTS` (`Yana/Utilities/MacScreenshotWindow.swift`) pins the main window to
+  1440×900pt — 2880×1800 at 2x — suppresses the Mac launch refresh (whose spinner and error toast
+  would otherwise land in a frame), and forces iCloud sync **off**: the app under test shares the
+  real `de.fa-krug.Yana` container, so a developer's synced feeds would otherwise appear mid-capture.
+- Gotchas: exact sizing assumes a **Retina (2x) display** — the compositor upscales on a 1x host
+  rather than emitting an invalid size. Both `YanaTests` and `YanaUITests` must keep
+  `SUPPORTS_MACCATALYST`, because `xcodebuild` builds every test target in the scheme even with
+  `-only-testing`. The Mac surfaces carry `mac.*` accessibility identifiers purely so the test can
+  navigate locale-independently; the sidebar search field is matched as `app.searchFields` because
+  `.searchable` does not forward an identifier reliably.
+
 ### Website (GitHub Pages)
 - The project ships a self-contained marketing + legal site under `docs/site/`, deployed to GitHub
   Pages at **`yana.fa-krug.de`** by `.github/workflows/pages.yml` on every push to `main` (one-time
