@@ -21,6 +21,19 @@
 - Run `xcodegen generate` after any `project.yml` change.
 - Commit after each task.
 
+**ENVIRONMENT CONSTRAINT (added during execution).** Mac Catalyst requires a real signing
+identity, and the login keychain is locked to the automation shell (`codesign` fails with
+`errSecInternalComponent`, `security`: "User interaction is not allowed"). Therefore:
+
+- Catalyst **builds** must be verified with `CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+  CODE_SIGNING_ALLOWED=NO` appended to the `xcodebuild` invocation. This proves compile + link,
+  which is what these tasks can prove.
+- Catalyst **runs** (the UI test, the lane) cannot be executed here. Steps marked
+  **[DEFERRED — USER RUNS]** below are handed to the user to run in an interactive session with an
+  unlocked keychain. Do not fake their output, and do not mark a task complete by claiming a
+  deferred step passed.
+- iOS Simulator builds and tests are unaffected (ad-hoc signing) and must still be run.
+
 ---
 
 ### Task 1: Make the test bundles build for Mac Catalyst
@@ -684,9 +697,9 @@ xcodebuild build-for-testing -scheme Yana \
 ```
 Expected: `** TEST BUILD SUCCEEDED **`
 
-- [ ] **Step 3: Run the English pass and confirm attachments land**
+- [ ] **Step 3: [DEFERRED — USER RUNS] Run the English pass and confirm attachments land**
 
-Run:
+Requires an unlocked keychain. Run:
 ```bash
 cd /Users/skrug/PycharmProjects/yana-ios
 rm -rf /tmp/yana-mac.xcresult
@@ -711,7 +724,7 @@ for t in m:
 ```
 Expected: four lines naming `01_Reader.png`, `02_Search.png`, `03_Feeds.overlay.png`, `04_AI.overlay.png`.
 
-- [ ] **Step 4: Confirm the main-window capture is 2880×1800**
+- [ ] **Step 4: [DEFERRED — USER RUNS] Confirm the main-window capture is 2880×1800**
 
 Run:
 ```bash
@@ -852,32 +865,82 @@ Expected: `mac_composite: usage: ...` on stderr and `exit=1`.
 
 - [ ] **Step 3: Verify it produces an exactly-sized composite**
 
-Using the real captures exported in Task 4. Resolve the two inputs through `manifest.json` so the
-base is genuinely `01_Reader` and the overlay a Settings window:
+Real captures are unavailable here (see the environment constraint), so verify against **synthetic
+inputs at the exact sizes the real pipeline produces**: a 2880×1800 base and a 1440×1240 overlay
+(the Settings window's 720×620 at 2x). This exercises every code path the real run does — decode,
+scale, shadow, size assert, encode.
 
 ```bash
 cd /Users/skrug/PycharmProjects/yana-ios
-eval "$(python3 -c "
-import json, os
-m = json.load(open('/tmp/yana-att/manifest.json'))
-by_name = {a['suggestedHumanReadableName']: os.path.join('/tmp/yana-att', a['exportedFileName'])
-           for t in m for a in t.get('attachments', [])}
-print('BASE=' + by_name['01_Reader.png'])
-print('OVERLAY=' + by_name['03_Feeds.overlay.png'])
-")"
-xcrun swift fastlane/mac_composite.swift "$BASE" "$OVERLAY" /tmp/composite-test.png
+python3 - <<'PY'
+import subprocess
+# Solid-colour PNGs at the two real sizes, built with sips from a scratch TIFF.
+for name, w, h, colour in [("base", 2880, 1800, "0000FF"), ("overlay", 1440, 1240, "FF0000")]:
+    subprocess.run(["python3", "-c", f'''
+import struct, zlib
+w, h = {w}, {h}
+rgb = bytes.fromhex("{colour}")
+raw = b"".join(b"\\x00" + rgb * w for _ in range(h))
+def chunk(t, d):
+    c = t + d
+    return struct.pack(">I", len(d)) + c + struct.pack(">I", zlib.crc32(c))
+png = (b"\\x89PNG\\r\\n\\x1a\\n"
+       + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+       + chunk(b"IDAT", zlib.compress(raw))
+       + chunk(b"IEND", b""))
+open("/tmp/{name}.png", "wb").write(png)
+'''], check=True)
+    print(f"/tmp/{name}.png {w}x{h}")
+PY
+xcrun swift fastlane/mac_composite.swift /tmp/base.png /tmp/overlay.png /tmp/composite-test.png
 echo "exit=$?"
 sips -g pixelWidth -g pixelHeight /tmp/composite-test.png
 ```
+
 Expected: `exit=0`, then `pixelWidth: 2880` and `pixelHeight: 1800`.
 
-- [ ] **Step 4: Eyeball the result**
+Also verify the size assert actually fires — feed it a base that is not 2880×1800 and confirm the
+output is still exactly 2880×1800 (the base is scaled to fill, so this must still succeed):
 
-Run:
 ```bash
-open /tmp/composite-test.png
+cd /Users/skrug/PycharmProjects/yana-ios
+xcrun swift fastlane/mac_composite.swift /tmp/overlay.png /tmp/overlay.png /tmp/composite-odd.png
+echo "exit=$?" && sips -g pixelWidth -g pixelHeight /tmp/composite-odd.png
 ```
-Expected: the overlay sits centred over the base with a soft shadow. If the shadow is invisible or the overlay is clipped, adjust `overlayWidthFraction` or the shadow parameters and re-run Step 3.
+
+Expected: `exit=0`, `pixelWidth: 2880`, `pixelHeight: 1800`.
+Expected: `exit=0`, then `pixelWidth: 2880` and `pixelHeight: 1800`.
+
+- [ ] **Step 4: Verify the overlay landed centred and scaled**
+
+Solid colours make this checkable without eyeballing: sample the centre pixel (must be overlay
+red), a corner (must be base blue), and confirm the overlay occupies half the canvas width.
+
+```bash
+cd /Users/skrug/PycharmProjects/yana-ios
+cat > /tmp/probe.swift <<'SWIFT'
+import CoreGraphics
+import Foundation
+let path = CommandLine.arguments[1]
+let data = FileManager.default.contents(atPath: path)! as CFData
+let img = CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithData(data, nil)!, 0, nil)!
+var px = [UInt8](repeating: 0, count: img.width * img.height * 4)
+let ctx = CGContext(data: &px, width: img.width, height: img.height, bitsPerComponent: 8,
+                    bytesPerRow: img.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+ctx.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+func at(_ x: Int, _ y: Int) -> String {
+    let i = (y * img.width + x) * 4
+    return String(format: "%02X%02X%02X", px[i], px[i+1], px[i+2])
+}
+print("size=\(img.width)x\(img.height) centre=\(at(img.width/2, img.height/2)) corner=\(at(4, 4))")
+SWIFT
+xcrun swift /tmp/probe.swift /tmp/composite-test.png
+```
+
+Expected: `size=2880x1800 centre=FF0000 corner=0000FF` — overlay red in the middle, base blue at
+the edge. If the centre is blue the overlay was not drawn; if the corner is red it was drawn too
+large. Adjust `overlayWidthFraction` and re-run Step 3.
 
 - [ ] **Step 5: Commit**
 
@@ -1015,9 +1078,9 @@ Change to:
 *.xcresult
 ```
 
-- [ ] **Step 3: Run the lane end to end**
+- [ ] **Step 3: [DEFERRED — USER RUNS] Run the lane end to end**
 
-Run:
+Requires an unlocked keychain and an interactive GUI session. Run:
 ```bash
 cd /Users/skrug/PycharmProjects/yana-ios
 LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 fastlane mac screenshots_mac
@@ -1026,7 +1089,7 @@ Expected: `fastlane.tools finished successfully`, with eight `✅ <locale>/<shot
 
 If it dies with a `FastlanePtyError` or a `"Cr" on UTF-16` crash, the explicit `LANG`/`LC_ALL` above is the fix — the Fastfile's `ENV["LANG"] ||=` does not override an already-set-but-empty `LANG`, since an empty string is truthy in Ruby.
 
-- [ ] **Step 4: Verify every output is exactly 2880×1800**
+- [ ] **Step 4: [DEFERRED — USER RUNS] Verify every output is exactly 2880×1800**
 
 Run:
 ```bash
@@ -1094,12 +1157,14 @@ In `CLAUDE.md`, immediately after the existing `### App Store screenshots` subse
 
 ```bash
 cd /Users/skrug/PycharmProjects/yana-ios
-git add fastlane/Fastfile .gitignore CLAUDE.md fastlane/screenshots_mac
+# fastlane/screenshots_mac/ is NOT committed here: the capture run is deferred to the user
+# (locked keychain, see the environment constraint), so the directory does not exist yet.
+git add fastlane/Fastfile .gitignore CLAUDE.md
 git commit -m "Add screenshots_mac lane and document the Mac capture flow
 
 Runs the Catalyst UI test per locale, exports attachments via
-xcresulttool, composites the Settings shots, and commits the eight
-2880x1800 captures."
+xcresulttool, and composites the Settings shots into 2880x1800 output.
+The captures themselves are committed after the first successful run."
 ```
 
 ---
