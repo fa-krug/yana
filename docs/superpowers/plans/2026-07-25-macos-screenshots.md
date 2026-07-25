@@ -372,7 +372,8 @@ The Mac UI has none today, and EN/DE labels differ, so the test needs locale-ind
 - Modify: `Yana/Reader/Mac/MacSettingsWindow.swift` (pane `List` at lines 15-19; root at lines 14-29)
 
 **Interfaces:**
-- Consumes: `MacScreenshotWindow.applyIfRequested()` from Task 2.
+- Consumes: `MacScreenshotWindow.applyWindowGeometryIfRequested()` and
+  `MacScreenshotWindow.quietBackgroundWorkIfRequested()` from Task 2.
 - Produces these identifiers, consumed by Task 4:
   - `mac.window.root` — main window root
   - `mac.sidebar.list` — the article list
