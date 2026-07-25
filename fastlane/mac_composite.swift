@@ -26,11 +26,22 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
+// Two forms:
+//   <base> <overlay> <out>  — composite the overlay over the base
+//   <base> <out>            — normalize only (no overlay)
+//
+// The normalize form exists so the DIRECT shots (01_Reader, 02_Search) go through exactly the same
+// encoder as the composited ones. XCUIScreenshot PNGs carry an alpha channel; the composites do
+// not, and App Store Connect is hostile to alpha — so copying the direct shots verbatim produced a
+// mixed set. Re-encoding both through here makes all four shots byte-format identical.
 let args = Array(CommandLine.arguments.dropFirst())
-guard args.count == 3 else {
-    fail("usage: mac_composite.swift <base.png> <overlay.png> <out.png>")
+guard args.count == 3 || args.count == 2 else {
+    fail("usage: mac_composite.swift <base.png> <overlay.png> <out.png>\n"
+         + "   or: mac_composite.swift <base.png> <out.png>   (normalize only)")
 }
-let (basePath, overlayPath, outPath) = (args[0], args[1], args[2])
+let basePath = args[0]
+let overlayPath: String? = args.count == 3 ? args[1] : nil
+let outPath = args.count == 3 ? args[2] : args[1]
 
 func loadImage(_ path: String) -> CGImage {
     guard let data = FileManager.default.contents(atPath: path) as CFData?,
@@ -41,7 +52,7 @@ func loadImage(_ path: String) -> CGImage {
 }
 
 let base = loadImage(basePath)
-let overlay = loadImage(overlayPath)
+let overlay = overlayPath.map(loadImage)
 
 // Verify the base has the expected 2880:1800 (= 8:5) aspect ratio.
 // A base from a non-Retina display or a wrong window size would silently produce a
@@ -69,29 +80,32 @@ context.interpolationQuality = .high
 // Base fills the canvas.
 context.draw(base, in: CGRect(origin: .zero, size: canvas))
 
-// Overlay, centred, scaled to a fixed fraction of the canvas so both Settings shots line up
-// even if the window's natural height differs between panes. Clamp scale to fit within both
-// width and height constraints, preserving aspect ratio.
-let overlayWidth = canvas.width * overlayWidthFraction
-let widthScale = overlayWidth / CGFloat(overlay.width)
-let maxOverlayHeight = canvas.height * overlayMaxHeightFraction
-let heightScale = maxOverlayHeight / CGFloat(overlay.height)
-let overlayScale = min(widthScale, heightScale)
-let overlaySize = CGSize(width: CGFloat(overlay.width) * overlayScale, height: CGFloat(overlay.height) * overlayScale)
-let overlayRect = CGRect(
-    x: (canvas.width - overlaySize.width) / 2,
-    y: (canvas.height - overlaySize.height) / 2,
-    width: overlaySize.width,
-    height: overlaySize.height
-)
+if let overlay {
+    // Overlay, centred, scaled to a fixed fraction of the canvas so both Settings shots line up
+    // even if the window's natural height differs between panes. Clamp scale to fit within both
+    // width and height constraints, preserving aspect ratio.
+    let overlayWidth = canvas.width * overlayWidthFraction
+    let widthScale = overlayWidth / CGFloat(overlay.width)
+    let maxOverlayHeight = canvas.height * overlayMaxHeightFraction
+    let heightScale = maxOverlayHeight / CGFloat(overlay.height)
+    let overlayScale = min(widthScale, heightScale)
+    let overlaySize = CGSize(width: CGFloat(overlay.width) * overlayScale,
+                             height: CGFloat(overlay.height) * overlayScale)
+    let overlayRect = CGRect(
+        x: (canvas.width - overlaySize.width) / 2,
+        y: (canvas.height - overlaySize.height) / 2,
+        width: overlaySize.width,
+        height: overlaySize.height
+    )
 
-// Drop shadow so the floating window reads as floating rather than pasted on.
-context.saveGState()
-context.setShadow(offset: CGSize(width: 0, height: -18),
-                  blur: 48,
-                  color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.45))
-context.draw(overlay, in: overlayRect)
-context.restoreGState()
+    // Drop shadow so the floating window reads as floating rather than pasted on.
+    context.saveGState()
+    context.setShadow(offset: CGSize(width: 0, height: -18),
+                      blur: 48,
+                      color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.45))
+    context.draw(overlay, in: overlayRect)
+    context.restoreGState()
+}
 
 guard let output = context.makeImage() else { fail("could not render the composite") }
 

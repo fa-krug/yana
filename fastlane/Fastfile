@@ -123,7 +123,11 @@ platform :mac do
           UI.user_error!(
             "#{shot}.png is #{dims[0]}x#{dims[1]}, expected 2880x1800 — capture requires a Retina (2x) display"
           ) unless dims == [2880, 1800]
-          FileUtils.cp(source, target)
+          # Re-encode rather than copy: XCUIScreenshot PNGs carry an alpha channel while the
+          # composited shots do not, and App Store Connect is hostile to alpha — a verbatim copy
+          # produced a set with mixed alpha. The compositor's two-argument form runs the direct
+          # shot through the same opaque encoder as the composites.
+          sh("xcrun", "swift", compositor, source, target)
         else
           overlay = exported[overlay_name]
           UI.user_error!("#{overlay_name} missing from #{locale} run") unless overlay
