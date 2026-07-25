@@ -17,6 +17,9 @@ let canvas = CGSize(width: 2880, height: 1800)
 /// against a 1440pt main window, so half — preserved here so the composite matches what the user
 /// would actually see.
 let overlayWidthFraction: CGFloat = 0.5
+/// Maximum fraction of canvas height the overlay may occupy. Clamps tall overlays so they fit
+/// within the canvas and drop shadow remains visible; prevents silent clipping of shipped screenshots.
+let overlayMaxHeightFraction: CGFloat = 0.85
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("mac_composite: \(message)\n".utf8))
@@ -57,10 +60,14 @@ context.interpolationQuality = .high
 context.draw(base, in: CGRect(origin: .zero, size: canvas))
 
 // Overlay, centred, scaled to a fixed fraction of the canvas so both Settings shots line up
-// even if the window's natural height differs between panes.
+// even if the window's natural height differs between panes. Clamp scale to fit within both
+// width and height constraints, preserving aspect ratio.
 let overlayWidth = canvas.width * overlayWidthFraction
-let overlayScale = overlayWidth / CGFloat(overlay.width)
-let overlaySize = CGSize(width: overlayWidth, height: CGFloat(overlay.height) * overlayScale)
+let widthScale = overlayWidth / CGFloat(overlay.width)
+let maxOverlayHeight = canvas.height * overlayMaxHeightFraction
+let heightScale = maxOverlayHeight / CGFloat(overlay.height)
+let overlayScale = min(widthScale, heightScale)
+let overlaySize = CGSize(width: CGFloat(overlay.width) * overlayScale, height: CGFloat(overlay.height) * overlayScale)
 let overlayRect = CGRect(
     x: (canvas.width - overlaySize.width) / 2,
     y: (canvas.height - overlaySize.height) / 2,
