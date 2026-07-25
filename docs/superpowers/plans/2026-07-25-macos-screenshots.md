@@ -153,7 +153,12 @@ The captures must be exactly 1440×900pt regardless of host machine, and nothing
   - `MacScreenshotWindow.defaultSize: CGSize` == `CGSize(width: 1440, height: 900)`
   - `MacScreenshotWindow.isRequested: Bool`
   - `static func size(from arguments: [String]) -> CGSize` — pure, testable on every platform
-  - `@MainActor static func applyIfRequested()` — called from `MacRootView.onAppear` in Task 3
+  - `@MainActor static func applyWindowGeometryIfRequested()` — pins the main window's size
+  - `@MainActor static func quietBackgroundWorkIfRequested()` — forces iCloud sync off
+
+  Both are called from `MacRootView.onAppear` in Task 3. They are deliberately **two** functions:
+  pinning geometry and silencing background work are unrelated jobs, and folding the settings
+  mutation into a geometry-named function would hide a side effect behind a misleading name.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -249,18 +254,23 @@ enum MacScreenshotWindow {
         return CGSize(width: width, height: height)
     }
 
-    /// Pin the main window to the target size and quiet the launch. Call from the Mac root view's
-    /// `onAppear` — it must run against the MAIN window's scene only, never the Settings window's.
+    /// Silence work that would otherwise land in a captured frame.
+    ///
+    /// The app under test shares the real `de.fa-krug.Yana` container, so a developer's persisted
+    /// "iCloud sync on" would pull their actual feeds mid-capture and destroy determinism. Writing
+    /// to the shared container is deliberate: the run also wipes the library via
+    /// `-UITEST_RESET_LIBRARY`, so this is already a throwaway state.
     @MainActor
-    static func applyIfRequested() {
+    static func quietBackgroundWorkIfRequested() {
         guard isRequested else { return }
+        AppSettings().iCloudSyncEnabled = false
+    }
 
-        // The app under test shares the real de.fa-krug.Yana container, so a developer's persisted
-        // "iCloud sync on" would pull their actual feeds mid-capture and blow up determinism.
-        // Force it off for the run. This writes to the shared container by design: the run also
-        // wipes the library via -UITEST_RESET_LIBRARY, so it is already a throwaway state.
-        let settings = AppSettings()
-        settings.iCloudSyncEnabled = false
+    /// Pin the main window to the target size. Call from the Mac root view's `onAppear` — it must
+    /// run against the MAIN window's scene only, never the Settings window's.
+    @MainActor
+    static func applyWindowGeometryIfRequested() {
+        guard isRequested else { return }
 
         #if targetEnvironment(macCatalyst)
         let target = size(from: ProcessInfo.processInfo.arguments)
@@ -418,7 +428,8 @@ to:
             #if DEBUG
             // Pin the window to a fixed size when capturing App Store screenshots. Main window
             // only — the Settings window is captured at its natural size and composited.
-            MacScreenshotWindow.applyIfRequested()
+            MacScreenshotWindow.applyWindowGeometryIfRequested()
+            MacScreenshotWindow.quietBackgroundWorkIfRequested()
             #endif
         }
 ```
@@ -1112,4 +1123,4 @@ One addition beyond the spec: forcing `iCloudSyncEnabled = false` in Task 2. The
 
 **Placeholder scan:** none — every code step carries complete code, every command an expected result.
 
-**Type consistency:** `MacScreenshotWindow.launchArgument` / `sizeArgument` / `defaultSize` / `isRequested` / `size(from:)` / `applyIfRequested()` are defined in Task 2 and used with those exact names in Tasks 3 and 4. Identifier strings (`mac.sidebar.list`, `mac.settings.window`, `mac.settings.pane.<raw>`) are defined in Task 3 and consumed verbatim in Task 4. Attachment names (`01_Reader.png`, `02_Search.png`, `03_Feeds.overlay.png`, `04_AI.overlay.png`) match between Task 4 and `MAC_SHOTS` in Task 6.
+**Type consistency:** `MacScreenshotWindow.launchArgument` / `sizeArgument` / `defaultSize` / `isRequested` / `size(from:)` / `applyWindowGeometryIfRequested()` / `quietBackgroundWorkIfRequested()` are defined in Task 2 and used with those exact names in Tasks 3 and 4. Identifier strings (`mac.sidebar.list`, `mac.settings.window`, `mac.settings.pane.<raw>`) are defined in Task 3 and consumed verbatim in Task 4. Attachment names (`01_Reader.png`, `02_Search.png`, `03_Feeds.overlay.png`, `04_AI.overlay.png`) match between Task 4 and `MAC_SHOTS` in Task 6.
