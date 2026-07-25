@@ -92,46 +92,30 @@ struct MacRootView: View {
     }
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        // Always-present spinner — shown via opacity only, so the toolbar item set never changes
-        // (adding/removing an item is what makes Mac Catalyst re-validate and flicker). Sized to
-        // match the pill's buttons (34 × 28).
-        ToolbarItem(placement: .primaryAction) {
-            ProgressView()
-                .controlSize(.small)
-                .frame(width: 34, height: 28)
-                .opacity(showSpinner ? 1 : 0)
-                .accessibilityLabel(Text("Updating"))
-                .accessibilityHidden(!showSpinner)
-        }
-
         // The primary actions as one joined segmented pill (hand-rolled — NOT a ControlGroup,
-        // which renders empty in a Catalyst toolbar after re-validation).
+        // which renders empty in a Catalyst toolbar after re-validation). The trailing "Update all"
+        // segment doubles as the busy indicator: its icon cross-fades to a spinner while a run is in
+        // flight, so the spinner lives *inside* the group without ever changing the toolbar item set
+        // (adding/removing an item is what makes Mac Catalyst re-validate and flicker) or the pill's
+        // width (the spinner occupies the same 34 × 28 slot as the icon).
         ToolbarItem(placement: .primaryAction) {
-            HStack(spacing: 0) {
-                pillButton(isSelectedStarred ? "Unstar" : "Star",
-                           systemImage: isSelectedStarred ? "star.fill" : "star",
-                           disabled: model.selectedSummary == nil) {
+            MacToolbarPill {
+                MacPillButton(title: isSelectedStarred ? "Unstar" : "Star",
+                              systemImage: isSelectedStarred ? "star.fill" : "star",
+                              disabled: model.selectedSummary == nil) {
                     if let article = model.selectedArticle() { model.toggleStar(article) }
                 }
-                pillDivider
-                pillButton("Read Aloud",
-                           systemImage: speech.state == .speaking ? "pause.circle" : "play.circle",
-                           disabled: model.selectedSummary == nil) {
+                MacPillButton(title: "Read Aloud",
+                              systemImage: speech.state == .speaking ? "pause.circle" : "play.circle",
+                              disabled: model.selectedSummary == nil) {
                     if let article = model.selectedArticle() { toggleSpeech(article) }
                 }
-                pillDivider
-                pillButton("Open Page", systemImage: "safari",
-                           disabled: model.selectedSummary == nil) {
+                MacPillButton(title: "Open Page", systemImage: "safari",
+                              disabled: model.selectedSummary == nil) {
                     if let article = model.selectedArticle() { model.openWebsite(article) }
                 }
-                pillDivider
-                pillButton("Update all", systemImage: "arrow.clockwise", disabled: false) {
-                    model.triggerRefresh()
-                }
+                updateSegment
             }
-            .background(
-                Capsule(style: .continuous).fill(.quaternary.opacity(0.6))
-            )
         }
 
         ToolbarItem(placement: .primaryAction) {
@@ -161,23 +145,23 @@ struct MacRootView: View {
 
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
 
-    /// One segment of the hand-rolled toolbar pill: an icon-only borderless button with a tooltip.
-    private func pillButton(_ title: LocalizedStringKey, systemImage: String,
-                            disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .labelStyle(.iconOnly)
-                .frame(width: 34, height: 28)
-                .contentShape(Rectangle())
+    /// The trailing pill segment: "Update all", whose icon cross-fades to a spinner while a run is
+    /// in flight so the busy indicator sits inside the group without changing its width.
+    private var updateSegment: some View {
+        Button {
+            model.triggerRefresh()
+        } label: {
+            ZStack {
+                Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
+                ProgressView().controlSize(.small).opacity(showSpinner ? 1 : 0)
+            }
+            .frame(width: 34, height: 28)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
-        .disabled(disabled)
-        .help(Text(title))
-    }
-
-    /// A hairline between pill segments, inset vertically so it reads as a divider, not a full edge.
-    private var pillDivider: some View {
-        Divider().frame(height: 16)
+        .disabled(showSpinner)
+        .help(Text("Update all"))
+        .accessibilityLabel(showSpinner ? Text("Updating") : Text("Update all"))
     }
 
     /// The sidebar's launch width: the last persisted value clamped to bounds, or the ideal default
@@ -390,7 +374,7 @@ private struct MacArticleRow: View {
                         Text(summary.feedName).fontWeight(.medium).foregroundStyle(Color.accentColor)
                         Text("·").foregroundStyle(.tertiary)
                     }
-                    Text(summary.date, style: .date).foregroundStyle(.tertiary)
+                    Text(summary.createdAt, style: .date).foregroundStyle(.tertiary)
                 }
                 .font(.caption)
             }

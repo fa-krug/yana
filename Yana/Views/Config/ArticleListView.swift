@@ -206,7 +206,7 @@ struct ArticleListView: View {
                             .foregroundStyle(Color.accentColor)
                         Text("·").foregroundStyle(.tertiary)
                     }
-                    Text(summary.date, style: .date)
+                    Text(summary.createdAt, style: .date)
                         .foregroundStyle(.tertiary)
                 }
                 .font(.caption)

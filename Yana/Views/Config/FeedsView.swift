@@ -100,42 +100,7 @@ struct FeedsView: View {
         .navigationTitle("Feeds")
         .onAppear { refreshArticleCounts() }
         .onChange(of: feeds) { _, _ in refreshArticleCounts() }
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    #if targetEnvironment(macCatalyst)
-                    openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create)
-                    #else
-                    showingCreateFeed = true
-                    #endif
-                } label: {
-                    Image(systemName: "plus")
-                }
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                if isUpdating {
-                    // While any update runs, the button becomes a tappable spinner that stops it.
-                    Button { UpdateActivity.shared.cancel() } label: {
-                        ProgressView()
-                    }
-                    .accessibilityLabel(Text("Stop updating"))
-                } else {
-                    Button { updateAll() } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .disabled(feeds.isEmpty)
-                    .accessibilityLabel(Text("Update all"))
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button { exportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
-                    Button { isImporting = true } label: { Label("Import OPML", systemImage: "square.and.arrow.down") }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-        }
+        .toolbar { feedsToolbar }
         #if !targetEnvironment(macCatalyst)
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
@@ -179,6 +144,66 @@ struct FeedsView: View {
                 )
             }
         }
+    }
+
+    @ToolbarContentBuilder private var feedsToolbar: some ToolbarContent {
+        #if targetEnvironment(macCatalyst)
+        // On the Mac, join update + add into one pill (matching the reader window's toolbar) instead
+        // of separate squashed toolbar buttons. The update segment cross-fades to a spinner while a
+        // run is in flight; tapping it then cancels the run.
+        ToolbarItem(placement: .primaryAction) {
+            MacToolbarPill {
+                Button {
+                    if isUpdating { UpdateActivity.shared.cancel() } else { updateAll() }
+                } label: {
+                    ZStack {
+                        Image(systemName: "arrow.clockwise").opacity(isUpdating ? 0 : 1)
+                        ProgressView().controlSize(.small).opacity(isUpdating ? 1 : 0)
+                    }
+                    .frame(width: 34, height: 28)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .disabled(!isUpdating && feeds.isEmpty)
+                .help(isUpdating ? Text("Stop updating") : Text("Update all"))
+                .accessibilityLabel(isUpdating ? Text("Stop updating") : Text("Update all"))
+                MacPillButton(title: "Add Feed", systemImage: "plus") {
+                    openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create)
+                }
+            }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button { exportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
+                Button { isImporting = true } label: { Label("Import OPML", systemImage: "square.and.arrow.down") }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+        #else
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { showingCreateFeed = true } label: { Image(systemName: "plus") }
+        }
+        ToolbarItem(placement: .topBarLeading) {
+            if isUpdating {
+                // While any update runs, the button becomes a tappable spinner that stops it.
+                Button { UpdateActivity.shared.cancel() } label: { ProgressView() }
+                    .accessibilityLabel(Text("Stop updating"))
+            } else {
+                Button { updateAll() } label: { Image(systemName: "arrow.clockwise") }
+                    .disabled(feeds.isEmpty)
+                    .accessibilityLabel(Text("Update all"))
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Button { exportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
+                Button { isImporting = true } label: { Label("Import OPML", systemImage: "square.and.arrow.down") }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+        #endif
     }
 
     /// A small capsule chip used for at-a-glance feed status (disabled, source off).
