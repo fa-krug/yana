@@ -1,17 +1,27 @@
 import Foundation
 import SwiftData
 
-/// Resolves an `ArticleSummary` to its live `Article`. Fast path: the runtime `persistentID`.
-/// Fallback: a one-row `identifier` fetch when that id is absent (cache-rehydrated) or stale
-/// (after a store migration) — so the reader never lands on a blank page for a known article.
+/// Resolves an `ArticleSummary` to its live `Article`.
+///
+/// Primary: a **fresh fetch scoped by `persistentModelID`** when the summary carries one. This
+/// gives both freshness *and* exact identity — the fetch forces a store round-trip so a
+/// background-committed body update is visible (a held/cached object would be stale), while the
+/// pid predicate pins the exact row (`Article.identifier` is NOT globally unique — it's a per-feed
+/// dedup key, so two feeds can share an identifier; an unscoped identifier fetch could resolve the
+/// wrong article across feeds).
+///
+/// Fallback: a one-row `identifier` fetch only when `persistentID` is nil (a cache-rehydrated
+/// summary, where encode → decode drops the runtime id) — so the reader never lands on a blank
+/// page for a known article.
 @MainActor
 enum ArticleResolution {
     static func resolve(_ summary: ArticleSummary, in context: ModelContext) -> Article? {
-        // Fresh identifier fetch first — a background-committed body update is only guaranteed
-        // visible via a fetch, not a held/cached object. Falls back to the pid fast path.
-        if let article = fetchByIdentifier(summary.identifier, in: context) { return article }
-        if let pid = summary.persistentID, let article = context.model(for: pid) as? Article { return article }
-        return nil
+        if let pid = summary.persistentID {
+            var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.persistentModelID == pid })
+            descriptor.fetchLimit = 1
+            if let article = try? context.fetch(descriptor).first { return article }
+        }
+        return fetchByIdentifier(summary.identifier, in: context)
     }
 
     static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article? {
