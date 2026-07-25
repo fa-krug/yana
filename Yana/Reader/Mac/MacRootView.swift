@@ -94,11 +94,11 @@ struct MacRootView: View {
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         // Always-present spinner — shown via opacity only, so the toolbar item set never changes
         // (adding/removing an item is what makes Mac Catalyst re-validate and flicker). Sized to
-        // match the pill's buttons.
+        // match the pill's buttons (34 × 28).
         ToolbarItem(placement: .primaryAction) {
             ProgressView()
                 .controlSize(.small)
-                .frame(width: 24, height: 24)
+                .frame(width: 34, height: 28)
                 .opacity(showSpinner ? 1 : 0)
                 .accessibilityLabel(Text("Updating"))
                 .accessibilityHidden(!showSpinner)
