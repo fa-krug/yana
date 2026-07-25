@@ -68,6 +68,10 @@ struct MacRootView: View {
         .onChange(of: settings.disabledTagNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.includeUntagged) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.disabledFeedNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
+        .onDisappear {
+            spinnerHoldTask?.cancel()
+            spinnerHoldTask = nil
+        }
     }
 
     @ViewBuilder private var detail: some View {
