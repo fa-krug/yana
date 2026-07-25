@@ -185,7 +185,7 @@ private struct MacSidebarView: View {
         // own selection-follow scrolling rather than a reader proxy.
         List(selection: $model.selection) {
             ForEach(displayed) { summary in
-                MacArticleRow(summary: summary)
+                MacArticleRow(summary: summary, model: model)
                     .listRowInsets(Self.rowInsets)
                     .tag(summary.identifier)
             }
@@ -292,6 +292,7 @@ private struct MacFilterBar: View {
 /// lines up with the first title line rather than floating against a two-line title.
 private struct MacArticleRow: View {
     let summary: ArticleSummary
+    let model: TimelineModel
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -318,6 +319,37 @@ private struct MacArticleRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .contextMenu { contextMenuItems }
+    }
+
+    @ViewBuilder private var contextMenuItems: some View {
+        Button {
+            if let article = model.resolve(summary) { model.toggleStar(article) }
+        } label: {
+            Label(summary.isStarred ? "Unstar" : "Star",
+                  systemImage: summary.isStarred ? "star.slash" : "star")
+        }
+
+        Button {
+            if let article = model.resolve(summary) { model.openWebsite(article) }
+        } label: { Label("Open in Browser", systemImage: "safari") }
+
+        Button {
+            if let article = model.resolve(summary) { model.copyLink(article) }
+        } label: { Label("Copy link", systemImage: "link") }
+
+        Divider()
+
+        Button {
+            if let article = model.resolve(summary) { model.forceUpdateArticle(article) }
+        } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+
+        if model.aiReady {
+            Button {
+                if let article = model.resolve(summary) { model.summarize(article) }
+            } label: { Label("Summarize", systemImage: "sparkles") }
+                .disabled(model.isSummarizing)
+        }
     }
 }
 
