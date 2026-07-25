@@ -16,6 +16,13 @@ struct MacSettingsWindow: View {
                 ForEach(SettingsPane.allCases) { pane in
                     Label(pane.title, systemImage: pane.systemImage)
                         .tag(pane)
+                        // Merge the icon and text into ONE accessibility element before applying
+                        // the identifier. Without this, SwiftUI propagates the identifier to every
+                        // descendant, so a UI test's `firstMatch` resolves to the 15x12 SF Symbol
+                        // image inside the row — which is not hittable, and clicking it fails.
+                        // Combining also reads better under VoiceOver (one "Feeds" row rather than
+                        // an icon followed by text).
+                        .accessibilityElement(children: .combine)
                         // Screenshot/UI-test navigation target — pane titles are localized, the
                         // raw value is not.
                         .accessibilityIdentifier("mac.settings.pane.\(pane.rawValue)")

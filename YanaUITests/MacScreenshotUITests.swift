@@ -175,7 +175,19 @@ final class MacScreenshotUITests: XCTestCase {
         let row = app.descendants(matching: .any)
             .matching(identifier: "mac.settings.pane.\(rawValue)").firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15), "Settings pane \"\(rawValue)\" missing")
-        row.click()
+
+        // Prefer a plain click, but fall back to a coordinate click. SwiftUI propagates an
+        // accessibility identifier to descendants, so `firstMatch` can resolve to a small
+        // non-hittable child (observed: the row's 15x12 SF Symbol image) even though the row
+        // itself is perfectly clickable. A coordinate click is not subject to the hittability
+        // check, and the child's centre still lies inside the row — so it selects the pane either
+        // way. `.accessibilityElement(children: .combine)` in MacSettingsWindow should make the
+        // element the whole row, but this keeps the test working if that ever regresses.
+        if row.isHittable {
+            row.click()
+        } else {
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        }
         Thread.sleep(forTimeInterval: 1.0)
     }
 
