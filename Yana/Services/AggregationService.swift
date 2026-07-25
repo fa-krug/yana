@@ -78,7 +78,7 @@ final class AggregationService {
     /// `LocalizedError` (e.g. `AggregatorError`) and Cocoa/URL errors already carry good
     /// messages; bare Swift errors otherwise render Foundation's useless synthesized
     /// "The operation couldn't be completed. (… error 1.)", so they get a localized fallback.
-    static func userFacingMessage(for error: Error) -> String {
+    nonisolated static func userFacingMessage(for error: Error) -> String {
         if let localized = error as? LocalizedError,
            let description = localized.errorDescription,
            !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
