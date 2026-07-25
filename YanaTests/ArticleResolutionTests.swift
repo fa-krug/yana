@@ -71,4 +71,30 @@ struct ArticleResolutionTests {
         let resolved = ArticleResolution.resolve(summary, in: main)
         #expect(resolved?.plainText.contains("new body") == true)
     }
+
+    /// `Article.identifier` is a per-feed dedup key, not globally unique: two feeds can hold
+    /// articles with the same identifier. Resolving a summary must pin the exact article via its
+    /// `persistentModelID`, never resolve the wrong feed's article by an unscoped identifier fetch.
+    @Test func resolveDisambiguatesCrossFeedIdentifierCollision() async throws {
+        let context = try makeContext()
+
+        let feedA = Feed(name: "A", aggregatorType: .feedContent, identifier: "A")
+        let feedB = Feed(name: "B", aggregatorType: .feedContent, identifier: "B")
+        context.insert(feedA); context.insert(feedB)
+
+        let articleA = Article(title: "Title A", identifier: "shared-id", url: "uA")
+        articleA.feed = feedA
+        articleA.blocks = BlockParser.blocks(fromHTML: "<p>body A</p>", baseURL: nil)
+        let articleB = Article(title: "Title B", identifier: "shared-id", url: "uB")
+        articleB.feed = feedB
+        articleB.blocks = BlockParser.blocks(fromHTML: "<p>body B</p>", baseURL: nil)
+        context.insert(articleA); context.insert(articleB)
+        try context.save()
+
+        // Summary points at feed B's article via its live persistentID.
+        let summaryB = ArticleSummary(articleB)
+        let resolved = ArticleResolution.resolve(summaryB, in: context)
+        #expect(resolved?.feed?.identifier == "B")
+        #expect(resolved?.title == "Title B")
+    }
 }
