@@ -141,7 +141,9 @@ struct MacRootView: View {
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
 
     /// The sidebar's launch width: the last persisted value clamped to bounds, or the ideal default
-    /// when no value has been stored yet (stored value == 0 is the UserDefaults zero-default).
+    /// when no value has been stored yet (stored value == 0 is the UserDefaults zero-default). This
+    /// only seeds the column's `ideal:` at first layout — live drags are captured separately by
+    /// `widthReader` and persisted for the *next* launch, not fed back into the column this session.
     private var restoredSidebarWidth: CGFloat {
         let stored = CGFloat(settings.macSidebarWidth)
         return stored > 0 ? SidebarWidth.clamp(stored) : SidebarWidth.ideal
