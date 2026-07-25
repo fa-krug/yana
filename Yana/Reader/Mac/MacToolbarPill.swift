@@ -7,17 +7,16 @@ import SwiftUI
 /// individual bordered toolbar buttons as cramped, squashed capsules — so grouped primary actions
 /// are built here as borderless icon segments sharing a single capsule background (no inner
 /// dividers, which read as clutter inside a button pill).
+///
+/// The background is the system **Liquid Glass** material (`glassEffect`) rather than a flat
+/// `.quaternary` fill, so the pill reads as translucent glass and matches the native macOS 26
+/// toolbar controls (menus, search field) beside it instead of looking flat and dark.
 struct MacToolbarPill<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
         HStack(spacing: 0) { content }
-            .background(
-                Capsule(style: .continuous)
-                    .fill(.quaternary)
-                    .overlay(Capsule(style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
-            )
-            .clipShape(Capsule(style: .continuous))
+            .glassEffect(.regular, in: .capsule)
     }
 }
 
