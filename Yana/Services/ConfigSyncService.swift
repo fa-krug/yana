@@ -293,7 +293,13 @@ final class ConfigSyncService {
     /// failures (no signed-in account, network) get a tailored line; everything else falls back
     /// to the localized error description.
     static func describe(_ error: Error) -> String {
-        if let ck = error as? CKError {
+        // CKSyncEngine collapses the real server rejection into a generic wrapper ("Failed to send
+        // changes") and buries the cause as a partial/underlying error, so walk the whole chain
+        // rather than inspecting only the top-level error.
+        let ckErrors = Self.ckErrors(in: error)
+
+        // Known account/network/quota conditions get a friendly, actionable message.
+        for ck in ckErrors {
             switch ck.code {
             case .notAuthenticated:
                 return String(localized: "Sign in to iCloud in Settings to sync.")
@@ -304,9 +310,75 @@ final class ConfigSyncService {
             case .managedAccountRestricted, .permissionFailure:
                 return String(localized: "iCloud access is restricted for this account.")
             default:
-                break
+                continue
             }
         }
+
+        // Otherwise surface the most specific server reason so a schema/validation rejection (e.g. a
+        // field or record type not yet deployed to the Production CloudKit schema) is diagnosable
+        // from the UI instead of the opaque "Failed to send changes" wrapper.
+        if let specific = ckErrors.first(where: { $0.code != .partialFailure }) {
+            let codeName = Self.codeName(for: specific.code)
+            if let serverReason = specific.errorUserInfo["ServerErrorDescription"] as? String,
+               !serverReason.isEmpty {
+                return "\(serverReason) (\(codeName))"
+            }
+            return "\(specific.localizedDescription) (\(codeName))"
+        }
         return error.localizedDescription
+    }
+
+    /// A readable name for a `CKError.Code`. `String(describing:)` yields an opaque
+    /// `CKErrorCode(rawValue: 15)`, so map the codes worth diagnosing (schema/validation rejections
+    /// especially) to their symbolic names, falling back to the raw value for the rest.
+    private static func codeName(for code: CKError.Code) -> String {
+        switch code {
+        case .serverRejectedRequest: return "serverRejectedRequest"
+        case .invalidArguments: return "invalidArguments"
+        case .constraintViolation: return "constraintViolation"
+        case .serverRecordChanged: return "serverRecordChanged"
+        case .unknownItem: return "unknownItem"
+        case .zoneNotFound: return "zoneNotFound"
+        case .userDeletedZone: return "userDeletedZone"
+        case .badContainer: return "badContainer"
+        case .badDatabase: return "badDatabase"
+        case .internalError: return "internalError"
+        case .limitExceeded: return "limitExceeded"
+        case .quotaExceeded: return "quotaExceeded"
+        case .partialFailure: return "partialFailure"
+        case .serverResponseLost: return "serverResponseLost"
+        case .incompatibleVersion: return "incompatibleVersion"
+        case .requestRateLimited: return "requestRateLimited"
+        case .serviceUnavailable: return "serviceUnavailable"
+        case .notAuthenticated: return "notAuthenticated"
+        case .permissionFailure: return "permissionFailure"
+        case .managedAccountRestricted: return "managedAccountRestricted"
+        default: return "code \(code.rawValue)"
+        }
+    }
+
+    /// Flatten a CloudKit error chain — partial failures and underlying errors — into the `CKError`s
+    /// it contains, outermost first. `CKSyncEngine` wraps the real server rejection this way, so the
+    /// actionable cause is often several links down. Depth-bounded to guard against cyclic chains.
+    private static func ckErrors(in error: Error) -> [CKError] {
+        var found: [CKError] = []
+        func walk(_ error: Error, depth: Int) {
+            guard depth < 6 else { return }
+            let ns = error as NSError
+            if let ck = error as? CKError {
+                found.append(ck)
+                if let partials = ck.partialErrorsByItemID {
+                    for sub in partials.values { walk(sub, depth: depth + 1) }
+                }
+            }
+            if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? Error {
+                walk(underlying, depth: depth + 1)
+            }
+            if let multiple = ns.userInfo["NSMultipleUnderlyingErrorsKey"] as? [Error] {
+                for sub in multiple { walk(sub, depth: depth + 1) }
+            }
+        }
+        walk(error, depth: 0)
+        return found
     }
 }

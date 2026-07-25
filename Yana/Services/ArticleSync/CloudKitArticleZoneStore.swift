@@ -23,6 +23,12 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     private var pendingImageUploads: [String: SyncedImageRecord] = [:]   // hash -> record awaiting send
     // Cache of records to serialize when the engine asks for a batch (recordName -> struct).
     private var articleRecordCache: [String: SyncedArticleRecord] = [:]
+    // recordName -> encoded server CKRecord system fields, captured when a save conflicts with an
+    // existing server record (`serverRecordChanged`). Reused when the engine asks for the record
+    // again so the retry carries the server's change tag and is treated as an UPDATE, not another
+    // INSERT — otherwise the server keeps rejecting "record to insert already exists" and the push
+    // loops forever. Cleared once the record is saved or dropped, so it only holds in-flight rows.
+    private var serverSystemFields: [String: Data] = [:]
     // Image-hash -> temp file backing a `CKAsset`, deleted once the record is confirmed saved or dropped.
     private var imageTempFiles: [String: URL] = [:]
     // Dedicated subdirectory for image `CKAsset` temp files so we can wipe leftovers on launch.
@@ -98,13 +104,36 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
             ids.append(id)
         }
         engine().state.add(pendingRecordZoneChanges: ids.map { .saveRecord($0) })
-        try await engine().sendChanges()
+        try await sendToleratingConflicts()
     }
 
     func delete(articleUIDs: [String]) async throws {
         let ids = articleUIDs.compactMap { recordID($0) }
         engine().state.add(pendingRecordZoneChanges: ids.map { .deleteRecord($0) })
-        try await engine().sendChanges()
+        try await sendToleratingConflicts()
+    }
+
+    /// Run the engine's send, tolerating the partial failure a first-time conflicting push throws:
+    /// each `serverRecordChanged` sub-error has already been re-queued (with a freshly fetched change
+    /// tag) by `handleSentRecordZoneChanges`, and the engine completes it on the next send — so
+    /// surfacing it would show a scary, self-healing "error" to the user. Any other failure still
+    /// propagates so genuine problems (auth, quota, …) reach `lastSyncError`.
+    private func sendToleratingConflicts() async throws {
+        do {
+            try await engine().sendChanges()
+        } catch {
+            if !Self.isFullyRecoverableConflict(error) { throw error }
+        }
+    }
+
+    /// True when `error` is a CloudKit partial failure whose every sub-error is `serverRecordChanged`
+    /// — the self-healing "record already exists" / diverged-copy case that `handleSentRecordZoneChanges`
+    /// re-queues (after fetching the server change tag). Such a failure is transient and must not be
+    /// surfaced to the user; any other error (auth, quota, a mixed failure) returns false and propagates.
+    static func isFullyRecoverableConflict(_ error: Error) -> Bool {
+        guard let ck = error as? CKError, ck.code == .partialFailure else { return false }
+        let partials = (ck.partialErrorsByItemID ?? [:]).values
+        return !partials.isEmpty && partials.allSatisfy { ($0 as? CKError)?.code == .serverRecordChanged }
     }
 
     func fetchImage(hash: String) async throws -> SyncedImageRecord? {
@@ -160,13 +189,28 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
 
         var recordChanges: [CKSyncEngine.PendingRecordZoneChange] = []
         var databaseChanges: [CKSyncEngine.PendingDatabaseChange] = []
+        var tagFetchIDs: [CKRecord.ID] = []   // article saves that need the server change tag fetched
         for failure in event.failedRecordSaves {
             let recordID = failure.record.recordID
             switch failure.error.code {
             case .serverRecordChanged:
-                // Server copy diverged. Bodies are last-writer-wins, so re-queue the save to let our
-                // copy win on the next batch.
-                recordChanges.append(.saveRecord(recordID))
+                if failure.record.recordType == Self.imageRecordType {
+                    // Images are content-addressed and write-once: an existing server copy is already
+                    // the correct blob, so the "conflict" just means it's already there. Drop it.
+                    forget(recordName: recordID.recordName)
+                } else if let serverRecord = failure.error.serverRecord {
+                    // Update conflict where CloudKit handed back the diverged server record: adopt its
+                    // system fields so the re-queued save is an UPDATE (bodies are last-writer-wins).
+                    rememberServerRecord(serverRecord)
+                    recordChanges.append(.saveRecord(recordID))
+                } else {
+                    // "record to insert already exists": the record is on the server (another device,
+                    // or a re-push) but this device has no change tag for it, so our tagless save was
+                    // treated as an insert and rejected. The error carries only the etag, not the
+                    // record, so fetch the existing record's system fields, then re-queue as an update.
+                    // Without this the retry rebuilds another tagless record and loops forever.
+                    tagFetchIDs.append(recordID)
+                }
             case .zoneNotFound, .userDeletedZone:
                 // The custom zone is gone. Recreate it and re-queue the failed save.
                 databaseChanges.append(.saveZone(CKRecordZone(zoneID: zoneID)))
@@ -195,6 +239,23 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         }
         if !databaseChanges.isEmpty { syncEngine.state.add(pendingDatabaseChanges: databaseChanges) }
         if !recordChanges.isEmpty { syncEngine.state.add(pendingRecordZoneChanges: recordChanges) }
+        if !tagFetchIDs.isEmpty {
+            Task { await fetchServerTagsAndRequeue(tagFetchIDs, syncEngine: syncEngine) }
+        }
+    }
+
+    /// Fetch just the system fields (identity + change tag, no field data) of records that already
+    /// exist on the server, remember them, and re-queue their saves so the next batch is an UPDATE
+    /// carrying the right tag. One batched fetch resolves a whole conflicting push.
+    private func fetchServerTagsAndRequeue(_ ids: [CKRecord.ID], syncEngine: CKSyncEngine) async {
+        guard let results = try? await database.records(for: ids, desiredKeys: []) else { return }
+        var requeue: [CKSyncEngine.PendingRecordZoneChange] = []
+        for (id, result) in results {
+            guard case .success(let record) = result else { continue }
+            rememberServerRecord(record)
+            requeue.append(.saveRecord(id))
+        }
+        if !requeue.isEmpty { syncEngine.state.add(pendingRecordZoneChanges: requeue) }
     }
 
     /// Zone save failures surface here. Mirror the conservative record-save policy: leave genuinely
@@ -227,9 +288,32 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     private func forget(recordName: String) {
         articleRecordCache[recordName] = nil
         pendingImageUploads[recordName] = nil
+        serverSystemFields[recordName] = nil
         if let url = imageTempFiles.removeValue(forKey: recordName) {
             try? FileManager.default.removeItem(at: url)
         }
+    }
+
+    /// Encode a server record's system fields (identity + change tag) so a subsequent save of the
+    /// same record can be reconstructed as an update rather than an insert.
+    private func rememberServerRecord(_ record: CKRecord) {
+        let coder = NSKeyedArchiver(requiringSecureCoding: true)
+        record.encodeSystemFields(with: coder)
+        serverSystemFields[record.recordID.recordName] = coder.encodedData
+    }
+
+    /// A base `CKRecord` to write article fields onto: reconstructed from a remembered server record
+    /// (carrying its change tag, so the write is an update) when we've seen a conflict for this name,
+    /// otherwise a fresh record (an insert).
+    private func baseArticleRecord(for recordID: CKRecord.ID) -> CKRecord {
+        if let data = serverSystemFields[recordID.recordName],
+           let coder = try? NSKeyedUnarchiver(forReadingFrom: data) {
+            coder.requiresSecureCoding = true
+            let record = CKRecord(coder: coder)
+            coder.finishDecoding()
+            if let record { return record }
+        }
+        return CKRecord(recordType: Self.articleRecordType, recordID: recordID)
     }
 
     func nextRecordZoneChangeBatch(_ context: CKSyncEngine.SendChangesContext,
@@ -253,7 +337,9 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         // it is the same name, already past `recordID(_:)`'s validation, so serialization can't
         // re-trip CloudKit's uncatchable record-name check.
         if let article = articleRecordCache[name] {
-            return Self.ckRecord(from: article, recordID: recordID)
+            let record = baseArticleRecord(for: recordID)
+            Self.apply(article, to: record)
+            return record
         }
         if let image = pendingImageUploads[name] {
             return ckRecord(from: image, recordID: recordID)
@@ -287,6 +373,14 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     /// this exact mapping — the pushed schema then cannot drift from what the app really writes.
     static func ckRecord(from a: SyncedArticleRecord, recordID: CKRecord.ID) -> CKRecord {
         let record = CKRecord(recordType: articleRecordType, recordID: recordID)
+        apply(a, to: record)
+        return record
+    }
+
+    /// Write a `SyncedArticleRecord`'s fields onto an existing `CKRecord` (fresh or reconstructed from
+    /// server system fields). Kept separate from `ckRecord(from:recordID:)` so the update path can
+    /// preserve the server change tag while sharing the exact same field mapping.
+    static func apply(_ a: SyncedArticleRecord, to record: CKRecord) {
         record["feedIdentifier"] = a.feedIdentifier as CKRecordValue
         record["aggregatorType"] = a.aggregatorType as CKRecordValue
         record["articleIdentifier"] = a.articleIdentifier as CKRecordValue
@@ -303,7 +397,6 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         record["isStarred"] = (a.isStarred ? 1 : 0) as CKRecordValue
         record["tagNames"] = a.tagNames as CKRecordValue
         record["imageHashes"] = a.imageHashes as CKRecordValue
-        return record
     }
 
     private static func articleRecord(from record: CKRecord) -> SyncedArticleRecord? {
