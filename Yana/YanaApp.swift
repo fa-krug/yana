@@ -139,7 +139,14 @@ struct YanaApp: App {
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
-                    appDelegate.scheduleLaunchRefresh()
+                    // Skipped for screenshot capture: a real fetch would spin the toolbar
+                    // progress view and can raise an error toast, both of which would land in
+                    // the captured frame.
+                    var skipLaunchRefresh = false
+                    #if DEBUG
+                    skipLaunchRefresh = MacScreenshotWindow.isRequested
+                    #endif
+                    if !skipLaunchRefresh { appDelegate.scheduleLaunchRefresh() }
                     #endif
                 }
         }
