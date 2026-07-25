@@ -185,7 +185,8 @@ private struct MacSidebarView: View {
         // own selection-follow scrolling rather than a reader proxy.
         List(selection: $model.selection) {
             ForEach(displayed) { summary in
-                MacArticleRow(summary: summary, model: model)
+                MacArticleRow(summary: summary, model: model,
+                              isSelected: model.selection == summary.identifier)
                     .listRowInsets(Self.rowInsets)
                     .tag(summary.identifier)
             }
@@ -293,6 +294,8 @@ private struct MacFilterBar: View {
 private struct MacArticleRow: View {
     let summary: ArticleSummary
     let model: TimelineModel
+    let isSelected: Bool
+    @State private var isHovering = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -319,7 +322,15 @@ private struct MacArticleRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .background(hoverBackground)
+        .onHover { isHovering = $0 }
         .contextMenu { contextMenuItems }
+    }
+
+    @ViewBuilder private var hoverBackground: some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(isHovering && !isSelected ? Color.primary.opacity(0.06) : Color.clear)
+            .padding(.horizontal, -6)
     }
 
     @ViewBuilder private var contextMenuItems: some View {
