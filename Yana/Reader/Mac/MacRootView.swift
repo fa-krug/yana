@@ -1,6 +1,9 @@
 import SwiftData
 import SwiftUI
 
+/// Which pane owns keyboard focus in the Mac window (Mail-style two-pane model).
+enum MacFocusPane: Hashable { case sidebar, reader }
+
 /// The Mac (Mac Catalyst) window: a two-column `NavigationSplitView` with the article list
 /// permanently in the sidebar and the reader in the detail pane. This is the structural difference
 /// from iOS — where the list is a sheet over a full-screen swipe pager — while everything below the
@@ -13,6 +16,7 @@ struct MacRootView: View {
     @State private var model = TimelineModel()
     @State private var settings = AppSettings()
     @State private var speech = ReaderSpeechController()
+    @FocusState private var focusedPane: MacFocusPane?
     /// Keep the article-list sidebar open by default (and after relaunch) — it is the primary
     /// navigation on the Mac, not a collapsible drawer.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -23,7 +27,8 @@ struct MacRootView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             MacSidebarView(model: model, settings: settings,
-                           onCreateFeed: { openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create) })
+                           onCreateFeed: { openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create) },
+                           focusedPane: $focusedPane)
                 .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
                 .navigationTitle("Yana")
         } detail: {
@@ -38,6 +43,7 @@ struct MacRootView: View {
         .onAppear {
             model.configure(modelContext: modelContext, store: store)
             model.applyTimeline()
+            focusedPane = .sidebar
         }
         .onChange(of: store.summaries) { _, _ in model.applyTimeline() }
         .onChange(of: UpdateActivity.shared.isUpdating || model.isSummarizing) { _, busy in
@@ -57,7 +63,9 @@ struct MacRootView: View {
                 index: model.currentIndex,
                 resolveArticle: { model.resolve($0) },
                 reloadToken: model.reloadToken,
-                onRefresh: { model.triggerRefresh() }
+                onRefresh: { model.triggerRefresh() },
+                isFocused: focusedPane == .reader,
+                onEscape: { focusedPane = .sidebar }
             )
             .ignoresSafeArea()
         }
@@ -151,6 +159,7 @@ private struct MacSidebarView: View {
     /// observation is per-instance — a separate instance would not notify the root).
     let settings: AppSettings
     let onCreateFeed: () -> Void
+    @FocusState.Binding var focusedPane: MacFocusPane?
 
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
@@ -215,6 +224,12 @@ private struct MacSidebarView: View {
             debouncedSearch = searchText
         }
         .task(id: debouncedSearch) { await runSearch() }
+        .focused($focusedPane, equals: .sidebar)
+        .onKeyPress(.return) {
+            guard model.selectedSummary != nil else { return .ignored }
+            focusedPane = .reader
+            return .handled
+        }
     }
 
     private func runSearch() async {

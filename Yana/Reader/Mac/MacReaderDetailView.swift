@@ -15,11 +15,16 @@ struct MacReaderDetailView: UIViewControllerRepresentable {
     /// re-renders (same mechanism as the iOS `ReaderHostView.reloadToken`).
     let reloadToken: Int
     var onRefresh: (() -> Void)?
+    /// True when the reader pane owns keyboard focus; drives first-responder so Esc/scroll keys reach it.
+    var isFocused: Bool = false
+    /// Called when the user presses Esc inside the reader to hand focus back to the sidebar.
+    var onEscape: () -> Void = {}
 
     func makeUIViewController(context: Context) -> MacReaderContainerViewController {
         let vc = MacReaderContainerViewController()
         vc.resolveArticle = resolveArticle
         vc.onRefresh = onRefresh
+        vc.onEscape = onEscape
         context.coordinator.lastReloadToken = reloadToken
         vc.show(articles: articles, index: index)
         return vc
@@ -28,11 +33,13 @@ struct MacReaderDetailView: UIViewControllerRepresentable {
     func updateUIViewController(_ vc: MacReaderContainerViewController, context: Context) {
         vc.resolveArticle = resolveArticle
         vc.onRefresh = onRefresh
+        vc.onEscape = onEscape
         if reloadToken != context.coordinator.lastReloadToken {
             context.coordinator.lastReloadToken = reloadToken
             vc.reloadCurrent()
         }
         vc.show(articles: articles, index: index)
+        if isFocused, !vc.isFirstResponder { vc.becomeFirstResponder() }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -52,6 +59,15 @@ struct MacReaderDetailView: UIViewControllerRepresentable {
 final class MacReaderContainerViewController: UIViewController {
     var resolveArticle: ((ArticleSummary) -> Article?)?
     var onRefresh: (() -> Void)?
+    var onEscape: (() -> Void)?
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(handleEscape))]
+    }
+
+    @objc private func handleEscape() { onEscape?() }
 
     /// Cache of built page VCs keyed by article identifier; `lruOrder` tracks recency (last = MRU).
     private var cache: [String: ReaderBlockViewController] = [:]
