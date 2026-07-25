@@ -92,6 +92,12 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Yana.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Yana"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        # The Mac screenshot lane runs `xcodebuild test` against a Mac Catalyst destination,
+        # and xcodebuild builds every test target in the scheme even with -only-testing. So
+        # both test bundles must support Catalyst, not just the UI-test one.
+        SUPPORTS_MACCATALYST: true
+        TARGETED_DEVICE_FAMILY: "1,2,6"
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: false
 
   YanaUITests:
     type: bundle.ui-testing
@@ -104,6 +110,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana.uitests
         GENERATE_INFOPLIST_FILE: true
+        SUPPORTS_MACCATALYST: true
+        TARGETED_DEVICE_FAMILY: "1,2,6"
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: false
 
 schemes:
   Yana:

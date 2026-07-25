@@ -24,3 +24,122 @@ platform :ios do
     frame_screenshots(white: false)
   end
 end
+
+platform :mac do
+  # Shot key => the Settings-pane overlay it composites from, or nil for a direct capture.
+  MAC_SHOTS = {
+    "01_Reader" => nil,
+    "02_Search" => nil,
+    "03_Feeds"  => "03_Feeds.overlay.png",
+    "04_AI"     => "04_AI.overlay.png"
+  }.freeze
+
+  # Locale => the test method that captures it. Splitting by method (rather than plumbing a
+  # TEST_RUNNER_* env var) keeps locale selection to a plain -only-testing argument.
+  MAC_LOCALES = {
+    "en-US" => "testCaptureScreenshotsEnglish",
+    "de-DE" => "testCaptureScreenshotsGerman"
+  }.freeze
+
+  desc "Capture Mac App Store screenshots (en-US + de-DE, 2880x1800)"
+  lane :screenshots_mac do
+    require "json"
+    require "fileutils"
+
+    repo_root = File.expand_path("..", __dir__)
+    out_root = File.join(repo_root, "fastlane", "screenshots_mac")
+    compositor = File.join(repo_root, "fastlane", "mac_composite.swift")
+
+    MAC_LOCALES.each do |locale, test_method|
+      UI.header("Capturing #{locale}")
+
+      result_bundle = File.join(Dir.tmpdir, "yana-mac-#{locale}.xcresult")
+      attachments = File.join(Dir.tmpdir, "yana-mac-#{locale}-att")
+      FileUtils.rm_rf([result_bundle, attachments])
+
+      # Not `scan`/`run_tests`: that action assumes a simulator destination. A direct xcodebuild
+      # invocation is the only way to drive the Mac Catalyst destination.
+      #
+      # `-project` is required because fastlane's `sh` runs from the repo root (due to the
+      # `chdir` in `lane_context`), not the `fastlane/` subdirectory — so xcodebuild would
+      # otherwise find no project file in its working directory.
+      sh(
+        "xcodebuild", "test",
+        "-project", File.join(repo_root, "Yana.xcodeproj"),
+        "-scheme", "Yana",
+        "-destination", "platform=macOS,variant=Mac Catalyst",
+        "-only-testing:YanaUITests/MacScreenshotUITests/#{test_method}",
+        "-resultBundlePath", result_bundle
+      )
+
+      sh("xcrun", "xcresulttool", "export", "attachments",
+         "--path", result_bundle, "--output-path", attachments)
+
+      manifest_path = File.join(attachments, "manifest.json")
+      UI.user_error!("no manifest at #{manifest_path}") unless File.exist?(manifest_path)
+
+      # manifest.json maps each attachment's suggested name to the file actually written on
+      # disk, so resolve through it rather than guessing filenames.
+      #
+      # XCTest does NOT preserve the name we set verbatim: an attachment named "01_Reader.png"
+      # comes back as "01_Reader_0_188684A9-1F57-461C-8D5D-67B8A31AC266.png" (an index plus a
+      # UUID inserted before the extension). Strip that suffix so lookups can use the plain
+      # shot name. Verified against a real .xcresult — matching exactly would always miss.
+      exported = {}
+      JSON.parse(File.read(manifest_path)).each do |test|
+        (test["attachments"] || []).each do |attachment|
+          raw = attachment["suggestedHumanReadableName"]
+          file = attachment["exportedFileName"]
+          next unless raw && file
+          name = raw.sub(/_\d+_[0-9A-Fa-f-]{36}(\.[A-Za-z0-9]+)\z/, '\1')
+          if exported.key?(name)
+            # Keep the first occurrence and warn: last-wins would silently promote a partial
+            # capture from a retried/failed attempt over the successful one.
+            UI.important("Duplicate attachment name '#{name}' in #{locale} manifest — keeping first, ignoring '#{file}'")
+          else
+            exported[name] = File.join(attachments, file)
+          end
+        end
+      end
+
+      locale_dir = File.join(out_root, locale)
+      # Clear before writing so a partial re-run doesn't leave stale captures from a prior
+      # run alongside this run's fresh shots — stale files would be invisible to the operator.
+      FileUtils.rm_rf(locale_dir)
+      FileUtils.mkdir_p(locale_dir)
+
+      base = exported["01_Reader.png"]
+      UI.user_error!("01_Reader.png missing from #{locale} run") unless base
+
+      MAC_SHOTS.each do |shot, overlay_name|
+        target = File.join(locale_dir, "#{shot}.png")
+
+        if overlay_name.nil?
+          source = exported["#{shot}.png"]
+          UI.user_error!("#{shot}.png missing from #{locale} run") unless source
+          # Verify the direct shot is exactly 2880x1800 — any other size means the capture ran
+          # on a non-Retina display or the window geometry helper failed.
+          dims = `sips -g pixelWidth -g pixelHeight #{source.shellescape}`.scan(/\d+$/).map(&:to_i)
+          UI.user_error!(
+            "#{shot}.png is #{dims[0]}x#{dims[1]}, expected 2880x1800 — capture requires a Retina (2x) display"
+          ) unless dims == [2880, 1800]
+          # Re-encode rather than copy: XCUIScreenshot PNGs carry an alpha channel while the
+          # composited shots do not, and App Store Connect is hostile to alpha — a verbatim copy
+          # produced a set with mixed alpha. The compositor's two-argument form runs the direct
+          # shot through the same opaque encoder as the composites.
+          sh("xcrun", "swift", compositor, source, target)
+        else
+          overlay = exported[overlay_name]
+          UI.user_error!("#{overlay_name} missing from #{locale} run") unless overlay
+          sh("xcrun", "swift", compositor, base, overlay, target)
+        end
+
+        UI.success("#{locale}/#{shot}.png")
+      end
+
+      FileUtils.rm_rf([result_bundle, attachments])
+    end
+
+    UI.success("Mac screenshots written to fastlane/screenshots_mac/")
+  end
+end

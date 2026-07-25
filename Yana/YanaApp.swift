@@ -20,6 +20,32 @@ enum AppContainer {
                 // forbids the non-optional cascade relationship on Feed/Article.
                 // iCloud sync of *configuration* is handled separately, out of band,
                 // by ConfigSyncService via a single CloudKit config record.
+                #if DEBUG
+                // Screenshot-capture runs get a throwaway store in the temp directory so
+                // the developer's real Mac library is never touched. The file is deleted
+                // before each run so every capture starts from an empty, seed-only state.
+                // This is also why ScreenshotSeed can write fixture data without risk of
+                // polluting a live library.
+                if MacScreenshotWindow.isRequested {
+                    let storeURL = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("yana-screenshots.store")
+                    // Remove the store file and its WAL/SHM siblings so every capture run
+                    // starts from a completely clean state (SQLite leaves -wal and -shm files
+                    // behind after a crash or forced-quit, and SwiftData will refuse to open
+                    // if those files exist without the main store).
+                    // SQLite names the siblings `<store>-wal` / `<store>-shm` — a HYPHEN suffix on
+                    // the full filename, not a dot extension. `appendingPathExtension` would
+                    // produce `…store.wal`, which matches nothing and leaves the real files behind.
+                    for suffix in ["", "-wal", "-shm"] {
+                        let sibling = storeURL.deletingLastPathComponent()
+                            .appendingPathComponent(storeURL.lastPathComponent + suffix)
+                        try? FileManager.default.removeItem(at: sibling)
+                    }
+                    let config = ModelConfiguration(url: storeURL, cloudKitDatabase: .none)
+                    return try ModelContainer(for: Feed.self, Tag.self, Article.self,
+                                             configurations: config)
+                }
+                #endif
                 let config = ModelConfiguration(cloudKitDatabase: .none)
                 return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                          configurations: config)
@@ -139,7 +165,14 @@ struct YanaApp: App {
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
-                    appDelegate.scheduleLaunchRefresh()
+                    // Skipped for screenshot capture: a real fetch would spin the toolbar
+                    // progress view and can raise an error toast, both of which would land in
+                    // the captured frame.
+                    var skipLaunchRefresh = false
+                    #if DEBUG
+                    skipLaunchRefresh = MacScreenshotWindow.isRequested
+                    #endif
+                    if !skipLaunchRefresh { appDelegate.scheduleLaunchRefresh() }
                     #endif
                 }
         }

@@ -66,6 +66,63 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   run no longer persists — a manual `xcrun simctl shutdown all; xcrun simctl erase all` is only needed
   if you capture outside the lane.
 
+### macOS App Store screenshots
+- `fastlane mac screenshots_mac` — capture the Mac App Store screenshots (**en-US + de-DE**,
+  **2880×1800**, the largest allowed Mac size). Output: `fastlane/screenshots_mac/{en-US,de-DE}/`,
+  committed like the iPhone set.
+- **This shares nothing with the iPhone lane, by necessity:** `capture_screenshots` (fastlane
+  snapshot) drives iOS Simulator destinations only and cannot target Mac Catalyst, and
+  `frame_screenshots` (frameit) has no Mac device frames. So the Mac path is its own test
+  (`YanaUITests/MacScreenshotUITests.swift`), its own lane, and its own output directory — kept
+  **outside** `fastlane/screenshots/` so the iOS lane's `frame_screenshots` never sees it.
+- 4-shot set (numeric key = App Store order): `01_Reader` (main window — sidebar + hero article)
+  → `02_Search` (sidebar search for "battery") → `03_Feeds` (Settings › Feeds) → `04_AI`
+  (Settings › AI). Keep these keys in sync between `MacScreenshotUITests.swift` and `MAC_SHOTS`
+  in the Fastfile.
+- Shots are **plain captures — no device frame, no gradient, no captions** (the Mac App Store
+  convention). Localization comes from the app chrome itself, forced via `-AppleLanguages` /
+  `-AppleLocale` launch arguments.
+- How it works: the test attaches each window capture as an `XCTAttachment`
+  (`lifetime = .keepAlways`) — the only sandbox-safe route out, since the Catalyst test runner
+  cannot write outside its container. The lane then runs `xcresulttool export attachments`,
+  resolves names through the emitted `manifest.json`, and composites the two Settings shots over
+  the `01_Reader` capture with `fastlane/mac_composite.swift` (CoreGraphics; `sips` cannot
+  composite and ImageMagick would be a new dependency).
+- Content is the same DEBUG-only offline fixture as the iPhone set (`ScreenshotSeed`, via
+  `-UITEST_SCREENSHOTS`). Per-locale isolation replaces `erase_simulator`: there is no simulator
+  to erase, so the test passes `-UITEST_RESET_LIBRARY` alongside it and relies on `YanaApp`
+  running the reset before the seed.
+- `-UITEST_MAC_SCREENSHOTS` (`Yana/Utilities/MacScreenshotWindow.swift`) pins the main window to
+  1440×900pt — 2880×1800 at 2x — suppresses the Mac launch refresh (whose spinner and error toast
+  would otherwise land in a frame), and suppresses iCloud sync via a launch argument (not a persisted
+  setting, so the developer's real sync preference is never modified): the app under test shares the
+  real `de.fa-krug.Yana` container, so a developer's synced feeds would otherwise appear mid-capture.
+- The capture run uses a **throwaway SwiftData store** in the system temp directory
+  (`yana-screenshots.store` + its `-wal`/`-shm` siblings, deleted before each run). The developer's
+  real Mac library under `~/Library/Application Support/` is never touched.
+- Gotchas: exact sizing **requires a Retina (2x) display** — the lane fails loudly if the direct
+  shots are not exactly 2880×1800, and the compositor fails loudly if the base image has the wrong
+  aspect ratio. Neither falls back silently. Both `YanaTests` and `YanaUITests` must keep
+  `SUPPORTS_MACCATALYST`, because `xcodebuild` builds every test target in the scheme even with
+  `-only-testing`. Per-locale isolation works via `-UITEST_RESET_LIBRARY` (not `erase_simulator`,
+  which has no Mac equivalent); UserDefaults and Keychain carry over between runs, which is why the
+  test pins settings via a UserDefaults argument domain rather than relying on persisted state.
+  The Mac surfaces carry `mac.*` accessibility identifiers purely so the test can navigate
+  locale-independently; the sidebar search field is matched as `app.searchFields` because
+  `.searchable` does not forward an identifier reliably.
+- **Codesigning gotchas (Mac Catalyst only — the iPhone lane ad-hoc signs and is immune):**
+  - `codesign … errSecInternalComponent` means `codesign` cannot read the signing key. Two distinct
+    causes: (a) the login keychain's signing keys lack `codesign:` in their partition list — fix with
+    `security unlock-keychain ~/Library/Keychains/login.keychain-db` then
+    `security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k '<password>' ~/Library/Keychains/login.keychain-db`;
+    (b) the shell is not in the **Aqua** launchd session (check `launchctl managername`) — a
+    `Background` session is never served a signing key, so the lane must be run from a real
+    Terminal, not from an automation/agent shell.
+  - `invalid or unsupported format for signature … <Framework>.cstemp` means a PREVIOUS codesign run
+    died partway and left `.cstemp` turds inside the copied XCTest frameworks. Clear them with
+    `rm -rf <DerivedData>/Build/Products/Debug-maccatalyst` and re-run; deleting only the `.cstemp`
+    files is not enough, because the frameworks themselves are left half-signed.
+
 ### Website (GitHub Pages)
 - The project ships a self-contained marketing + legal site under `docs/site/`, deployed to GitHub
   Pages at **`yana.fa-krug.de`** by `.github/workflows/pages.yml` on every push to `main` (one-time

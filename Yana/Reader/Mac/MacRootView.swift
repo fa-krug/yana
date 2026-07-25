@@ -38,6 +38,7 @@ struct MacRootView: View {
             detail
                 .toolbar { toolbar }
         }
+        .accessibilityIdentifier("mac.window.root")
         .toast($model.toast)
         // Scene-wide (not tied to which view has focus) so ⌘↑/⌘↓ move the article even when the
         // UIKit reader in the detail pane holds first responder.
@@ -47,6 +48,11 @@ struct MacRootView: View {
             model.configure(modelContext: modelContext, store: store)
             model.applyTimeline()
             focusedPane = .sidebar
+            #if DEBUG
+            // Pin the window to a fixed size when capturing App Store screenshots. Main window
+            // only — the Settings window is captured at its natural size and composited.
+            MacScreenshotWindow.applyWindowGeometryIfRequested()
+            #endif
         }
         .onChange(of: store.summaries) { _, _ in model.applyTimeline() }
         .onChange(of: UpdateActivity.shared.isUpdating || model.isSummarizing) { _, busy in
@@ -234,6 +240,8 @@ private struct MacSidebarView: View {
                     .tag(summary.identifier)
             }
         }
+        // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.
+        .accessibilityIdentifier("mac.sidebar.list")
         .listStyle(.sidebar)
         // The selection highlight follows the tint. The brand accent is a bright lavender that
         // fills the whole selected pill at full saturation — glaring against the dark sidebar — so
