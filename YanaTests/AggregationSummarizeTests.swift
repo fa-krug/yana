@@ -14,6 +14,10 @@ struct AggregationSummarizeTests {
         return context
     }
 
+    private func allArticles(_ context: ModelContext) -> [Article] {
+        (try? context.fetch(FetchDescriptor<Article>())) ?? []
+    }
+
     /// Stub processor that stamps a fixed summary onto every input article.
     private struct StubSummarizer: AIProcessing {
         let summary: String
@@ -32,12 +36,15 @@ struct AggregationSummarizeTests {
         let article = Article(title: "T", identifier: "i", url: "https://x")
         article.plainText = "body"   // summarize seeds the AI from the article's visible text
         context.insert(article)
+        try context.save()
 
+        let articleID = article.persistentModelID
         let service = AggregationService(context: context, aiProcessor: StubSummarizer(summary: "Short summary."))
         let ok = await service.summarize(article)
 
         #expect(ok == true)
-        #expect(article.summary == "Short summary.")
+        let a = context.model(for: articleID) as? Article
+        #expect(a?.summary == "Short summary.")
     }
 
     @Test func failureLeavesArticleUnchanged() async throws {
@@ -45,11 +52,14 @@ struct AggregationSummarizeTests {
         let article = Article(title: "T", identifier: "i", url: "https://x", summary: "old")
         article.plainText = "body"
         context.insert(article)
+        try context.save()
 
+        let articleID = article.persistentModelID
         let service = AggregationService(context: context, aiProcessor: DroppingProcessor())
         let ok = await service.summarize(article)
 
         #expect(ok == false)
-        #expect(article.summary == "old")
+        let a = context.model(for: articleID) as? Article
+        #expect(a?.summary == "old")
     }
 }

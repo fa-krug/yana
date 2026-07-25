@@ -14,6 +14,20 @@ struct AggregationServiceTests {
         return context
     }
 
+    /// Fresh fetch of all articles (sees writes from any sibling context of this container).
+    private func allArticles(_ context: ModelContext) -> [Article] {
+        (try? context.fetch(FetchDescriptor<Article>())) ?? []
+    }
+    /// Fresh fetch of a single feed's articles by the feed's identifier (relationship read on
+    /// freshly-fetched Article objects is not stale).
+    private func articles(_ context: ModelContext, feed identifier: String) -> [Article] {
+        allArticles(context).filter { $0.feed?.identifier == identifier }
+    }
+    /// Re-resolve a feed so scalar reads (lastError/lastFetchedAt/logoHash) are refreshed.
+    private func refetch(_ context: ModelContext, feed id: PersistentIdentifier) -> Feed? {
+        context.model(for: id) as? Feed
+    }
+
     /// Fake aggregator returning canned articles (no network).
     private struct FakeAggregator: Aggregator {
         let articles: [AggregatedArticle]
@@ -36,44 +50,51 @@ struct AggregationServiceTests {
         let enabled = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         let disabled = Feed(name: "B", aggregatorType: .feedContent, identifier: "b", enabled: false)
         context.insert(enabled); context.insert(disabled)
+        try context.save()
 
+        let enabledID = enabled.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("x1"), self.aggregated("x2")])
         }
         await service.updateAll()
 
         #expect(service.isUpdating == false)
-        #expect(enabled.articles.count == 2)
-        #expect(disabled.articles.isEmpty)
-        #expect(enabled.lastFetchedAt != nil)
-        #expect(enabled.lastError == nil)
+        #expect(articles(context, feed: "a").count == 2)
+        #expect(articles(context, feed: "b").isEmpty)
+        let ef = refetch(context, feed: enabledID)
+        #expect(ef?.lastFetchedAt != nil)
+        #expect(ef?.lastError == nil)
     }
 
     @Test func runCapLimitsImportedArticles() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
         context.insert(feed)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3")])
         }
         await service.update(feed: feed)
 
-        #expect(feed.articles.count == 2)
+        #expect(articles(context, feed: "a").count == 2)
     }
 
     @Test func dropsArticlesOlderThanIntakeWindow() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
+        try context.save()
         let old = aggregated("old", date: Date.now.addingTimeInterval(-61 * 24 * 3600))
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("fresh"), old])
         }
         await service.update(feed: feed)
 
-        #expect(feed.articles.map(\.identifier) == ["fresh"])
+        #expect(articles(context, feed: "a").map(\.identifier) == ["fresh"])
     }
 
     @Test func feedFailureIsIsolatedAndRecorded() async throws {
@@ -81,7 +102,10 @@ struct AggregationServiceTests {
         let bad = Feed(name: "bad", aggregatorType: .feedContent, identifier: "bad")
         let good = Feed(name: "good", aggregatorType: .feedContent, identifier: "good")
         context.insert(bad); context.insert(good)
+        try context.save()
 
+        let badID = bad.persistentModelID
+        let goodID = good.persistentModelID
         let service = AggregationService(context: context) { config, _ in
             if config.identifier == "bad" {
                 return FakeAggregator(articles: [], validateError: AggregatorError.missingIdentifier)
@@ -90,26 +114,31 @@ struct AggregationServiceTests {
         }
         await service.updateAll()
 
-        #expect(bad.lastError != nil)
-        #expect(good.articles.count == 1)        // one feed's failure didn't abort the run
-        #expect(good.lastError == nil)
+        let b = refetch(context, feed: badID)
+        #expect(b?.lastError != nil)
+        #expect(articles(context, feed: "good").count == 1)        // one feed's failure didn't abort the run
+        let g = refetch(context, feed: goodID)
+        #expect(g?.lastError == nil)
     }
 
     @Test func missingAggregatorRecordsError() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .reddit, identifier: "swift")
         context.insert(feed)
+        try context.save()
 
         // Default factory (registry) returns nil until Phase 4b.
         // Reddit is OFF by default; enable it so the source gate is passed and
         // the missing-aggregator path is exercised instead of the early-return.
+        let feedID = feed.persistentModelID
         let settings = AppSettings(defaults: freshDefaults())
         settings.redditEnabled = true
         let service = AggregationService(context: context, settings: settings)
         await service.update(feed: feed)
 
-        #expect(feed.lastError != nil)
-        #expect(feed.articles.isEmpty)
+        let f = refetch(context, feed: feedID)
+        #expect(f?.lastError != nil)
+        #expect(articles(context, feed: "swift").isEmpty)
     }
 
     // MARK: - AI wiring (Phase 4f)
@@ -136,7 +165,9 @@ struct AggregationServiceTests {
         // dailyLimit 2 so the cap trims the 3 fetched down to 2 BEFORE the processor sees them.
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
         context.insert(feed)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         let fake = FakeAIProcessor()    // identity transform
         let service = AggregationService(
             context: context,
@@ -151,14 +182,16 @@ struct AggregationServiceTests {
         // cap stops the run after 2 — so article "3" is never fetched, processed, or upserted.
         #expect(fake.receivedAll.count == 2)                    // processed the capped 2, not 3
         #expect(fake.receivedAll.map { $0.identifier } == ["1", "2"])
-        #expect(feed.articles.count == 2)
+        #expect(articles(context, feed: "a").count == 2)
     }
 
     @Test func aiProcessorOutputIsWhatGetsUpserted() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         // Processor drops "drop" and rewrites "keep"'s title.
         let fake = FakeAIProcessor { input in
             input.compactMap { a in
@@ -177,8 +210,9 @@ struct AggregationServiceTests {
         )
         await service.update(feed: feed)
 
-        #expect(feed.articles.map { $0.identifier } == ["keep"])    // dropped article never upserted
-        #expect(feed.articles.first?.title == "AI:keep")        // AI transform persisted
+        let fetched = articles(context, feed: "a")
+        #expect(fetched.map { $0.identifier } == ["keep"])    // dropped article never upserted
+        #expect(fetched.first?.title == "AI:keep")        // AI transform persisted
     }
 
     /// Per-article durability: an aggregator that hands two articles to the sink and is then
@@ -202,6 +236,8 @@ struct AggregationServiceTests {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 10)
         context.insert(feed)
+        try context.save()
+        let feedID = feed.persistentModelID
         let service = AggregationService(
             context: context,
             makeAggregator: { _, _ in InterruptedAggregator(yield: [self.aggregated("a1"), self.aggregated("a2")]) }
@@ -210,8 +246,9 @@ struct AggregationServiceTests {
         let inserted = await service.update(feed: feed)
 
         #expect(inserted == 2)
-        #expect(feed.articles.map(\.identifier).sorted() == ["a1", "a2"])   // saved despite the failure
-        #expect(feed.lastError == nil)                                       // cancellation isn't a failure
+        #expect(articles(context, feed: "a").map(\.identifier).sorted() == ["a1", "a2"])   // saved despite the failure
+        let f = refetch(context, feed: feedID)
+        #expect(f?.lastError == nil)                                       // cancellation isn't a failure
     }
 
     @Test func aiProcessorReceivesFeedsAIOptions() async throws {
@@ -267,6 +304,8 @@ struct AggregationServiceTests {
             context.insert(feed)
             return feed
         }
+        try context.save()
+        let feedIDs = feeds.map(\.persistentModelID)
 
         // Each feed gets a distinct number of articles: feed i -> i+1 articles.
         let service = AggregationService(context: context) { config, _ in
@@ -280,10 +319,11 @@ struct AggregationServiceTests {
         #expect(service.isUpdating == false)
         let expectedTotal = (1...12).reduce(0, +) // 78
         #expect(inserted == expectedTotal)
-        for (i, feed) in feeds.enumerated() {
-            #expect(feed.articles.count == i + 1)
-            #expect(feed.lastError == nil)
-            #expect(feed.lastFetchedAt != nil)
+        for (i, id) in feedIDs.enumerated() {
+            #expect(articles(context, feed: "f\(i)").count == i + 1)
+            let f = refetch(context, feed: id)
+            #expect(f?.lastError == nil)
+            #expect(f?.lastFetchedAt != nil)
         }
     }
 
@@ -322,7 +362,9 @@ struct AggregationServiceTests {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         var item = self.aggregated("x1")
         item.content = "<p>Body text</p>"
         let article = item
@@ -331,8 +373,9 @@ struct AggregationServiceTests {
         }
         await service.updateAll()
 
-        #expect(feed.articles.count == 1)
-        #expect(feed.articles.first?.plainText.contains("Body text") == true)
+        let fetched = articles(context, feed: "a")
+        #expect(fetched.count == 1)
+        #expect(fetched.first?.plainText.contains("Body text") == true)
     }
 
     // MARK: - User-facing error messages
@@ -402,13 +445,16 @@ struct AggregationServiceTests {
         let context = try makeContext()
         let feed = Feed(name: "No Aggregator", aggregatorType: .feedContent, identifier: "x")
         context.insert(feed)
+        try context.save()
+        let feedID = feed.persistentModelID
         // Factory returns nil → exercises the `notImplemented` guard's failure-recording path.
         let service = AggregationService(context: context) { _, _ in nil }
         await service.update(feed: feed)
 
         #expect(service.lastRunFailures.count == 1)
         #expect(service.lastRunFailures.first?.feedName == "No Aggregator")
-        #expect(feed.lastError != nil)
+        let f = refetch(context, feed: feedID)
+        #expect(f?.lastError != nil)
     }
 
     // MARK: - Force reload
@@ -417,15 +463,17 @@ struct AggregationServiceTests {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
         context.insert(feed)
+        try context.save()
         let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("fresh"), old])
         }
         let inserted = await service.forceReload(feed: feed)
 
         #expect(inserted == 2)
-        #expect(Set(feed.articles.map(\.identifier)) == ["fresh", "old"])  // old NOT dropped
+        #expect(Set(articles(context, feed: "a").map(\.identifier)) == ["fresh", "old"])  // old NOT dropped
         #expect(service.isUpdating == false)
     }
 
@@ -433,28 +481,33 @@ struct AggregationServiceTests {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
         context.insert(feed)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3")])
         }
         await service.forceReload(feed: feed)
 
-        #expect(feed.articles.count == 3)  // cap of 2 ignored under force
+        #expect(articles(context, feed: "a").count == 3)  // cap of 2 ignored under force
     }
 
     @Test func normalUpdateStillAppliesWindowAndCap() async throws {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a", dailyLimit: 2)
         context.insert(feed)
+        try context.save()
         let old = aggregated("old", date: Date.now.addingTimeInterval(-200 * 24 * 3600))
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(context: context) { _, _ in
             FakeAggregator(articles: [self.aggregated("1"), self.aggregated("2"), self.aggregated("3"), old])
         }
         await service.update(feed: feed)
 
-        #expect(feed.articles.count == 2)                       // cap still applies
-        #expect(!feed.articles.map(\.identifier).contains("old"))  // window still applies
+        let fetched = articles(context, feed: "a")
+        #expect(fetched.count == 2)                       // cap still applies
+        #expect(!fetched.map(\.identifier).contains("old"))  // window still applies
     }
 
     // MARK: - Force reload article
@@ -490,7 +543,9 @@ struct AggregationServiceTests {
                               summary: "STALE SUMMARY")
         article.feed = feed
         context.insert(article)
+        try context.save()
 
+        let articleID = article.persistentModelID
         // Identity AI transform models a run that no longer summarizes (e.g. translate-only):
         // the processor leaves the carried summary untouched. The stale summary must NOT survive.
         let service = AggregationService(context: context, makeAggregator: { _, _ in
@@ -498,8 +553,9 @@ struct AggregationServiceTests {
         }, aiProcessor: FakeAIProcessor())
         await service.forceReload(article: article)
 
-        #expect(article.plainText == "REFRESHED")   // content refreshed via refetch (now native blocks)
-        #expect(article.summary == "")             // derived AI summary cleared, not carried over
+        let a = context.model(for: articleID) as? Article
+        #expect(a?.plainText == "REFRESHED")   // content refreshed via refetch (now native blocks)
+        #expect(a?.summary == "")             // derived AI summary cleared, not carried over
     }
 
     @Test func forceReloadArticleRefreshesContentPreservingIdentity() async throws {
@@ -514,17 +570,21 @@ struct AggregationServiceTests {
         article.createdAt = pinnedCreatedAt
         article.setStarred(true, using: starred)
         context.insert(article)
+        try context.save()
 
+        let articleID = article.persistentModelID
+        let feedID = feed.persistentModelID
         let refreshed = self.aggregated("id1")          // same identifier, content "c"
         let service = AggregationService(context: context, makeAggregator: { _, _ in
             RefetchFakeAggregator(articles: [], refetchResult: refreshed)
         }, aiProcessor: FakeAIProcessor())
         await service.forceReload(article: article)
 
-        #expect(article.plainText == "c")               // content refreshed (now native blocks)
-        #expect(article.createdAt == pinnedCreatedAt)    // timeline position preserved
-        #expect(article.isStarred)                       // Starred preserved
-        #expect(feed.articles.count == 1)                // updated, not duplicated
+        let a = context.model(for: articleID) as? Article
+        #expect(a?.plainText == "c")               // content refreshed (now native blocks)
+        #expect(a?.createdAt == pinnedCreatedAt)    // timeline position preserved
+        #expect(a?.isStarred == true)                       // Starred preserved
+        #expect(articles(context, feed: "a").count == 1)                // updated, not duplicated
     }
 
     @Test func forceReloadArticleDoesNotReloadFeedWhenRefetchReturnsNil() async throws {
@@ -535,7 +595,9 @@ struct AggregationServiceTests {
                               date: .now, author: "", iconURL: nil)
         article.feed = feed
         context.insert(article)
+        try context.save()
 
+        let articleID = article.persistentModelID
         // refetch returns nil, and the aggregator also offers a feed article — which must NOT be imported.
         var feedOnly = self.aggregated("id1"); feedOnly.content = "FROM_FEED"
         let feedArticle = feedOnly
@@ -545,8 +607,9 @@ struct AggregationServiceTests {
         let inserted = await service.forceReload(article: article)
 
         #expect(inserted == 0)                       // nothing reloaded
-        #expect(article.plainText.isEmpty)           // current article untouched (no feed reload)
-        #expect(feed.articles.count == 1)            // no extra articles imported
+        let a = context.model(for: articleID) as? Article
+        #expect(a?.plainText.isEmpty == true)           // current article untouched (no feed reload)
+        #expect(articles(context, feed: "a").count == 1)            // no extra articles imported
     }
 
     @Test func forceReloadArticleReturnsZeroWhenAggregatorUnavailable() async throws {
@@ -557,13 +620,16 @@ struct AggregationServiceTests {
                               date: .now, author: "", iconURL: nil)
         article.feed = feed
         context.insert(article)
+        try context.save()
 
+        let articleID = article.persistentModelID
         let service = AggregationService(context: context, makeAggregator: { _, _ in nil },
                                          aiProcessor: FakeAIProcessor())
         let inserted = await service.forceReload(article: article)
 
         #expect(inserted == 0)
-        #expect(article.plainText.isEmpty)
+        let a = context.model(for: articleID) as? Article
+        #expect(a?.plainText.isEmpty == true)
     }
 
     @Test func forceReloadDoesNotRetentionCleanupRefreshedArticles() async throws {
@@ -576,14 +642,17 @@ struct AggregationServiceTests {
         article.feed = feed
         article.createdAt = Date.now.addingTimeInterval(-40 * 24 * 3600)
         context.insert(article)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(context: context, makeAggregator: { _, _ in
             FakeAggregator(articles: [self.aggregated("id1")])   // same identifier → in-place refresh
         }, aiProcessor: FakeAIProcessor())
         await service.forceReload(feed: feed)
 
-        #expect(feed.articles.map(\.identifier) == ["id1"])   // survived retention cleanup
-        #expect(feed.articles.first?.plainText == "c")        // and was refreshed (now native blocks)
+        let fetched = articles(context, feed: "a")
+        #expect(fetched.map(\.identifier) == ["id1"])   // survived retention cleanup
+        #expect(fetched.first?.plainText == "c")        // and was refreshed (now native blocks)
     }
 
     @Test func forceReloadArticleReturnsZeroWithoutFeed() async throws {
@@ -607,7 +676,10 @@ struct AggregationServiceTests {
         let rss = Feed(name: "rss", aggregatorType: .feedContent, identifier: "a")
         let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
         context.insert(rss); context.insert(reddit)
+        try context.save()
 
+        let rssID = rss.persistentModelID
+        let redditID = reddit.persistentModelID
         // Reddit toggle off (default) -> reddit feed skipped.
         let settings = AppSettings(defaults: freshDefaults())
         let service = AggregationService(
@@ -617,16 +689,19 @@ struct AggregationServiceTests {
         )
         await service.updateAll()
 
-        #expect(rss.articles.count == 1)
-        #expect(reddit.articles.isEmpty)
-        #expect(reddit.lastError == nil)
+        #expect(articles(context, feed: "a").count == 1)
+        #expect(articles(context, feed: "swift").isEmpty)
+        let r = refetch(context, feed: redditID)
+        #expect(r?.lastError == nil)
     }
 
     @Test func updateFeedSkipsDisabledSourceWithoutError() async throws {
         let context = try makeContext()
         let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
         context.insert(reddit)
+        try context.save()
 
+        let redditID = reddit.persistentModelID
         let settings = AppSettings(defaults: freshDefaults()) // reddit off
         let service = AggregationService(
             context: context,
@@ -636,16 +711,19 @@ struct AggregationServiceTests {
         let inserted = await service.update(feed: reddit)
 
         #expect(inserted == 0)
-        #expect(reddit.articles.isEmpty)
-        #expect(reddit.lastError == nil)
-        #expect(reddit.lastFetchedAt == nil)
+        #expect(articles(context, feed: "swift").isEmpty)
+        let r = refetch(context, feed: redditID)
+        #expect(r?.lastError == nil)
+        #expect(r?.lastFetchedAt == nil)
     }
 
     @Test func updateFeedRunsWhenSourceEnabled() async throws {
         let context = try makeContext()
         let reddit = Feed(name: "r", aggregatorType: .reddit, identifier: "swift")
         context.insert(reddit)
+        try context.save()
 
+        let redditID = reddit.persistentModelID
         let settings = AppSettings(defaults: freshDefaults())
         settings.redditEnabled = true
         let service = AggregationService(
@@ -656,7 +734,7 @@ struct AggregationServiceTests {
         let inserted = await service.update(feed: reddit)
 
         #expect(inserted == 1)
-        #expect(reddit.articles.count == 1)
+        #expect(articles(context, feed: "swift").count == 1)
     }
 
     // MARK: - Logo resolution (Task 10)
@@ -665,14 +743,17 @@ struct AggregationServiceTests {
         let context = try makeContext()
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "https://e.com/f.xml")
         context.insert(feed)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(
             context: context,
             makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
             logoResolver: { _, _ in "cafef00d" })
         await service.update(feed: feed)
 
-        #expect(feed.logoHash == "cafef00d")
+        let f = refetch(context, feed: feedID)
+        #expect(f?.logoHash == "cafef00d")
     }
 
     @Test func doesNotReResolveLogoWhenAlreadySet() async throws {
@@ -680,14 +761,17 @@ struct AggregationServiceTests {
         let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "https://e.com/f.xml")
         feed.logoHash = "existing"
         context.insert(feed)
+        try context.save()
 
+        let feedID = feed.persistentModelID
         let service = AggregationService(
             context: context,
             makeAggregator: { _, _ in FakeAggregator(articles: [self.aggregated("x1")]) },
             logoResolver: { _, _ in "newvalue" })
         await service.update(feed: feed)
 
-        #expect(feed.logoHash == "existing")
+        let f = refetch(context, feed: feedID)
+        #expect(f?.logoHash == "existing")
     }
 
     // MARK: - Update progress (Task 9)
