@@ -9,12 +9,12 @@ enum ImageSync {
     @MainActor
     static func ensureStored(hashes: Set<String>, context: ModelContext, imageStore: ImageStore) async {
         guard !hashes.isEmpty else { return }
-        let existing = Set((try? context.fetch(FetchDescriptor<StoredImage>()))?.map(\.hash) ?? [])
+        let existing = Set((try? context.fetch(FetchDescriptor<StoredImage>()))?.map(\.contentHash) ?? [])
         var inserted = false
         for hash in hashes where !existing.contains(hash) {
             guard let bytes = await imageStore.rawData(forHash: hash) else { continue }
             let ext = await imageStore.recordedExt(forHash: hash)
-            context.insert(StoredImage(hash: hash, data: bytes, ext: ext))
+            context.insert(StoredImage(contentHash: hash, data: bytes, ext: ext))
             inserted = true
         }
         if inserted { try? context.save() }
@@ -26,7 +26,7 @@ enum ImageSync {
     @MainActor
     static func materialize(hash: String, context: ModelContext, imageStore: ImageStore) async -> Bool {
         if await imageStore.fileExists(forHash: hash) { return true }
-        let descriptor = FetchDescriptor<StoredImage>(predicate: #Predicate { $0.hash == hash })
+        let descriptor = FetchDescriptor<StoredImage>(predicate: #Predicate { $0.contentHash == hash })
         guard let stored = (try? context.fetch(descriptor))?.first else { return false }
         _ = await imageStore.storeData(stored.data, ext: stored.ext)
         return true

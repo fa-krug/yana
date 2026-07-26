@@ -26,7 +26,7 @@ struct ImageSyncTests {
         await ImageSync.ensureStored(hashes: [hash], context: ctx, imageStore: store)
         let rows = try ctx.fetch(FetchDescriptor<StoredImage>())
         #expect(rows.count == 1)
-        #expect(rows.first?.hash == hash)
+        #expect(rows.first?.contentHash == hash)
         #expect(rows.first?.ext == "png")
     }
 
@@ -42,12 +42,13 @@ struct ImageSyncTests {
     @Test func materializeWritesMissingFileFromStoredImage() async throws {
         let ctx = try context()
         let store = tempStore()
-        ctx.insert(StoredImage(hash: "deadbeef", data: Data([7,7]), ext: "jpg"))
+        let hash = "c7b99f1c681eaad2096f54c0380b8f950fa5cbe47cb3695ed590167c0dfff315" // SHA256([7,7])
+        ctx.insert(StoredImage(contentHash: hash, data: Data([7,7]), ext: "jpg"))
         try ctx.save()
-        let existedBefore = await store.fileExists(forHash: "deadbeef")
+        let existedBefore = await store.fileExists(forHash: hash)
         #expect(existedBefore == false)
-        let ok = await ImageSync.materialize(hash: "deadbeef", context: ctx, imageStore: store)
+        let ok = await ImageSync.materialize(hash: hash, context: ctx, imageStore: store)
         #expect(ok == true)
-        #expect(await store.fileExists(forHash: "deadbeef") == true)
+        #expect(await store.fileExists(forHash: hash) == true)
     }
 }
