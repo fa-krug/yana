@@ -40,7 +40,6 @@ final class AggregationService {
     private let logoResolver: LogoResolver
     private let settings: AppSettings
     private let starredRegistry: StarredRegistry
-    private let articleSync: ArticleSyncService
 
     init(
         context: ModelContext,
@@ -49,8 +48,7 @@ final class AggregationService {
         now: @escaping () -> Date = { .now },
         logoResolver: @escaping LogoResolver = AggregationService.defaultLogoResolver,
         settings: AppSettings = AppSettings(),
-        starredRegistry: StarredRegistry = .shared,
-        articleSync: ArticleSyncService = .shared
+        starredRegistry: StarredRegistry = .shared
     ) {
         self.context = context
         self.makeAggregator = makeAggregator
@@ -59,7 +57,6 @@ final class AggregationService {
         self.logoResolver = logoResolver
         self.settings = settings
         self.starredRegistry = starredRegistry
-        self.articleSync = articleSync
     }
 
     /// Map an arbitrary error to a clear, non-empty user-facing string.
@@ -155,7 +152,7 @@ final class AggregationService {
     /// main actor and the resulting `Set<AggregatorType>` is captured by the `@Sendable` closure.
     private func makeRunInputs() -> AggregationRunInputs {
         let marks = starredRegistry.snapshotMarks()
-        let canonical = articleSync.canonicalCreatedAtSnapshot()
+        let canonical: [String: Date] = [:]
         let enabledSources = Set(AggregatorType.allCases.filter { settings.isSourceEnabled($0) })
         return AggregationRunInputs(
             makeAggregator: makeAggregator,
@@ -172,7 +169,7 @@ final class AggregationService {
             canonicalCreatedAt: canonical,
             isSourceEnabled: { enabledSources.contains($0) },
             retentionDays: settings.retentionDays,
-            isPassiveDevice: settings.isPassiveDevice,
+            skipRetention: settings.updateInterval == .off,
             // Each event hops to the main actor in its own Task, so ordering isn't guaranteed;
             // UpdateProgress currently has no UI consumer, so this is presently unobservable.
             // Funnel through an ordered path before any view reads updateProgress.
@@ -193,14 +190,11 @@ final class AggregationService {
         lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false; updateProgress.reset() }
-        await articleSync.pull()
         try? context.save()                         // flush so the writer's fetch sees pending feeds
         let writer = AggregationWriter(modelContainer: context.container)
         let result = await writer.runUpdateAll(makeRunInputs())
         refreshFromStore()
         lastRunFailures = result.failures
-        await articleSync.push(uids: Array(result.touchedUIDs))
-        if !result.deletedUIDs.isEmpty { await articleSync.deleteRemote(uids: result.deletedUIDs) }
         await syncReferencedImages()
         return result.inserted
     }
@@ -212,15 +206,12 @@ final class AggregationService {
         lastRunFailures = []
         isUpdating = true
         defer { isUpdating = false }
-        await articleSync.pull()
         try? context.save()
         let feedID = feed.persistentModelID
         let writer = AggregationWriter(modelContainer: context.container)
         let result = await writer.runUpdate(feedID: feedID, makeRunInputs())
         refreshFromStore()
         lastRunFailures = result.failures
-        await articleSync.push(uids: Array(result.touchedUIDs))
-        if !result.deletedUIDs.isEmpty { await articleSync.deleteRemote(uids: result.deletedUIDs) }
         await syncReferencedImages()
         return result.inserted
     }
@@ -240,7 +231,6 @@ final class AggregationService {
         let result = await writer.runForceReloadFeed(feedID: feedID, makeRunInputs())
         refreshFromStore()
         lastRunFailures = result.failures
-        await articleSync.push(uids: Array(result.touchedUIDs))
         await syncReferencedImages()
         return result.inserted
     }
@@ -267,7 +257,6 @@ final class AggregationService {
         let writer = AggregationWriter(modelContainer: context.container)
         let result = await writer.runForceReloadArticle(articleID: articleID, makeRunInputs())
         reconcileArticle(articleID)
-        await articleSync.push(uids: Array(result.touchedUIDs))
         await syncReferencedImages()
         return result.inserted
     }
@@ -282,9 +271,8 @@ final class AggregationService {
         try? context.save()
         let articleID = article.persistentModelID
         let writer = AggregationWriter(modelContainer: context.container)
-        let (ok, uid) = await writer.runSummarize(articleID: articleID, makeRunInputs())
+        let (ok, _) = await writer.runSummarize(articleID: articleID, makeRunInputs())
         reconcileArticle(articleID)
-        if let uid { await articleSync.push(uids: [uid]) }
         return ok
     }
 

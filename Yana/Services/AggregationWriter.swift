@@ -13,7 +13,7 @@ struct AggregationRunInputs: Sendable {
     let canonicalCreatedAt: [String: Date]
     let isSourceEnabled: @Sendable (AggregatorType) -> Bool
     let retentionDays: Int
-    let isPassiveDevice: Bool
+    let skipRetention: Bool
     let progress: @Sendable (AggregationProgress) -> Void
 }
 
@@ -199,7 +199,7 @@ actor AggregationWriter {
     }
 
     private func cleanup(_ inputs: AggregationRunInputs) -> [String] {
-        guard !inputs.isPassiveDevice else { return [] }
+        guard !inputs.skipRetention else { return [] }
         let deleted = RetentionCleanup.run(context: modelContext, retentionDays: inputs.retentionDays, now: inputs.now)
         try? modelContext.save()
         return deleted

@@ -31,7 +31,7 @@ struct AggregationWriterTests {
             makeAggregator: makeAggregator, processor: IdentityAI(),
             logoResolver: { _, _ in nil }, credentials: .resolved(), now: .now,
             starredIdentifiers: { _, _ in [] }, canonicalCreatedAt: [:],
-            isSourceEnabled: { _ in true }, retentionDays: 30, isPassiveDevice: false,
+            isSourceEnabled: { _ in true }, retentionDays: 30, skipRetention: false,
             progress: progress)
     }
     nonisolated private func aggregated(_ id: String, date: Date = .now) -> AggregatedArticle {
@@ -85,7 +85,7 @@ struct AggregationWriterTests {
             makeAggregator: ins.makeAggregator, processor: ins.processor, logoResolver: ins.logoResolver,
             credentials: ins.credentials, now: ins.now, starredIdentifiers: ins.starredIdentifiers,
             canonicalCreatedAt: ins.canonicalCreatedAt, isSourceEnabled: { $0 != .reddit },
-            retentionDays: ins.retentionDays, isPassiveDevice: ins.isPassiveDevice, progress: ins.progress)
+            retentionDays: ins.retentionDays, skipRetention: ins.skipRetention, progress: ins.progress)
         let result = await writer.runUpdate(feedID: feedID, ins)
 
         #expect(result.inserted == 0)
