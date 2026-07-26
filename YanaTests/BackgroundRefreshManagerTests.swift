@@ -111,28 +111,28 @@ struct BackgroundRefreshManagerTests {
         #expect(notifier.postedCounts.isEmpty)
     }
 
-    @Test("schedule() no-ops on a passive device (interval provider never consulted)")
+    @Test("schedule() no-ops when secondsProvider returns nil (.off)")
     func passiveScheduleNoOps() throws {
         let container = try ModelContainer(
             for: Feed.self, Yana.Tag.self, Article.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
-        var intervalAsked = false
-        let passive = BackgroundRefreshManager(
+        var scheduled = false
+        let off = BackgroundRefreshManager(
             container: container,
-            intervalProvider: { intervalAsked = true; return 300 },
+            secondsProvider: { nil },              // .off → nil seconds
             now: { Date(timeIntervalSince1970: 0) },
-            isPassive: { true })
-        passive.schedule()
-        #expect(intervalAsked == false)      // guard returned before consulting the interval
+            onScheduleAttempt: { scheduled = true })
+        off.schedule()
+        #expect(scheduled == false)              // guard returned before onScheduleAttempt
 
-        // Sanity: with isPassive false the guard passes and the interval IS consulted.
-        var activeAsked = false
+        // Sanity: with a real interval the guard passes and onScheduleAttempt IS called.
+        var activeScheduled = false
         let active = BackgroundRefreshManager(
             container: container,
-            intervalProvider: { activeAsked = true; return 300 },
+            secondsProvider: { 300 },
             now: { Date(timeIntervalSince1970: 0) },
-            isPassive: { false })
+            onScheduleAttempt: { activeScheduled = true })
         active.schedule()
-        #expect(activeAsked == true)
+        #expect(activeScheduled == true)
     }
 }
