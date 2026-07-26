@@ -89,7 +89,6 @@ final class AppSettings {
         self.defaults = defaults
         defaults.register(defaults: [
             Key.retentionDays: 30,
-            Key.backgroundInterval: 3600.0,
             Key.updateInterval: UpdateInterval.min60.rawValue,
             Key.redditUserAgent: "Yana/1.0",
             Key.openaiAPIURL: "https://api.openai.com/v1",
@@ -117,7 +116,6 @@ final class AppSettings {
     private enum Key {
         static let activeAIProvider = "settings.activeAIProvider"
         static let retentionDays = "settings.retentionDays"
-        static let backgroundInterval = "settings.backgroundInterval"
         static let updateInterval = "settings.updateInterval"
         // Sources
         static let redditEnabled = "settings.redditEnabled"
@@ -158,29 +156,28 @@ final class AppSettings {
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
         // Onboarding
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
-        // iCloud sync (device-local, never synced)
-        static let iCloudSyncEnabled = "settings.iCloudSyncEnabled"
-        static let isPassiveDevice = "settings.isPassiveDevice"
+        // Migration
+        static let hasMigratedToNativeCloudKit = "settings.hasMigratedToNativeCloudKit"
         // Mac window layout (device-local, never synced)
         static let macSidebarWidth = "settings.macSidebarWidth"
     }
 
-    // MARK: iCloud Sync
+    // MARK: Migration
 
-    /// Master opt-in toggle for iCloud sync. Device-local — never included in the synced payload.
-    var iCloudSyncEnabled: Bool {
-        get { access(keyPath: \.iCloudSyncEnabled); return defaults.bool(forKey: Key.iCloudSyncEnabled) }
-        set { withMutation(keyPath: \.iCloudSyncEnabled) { defaults.set(newValue, forKey: Key.iCloudSyncEnabled) } }
+    /// One-time: whether the native SwiftData+CloudKit migration has run. Device-local.
+    var hasMigratedToNativeCloudKit: Bool {
+        get { access(keyPath: \.hasMigratedToNativeCloudKit); return defaults.bool(forKey: Key.hasMigratedToNativeCloudKit) }
+        set { withMutation(keyPath: \.hasMigratedToNativeCloudKit) { defaults.set(newValue, forKey: Key.hasMigratedToNativeCloudKit) } }
     }
 
-    /// When on, this device is a passive iCloud mirror: it never runs background aggregation
-    /// (gated in `BackgroundRefreshManager`). Retention cleanup is also skipped on passive devices
-    /// (gated in `AggregationService`). Manual fetches still work. Device-local — never included in
-    /// the synced payload (it describes this device's role).
-    var isPassiveDevice: Bool {
-        get { access(keyPath: \.isPassiveDevice); return defaults.bool(forKey: Key.isPassiveDevice) }
-        set { withMutation(keyPath: \.isPassiveDevice) { defaults.set(newValue, forKey: Key.isPassiveDevice) } }
-    }
+    // MARK: Legacy helpers (used by NativeCloudKitMigration to read old keys)
+
+    /// Reads a bool value for a raw UserDefaults key from this settings instance's store.
+    func legacyBool(_ key: String) -> Bool { defaults.bool(forKey: key) }
+    /// Reads a double value for a raw UserDefaults key from this settings instance's store.
+    func legacyDouble(_ key: String) -> Double { defaults.double(forKey: key) }
+    /// Returns true if a value exists for the raw key in this settings instance's store.
+    func legacyHas(_ key: String) -> Bool { defaults.object(forKey: key) != nil }
 
     /// The Mac window's remembered sidebar column width (device-local, never synced — window layout
     /// is per-device). 0 means "unset → use the ideal default".
@@ -192,7 +189,7 @@ final class AppSettings {
     // MARK: Sync serialization
 
     /// The allow-listed subset of settings that the iCloud sync layer may push/pull.
-    /// Excluded keys (voice, timeline position, onboarding flags, filter state, iCloudSyncEnabled)
+    /// Excluded keys (voice, timeline position, onboarding flags, filter state, device-local flags)
     /// are physically absent from this struct and therefore cannot be serialized.
     struct SyncedSettings: Codable {
         var activeAIProvider: String?
@@ -315,11 +312,6 @@ final class AppSettings {
     var retentionDays: Int {
         get { access(keyPath: \.retentionDays); return defaults.integer(forKey: Key.retentionDays) }
         set { withMutation(keyPath: \.retentionDays) { defaults.set(newValue, forKey: Key.retentionDays) } }
-    }
-
-    var backgroundInterval: TimeInterval {
-        get { access(keyPath: \.backgroundInterval); return defaults.double(forKey: Key.backgroundInterval) }
-        set { withMutation(keyPath: \.backgroundInterval) { defaults.set(newValue, forKey: Key.backgroundInterval) } }
     }
 
     /// Per-device background aggregation cadence. Device-local — never synced. `.off` = pure mirror.

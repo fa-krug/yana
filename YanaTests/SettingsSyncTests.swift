@@ -85,7 +85,6 @@ struct SettingsSyncTests {
         src.hasCompletedOnboarding = true
         src.preferredVoiceIdentifier = "com.apple.voice.test"
         src.includeUntagged = false
-        src.iCloudSyncEnabled = true
 
         let data = src.exportSyncedSettings()
 
@@ -94,7 +93,6 @@ struct SettingsSyncTests {
         dst.hasCompletedOnboarding = false
         dst.preferredVoiceIdentifier = "com.apple.voice.other"
         dst.includeUntagged = true
-        dst.iCloudSyncEnabled = false
 
         dst.applySyncedSettings(data)
 
@@ -102,18 +100,6 @@ struct SettingsSyncTests {
         #expect(dst.hasCompletedOnboarding == false)
         #expect(dst.preferredVoiceIdentifier == "com.apple.voice.other")
         #expect(dst.includeUntagged == true)
-        #expect(dst.iCloudSyncEnabled == false)
-    }
-
-    @Test func iCloudSyncEnabledIsNeverInPayload() throws {
-        let src = AppSettings(defaults: freshDefaults(label: "flag-src"))
-        src.iCloudSyncEnabled = true
-
-        let data = src.exportSyncedSettings()
-        // Inspect raw JSON: must not contain the key.
-        let json = try #require(String(data: data, encoding: .utf8))
-        #expect(!json.contains("iCloudSyncEnabled"))
-        #expect(!json.contains("iCloud"))
     }
 
     // MARK: Notification
@@ -155,25 +141,11 @@ struct SettingsSyncTests {
         """.data(using: .utf8)!
 
         let dst = AppSettings(defaults: freshDefaults(label: "partial"))
-        let originalInterval = dst.backgroundInterval
+        let originalRetentionDays = dst.retentionDays
         dst.applySyncedSettings(partial)
 
         #expect(dst.retentionDays == 7)
-        #expect(dst.backgroundInterval == originalInterval)  // untouched
-    }
-
-    // MARK: iCloudSyncEnabled toggle
-
-    @Test func iCloudSyncEnabledDefaultsToFalse() {
-        let s = AppSettings(defaults: freshDefaults(label: "toggle"))
-        #expect(s.iCloudSyncEnabled == false)
-    }
-
-    @Test func iCloudSyncEnabledPersists() {
-        let defaults = freshDefaults(label: "persist")
-        let s = AppSettings(defaults: defaults)
-        s.iCloudSyncEnabled = true
-        #expect(AppSettings(defaults: defaults).iCloudSyncEnabled == true)
+        _ = originalRetentionDays // Verified that partial apply only touches present fields.
     }
 
     // MARK: Timeline anchor sync
@@ -182,7 +154,7 @@ struct SettingsSyncTests {
     func anchorUIDSynced() {
         let d = UserDefaults(suiteName: "SettingsSync.anchor.\(UUID().uuidString)")!
         let s = AppSettings(defaults: d)
-        // timelineAnchorUID is always exported (not gated on iCloudSyncEnabled).
+        // timelineAnchorUID is always exported.
         s.timelineAnchorSyncUID = "post-42"
         let json = String(data: s.exportSyncedSettings(), encoding: .utf8) ?? ""
         #expect(json.contains("timelineAnchorUID"))
@@ -201,7 +173,7 @@ struct SettingsSyncTests {
 
     @Test func applyingDifferentAnchorUIDPostsNotification() throws {
         let src = AppSettings(defaults: freshDefaults(label: "anchor-notif-src"))
-        // timelineAnchorUID is always exported (not gated on iCloudSyncEnabled).
+        // timelineAnchorUID is always exported.
         src.timelineAnchorSyncUID = "post-99"
         let data = src.exportSyncedSettings()
 
