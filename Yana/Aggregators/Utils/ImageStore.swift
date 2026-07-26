@@ -83,14 +83,6 @@ actor ImageStore {
     /// Every content hash currently cached on disk (from the seeded extension map).
     func allHashes() -> Set<String> { Set(extensions.keys) }
 
-    func purgeOrphans(keepingHashes: Set<String>) {
-        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-        for file in files {
-            let name = file.deletingPathExtension().lastPathComponent
-            if !keepingHashes.contains(name) { try? FileManager.default.removeItem(at: file) }
-        }
-    }
-
     private static func hash(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }

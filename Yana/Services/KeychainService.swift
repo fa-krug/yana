@@ -120,4 +120,12 @@ enum KeychainService: Sendable {
         return true
     }
 
+    /// Re-saves every stored API key into the current (synchronizable) domain, unconditionally.
+    /// Used by the one-time migration so keys saved by the old build's non-sync domain propagate.
+    static func resaveAllSynchronizable() {
+        for item in APIKeyItem.allCases {
+            if let value = loadAPIKey(for: item) { saveAPIKey(value, for: item) }
+        }
+    }
+
 }

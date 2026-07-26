@@ -152,6 +152,8 @@ struct YanaApp: App {
                     StartupTrace.event("scene.task.begin")
                     articleStore.start()
                     await NativeCloudKitMigration.runIfNeeded(container: AppContainer.shared)
+                    // Register the remote-change observer so dedup fires on every CloudKit merge.
+                    LibraryDedup.startObserving(container: AppContainer.shared)
                     Task(priority: .utility) { await LegacyCloudKitCleanup.runIfNeeded() }
                     SettingsCloudSync.start(appSettings)
                     // Convert any pre-migration articles still holding legacy HTML into native

@@ -19,8 +19,9 @@ enum NativeCloudKitMigration {
         let hashes = await imageStore.allHashes()
         await ImageSync.ensureStored(hashes: hashes, context: container.mainContext, imageStore: imageStore)
 
-        // 2. Force existing API keys into the synchronizable domain.
-        _ = KeychainService.migrateSynchronizable(to: true)
+        // 2. Re-save all existing API keys unconditionally so any key stored by the old
+        //    non-sync build is migrated into the current (synchronizable) domain.
+        KeychainService.resaveAllSynchronizable()
 
         // 3. Map legacy cadence → UpdateInterval (read raw keys via injected settings' helpers;
         //    the iCloudSyncEnabled/isPassiveDevice/backgroundInterval properties are gone).
@@ -34,5 +35,8 @@ enum NativeCloudKitMigration {
         SettingsCloudSync.push(settings)
 
         settings.hasMigratedToNativeCloudKit = true
+
+        // 5. Collapse any duplicates introduced by the merge of the old and new libraries.
+        LibraryDedup.run(container: container)
     }
 }

@@ -46,9 +46,9 @@ enum ArticleUpsert {
             // off the main actor; direct callers fall back to parsing inline (`defaultBlocks`).
             let blocks = blocksFor(item)
             // Computed once and reused for the canonical-createdAt lookup (insert only) and the
-            // onUpsert notification (both branches), so callers can accumulate exactly the UIDs
-            // this run actually touched. The onUpsert callback feeds AggregationWriter.pendingTouched,
-            // which is returned to the coordinator via AggregationRunResult.touchedUIDs for the iCloud push.
+            // onUpsert notification (both branches). The onUpsert callback populates
+            // AggregationWriter.pendingTouched (surfaced as AggregationRunResult.touchedUIDs),
+            // currently consumed only by tests — no live caller reads touchedUIDs.
             let uid = ArticleUID.make(
                 feedIdentifier: feed.identifier, aggregatorType: feed.aggregatorType,
                 articleIdentifier: item.identifier, date: item.date, title: item.title)
@@ -87,9 +87,10 @@ enum ArticleUpsert {
                     summary: item.summary
                 )
                 article.blocks = blocks           // sets blockData + plainText
-                // Adopt the canonical (first-writer) createdAt when article sync already knows this
-                // UID — i.e. another device created it in the meantime — so ordering stays stable
-                // across devices. Otherwise back-date by jitter as usual.
+                // Adopt a canonical createdAt if supplied by the caller (e.g. a dedup pass
+                // resolved earliest-wins across devices). canonicalCreatedAt is always nil in the
+                // current live path — cross-device ordering is reconciled by LibraryDedup, not here.
+                // Otherwise back-date by jitter as usual.
                 article.createdAt = canonicalCreatedAt(uid) ?? now.addingTimeInterval(-jitter())
                 article.feed = feed
                 article.syncFeedIdentifier = feed.identifier

@@ -90,4 +90,34 @@ struct KeychainServiceTests {
         KeychainService.synchronizeWithICloud = true
         #expect(KeychainService.synchronizeWithICloud == true)
     }
+
+    // MARK: - resaveAllSynchronizable
+
+    @Test func resaveAllSynchronizablePreservesLoadableKey() {
+        let item = KeychainService.APIKeyItem.deepseekAPIKey
+        KeychainService.deleteAPIKey(for: item)
+        defer {
+            KeychainService.deleteAPIKey(for: item)
+            // Restore the global default (true) so subsequent tests and
+            // KeychainSyncDefaultTests.defaultsToSynchronizable() see a clean slate.
+            KeychainService.synchronizeWithICloud = true
+        }
+
+        // 1. Save a key in the non-synchronizable domain.
+        KeychainService.synchronizeWithICloud = false
+        let saved = KeychainService.saveAPIKey("resave-test-value", for: item)
+        #expect(saved)
+        #expect(KeychainService.loadAPIKey(for: item) == "resave-test-value")
+
+        // 2. Switch to synchronizable domain and call resaveAllSynchronizable().
+        //    On simulator / unit-test host without iCloud Keychain entitlements the
+        //    re-save write may return errSecMissingEntitlement (save returns false),
+        //    but the call must complete without crashing and the key must still be
+        //    readable (Any-matching load finds whichever copy is present).
+        KeychainService.synchronizeWithICloud = true
+        KeychainService.resaveAllSynchronizable()
+
+        // 3. The key must still be loadable regardless of entitlement availability.
+        #expect(KeychainService.loadAPIKey(for: item) != nil)
+    }
 }

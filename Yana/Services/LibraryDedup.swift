@@ -101,4 +101,45 @@ enum LibraryDedup {
             _ = try? await LibraryDeduper(modelContainer: container).deduplicate()
         }
     }
+
+    // MARK: - Remote-change observer
+
+    /// Guards against overlapping dedup runs triggered by remote-change notifications.
+    nonisolated(unsafe) private static var isRunning = false
+    nonisolated(unsafe) private static var pendingAfterRun = false
+
+    /// Registers a `NSPersistentStoreRemoteChange` observer so a dedup pass fires
+    /// automatically whenever CloudKit merges remote changes into the local store.
+    ///
+    /// This notification fires ONLY for remote/CloudKit-originated coordinator changes —
+    /// not for local saves — so there is no local-save storm. The coalescing guard ensures
+    /// that if a second notification arrives while a run is in progress, exactly one
+    /// additional run is queued (not an unbounded stack of concurrent passes).
+    @MainActor
+    static func startObserving(container: ModelContainer) {
+        NotificationCenter.default.addObserver(
+            forName: .NSPersistentStoreRemoteChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                guard !isRunning else {
+                    pendingAfterRun = true
+                    return
+                }
+                await fireAndWait(container: container)
+            }
+        }
+    }
+
+    @MainActor
+    private static func fireAndWait(container: ModelContainer) async {
+        isRunning = true
+        _ = try? await LibraryDeduper(modelContainer: container).deduplicate()
+        isRunning = false
+        if pendingAfterRun {
+            pendingAfterRun = false
+            await fireAndWait(container: container)
+        }
+    }
 }
