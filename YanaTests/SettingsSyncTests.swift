@@ -135,17 +135,19 @@ struct SettingsSyncTests {
     }
 
     @Test func partialPayloadAppliesOnlyPresentFields() throws {
-        // Build a payload with only retentionDays set.
+        // Build a payload with only retentionDays set — aiTemperature is intentionally absent.
         let partial = """
         {"retentionDays": 7}
         """.data(using: .utf8)!
 
         let dst = AppSettings(defaults: freshDefaults(label: "partial"))
-        let originalRetentionDays = dst.retentionDays
+        dst.retentionDays = 99   // pre-set to prove it changes
+        dst.aiTemperature = 0.9  // pre-set an absent field to prove it is NOT overwritten
+
         dst.applySyncedSettings(partial)
 
-        #expect(dst.retentionDays == 7)
-        _ = originalRetentionDays // Verified that partial apply only touches present fields.
+        #expect(dst.retentionDays == 7)    // present field applied
+        #expect(dst.aiTemperature == 0.9)  // absent field untouched
     }
 
     // MARK: Timeline anchor sync
