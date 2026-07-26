@@ -137,6 +137,8 @@ struct YanaApp: App {
                 .environment(articleStore)
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
+                    case .active:
+                        LibraryDedup.run(container: AppContainer.shared)
                     case .background:
                         SettingsCloudSync.push(appSettings)
                     default:
