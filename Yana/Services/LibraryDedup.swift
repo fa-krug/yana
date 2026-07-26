@@ -104,42 +104,31 @@ enum LibraryDedup {
 
     // MARK: - Remote-change observer
 
-    /// Guards against overlapping dedup runs triggered by remote-change notifications.
-    nonisolated(unsafe) private static var isRunning = false
-    nonisolated(unsafe) private static var pendingAfterRun = false
+    /// Coalescer for remote-change-triggered dedup passes. Held statically so the observer keeps it
+    /// alive for the app's lifetime.
+    @MainActor private static var coalescer: TrailingCoalescer?
 
-    /// Registers a `NSPersistentStoreRemoteChange` observer so a dedup pass fires
-    /// automatically whenever CloudKit merges remote changes into the local store.
+    /// Registers a `NSPersistentStoreRemoteChange` observer so a dedup pass fires automatically
+    /// whenever CloudKit merges remote changes into the local store.
     ///
-    /// This notification fires ONLY for remote/CloudKit-originated coordinator changes —
-    /// not for local saves — so there is no local-save storm. The coalescing guard ensures
-    /// that if a second notification arrives while a run is in progress, exactly one
-    /// additional run is queued (not an unbounded stack of concurrent passes).
+    /// A large sync arrives as many merges over several seconds, firing this notification
+    /// repeatedly. A full three-table dedup scan per notification is wasteful and contends with the
+    /// reader, so the passes are coalesced: the burst collapses into a single scan once merges stop
+    /// for the debounce window, and single-flighting guarantees at most one in-flight pass plus one
+    /// trailing pass (never an overlapping stack). Duplicates persisting for a couple of extra
+    /// seconds is harmless — dedup is best-effort cleanup, not a display-correctness invariant.
     @MainActor
     static func startObserving(container: ModelContainer) {
+        let coalescer = TrailingCoalescer(interval: .seconds(1.5)) {
+            _ = try? await LibraryDeduper(modelContainer: container).deduplicate()
+        }
+        self.coalescer = coalescer
         NotificationCenter.default.addObserver(
             forName: .NSPersistentStoreRemoteChange,
             object: nil,
             queue: .main
         ) { _ in
-            Task { @MainActor in
-                guard !isRunning else {
-                    pendingAfterRun = true
-                    return
-                }
-                await fireAndWait(container: container)
-            }
-        }
-    }
-
-    @MainActor
-    private static func fireAndWait(container: ModelContainer) async {
-        isRunning = true
-        _ = try? await LibraryDeduper(modelContainer: container).deduplicate()
-        isRunning = false
-        if pendingAfterRun {
-            pendingAfterRun = false
-            await fireAndWait(container: container)
+            Task { @MainActor in coalescer.schedule() }
         }
     }
 }

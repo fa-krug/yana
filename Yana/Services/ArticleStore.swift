@@ -86,7 +86,12 @@ final class ArticleStore {
     private let cache: SummaryIndexCache
     private let anchorProvider: () -> String?
     private var observer: NSObjectProtocol?
-    private var debounce: Task<Void, Never>?
+
+    /// Coalesces the `didSave` storm: a burst of saves (e.g. a CloudKit merge, which fires
+    /// `didSave` many times in quick succession) collapses into a single trailing `fullLoad`, and
+    /// single-flighting prevents two full-library fetches from running concurrently and contending
+    /// with the reader. Created in `start()`, where `self` is fully initialized.
+    @ObservationIgnored private var refreshCoalescer: TrailingCoalescer?
 
     init(
         container: ModelContainer,
@@ -101,10 +106,13 @@ final class ArticleStore {
     /// Begin observing saves and run the first load. Idempotent.
     func start() {
         guard observer == nil else { return }
+        refreshCoalescer = TrailingCoalescer(interval: .milliseconds(200)) { [weak self] in
+            await self?.refreshNow()
+        }
         observer = NotificationCenter.default.addObserver(
             forName: ModelContext.didSave, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.scheduleRefresh() }
+            Task { @MainActor [weak self] in self?.refreshCoalescer?.schedule() }
         }
         Task { await bootstrap() }
     }
@@ -137,15 +145,6 @@ final class ArticleStore {
         }
         hasLoaded = true
         StartupTrace.event("ArticleStore.hasLoaded")
-    }
-
-    private func scheduleRefresh() {
-        debounce?.cancel()
-        debounce = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            guard !Task.isCancelled else { return }
-            await self?.refreshNow()
-        }
     }
 
     /// Reload the full index from the DB and publish it. Awaited directly by tests.
