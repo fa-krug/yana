@@ -152,6 +152,7 @@ struct YanaApp: App {
                     StartupTrace.event("scene.task.begin")
                     articleStore.start()
                     await NativeCloudKitMigration.runIfNeeded(container: AppContainer.shared)
+                    Task(priority: .utility) { await LegacyCloudKitCleanup.runIfNeeded() }
                     SettingsCloudSync.start(appSettings)
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
