@@ -88,6 +88,8 @@ final class ReaderImageCache: @unchecked Sendable {
         let prefix = "\(ReaderWeb.imageScheme)://"
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
+            // Hops to main actor for the materialize call (holds decodeGate briefly), but the fast
+            // path — file already on disk — returns immediately, so the slot is released quickly.
             _ = await Task { @MainActor in
                 await ImageSync.materialize(hash: hash, context: AppContainer.shared.mainContext, imageStore: .shared)
             }.value

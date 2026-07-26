@@ -299,12 +299,31 @@ final class AggregationService {
         for feed in feeds { if let h = feed.logoHash, !h.isEmpty { hashes.insert(h) } }
         for article in articles {
             if !article.leadImageRef.isEmpty { hashes.insert(Self.hash(fromRef: article.leadImageRef)) }
-            for block in article.blocks {
-                if case let .image(ref, _) = block { hashes.insert(Self.hash(fromRef: ref)) }
-            }
+            for ref in Self.imageRefs(in: article.blocks) { hashes.insert(Self.hash(fromRef: ref)) }
         }
         hashes.remove("")
         await ImageSync.ensureStored(hashes: hashes, context: context, imageStore: .shared)
+    }
+
+    /// All `yana-img://` refs referenced anywhere in a block tree — top-level `.image` blocks,
+    /// `.embed` poster thumbnails, and refs nested inside `.list` items or `.blockquote` content.
+    private static func imageRefs(in blocks: [Block]) -> [String] {
+        var refs: [String] = []
+        for block in blocks {
+            switch block {
+            case let .image(ref, _):
+                refs.append(ref)
+            case let .embed(embed):
+                if let thumb = embed.thumbnailRef { refs.append(thumb) }
+            case let .list(_, items):
+                for item in items { refs.append(contentsOf: imageRefs(in: item)) }
+            case let .blockquote(inner):
+                refs.append(contentsOf: imageRefs(in: inner))
+            default:
+                break
+            }
+        }
+        return refs
     }
 
     /// Strip the `yana-img://` scheme prefix to get the bare content hash.
