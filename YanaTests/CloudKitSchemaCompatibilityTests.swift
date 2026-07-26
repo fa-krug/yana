@@ -3,24 +3,17 @@ import SwiftData
 import Foundation
 @testable import Yana
 
-/// Verifies that the SwiftData model schema is compatible with CloudKit mirroring.
+/// Guards that all four SwiftData models (`Feed`, `Tag`, `Article`, `StoredImage`) remain
+/// compatible with CloudKit mirroring (`cloudKitDatabase: .automatic`).
 ///
-/// CloudKit mirroring (`cloudKitDatabase: .automatic`) requires:
+/// CloudKit mirroring requires:
 ///   - All attributes are optional or have default values
-///   - All relationships are optional (arrays must be `[T]?`, not `[T] = []`) with inverses
+///   - All relationships are optional (`[T]?`, not `[T] = []`) with inverses
 ///   - No `#Unique` constraints (CloudKit has no equivalent)
 ///
-/// **CURRENT STATUS — BLOCKED**: as of 2026-07-26 this test fails with the validation error:
-///
-///     CloudKit integration requires that all relationships be optional, the following are not:
-///     Article: tags
-///     Feed: articles
-///     Feed: tags
-///     Tag: articles
-///     Tag: feeds
-///
-/// The fix is to change those declarations from `[T] = []` to `[T]?` in each model, then
-/// re-enable `.automatic` in `AppContainer.shared` (currently reverted to `.none`).
+/// If any model violates these rules — e.g. a non-optional array relationship is added or
+/// a `#Unique` macro is introduced — `ModelContainer` init throws with an exact validation
+/// error message and this test fails loudly, catching the regression before it ships.
 ///
 /// Note: This test requires a persistent (on-disk) store — `.automatic` is incompatible
 /// with in-memory stores. The container is created in a unique temp directory and cleaned
@@ -44,9 +37,6 @@ struct CloudKitSchemaCompatibilityTests {
         // If any model violates CloudKit's rules (non-optional relationship, #Unique constraint,
         // an attribute with neither default nor optional marker), this init throws — the test
         // then fails loudly with the exact validation error message.
-        //
-        // CURRENTLY FAILS because Feed.articles, Feed.tags, Tag.articles, Tag.feeds, and
-        // Article.tags are non-optional array relationships. Fix: declare them as [T]?.
         _ = try ModelContainer(
             for: Feed.self, Tag.self, Article.self, StoredImage.self,
             configurations: config

@@ -87,10 +87,14 @@ final class Article {
     func setStarred(_ starred: Bool, using starredTag: Tag) {
         if starred {
             var t = tags ?? []
-            if !t.contains(where: { $0.id == starredTag.id }) { t.append(starredTag) }
+            guard !t.contains(where: { $0.id == starredTag.id }) else { return }
+            t.append(starredTag)
             tags = t
         } else {
-            tags = (tags ?? []).filter { !$0.isBuiltIn }
+            let current = tags ?? []
+            let filtered = current.filter { !$0.isBuiltIn }
+            guard filtered.count != current.count else { return }
+            tags = filtered
         }
     }
 }
