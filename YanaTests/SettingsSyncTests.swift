@@ -18,7 +18,6 @@ struct SettingsSyncTests {
         // Set a variety of synced values.
         src.activeAIProvider = .anthropic
         src.retentionDays = 14
-        src.backgroundInterval = 1800.0
         src.redditEnabled = true
         src.redditUserAgent = "TestAgent/2"
         src.youtubeEnabled = true
@@ -52,7 +51,6 @@ struct SettingsSyncTests {
 
         #expect(dst.activeAIProvider == .anthropic)
         #expect(dst.retentionDays == 14)
-        #expect(dst.backgroundInterval == 1800.0)
         #expect(dst.redditEnabled == true)
         #expect(dst.redditUserAgent == "TestAgent/2")
         #expect(dst.youtubeEnabled == true)
@@ -184,7 +182,7 @@ struct SettingsSyncTests {
     func anchorUIDSynced() {
         let d = UserDefaults(suiteName: "SettingsSync.anchor.\(UUID().uuidString)")!
         let s = AppSettings(defaults: d)
-        s.iCloudSyncEnabled = true
+        // timelineAnchorUID is always exported (not gated on iCloudSyncEnabled).
         s.timelineAnchorSyncUID = "post-42"
         let json = String(data: s.exportSyncedSettings(), encoding: .utf8) ?? ""
         #expect(json.contains("timelineAnchorUID"))
@@ -203,7 +201,7 @@ struct SettingsSyncTests {
 
     @Test func applyingDifferentAnchorUIDPostsNotification() throws {
         let src = AppSettings(defaults: freshDefaults(label: "anchor-notif-src"))
-        src.iCloudSyncEnabled = true
+        // timelineAnchorUID is always exported (not gated on iCloudSyncEnabled).
         src.timelineAnchorSyncUID = "post-99"
         let data = src.exportSyncedSettings()
 

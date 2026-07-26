@@ -197,7 +197,6 @@ final class AppSettings {
     struct SyncedSettings: Codable {
         var activeAIProvider: String?
         var retentionDays: Int?
-        var backgroundInterval: Double?
         var redditEnabled: Bool?
         var redditUserAgent: String?
         var youtubeEnabled: Bool?
@@ -232,7 +231,6 @@ final class AppSettings {
         let snapshot = SyncedSettings(
             activeAIProvider: activeAIProvider.rawValue,
             retentionDays: retentionDays,
-            backgroundInterval: backgroundInterval,
             redditEnabled: redditEnabled,
             redditUserAgent: redditUserAgent,
             youtubeEnabled: youtubeEnabled,
@@ -257,7 +255,7 @@ final class AppSettings {
             articleFont: articleFont.rawValue,
             useSystemBrowser: useSystemBrowser,
             articleFullscreenEnabled: articleFullscreenEnabled,
-            timelineAnchorUID: iCloudSyncEnabled ? timelineAnchorSyncUID : nil
+            timelineAnchorUID: timelineAnchorSyncUID
         )
         return (try? JSONEncoder().encode(snapshot)) ?? Data()
     }
@@ -270,7 +268,6 @@ final class AppSettings {
             activeAIProvider = AIProvider(rawValue: raw) ?? activeAIProvider
         }
         if let v = decoded.retentionDays { retentionDays = v }
-        if let v = decoded.backgroundInterval { backgroundInterval = v }
         if let v = decoded.redditEnabled { redditEnabled = v }
         if let v = decoded.redditUserAgent { redditUserAgent = v }
         if let v = decoded.youtubeEnabled { youtubeEnabled = v }

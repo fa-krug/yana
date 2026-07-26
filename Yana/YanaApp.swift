@@ -128,14 +128,24 @@ struct YanaApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState = AppState()
     @State private var articleStore = ArticleStore(container: AppContainer.shared)
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView(appState: appState)
                 .environment(articleStore)
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .background:
+                        SettingsCloudSync.push(AppSettings())
+                    default:
+                        break
+                    }
+                }
                 .task {
                     StartupTrace.event("scene.task.begin")
                     articleStore.start()
+                    SettingsCloudSync.start(AppSettings())
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)
