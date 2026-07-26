@@ -17,18 +17,28 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     private let zoneID = CKRecordZone.ID(zoneName: CloudKitArticleZoneStore.zoneName)
     private let defaults: UserDefaults
     private let stateKey = "articleSync.engineState"
+    private let systemFieldsKey = "articleSync.serverSystemFields"
+    private let knownImagesKey = "articleSync.knownServerImageHashes"
 
     private var _engine: CKSyncEngine?
     private var incoming = ArticleZoneChanges.empty
     private var pendingImageUploads: [String: SyncedImageRecord] = [:]   // hash -> record awaiting send
     // Cache of records to serialize when the engine asks for a batch (recordName -> struct).
     private var articleRecordCache: [String: SyncedArticleRecord] = [:]
-    // recordName -> encoded server CKRecord system fields, captured when a save conflicts with an
-    // existing server record (`serverRecordChanged`). Reused when the engine asks for the record
-    // again so the retry carries the server's change tag and is treated as an UPDATE, not another
-    // INSERT — otherwise the server keeps rejecting "record to insert already exists" and the push
-    // loops forever. Cleared once the record is saved or dropped, so it only holds in-flight rows.
+    // recordName -> encoded server CKRecord system fields (identity + change tag), remembered whenever
+    // we see a record on the server: pulled changes, successful saves, and conflict-recovery fetches.
+    // The engine builds each push from these so an already-existing record is written as an UPDATE
+    // carrying the current change tag, not a blind INSERT the server rejects as "record to insert
+    // already exists". Persisted across launches; pruned when a record is deleted or found gone.
     private var serverSystemFields: [String: Data] = [:]
+    // Content hashes of `SyncedImage` blobs already confirmed on the server (saved by us, or found to
+    // already exist). Images are content-addressed and write-once, so once one is up it never needs
+    // re-uploading — `upsert` skips these to avoid re-sending 50 KB+ blobs every push and the
+    // "record to insert already exists" CONFLICT churn that produced in the CloudKit logs.
+    private var knownServerImageHashes: Set<String> = []
+    // Set when the persisted caches change so they're flushed to defaults once per send/fetch batch
+    // rather than on every mutation (a bulk push touches hundreds of rows).
+    private var systemFieldsDirty = false
     // Image-hash -> temp file backing a `CKAsset`, deleted once the record is confirmed saved or dropped.
     private var imageTempFiles: [String: URL] = [:]
     // Dedicated subdirectory for image `CKAsset` temp files so we can wipe leftovers on launch.
@@ -41,6 +51,8 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         self.container = container
         self.defaults = defaults
         super.init()
+        serverSystemFields = (defaults.dictionary(forKey: systemFieldsKey) as? [String: Data]) ?? [:]
+        knownServerImageHashes = Set((defaults.array(forKey: knownImagesKey) as? [String]) ?? [])
         prepareAssetTempDir()
     }
 
@@ -99,6 +111,9 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
             ids.append(id)
         }
         for image in images {
+            // Skip blobs already on the server — they're content-addressed and write-once, so
+            // re-uploading only wastes bandwidth and produces "already exists" conflicts.
+            guard !knownServerImageHashes.contains(image.hash) else { continue }
             guard let id = recordID(image.hash) else { continue }
             pendingImageUploads[image.hash] = image
             ids.append(id)
@@ -140,6 +155,7 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         guard let id = recordID(hash) else { return nil }
         do {
             let record = try await database.record(for: id)
+            markImageKnown(hash)   // it's on the server, so this device never needs to push it back
             return Self.imageRecord(from: record)
         } catch let error as CKError where error.code == .unknownItem {
             return nil
@@ -158,18 +174,25 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
                 if record.recordType == Self.articleRecordType,
                    let article = Self.articleRecord(from: record) {
                     incoming.articles.append(article)
+                    // Remember the pulled record's change tag so if this device later pushes the same
+                    // article (re-aggregated, starred, …) it's an update, not a rejected insert.
+                    rememberServerRecord(record)
                 }
             }
             for deletion in changes.deletions where deletion.recordType == Self.articleRecordType {
                 incoming.deletedUIDs.append(deletion.recordID.recordName)
+                forget(recordName: deletion.recordID.recordName)
             }
         case .sentRecordZoneChanges(let changes):
             handleSentRecordZoneChanges(changes, syncEngine: syncEngine)
         case .sentDatabaseChanges(let changes):
             handleSentDatabaseChanges(changes, syncEngine: syncEngine)
+        case .didSendChanges, .didFetchRecordZoneChanges, .didFetchChanges:
+            // Batch boundary: flush any change tags remembered during this send/fetch to defaults.
+            persistSystemFieldsIfNeeded()
         case .fetchedDatabaseChanges,
-             .willFetchChanges, .didFetchChanges, .willSendChanges, .didSendChanges,
-             .willFetchRecordZoneChanges, .didFetchRecordZoneChanges, .accountChange:
+             .willFetchChanges, .willSendChanges,
+             .willFetchRecordZoneChanges, .accountChange:
             break
         @unknown default:
             break
@@ -181,10 +204,21 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
     /// happen in this callback. Runs on the main actor with the rest of the adapter's state.
     private func handleSentRecordZoneChanges(_ event: CKSyncEngine.Event.SentRecordZoneChanges,
                                              syncEngine: CKSyncEngine) {
-        // Bound the caches: a record that's been saved no longer needs to be re-serialized, and its
-        // asset temp file can go.
+        // A record that's been saved no longer needs to be re-serialized (drop its struct + temp
+        // file), but keep — and refresh — its change tag from the saved record so the NEXT push of
+        // the same record is an update carrying the current tag, not a blind insert.
         for saved in event.savedRecords {
-            forget(recordName: saved.recordID.recordName)
+            if saved.recordType == Self.imageRecordType {
+                markImageKnown(saved.recordID.recordName)   // write-once blob is now on the server
+            } else {
+                rememberServerRecord(saved)                 // keep the article's change tag for updates
+            }
+            finishSending(recordName: saved.recordID.recordName)
+        }
+        // A successfully deleted record's remembered tag is now stale — drop it so the map stays
+        // bounded to live records and a later re-create is a fresh insert.
+        for deletedID in event.deletedRecordIDs {
+            forget(recordName: deletedID.recordName)
         }
 
         var recordChanges: [CKSyncEngine.PendingRecordZoneChange] = []
@@ -196,7 +230,9 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
             case .serverRecordChanged:
                 if failure.record.recordType == Self.imageRecordType {
                     // Images are content-addressed and write-once: an existing server copy is already
-                    // the correct blob, so the "conflict" just means it's already there. Drop it.
+                    // the correct blob, so the "conflict" just means it's already there. Record it as
+                    // known so it's never re-queued, and drop this attempt.
+                    markImageKnown(recordID.recordName)
                     forget(recordName: recordID.recordName)
                 } else if let serverRecord = failure.error.serverRecord {
                     // Update conflict where CloudKit handed back the diverged server record: adopt its
@@ -283,23 +319,46 @@ final class CloudKitArticleZoneStore: NSObject, ArticleZoneStore, CKSyncEngineDe
         if !databaseChanges.isEmpty { syncEngine.state.add(pendingDatabaseChanges: databaseChanges) }
     }
 
-    /// Drop a record from the send caches and delete its backing asset temp file, if any. Used both
-    /// when a record is confirmed saved and when it's found to be a stale (`.unknownItem`) reference.
+    /// Drop a record from every cache including its remembered change tag. Use when the record is
+    /// gone (deleted, tombstoned, or a stale `unknownItem` reference) — a future push should be a
+    /// fresh insert, not an update against a tag the server no longer has.
     private func forget(recordName: String) {
+        finishSending(recordName: recordName)
+        if serverSystemFields.removeValue(forKey: recordName) != nil { systemFieldsDirty = true }
+    }
+
+    /// Clear the in-flight send caches (struct + asset temp file) for a record that's been sent, but
+    /// KEEP its remembered change tag so the next push of the same record is an update, not an insert.
+    private func finishSending(recordName: String) {
         articleRecordCache[recordName] = nil
         pendingImageUploads[recordName] = nil
-        serverSystemFields[recordName] = nil
         if let url = imageTempFiles.removeValue(forKey: recordName) {
             try? FileManager.default.removeItem(at: url)
         }
     }
 
     /// Encode a server record's system fields (identity + change tag) so a subsequent save of the
-    /// same record can be reconstructed as an update rather than an insert.
+    /// same record is reconstructed as an update rather than an insert. Called for every record we
+    /// see on the server — pulled changes, successful saves, conflict-recovery fetches.
     private func rememberServerRecord(_ record: CKRecord) {
         let coder = NSKeyedArchiver(requiringSecureCoding: true)
         record.encodeSystemFields(with: coder)
         serverSystemFields[record.recordID.recordName] = coder.encodedData
+        systemFieldsDirty = true
+    }
+
+    /// Note an image blob as confirmed-present on the server so `upsert` stops re-queuing it.
+    private func markImageKnown(_ hash: String) {
+        if knownServerImageHashes.insert(hash).inserted { systemFieldsDirty = true }
+    }
+
+    /// Flush the remembered change tags and known-image hashes to defaults if they changed. Called on
+    /// send/fetch batch boundaries so a bulk push writes once, not per row.
+    private func persistSystemFieldsIfNeeded() {
+        guard systemFieldsDirty else { return }
+        defaults.set(serverSystemFields, forKey: systemFieldsKey)
+        defaults.set(Array(knownServerImageHashes), forKey: knownImagesKey)
+        systemFieldsDirty = false
     }
 
     /// A base `CKRecord` to write article fields onto: reconstructed from a remembered server record
