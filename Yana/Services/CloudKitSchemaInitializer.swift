@@ -8,16 +8,28 @@ import Foundation
 /// development. SwiftData does not expose `initializeCloudKitSchema()`, so this builds a parallel
 /// `NSPersistentCloudKitContainer` over the same managed object model and initializes the schema
 /// there (technique: fatbobman.com). Runs against a THROWAWAY temp store — the schema is derived from
-/// the MODEL, not the data — so it never contends with the live SwiftData store. Requires a signed-in
-/// iCloud account; on any failure it logs and returns (never fatal). Uses `NSLog` because `os_log`
+/// the MODEL, not the data. Requires a signed-in iCloud account; on any failure it logs and returns
+/// (never fatal).
+///
+/// **Called synchronously from the `AppContainer.shared` initializer, BEFORE the live `.automatic`
+/// container is created**, so it runs on every development launch and always pushes the current
+/// schema. Ordering is load-bearing: this points a temporary `NSPersistentCloudKitContainer` at the
+/// SAME CloudKit container (`iCloud.de.fa-krug.Yana`) the app mirrors to, and a process may host only
+/// one mirroring container per CloudKit container. `run()` tears its container fully down
+/// (`remove(store)`) before returning, and only then does `AppContainer.shared` build the live
+/// container — so the two are never alive at once. Running it concurrently with the live store (e.g.
+/// from a detached launch task) crashes the app on a signed-in device.
+///
+/// Uses `NSLog` because `os_log`
 /// output does not surface from a locally built/run Mac Catalyst app (same reason DebugSeed/the old
 /// schema bootstrap used NSLog). NEVER ship in production: it is an expensive network operation and is
 /// compiled out of release builds.
 enum CloudKitSchemaInitializer {
     static let containerIdentifier = "iCloud.de.fa-krug.Yana"
 
-    /// Build/refresh the Development schema. Synchronous and blocking (network) — call OFF the launch
-    /// path (e.g. from a background Task).
+    /// Build/refresh the Development schema. Synchronous and blocking (network); it must complete and
+    /// remove its temporary store before the live `AppContainer.shared` container is created (see the
+    /// type doc — that ordering is what prevents two mirroring containers on one CloudKit container).
     static func run() {
         guard let mom = NSManagedObjectModel.makeManagedObjectModel(
             for: [Feed.self, Tag.self, Article.self, StoredImage.self]

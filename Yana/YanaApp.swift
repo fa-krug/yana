@@ -38,6 +38,14 @@ enum AppContainer {
                     return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
                                              configurations: config)
                 }
+                // DEBUG-only: on every development launch, push the SwiftData-derived schema to the
+                // CloudKit *Development* environment so newly added fields exist server-side and iCloud
+                // data syncs completely during development (technique: fatbobman.com). This runs to
+                // completion and fully tears down its temporary CloudKit container *before* the live
+                // container below is created, so the process never hosts two mirroring containers on the
+                // same CloudKit container at once (doing so crashes on a signed-in device). No-op without
+                // an iCloud account; compiled out of release builds.
+                CloudKitSchemaInitializer.run()
                 #endif
                 // Native CloudKit mirroring via SwiftData's .automatic integration.
                 // CloudKit model invariants (all enforced by CloudKitSchemaCompatibilityTests):
@@ -71,11 +79,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         DebugSeed.seedIfRequested(into: AppContainer.shared.mainContext)
         Task { @MainActor in
             await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)
-        }
-        // DEBUG-only: keep the CloudKit *Development* schema complete (SwiftData creates fields lazily).
-        // Off the launch path; requires a signed-in iCloud account; no-op/logs otherwise.
-        Task.detached(priority: .utility) {
-            CloudKitSchemaInitializer.run()
         }
         #endif
         StartupTrace.event("didFinishLaunching.begin")

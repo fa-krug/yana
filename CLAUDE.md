@@ -190,8 +190,17 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   rules are allowed. A DEBUG smoke test `YanaTests/CloudKitSchemaCompatibilityTests` builds an
   on-disk `.automatic` container and asserts it initialises, guarding these invariants. The CloudKit
   schema is auto-derived and created on first write in Development; **it must be deployed to
-  Production in the CloudKit Dashboard before release** (SwiftData exposes no
-  `initializeCloudKitSchema()` hook for hand-built schemas).
+  Production in the CloudKit Dashboard before release**. To keep the Development schema complete as
+  the models evolve, DEBUG builds run **`CloudKitSchemaInitializer`**
+  (`Yana/Services/CloudKitSchemaInitializer.swift`) on **every launch**: it builds a temporary
+  `NSPersistentCloudKitContainer` over the SwiftData-derived managed object model and calls
+  `initializeCloudKitSchema()` (technique: fatbobman.com), pushing the current schema to the
+  `iCloud.de.fa-krug.Yana` Development environment (no-op without a signed-in iCloud account; compiled
+  out of release builds). **Ordering is load-bearing:** it is invoked *synchronously from the
+  `AppContainer.shared` initializer, before the live `.automatic` container is created*, and tears its
+  temporary container fully down (`remove(store)`) before returning — a process may host only one
+  mirroring container per CloudKit container, so running it concurrently with the live store (e.g.
+  from a detached launch `Task`) crashes the app on a signed-in device.
   Images sync via `StoredImage` (mirrored as a CKAsset via `@Attribute(.externalStorage)`).
   `ImageStore` is a disk cache in front of it; `ImageSync` (`Yana/Services/ImageSync.swift`)
   bridges the two — registers `StoredImage` rows after aggregation and materialises blobs on cache
