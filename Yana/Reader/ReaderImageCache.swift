@@ -1,5 +1,6 @@
 import UIKit
 import ImageIO
+import SwiftData
 import UniformTypeIdentifiers
 
 /// In-memory cache of decoded reader images, keyed by their `yana-img://<hash>` (or remote URL)
@@ -87,6 +88,9 @@ final class ReaderImageCache: @unchecked Sendable {
         let prefix = "\(ReaderWeb.imageScheme)://"
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
+            _ = await Task { @MainActor in
+                await ImageSync.materialize(hash: hash, context: AppContainer.shared.mainContext, imageStore: .shared)
+            }.value
             let url = await ImageStore.shared.fileURL(forHash: hash)
             return await Task.detached { decodedImage(at: url) }.value
         }

@@ -201,6 +201,7 @@ final class AggregationService {
         lastRunFailures = result.failures
         await articleSync.push(uids: Array(result.touchedUIDs))
         if !result.deletedUIDs.isEmpty { await articleSync.deleteRemote(uids: result.deletedUIDs) }
+        await syncReferencedImages()
         return result.inserted
     }
 
@@ -220,6 +221,7 @@ final class AggregationService {
         lastRunFailures = result.failures
         await articleSync.push(uids: Array(result.touchedUIDs))
         if !result.deletedUIDs.isEmpty { await articleSync.deleteRemote(uids: result.deletedUIDs) }
+        await syncReferencedImages()
         return result.inserted
     }
 
@@ -239,6 +241,7 @@ final class AggregationService {
         refreshFromStore()
         lastRunFailures = result.failures
         await articleSync.push(uids: Array(result.touchedUIDs))
+        await syncReferencedImages()
         return result.inserted
     }
 
@@ -265,6 +268,7 @@ final class AggregationService {
         let result = await writer.runForceReloadArticle(articleID: articleID, makeRunInputs())
         reconcileArticle(articleID)
         await articleSync.push(uids: Array(result.touchedUIDs))
+        await syncReferencedImages()
         return result.inserted
     }
 
@@ -285,6 +289,29 @@ final class AggregationService {
     }
 
     // MARK: - Helpers
+
+    /// Register `StoredImage` rows for every image the current library references, so CloudKit
+    /// mirrors the blobs. Cheap: `ensureStored` skips hashes that already have a row.
+    private func syncReferencedImages() async {
+        let feeds = (try? context.fetch(FetchDescriptor<Feed>())) ?? []
+        let articles = (try? context.fetch(FetchDescriptor<Article>())) ?? []
+        var hashes = Set<String>()
+        for feed in feeds { if let h = feed.logoHash, !h.isEmpty { hashes.insert(h) } }
+        for article in articles {
+            if !article.leadImageRef.isEmpty { hashes.insert(Self.hash(fromRef: article.leadImageRef)) }
+            for block in article.blocks {
+                if case let .image(ref, _) = block { hashes.insert(Self.hash(fromRef: ref)) }
+            }
+        }
+        hashes.remove("")
+        await ImageSync.ensureStored(hashes: hashes, context: context, imageStore: .shared)
+    }
+
+    /// Strip the `yana-img://` scheme prefix to get the bare content hash.
+    private static func hash(fromRef ref: String) -> String {
+        let prefix = "\(ReaderWeb.imageScheme)://"
+        return ref.hasPrefix(prefix) ? String(ref.dropFirst(prefix.count)) : ref
+    }
 
     /// Refresh this (main) context's registered `Feed` objects from the store after the background
     /// writer committed on a sibling context. `context.model(for:)` returns a cached registered
