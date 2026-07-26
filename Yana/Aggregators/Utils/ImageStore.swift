@@ -80,6 +80,9 @@ actor ImageStore {
     /// The recorded file extension for a hash (defaults to "img" when unknown).
     func recordedExt(forHash hash: String) -> String { extensions[hash] ?? "img" }
 
+    /// Every content hash currently cached on disk (from the seeded extension map).
+    func allHashes() -> Set<String> { Set(extensions.keys) }
+
     func purgeOrphans(keepingHashes: Set<String>) {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         for file in files {
