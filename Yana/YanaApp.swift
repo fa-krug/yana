@@ -13,9 +13,6 @@ enum AppContainer {
     static let shared: ModelContainer = {
         do {
             return try StartupTrace.measure("ModelContainer.init") {
-                // The SwiftData store is ALWAYS local-only for now (a later task
-                // enables CloudKit mirroring). The app has CloudKit entitlements, but
-                // `cloudKitDatabase: .none` keeps the store on-device only.
                 #if DEBUG
                 // Screenshot-capture runs get a throwaway store in the temp directory so
                 // the developer's real Mac library is never touched. The file is deleted
@@ -42,6 +39,12 @@ enum AppContainer {
                                              configurations: config)
                 }
                 #endif
+                // BLOCKED: Native CloudKit mirroring (.automatic) is deferred until relationships
+                // are fixed. CloudKit requires all to-many relationships to be declared as [T]?
+                // (Optional arrays), but Feed.articles, Feed.tags, Tag.articles, Tag.feeds, and
+                // Article.tags are currently [T] = [] (non-optional arrays). The smoke test in
+                // YanaTests/CloudKitSchemaCompatibilityTests.swift documents the exact validation
+                // error. Fix the model declarations, then change .none back to .automatic here.
                 let config = ModelConfiguration(cloudKitDatabase: .none)
                 return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
                                          configurations: config)
