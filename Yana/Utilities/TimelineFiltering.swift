@@ -13,7 +13,7 @@ protocol TimelineIdentifiable {
 }
 
 extension Article: TimelineFilterable {
-    var filterTagNames: [String] { tags.map(\.name) }
+    var filterTagNames: [String] { (tags ?? []).map(\.name) }
     var filterFeedName: String? { feed?.name }
 }
 

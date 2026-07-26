@@ -19,7 +19,7 @@ struct ArticleSummaryUpsertTests {
                                     rawContent: "", content: "<p>body</p>", date: .now,
                                     author: "", iconURL: nil, summary: "the summary")
         _ = ArticleUpsert.apply([agg], to: feed, starredTag: nil, context: ctx, now: .now)
-        #expect(feed.articles.first?.summary == "the summary")
+        #expect(feed.articles?.first?.summary == "the summary")
     }
 
     @Test func updateRefreshesSummary() throws {
@@ -32,7 +32,7 @@ struct ArticleSummaryUpsertTests {
         let v2 = AggregatedArticle(title: "T", identifier: "id1", url: "u", rawContent: "",
                                    content: "c", date: .now, author: "", iconURL: nil, summary: "s2")
         _ = ArticleUpsert.apply([v2], to: feed, starredTag: nil, context: ctx, now: .now)
-        #expect(feed.articles.count == 1)
-        #expect(feed.articles.first?.summary == "s2")
+        #expect((feed.articles ?? []).count == 1)
+        #expect(feed.articles?.first?.summary == "s2")
     }
 }

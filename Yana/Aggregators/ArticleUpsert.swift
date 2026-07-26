@@ -36,7 +36,7 @@ enum ArticleUpsert {
     ) -> Int {
         // Build the dedup index once (O(n)) instead of scanning the relationship per item.
         var byIdentifier: [String: Article] = [:]
-        for article in feed.articles { byIdentifier[article.identifier] = article }
+        for article in feed.articles ?? [] { byIdentifier[article.identifier] = article }
 
         var inserted = 0
         for item in aggregated {
@@ -66,9 +66,11 @@ enum ArticleUpsert {
                 // date left untouched — an article's publication date is immutable, and
                 // re-stamping it on every refresh would let a missing/unparseable date
                 // (which falls back to "now") drift the article to the top of the timeline.
-                existing.tags = feed.tags
-                if wasStarred, let starredTag, !existing.tags.contains(where: { $0.id == starredTag.id }) {
-                    existing.tags.append(starredTag)
+                existing.tags = feed.tags ?? []
+                if wasStarred, let starredTag, !(existing.tags ?? []).contains(where: { $0.id == starredTag.id }) {
+                    var t = existing.tags ?? []
+                    t.append(starredTag)
+                    existing.tags = t
                 }
                 // createdAt left untouched — preserves the reader's timeline position.
                 existing.syncFeedIdentifier = feed.identifier
@@ -93,13 +95,15 @@ enum ArticleUpsert {
                 article.syncFeedIdentifier = feed.identifier
                 article.syncAggregatorType = feed.aggregatorType
                 context.insert(article)
-                article.tags = feed.tags
+                article.tags = feed.tags ?? []
                 // If the sync registry already has a starred mark for this article, star it on insert.
                 if !starredIdentifiers.isEmpty,
                    starredIdentifiers.contains(item.identifier),
                    let starredTag,
-                   !article.tags.contains(where: { $0.id == starredTag.id }) {
-                    article.tags.append(starredTag)
+                   !(article.tags ?? []).contains(where: { $0.id == starredTag.id }) {
+                    var t = article.tags ?? []
+                    t.append(starredTag)
+                    article.tags = t
                 }
                 // Track it so a duplicate identifier later in the same batch updates, not re-inserts.
                 byIdentifier[item.identifier] = article

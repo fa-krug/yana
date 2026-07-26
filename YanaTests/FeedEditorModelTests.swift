@@ -54,6 +54,6 @@ struct FeedEditorModelTests {
         #expect(feed.name == "Heise")
         #expect(feed.type == .heise)
         #expect(feed.dailyLimit == 5)
-        #expect(feed.tags.map(\.name) == ["Tech"])
+        #expect((feed.tags ?? []).map(\.name) == ["Tech"])
     }
 }

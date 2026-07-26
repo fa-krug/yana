@@ -52,7 +52,7 @@ struct BackgroundRefreshManagerTests {
         await BackgroundRefreshManager.runRefresh(service: service)
 
         #expect(service.isUpdating == false)
-        #expect(feed.articles.count == 1)
+        #expect((feed.articles ?? []).count == 1)
     }
 
     private final class FakeNotifier: Notifying, @unchecked Sendable {
@@ -95,7 +95,7 @@ struct BackgroundRefreshManagerTests {
         await BackgroundRefreshManager.runRefresh(service: service, notifier: notifier, settings: freshSettings(notificationsEnabled: false))
 
         #expect(notifier.postedCounts.isEmpty)
-        #expect(feed.articles.count == 1)
+        #expect((feed.articles ?? []).count == 1)
     }
 
     @Test func doesNotNotifyWhenNotAuthorized() async throws {

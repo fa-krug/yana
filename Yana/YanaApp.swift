@@ -39,13 +39,13 @@ enum AppContainer {
                                              configurations: config)
                 }
                 #endif
-                // BLOCKED: Native CloudKit mirroring (.automatic) is deferred until relationships
-                // are fixed. CloudKit requires all to-many relationships to be declared as [T]?
-                // (Optional arrays), but Feed.articles, Feed.tags, Tag.articles, Tag.feeds, and
-                // Article.tags are currently [T] = [] (non-optional arrays). The smoke test in
-                // YanaTests/CloudKitSchemaCompatibilityTests.swift documents the exact validation
-                // error. Fix the model declarations, then change .none back to .automatic here.
-                let config = ModelConfiguration(cloudKitDatabase: .none)
+                // Native CloudKit mirroring via SwiftData's .automatic integration.
+                // CloudKit model invariants (all enforced by CloudKitSchemaCompatibilityTests):
+                //   - All to-many relationships are [T]? (optional): Feed.articles, Feed.tags,
+                //     Tag.articles, Tag.feeds, Article.tags — required by CloudKit.
+                //   - All scalar attributes have default values or are optional.
+                //   - No #Unique constraints (CloudKit has no equivalent).
+                let config = ModelConfiguration(cloudKitDatabase: .automatic)
                 return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
                                          configurations: config)
             }

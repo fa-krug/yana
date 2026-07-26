@@ -44,7 +44,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         author = article.author
         date = article.date
         createdAt = article.createdAt
-        tagNames = Set(article.tags.map(\.name))
+        tagNames = Set((article.tags ?? []).map(\.name))
         isStarred = article.isStarred
         feedIdentifier = article.feed?.identifier ?? article.syncFeedIdentifier
         aggregatorType = article.feed?.aggregatorType ?? article.syncAggregatorType

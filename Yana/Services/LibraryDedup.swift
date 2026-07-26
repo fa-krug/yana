@@ -27,9 +27,11 @@ actor LibraryDeduper {
             for loser in sorted.dropFirst() {
                 // Re-point loser's articles to the survivor BEFORE deleting, to prevent
                 // cascade deletion from removing articles that belong to the surviving feed.
-                for article in loser.articles { article.feed = survivor }
-                for tag in loser.tags where !survivor.tags.contains(where: { $0.id == tag.id }) {
-                    survivor.tags.append(tag)
+                for article in loser.articles ?? [] { article.feed = survivor }
+                for tag in loser.tags ?? [] where !(survivor.tags ?? []).contains(where: { $0.id == tag.id }) {
+                    var t = survivor.tags ?? []
+                    t.append(tag)
+                    survivor.tags = t
                 }
                 modelContext.delete(loser)
                 deleted += 1
@@ -47,11 +49,15 @@ actor LibraryDeduper {
             let sorted = group.sorted { $0.createdAt < $1.createdAt }
             let survivor = sorted[0]
             for loser in sorted.dropFirst() {
-                for article in loser.articles where !article.tags.contains(where: { $0.id == survivor.id }) {
-                    article.tags.append(survivor)
+                for article in loser.articles ?? [] where !(article.tags ?? []).contains(where: { $0.id == survivor.id }) {
+                    var t = article.tags ?? []
+                    t.append(survivor)
+                    article.tags = t
                 }
-                for feed in loser.feeds where !feed.tags.contains(where: { $0.id == survivor.id }) {
-                    feed.tags.append(survivor)
+                for feed in loser.feeds ?? [] where !(feed.tags ?? []).contains(where: { $0.id == survivor.id }) {
+                    var t = feed.tags ?? []
+                    t.append(survivor)
+                    feed.tags = t
                 }
                 modelContext.delete(loser)
                 deleted += 1
@@ -73,9 +79,11 @@ actor LibraryDeduper {
             let survivor = sorted[0]
             for loser in sorted.dropFirst() {
                 if loser.isStarred {
-                    for tag in loser.tags where tag.isBuiltIn
-                        && !survivor.tags.contains(where: { $0.id == tag.id }) {
-                        survivor.tags.append(tag)
+                    for tag in (loser.tags ?? []) where tag.isBuiltIn
+                        && !(survivor.tags ?? []).contains(where: { $0.id == tag.id }) {
+                        var t = survivor.tags ?? []
+                        t.append(tag)
+                        survivor.tags = t
                     }
                 }
                 modelContext.delete(loser)

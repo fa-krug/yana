@@ -48,7 +48,7 @@ struct LibraryDedupTests {
         let a2 = Article(title: "same", identifier: "dup", url: "u"); a2.feed = feed
         a2.syncFeedIdentifier = "f1"; a2.syncAggregatorType = AggregatorType.feedContent.rawValue
         a2.createdAt = .init(timeIntervalSince1970: 20)
-        a2.tags.append(starred)   // only the loser is starred
+        var a2Tags = a2.tags ?? []; a2Tags.append(starred); a2.tags = a2Tags   // only the loser is starred
         ctx.insert(a1); ctx.insert(a2)
         try ctx.save()
 

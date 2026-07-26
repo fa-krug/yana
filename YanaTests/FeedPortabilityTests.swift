@@ -32,7 +32,7 @@ struct FeedPortabilityTests {
         let restored = try #require(feeds.first)
         #expect(restored.type == .heise)
         #expect(restored.dailyLimit == 15)
-        #expect(restored.tags.map(\.name) == ["Tech"])
+        #expect((restored.tags ?? []).map(\.name) == ["Tech"])
         if case let .heise(o) = restored.options { #expect(o.maxComments == 9) } else { Issue.record("wrong options case") }
     }
 

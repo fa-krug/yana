@@ -138,7 +138,7 @@ struct FeedsView: View {
         } message: {
             if let feed = feedToDelete {
                 Text(
-                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \(feed.articles.count) articles will be permanently deleted.")
+                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \((feed.articles ?? []).count) articles will be permanently deleted.")
                 )
             }
         }
@@ -248,9 +248,9 @@ struct FeedsView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
-            if !feed.tags.isEmpty {
+            if !(feed.tags ?? []).isEmpty {
                 HStack(spacing: 4) {
-                    ForEach(feed.tags.sorted { $0.name < $1.name }, id: \.name) { tag in
+                    ForEach((feed.tags ?? []).sorted { $0.name < $1.name }, id: \.name) { tag in
                         TagChip(name: tag.name, colorHex: tag.colorHex)
                     }
                 }

@@ -39,7 +39,7 @@ final class Article {
     var createdAt: Date = Date.now
 
     /// Snapshot of the feed's tags at import, plus the built-in Starred tag when starred.
-    var tags: [Tag] = []
+    var tags: [Tag]?
 
     var feed: Feed?
 
@@ -81,14 +81,16 @@ final class Article {
     }
 
     /// Starred state is expressed purely as membership of the built-in tag.
-    var isStarred: Bool { tags.contains { $0.isBuiltIn } }
+    var isStarred: Bool { (tags ?? []).contains { $0.isBuiltIn } }
 
     /// Add or remove the built-in Starred tag.
     func setStarred(_ starred: Bool, using starredTag: Tag) {
         if starred {
-            if !tags.contains(where: { $0.id == starredTag.id }) { tags.append(starredTag) }
+            var t = tags ?? []
+            if !t.contains(where: { $0.id == starredTag.id }) { t.append(starredTag) }
+            tags = t
         } else {
-            tags.removeAll { $0.isBuiltIn }
+            tags = (tags ?? []).filter { !$0.isBuiltIn }
         }
     }
 }

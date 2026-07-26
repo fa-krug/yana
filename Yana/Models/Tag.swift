@@ -11,10 +11,10 @@ final class Tag {
     var createdAt: Date = Date.now
 
     @Relationship(inverse: \Feed.tags)
-    var feeds: [Feed] = []
+    var feeds: [Feed]?
 
     @Relationship(inverse: \Article.tags)
-    var articles: [Article] = []
+    var articles: [Article]?
 
     init(name: String, colorHex: String? = nil, isBuiltIn: Bool = false, sortOrder: Int = 0) {
         self.name = name

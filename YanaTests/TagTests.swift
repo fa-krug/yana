@@ -38,11 +38,11 @@ struct TagTests {
         feed.tags = [tag]
         let article = Article(title: "P", identifier: "p1", url: "https://heise.de/1")
         article.feed = feed
-        article.tags = feed.tags
+        article.tags = feed.tags ?? []
         context.insert(tag); context.insert(feed); context.insert(article)
         try context.save()
 
         let reloaded = try context.fetch(FetchDescriptor<Article>()).first
-        #expect(reloaded?.tags.map(\.name) == ["Tech"])
+        #expect(reloaded?.tags?.map(\.name) == ["Tech"])
     }
 }

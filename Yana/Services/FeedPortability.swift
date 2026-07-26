@@ -28,7 +28,7 @@ enum FeedPortability {
             identifier: feed.identifier,
             aggregatorType: feed.aggregatorType,
             optionsJSONBase64: optionsB64,
-            tags: feed.tags.filter { !$0.isBuiltIn }.map(\.name),
+            tags: (feed.tags ?? []).filter { !$0.isBuiltIn }.map(\.name),
             dailyLimit: feed.dailyLimit,
             enabled: feed.enabled
         )

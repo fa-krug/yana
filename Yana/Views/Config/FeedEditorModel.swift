@@ -29,7 +29,7 @@ final class FeedEditorModel {
             dailyLimit = feed.dailyLimit
             enabled = feed.enabled
             options = feed.options
-            selectedTagNames = Set(feed.tags.map(\.name))
+            selectedTagNames = Set((feed.tags ?? []).map(\.name))
             isEditingExisting = true
         } else {
             name = ""

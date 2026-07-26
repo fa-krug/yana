@@ -53,8 +53,8 @@ struct ModelTests {
         try context.save()
 
         let reloadedTag = try context.fetch(FetchDescriptor<Yana.Tag>()).first
-        #expect(reloadedTag?.feeds.count == 1)
-        #expect(reloadedTag?.feeds.first?.name == "Heise")
+        #expect((reloadedTag?.feeds ?? []).count == 1)
+        #expect(reloadedTag?.feeds?.first?.name == "Heise")
     }
 
     @Test func deletingFeedCascadesToArticles() throws {

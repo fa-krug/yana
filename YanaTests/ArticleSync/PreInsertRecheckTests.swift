@@ -28,7 +28,7 @@ struct PreInsertRecheckTests {
             canonicalCreatedAt: { uid in uid == "f1|feed_content|a1" ? canonical : nil })
 
         #expect(inserted == 1)
-        let article = try #require(feed.articles.first)
+        let article = try #require(feed.articles?.first)
         #expect(article.createdAt == canonical)     // canonical adopted, not now-60
     }
 
@@ -43,7 +43,7 @@ struct PreInsertRecheckTests {
             date: now, author: "", iconURL: nil)]
         _ = ArticleUpsert.apply(aggregated, to: feed, starredTag: nil, context: context, now: now,
                                 jitter: { 60 }, canonicalCreatedAt: { _ in nil })
-        let article = try #require(feed.articles.first)
+        let article = try #require(feed.articles?.first)
         #expect(article.createdAt == now.addingTimeInterval(-60))
     }
 
@@ -58,7 +58,7 @@ struct PreInsertRecheckTests {
 
         _ = ArticleUpsert.apply(aggregated, to: feed, starredTag: nil, context: context, now: .now)
 
-        let article = try #require(feed.articles.first)
+        let article = try #require(feed.articles?.first)
         #expect(article.syncFeedIdentifier == "f1")
         #expect(article.syncAggregatorType == "feed_content")
     }

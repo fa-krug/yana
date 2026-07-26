@@ -25,8 +25,8 @@ struct ArticleUpsertTests {
 
         ArticleUpsert.apply([aggregated("x1")], to: feed, starredTag: nil, context: context, now: .now)
 
-        #expect(feed.articles.count == 1)
-        #expect(feed.articles.first?.tags.map(\.name) == ["News"])
+        #expect((feed.articles ?? []).count == 1)
+        #expect(feed.articles?.first?.tags?.map(\.name) == ["News"])
     }
 
     @Test func updatesExistingByIdentifierAndPreservesStar() throws {
@@ -39,17 +39,17 @@ struct ArticleUpsertTests {
 
         // First import, then user stars it.
         ArticleUpsert.apply([aggregated("x1", content: "old")], to: feed, starredTag: starred, context: context, now: .now)
-        let article = try #require(feed.articles.first)
+        let article = try #require(feed.articles?.first)
         article.setStarred(true, using: starred)
         let originalCreatedAt = article.createdAt
 
         // Re-import the same identifier with new content.
         ArticleUpsert.apply([aggregated("x1", content: "new")], to: feed, starredTag: starred, context: context, now: .now.addingTimeInterval(60))
 
-        #expect(feed.articles.count == 1)                 // no duplicate
+        #expect((feed.articles ?? []).count == 1)         // no duplicate
         #expect(article.plainText == "new")               // content refreshed (now native blocks)
         #expect(article.isStarred)                         // star survived re-import
-        #expect(article.tags.contains { $0.name == "News" })
+        #expect((article.tags ?? []).contains { $0.name == "News" })
         #expect(article.createdAt == originalCreatedAt)    // timeline position preserved
     }
 
@@ -60,7 +60,7 @@ struct ArticleUpsertTests {
 
         let published = Date(timeIntervalSince1970: 1_000_000)
         ArticleUpsert.apply([aggregated("x1", date: published)], to: feed, starredTag: nil, context: context, now: .now)
-        let article = try #require(feed.articles.first)
+        let article = try #require(feed.articles?.first)
 
         // Re-import with a different (e.g. "now" fallback) date must NOT move the article.
         ArticleUpsert.apply([aggregated("x1", date: .now)], to: feed, starredTag: nil, context: context, now: .now)
@@ -81,7 +81,7 @@ struct ArticleUpsertTests {
             jitter: { offsets.removeFirst() }
         )
 
-        let byId = Dictionary(uniqueKeysWithValues: feed.articles.map { ($0.identifier, $0) })
+        let byId = Dictionary(uniqueKeysWithValues: (feed.articles ?? []).map { ($0.identifier, $0) })
         #expect(byId["x1"]?.createdAt == now.addingTimeInterval(-30))
         #expect(byId["x2"]?.createdAt == now.addingTimeInterval(-90))
         #expect(byId["x3"]?.createdAt == now.addingTimeInterval(-150))
@@ -103,7 +103,7 @@ struct ArticleUpsertTests {
                             starredTag: nil, context: context, now: now, jitter: { bOffsets.removeFirst() })
 
         // Newest → oldest by createdAt: a1(-20), b1(-60), a2(-100), b2(-140) — feeds interleave.
-        let all = (feedA.articles + feedB.articles).sorted { $0.createdAt > $1.createdAt }
+        let all = ((feedA.articles ?? []) + (feedB.articles ?? [])).sorted { $0.createdAt > $1.createdAt }
         #expect(all.map(\.identifier) == ["a1", "b1", "a2", "b2"])
     }
 
@@ -119,7 +119,7 @@ struct ArticleUpsertTests {
         // Re-import x1 (update) + x3 (new) → only 1 newly inserted.
         let secondCount = ArticleUpsert.apply([aggregated("x1"), aggregated("x3")], to: feed, starredTag: nil, context: context, now: .now)
         #expect(secondCount == 1)
-        #expect(feed.articles.count == 3)
+        #expect((feed.articles ?? []).count == 3)
     }
 
     @Test func starredIdentifiersStarsNewlyInsertedArticle() throws {
@@ -136,7 +136,7 @@ struct ArticleUpsertTests {
             context: context, now: .now
         )
 
-        let byId = Dictionary(uniqueKeysWithValues: feed.articles.map { ($0.identifier, $0) })
+        let byId = Dictionary(uniqueKeysWithValues: (feed.articles ?? []).map { ($0.identifier, $0) })
         let a1 = try #require(byId["x1"])
         let a2 = try #require(byId["x2"])
 
