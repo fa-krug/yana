@@ -91,6 +91,7 @@ final class AppSettings {
         defaults.register(defaults: [
             Key.retentionDays: 30,
             Key.backgroundInterval: 3600.0,
+            Key.updateInterval: UpdateInterval.min60.rawValue,
             Key.redditUserAgent: "Yana/1.0",
             Key.openaiAPIURL: "https://api.openai.com/v1",
             Key.openaiModel: "gpt-4o-mini",
@@ -118,6 +119,7 @@ final class AppSettings {
         static let activeAIProvider = "settings.activeAIProvider"
         static let retentionDays = "settings.retentionDays"
         static let backgroundInterval = "settings.backgroundInterval"
+        static let updateInterval = "settings.updateInterval"
         // Sources
         static let redditEnabled = "settings.redditEnabled"
         static let redditUserAgent = "settings.redditUserAgent"
@@ -322,6 +324,17 @@ final class AppSettings {
     var backgroundInterval: TimeInterval {
         get { access(keyPath: \.backgroundInterval); return defaults.double(forKey: Key.backgroundInterval) }
         set { withMutation(keyPath: \.backgroundInterval) { defaults.set(newValue, forKey: Key.backgroundInterval) } }
+    }
+
+    /// Per-device background aggregation cadence. Device-local — never synced. `.off` = pure mirror.
+    var updateInterval: UpdateInterval {
+        get {
+            access(keyPath: \.updateInterval)
+            guard let raw = defaults.string(forKey: Key.updateInterval),
+                  let value = UpdateInterval(rawValue: raw) else { return .min60 }
+            return value
+        }
+        set { withMutation(keyPath: \.updateInterval) { defaults.set(newValue.rawValue, forKey: Key.updateInterval) } }
     }
 
     // MARK: Sources
