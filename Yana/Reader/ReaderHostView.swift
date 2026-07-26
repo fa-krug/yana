@@ -260,9 +260,6 @@ struct ReaderScreen: View {
         article.setStarred(!article.isStarred, using: starredTag)
         try? modelContext.save()
         Haptics.impact(.light)
-        if let uid = ArticleUID.make(for: article) {
-            Task { await ArticleSyncService.shared.push(uids: [uid]) }
-        }
     }
 
     private func copyLink(_ article: Article) {
@@ -309,7 +306,6 @@ struct ReaderScreen: View {
         guard articles.indices.contains(index) else { return }
         settings.timelineAnchorIdentifier = articles[index].identifier
         settings.timelineAnchorSyncUID = articles[index].uid
-        ConfigSyncService.shared.requestPush()
     }
 
     /// Keep the displayed article selected across timeline mutations (refresh / reload / retention

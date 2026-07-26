@@ -106,7 +106,6 @@ struct FeedsView: View {
             NavigationStack {
                 FeedEditorView(feed: nil) { newFeed in
                     // Fetch the just-added feed right away, unless it was created disabled.
-                    ConfigSyncService.shared.requestPush()
                     guard newFeed.enabled else { return }
                     updateOne(newFeed)
                 }
@@ -133,7 +132,6 @@ struct FeedsView: View {
                     modelContext.delete(feed)
                     try? modelContext.save()
                     Haptics.notify(.success)
-                    ConfigSyncService.shared.requestPush()
                 }
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
@@ -312,7 +310,6 @@ struct FeedsView: View {
             }
             let r = FeedPortability.importOPML(xml, context: modelContext)
             toast = ToastMessage(text: String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped)."))
-            ConfigSyncService.shared.requestPush()
         }
     }
 }

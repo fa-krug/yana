@@ -19,7 +19,6 @@ struct FeedEditorWindowRoot: View {
         switch target {
         case .create:
             FeedEditorView(feed: nil) { newFeed in
-                ConfigSyncService.shared.requestPush()
                 if newFeed.enabled {
                     UpdateActivity.shared.restart {
                         _ = await AggregationService(context: AppContainer.shared.mainContext)

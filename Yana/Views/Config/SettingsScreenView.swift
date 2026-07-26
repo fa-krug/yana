@@ -17,7 +17,6 @@ struct SettingsScreenView: View {
             AIProviderSettingsSection()
             AITuningSettingsSection()
             LibrarySettingsSection()
-            ICloudSyncSettingsSection()
             AboutSettingsSection(onRestartOnboarding: {
                 onRestartOnboarding()
                 dismiss()
@@ -34,7 +33,6 @@ struct SettingsScreenView: View {
                     .accessibilityLabel(Text("Close"))
             }
         }
-        .onDisappear { ConfigSyncService.shared.requestPush() }
     }
 
     private var organizeSection: some View {

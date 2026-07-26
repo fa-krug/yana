@@ -1,56 +1,14 @@
-import Foundation
 import CryptoKit
-
-/// A single article as it travels through the CloudKit `Articles` zone. `Sendable` value type so it
-/// crosses actor boundaries freely. `uid` is the record name; the triple fields let a receiving
-/// device link the article to its `Feed`. Bodies are the JSON `[Block]` in `blockData`.
-struct SyncedArticleRecord: Sendable, Equatable {
-    var uid: String
-    var feedIdentifier: String
-    var aggregatorType: String
-    var articleIdentifier: String
-    var title: String
-    var url: String
-    var author: String
-    var summary: String
-    var plainText: String
-    var leadImageRef: String
-    var iconURL: String?
-    var date: Date
-    var createdAt: Date
-    var blockData: Data
-    var isStarred: Bool
-    var tagNames: [String]
-    var imageHashes: [String]
-}
-
-/// A content-addressed image blob. `hash` is the record name; `ext` restores the file extension so
-/// `ImageStore.fileURL(forHash:)` resolves the right file after a pull.
-struct SyncedImageRecord: Sendable, Equatable {
-    let hash: String
-    let ext: String
-    let data: Data
-}
-
-/// The delta a pull produces: upserted article records and tombstoned UIDs.
-struct ArticleZoneChanges: Sendable, Equatable {
-    var articles: [SyncedArticleRecord]
-    var deletedUIDs: [String]
-
-    static let empty = ArticleZoneChanges(articles: [], deletedUIDs: [])
-}
+import Foundation
 
 /// Derives the canonical, cross-device article identity. Uses the stable `(feed, type, identifier)`
 /// triple (the same key `StarredMark` uses); when a feed yields no `articleIdentifier`, a
 /// deterministic `date+title` hash fills the third segment so the UID is still unique and stable.
 ///
-/// The UID doubles as the `SyncedArticle` CloudKit record name, so it must satisfy CloudKit's
-/// limits. Both segments are unbounded source-supplied strings (a feed URL and the source's
-/// link/permalink/GUID), and their concatenation can exceed the record-name limit — which makes
-/// `CKRecord.ID(recordName:)` raise an ObjC `CKException` that Swift cannot catch, aborting the
-/// process. Bounding it here rather than at the CloudKit boundary keeps every consumer in
-/// agreement: pushes, tombstones (`ArticleZoneStore.delete(articleUIDs:)`), the synced
-/// `timelineAnchorUID`, and local resolution all derive the UID through this one function.
+/// The UID doubles as the CloudKit record name when iCloud sync is enabled, so it must satisfy
+/// CloudKit's limits. Both segments are unbounded source-supplied strings (a feed URL and the
+/// source's link/permalink/GUID), and their concatenation can exceed the record-name limit.
+/// Bounding it here keeps every consumer in agreement.
 enum ArticleUID {
     /// CloudKit rejects a record name longer than this, measured in UTF-16 code units.
     static let recordNameLimit = 255
@@ -73,10 +31,21 @@ enum ArticleUID {
         // Too long for a record name. Collapse the whole thing into a digest instead of truncating:
         // truncation would alias two articles sharing a long prefix onto one record and silently
         // drop one. The digest is deterministic, so every device derives the same name for the same
-        // article, and it carries no `|`, so it can never collide with a natural (three-segment)
-        // UID. Linking still works on the receiving side because the record keeps the triple in its
-        // own fields — `ArticleRecordApply` matches on those, not on the UID.
+        // article, and it carries no `|`, so it can never collide with a natural (three-segment) UID.
         return "sha256:\(hex(of: uid))"
+    }
+
+    /// Derive the canonical UID from an article's stored feed identity (falling back to its linked
+    /// feed). Returns nil for a legacy article with neither stored identity nor a linked feed.
+    ///
+    /// `nonisolated`: it only reads plain `@Model` properties (an `Article` is not main-actor
+    /// isolated), so callers on any actor can derive the UID.
+    nonisolated static func make(for article: Article) -> String? {
+        let feedIdentifier = article.syncFeedIdentifier.isEmpty ? article.feed?.identifier : article.syncFeedIdentifier
+        let aggregatorType = article.syncAggregatorType.isEmpty ? article.feed?.aggregatorType : article.syncAggregatorType
+        guard let feedIdentifier, let aggregatorType else { return nil }
+        return make(feedIdentifier: feedIdentifier, aggregatorType: aggregatorType,
+                    articleIdentifier: article.identifier, date: article.date, title: article.title)
     }
 
     private static func hex(of string: String) -> String {

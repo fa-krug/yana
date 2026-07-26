@@ -13,13 +13,9 @@ enum AppContainer {
     static let shared: ModelContainer = {
         do {
             return try StartupTrace.measure("ModelContainer.init") {
-                // The SwiftData store is ALWAYS local-only. The app has CloudKit
-                // entitlements, but we deliberately do NOT let SwiftData mirror this
-                // store to CloudKit: that would sync article bodies (which we never
-                // want) and would crash under NSPersistentCloudKitContainer, which
-                // forbids the non-optional cascade relationship on Feed/Article.
-                // iCloud sync of *configuration* is handled separately, out of band,
-                // by ConfigSyncService via a single CloudKit config record.
+                // The SwiftData store is ALWAYS local-only for now (a later task
+                // enables CloudKit mirroring). The app has CloudKit entitlements, but
+                // `cloudKitDatabase: .none` keeps the store on-device only.
                 #if DEBUG
                 // Screenshot-capture runs get a throwaway store in the temp directory so
                 // the developer's real Mac library is never touched. The file is deleted
@@ -73,20 +69,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in
             await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)
         }
-        // Keep the Development CloudKit schema in step with the record types in code. No-ops unless
-        // the field set actually changed (and unless iCloud sync is on), and runs at low priority
-        // off the launch path so it never delays first paint.
-        Task(priority: .utility) { @MainActor in
-            await CloudKitSchemaBootstrap().pushIfNeeded()
-        }
         #endif
         StartupTrace.event("didFinishLaunching.begin")
-        // Restore the Keychain iCloud-sync domain from the persisted setting before anything can
-        // save a key. `synchronizeWithICloud` is a process-lifetime static that defaults to false
-        // and is otherwise only set when the Settings toggle flips — so without this, a relaunch
-        // (or a second device that enabled sync via config pull) would save newly entered API keys
-        // to the local-only domain even though iCloud sync is on.
-        KeychainService.restoreSynchronizableFlag(iCloudSyncEnabled: AppSettings().iCloudSyncEnabled)
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
         StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
@@ -134,12 +118,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        // Treat any remote notification as a CloudKit config-change ping.
-        Task { @MainActor in
-            await ConfigSyncService.shared.pull()
-            await ArticleSyncService.shared.pull()
-            completionHandler(.newData)
-        }
+        // SwiftData+CloudKit mirroring imports remote changes automatically; nothing to pull by hand.
+        completionHandler(.newData)
     }
 }
 
@@ -159,9 +139,6 @@ struct YanaApp: App {
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)
-                    // Register CloudKit subscription + pull on launch (no-op when sync is off).
-                    await ConfigSyncService.shared.start()
-                    await ArticleSyncService.shared.pull()
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).

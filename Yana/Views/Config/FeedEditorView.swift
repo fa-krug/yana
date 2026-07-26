@@ -214,7 +214,6 @@ struct FeedEditorView: View {
         guard shouldResolve else {
             // Auto-run a newly created feed so its articles appear without a manual "Update".
             if isNew { onCreate?(target) }
-            ConfigSyncService.shared.requestPush()
             return
         }
         // Discover the real feed URL, persist it, then (for new feeds) auto-run — so the first
@@ -229,7 +228,6 @@ struct FeedEditorView: View {
                 try? context.save()
             }
             if isNew { onCreate?(target) }
-            ConfigSyncService.shared.requestPush()
         }
     }
 }

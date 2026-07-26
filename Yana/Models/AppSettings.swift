@@ -78,10 +78,9 @@ final class AppSettings {
     static let articleTextSizeDidChange = Notification.Name("YanaArticleTextSizeDidChange")
     /// Posted when `articleFont` changes so the reader can re-render live (no app restart).
     static let articleFontDidChange = Notification.Name("YanaArticleFontDidChange")
-    /// Posted when the synced timeline anchor identifier changes (a synced pull applying a new
+    /// Posted when the timeline anchor identifier changes (e.g. from a synced pull applying a new
     /// `timelineAnchorUID`) so the reader can jump to that exact article. Cross-instance safe:
-    /// `ConfigSyncService` and the reader hold separate `AppSettings` instances but share this
-    /// global notification.
+    /// separate `AppSettings` instances share this global notification.
     static let timelinePositionDidChange = Notification.Name("YanaTimelinePositionDidChange")
 
     @ObservationIgnored private let defaults: UserDefaults

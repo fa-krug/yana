@@ -61,7 +61,6 @@ struct TagEditorView: View {
             modelContext.insert(Tag(name: trimmed, colorHex: color.toHex(), sortOrder: maxOrder + 1))
         }
         try? modelContext.save()
-        ConfigSyncService.shared.requestPush()
     }
 }
 

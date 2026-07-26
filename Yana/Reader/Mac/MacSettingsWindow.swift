@@ -37,7 +37,6 @@ struct MacSettingsWindow: View {
         .toggleStyle(.switch)
         .accessibilityIdentifier("mac.settings.window")
         .frame(minWidth: 700, minHeight: 560)
-        .onDisappear { ConfigSyncService.shared.requestPush() }
     }
 
     @ViewBuilder private var detail: some View {
@@ -46,7 +45,6 @@ struct MacSettingsWindow: View {
             Form {
                 NotificationsSettingsSection()
                 LibrarySettingsSection()
-                ICloudSyncSettingsSection()
             }
         case .reader:
             Form { ReaderSettingsSection() }

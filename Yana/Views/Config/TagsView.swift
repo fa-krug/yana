@@ -89,7 +89,6 @@ struct TagsView: View {
             modelContext.delete(tag)
         }
         try? modelContext.save()
-        ConfigSyncService.shared.requestPush()
     }
 
     private func move(_ source: IndexSet, _ destination: Int) {
@@ -97,6 +96,5 @@ struct TagsView: View {
         reordered.move(fromOffsets: source, toOffset: destination)
         for (index, tag) in reordered.enumerated() { tag.sortOrder = index }
         try? modelContext.save()
-        ConfigSyncService.shared.requestPush()
     }
 }
