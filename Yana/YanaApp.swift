@@ -72,6 +72,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in
             await ScreenshotSeed.seedIfRequested(into: AppContainer.shared.mainContext)
         }
+        // DEBUG-only: keep the CloudKit *Development* schema complete (SwiftData creates fields lazily).
+        // Off the launch path; requires a signed-in iCloud account; no-op/logs otherwise.
+        Task.detached(priority: .utility) {
+            CloudKitSchemaInitializer.run()
+        }
         #endif
         StartupTrace.event("didFinishLaunching.begin")
         // BGTaskScheduler requires registration before launch completes — keep it synchronous.
