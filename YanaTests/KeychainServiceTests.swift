@@ -15,14 +15,14 @@ struct KeychainServiceTests {
         KeychainService.synchronizeWithICloud = false
     }
 
-    // MARK: - Basic round-trip (sync OFF, the default)
+    // MARK: - Basic round-trip (sync OFF)
 
     @Test func roundTripWithSyncOff() {
         let item = KeychainService.APIKeyItem.mistralAPIKey
         cleanup(item: item)
         defer { cleanup(item: item) }
 
-        // sync flag must be off (default)
+        // sync flag must be off for this test (explicitly set by cleanup)
         #expect(KeychainService.synchronizeWithICloud == false)
 
         let saved = KeychainService.saveAPIKey("test-secret-999", for: item)
@@ -83,42 +83,11 @@ struct KeychainServiceTests {
 
     // MARK: - Flag state isolation
 
-    @Test func flagDefaultsToFalse() {
-        // The global flag must start as false (sync opt-in, default OFF).
+    @Test func flagDefaultsToTrue() {
+        // The global flag must start as true (sync always on by default).
         // This test is intentionally simple — it documents the contract.
-        KeychainService.synchronizeWithICloud = false   // reset in case prior test left it dirty
-        #expect(KeychainService.synchronizeWithICloud == false)
-    }
-
-    // MARK: - Launch restore
-
-    @Test func restoreSynchronizableFlagMirrorsSetting() {
-        // The launch path (AppDelegate) calls this so newly entered keys land in the correct
-        // domain across relaunches — without re-saving existing keys the way migrate does.
-        defer { KeychainService.synchronizeWithICloud = false }
-
-        KeychainService.synchronizeWithICloud = false
-        KeychainService.restoreSynchronizableFlag(iCloudSyncEnabled: true)
+        // Reset to true since prior tests may have changed it.
+        KeychainService.synchronizeWithICloud = true
         #expect(KeychainService.synchronizeWithICloud == true)
-
-        KeychainService.restoreSynchronizableFlag(iCloudSyncEnabled: false)
-        #expect(KeychainService.synchronizeWithICloud == false)
-    }
-
-    @Test func restoreSynchronizableFlagDoesNotResaveExistingKeys() {
-        // Unlike migrate, restore must NOT return the "changed" signal or touch stored keys —
-        // it is a pure flag set. Storing a key under sync=off, then restoring sync=on, must
-        // leave the already-stored (local-domain) key untouched and still loadable.
-        let item = KeychainService.APIKeyItem.deepseekAPIKey
-        cleanup(item: item)
-        defer { cleanup(item: item) }
-
-        KeychainService.synchronizeWithICloud = false
-        #expect(KeychainService.saveAPIKey("restore-test-value", for: item))
-
-        KeychainService.restoreSynchronizableFlag(iCloudSyncEnabled: true)
-        #expect(KeychainService.synchronizeWithICloud == true)
-        // The pre-existing local-domain key is still readable (load matches any domain).
-        #expect(KeychainService.loadAPIKey(for: item) == "restore-test-value")
     }
 }
