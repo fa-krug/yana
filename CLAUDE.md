@@ -94,9 +94,10 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   running the reset before the seed.
 - `-UITEST_MAC_SCREENSHOTS` (`Yana/Utilities/MacScreenshotWindow.swift`) pins the main window to
   1440×900pt — 2880×1800 at 2x — suppresses the Mac launch refresh (whose spinner and error toast
-  would otherwise land in a frame), and suppresses iCloud sync via a launch argument (not a persisted
-  setting, so the developer's real sync preference is never modified): the app under test shares the
-  real `de.fa-krug.Yana` container, so a developer's synced feeds would otherwise appear mid-capture.
+  would otherwise land in a frame), and suppresses iCloud sync via a launch argument: the app under
+  test shares the real `de.fa-krug.Yana` container, so a developer's synced feeds would otherwise
+  appear mid-capture. (SwiftData+CloudKit mirroring is always on but the `-UITEST_MAC_SCREENSHOTS`
+  argument disables it for the capture run; no persisted sync preference is modified.)
 - The capture run uses a **throwaway SwiftData store** in the system temp directory
   (`yana-screenshots.store` + its `-wal`/`-shm` siblings, deleted before each run). The developer's
   real Mac library under `~/Library/Application Support/` is never touched.
@@ -148,8 +149,9 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 
 ### SwiftUI + SwiftData + local aggregation
 
-- **Models** (`Yana/Models/`): SwiftData `@Model` classes — `Feed`, `Tag`, `Article` —
-  plus the typed `AggregatorOptions` enum and the `AppSettings` preferences store.
+- **Models** (`Yana/Models/`): SwiftData `@Model` classes — `Feed`, `Tag`, `Article`, `StoredImage` —
+  plus the typed `AggregatorOptions` enum, `UpdateInterval` (per-device background-refresh schedule),
+  and the `AppSettings` preferences store.
 - **Aggregators** (`Yana/Aggregators/`): the pluggable aggregation system — `AggregatorType`
   (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO,
   `AggregatorRegistry`, and `ArticleSearch` (pure case/diacritic-insensitive matcher over
@@ -166,8 +168,8 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   surfaced by per-section **Test** buttons in Settings; the AI section shows config fields — API key,
   model, and (for OpenAI-compatible providers) API URL — for the selected provider only) —
   `BackgroundRefreshManager` (best-effort periodic `BGAppRefreshTask`: registers at launch,
-  reschedules at `AppSettings.backgroundInterval`, runs `updateAll()` in the handler, then posts
-  a new-article notification when enabled), `NotificationService` (`Notifying` protocol +
+  reschedules from the per-device `AppSettings.updateInterval` (`UpdateInterval` enum), runs
+  `updateAll()` in the handler unless `.off`, then posts a new-article notification when enabled), `NotificationService` (`Notifying` protocol +
   `NewArticleNotification` gating; opt-in, off by default), and the OPML pair — `OPMLCodec`
   (pure standard-OPML encode/decode with `yana:` extension attributes) and `FeedPortability`
   (`Feed` ↔ OPML mapping: restores type/options/tags, falls back to `feedContent` for foreign
@@ -176,45 +178,46 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   background loader, then stays in sync via a coalesced `ModelContext.didSave` observer;
   consumed by both the reader and `ArticleListView` in place of per-view `@Query`s; the reader
   resolves each page's full `Article` (with its `[Block]` body) on demand by `persistentID`) —
-  and the optional **iCloud sync** stack, split into a config layer and an article layer.
-  `ConfigSyncService` (`@MainActor @Observable`, gated on the opt-in `AppSettings.iCloudSyncEnabled`)
-  syncs the *configuration* — feeds+tags (as OPML via `FeedPortability`) and the allow-listed
-  non-secret settings (`AppSettings.SyncedSettings`, now including the exact timeline anchor —
-  `timelineAnchorUID`, the synced article's identifier — so a receiving device jumps to the same
-  article instead of the old timestamp + closest-match heuristic) — as a **single record in the
-  user's private CloudKit database** via the `ConfigStore` protocol (`CloudKitConfigStore` in
-  production; a fake in tests). It debounce-pushes on config mutations, pulls on launch + a silent
-  CloudKit subscription, and reconciles with an additive OPML import plus a device-local
-  "last-synced feed keys" snapshot driving deletion reconcile (conflicts → pull, rebuild, retry
-  once). `ArticleSyncService` (`Yana/Services/ArticleSync/`; `@MainActor @Observable`, `.shared`,
-  same `iCloudSyncEnabled` gate) syncs full **article bodies and images** across devices via
-  **`CKSyncEngine`** over a dedicated `Articles` record zone (`CloudKitArticleZoneStore`, behind the
-  testable `ArticleZoneStore` protocol — a fake in tests): `SyncedArticle` records (recordName = the
-  canonical `ArticleUID`, `feedIdentifier|aggregatorType|articleIdentifier`, with a
-  `SHA256(date+title)` fallback for the third segment when the source gives no identifier) carry
-  the `[Block]` body and `isStarred`; `SyncedImage` records (recordName = content hash, blob as a
-  `CKAsset`) carry write-once, content-addressed image blobs pulled into the local `ImageStore` on
-  demand. `Article` stores `syncFeedIdentifier`/`syncAggregatorType` so an article synced before its
-  feed arrives locally can still be identified, deduped, and re-linked once the feed shows up.
-  Conflict rule: `createdAt` is **first-writer-wins** (keeps the stable timeline order), everything
-  else — body, title, starred, etc. — is **last-writer-wins**; `AggregationService` pulls before and
-  pushes after a run so a locally aggregated insert re-checks against anything synced meanwhile and
-  adopts the canonical `createdAt`. **Starred now rides on the `SyncedArticle` record**
-  (`isStarred`) instead of the config document — `ConfigDocument`'s old `starredData` field is
-  retired. Retention deletions propagate: an active device tombstones aged-out `SyncedArticle`
-  records on cleanup; the opt-in **`AppSettings.isPassiveDevice`** flag (device-local, never synced)
-  marks a device as an iCloud mirror that runs **no background aggregation**
-  (`BackgroundRefreshManager`) **and no retention cleanup** (`AggregationService`) — manual
-  update/reload still work, and new/starred/deleted articles from other devices still arrive via
-  pull. The **SwiftData store itself is still local-only**
-  (`ModelConfiguration(cloudKitDatabase: .none)`) — this is CloudKit sync built by hand via
-  `CKSyncEngine`/`ConfigStore`/`ArticleZoneStore`, never SwiftData's own CloudKit mirroring.
-  `StarredRegistry` (`@MainActor`, `.shared`) still holds the lightweight starred identities
-  `(feedIdentifier, aggregatorType, articleIdentifier)` device-locally and re-applies them at import
-  (`ArticleUpsert`), independent of the sync layers. API-key secrets ride along via **iCloud Keychain**
-  (`KeychainService` writes `kSecAttrSynchronizable` only while the toggle is on, migrating on flip;
-  the flag is a process-lifetime static restored from the persisted setting at launch via
-  `restoreSynchronizableFlag`, so keys entered after a relaunch still land in the synced domain).
+  and the **iCloud sync** stack — native SwiftData+CloudKit mirroring, always on.
+  `AppContainer.shared` uses `ModelConfiguration(cloudKitDatabase: .automatic)` (the DEBUG
+  screenshot/UITest throwaway store stays `.none`). `Feed`, `Tag`, `Article`, and the new
+  `StoredImage` `@Model` (`contentHash` + `@Attribute(.externalStorage) data`) mirror to the user's
+  private CloudKit database automatically. No opt-in toggle: if the user is not signed into iCloud
+  the app silently runs local-only. **CloudKit model invariants — must hold for all future model
+  edits:** every attribute optional or defaulted; every relationship optional with an inverse (the
+  five to-many relationships `Feed.articles`, `Feed.tags`, `Tag.articles`, `Tag.feeds`,
+  `Article.tags` are `[T]?`); no `#Unique`/`@Attribute(.unique)`. `#Index` and `.cascade` delete
+  rules are allowed. A DEBUG smoke test `YanaTests/CloudKitSchemaCompatibilityTests` builds an
+  on-disk `.automatic` container and asserts it initialises, guarding these invariants. The CloudKit
+  schema is auto-derived and created on first write in Development; **it must be deployed to
+  Production in the CloudKit Dashboard before release** (SwiftData exposes no
+  `initializeCloudKitSchema()` hook for hand-built schemas).
+  Images sync via `StoredImage` (mirrored as a CKAsset via `@Attribute(.externalStorage)`).
+  `ImageStore` is a disk cache in front of it; `ImageSync` (`Yana/Services/ImageSync.swift`)
+  bridges the two — registers `StoredImage` rows after aggregation and materialises blobs on cache
+  miss in the reader/logo views.
+  Settings sync via `NSUbiquitousKeyValueStore` (`SettingsCloudSync`,
+  `Yana/Services/SettingsCloudSync.swift`) for the allow-listed non-secret prefs. API-key secrets
+  sync via **iCloud Keychain** — `KeychainService` now writes `kSecAttrSynchronizable` always
+  (defaulting true; no toggle). `BackgroundRefreshManager` reschedules itself from the per-device
+  **`UpdateInterval`** (`Yana/Models/UpdateInterval.swift`; `AppSettings.updateInterval`): seven
+  cases — `off / 30min / 60min / 2h / 4h / 8h / 24h` — stored device-locally and never synced.
+  `.off` means no background aggregation and no retention cleanup, but synced articles/deletes still
+  arrive; this replaces the old passive-device concept and the formerly synced `backgroundInterval`.
+  The Settings Library section shows an `UpdateInterval` Picker; the old iCloud-sync toggle section
+  is removed.
+  **`LibraryDedup`** (`Yana/Services/LibraryDedup.swift`, `@ModelActor`, run on scene-foreground)
+  collapses duplicate `Feed`/`Tag`/`Article` rows (which CloudKit can create since it forbids unique
+  constraints) by natural key, keeping the earliest `createdAt` (first-writer-wins) and OR-ing
+  starred. **`NativeCloudKitMigration`** (`Yana/Services/NativeCloudKitMigration.swift`, one-time)
+  seeds `StoredImage` from the disk cache, forces keys synchronisable, maps old
+  `backgroundInterval`/passive → `UpdateInterval`, and pushes prefs to KVS.
+  **`LegacyCloudKitCleanup`** (`Yana/Services/LegacyCloudKitCleanup.swift`) performs a best-effort,
+  retried deletion of the old `Articles`/`SchemaBootstrap` zones and `ConfigDocument` record.
+  `StarredRegistry` (`@MainActor`, `.shared`) still holds lightweight starred identities
+  device-locally and re-applies them on a local device re-fetch (`ArticleUpsert`); it is no longer a
+  sync mechanism. `ArticleUID` (`Yana/Services/ArticleUID.swift`) remains the canonical article
+  identity used for timeline anchor, retention, and dedup.
 - **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref (tapping an image opens it full-screen with pinch-to-zoom, double-tap-to-zoom and swipe-down-to-dismiss via `ReaderImageViewerViewController`); video embeds shown as tappable poster cards and tweet embeds as text cards — tapping a video plays it full-screen in-app via `ReaderVideoPlayerViewController` (YouTube/Dailymotion in a `WKWebView` privacy-mode player; a direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController`), while tweets/unplayable embeds open externally). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer; picks the most natural installed voice matching the article's detected language, keeps playing when the screen is locked or the app is backgrounded, and wires up Now Playing / remote play-pause controls). A dedicated **Reader** settings section exposes text size, font, the read-aloud voice, and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
 - **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings. The Settings screen (`SettingsScreenView`) ends with an **About** section (`aboutSection`) linking the source repo, the issue board (for source/bug requests), and a NetNewsWire credit for the reader view.
 - **Mac Catalyst windowing** (`Yana/Reader/Mac/`): on the Mac idiom, `ContentView` swaps the
@@ -229,7 +232,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   instead of opening a new one per call; `WindowID.feedEditor` binds `for: FeedEditorTarget.self`
   so every `.create` shares one window and each `.edit(id)` gets its own. `MacSettingsWindow` is a
   two-pane sidebar over `SettingsPane` (General/Reader/Feeds/Tags/Integrations/AI/About — General
-  folds in Notifications/Library/iCloud); `WelcomeWindowRoot`/`FeedEditorWindowRoot` host the same
+  folds in Notifications/Library, which now includes the per-device `UpdateInterval` picker); `WelcomeWindowRoot`/`FeedEditorWindowRoot` host the same
   `WelcomeView`/`FeedEditorView` iOS uses. Each window is its own SwiftUI hierarchy, so they
   coordinate through shared observable state (`AppState`, `ArticleStore`, `AppSettings`) passed in
   at scene creation rather than closures back to a presenting view. `MacCommands.swift` adds the
@@ -307,6 +310,7 @@ before use, with Apple Intelligence checked for on-device availability instead.
 ### Tests
 - `YanaTests/` — unit tests using Swift Testing framework (`import Testing`)
 - `YanaTests/TestHelper.swift` — shared test utilities
+- `YanaTests/CloudKitSchemaCompatibilityTests.swift` — DEBUG smoke test: builds an on-disk `.automatic` SwiftData container and asserts it initialises, guarding the CloudKit model invariants (all attributes optional/defaulted, relationships optional with inverses, no `#Unique`)
 - `YanaUITests/YanaUITests.swift` — UI tests using XCTest
 - Run tests: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
 - All tests use `@MainActor` for safe concurrency
@@ -352,12 +356,7 @@ before use, with Apple Intelligence checked for on-device availability instead.
 - **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background refresh
 - **Credential validation** ✅ — per-section **Test** buttons in Settings that verify Reddit, YouTube, and AI-provider keys (and Apple Intelligence availability) via a minimal auth probe, classifying failures as invalid credentials / network / unexpected response
 - **Read-aloud** ✅ — `ReaderSpeechController` reads articles aloud with a voice matching the article's language, continues from the lock screen / Control Center, and exposes a voice picker in the Reader settings section
-- **iCloud sync** ✅ — opt-in (off by default), two layers across a user's devices: `ConfigSyncService` syncs feeds, tags, allow-listed settings (including the exact timeline anchor), and API keys (via iCloud Keychain) as a single CloudKit private-DB record; `ArticleSyncService` syncs full article bodies and images (with starred state) via `CKSyncEngine` into a dedicated `Articles` zone, so the same articles — read them or not — appear on every synced device. An opt-in passive-device toggle turns a device into an iCloud-only mirror with no background aggregation and no retention cleanup. The SwiftData store itself stays local-only (no SwiftData CloudKit mirroring — both layers are hand-built). Requires the `iCloud.de.fa-krug.Yana` container (schema auto-creates in CloudKit Development on first write; **deploy to Production before release**). The record name of a `SyncedArticle` is the `ArticleUID` — bounded to CloudKit's 255-UTF-16-unit limit inside `ArticleUID.make` (over-long UIDs collapse to a `sha256:` digest), because `CKRecord.ID` rejects an invalid name with an ObjC `CKException` that Swift cannot catch, i.e. a process abort. Schema is kept in step with the code by **`CloudKitSchemaBootstrap`** (`Yana/Services/ArticleSync/`, DEBUG-only): it writes one sample record per type with **every field non-nil** — CloudKit never creates a field that is nil on every record written, which would silently drop e.g. the optional `iconURL` from sync — into a throwaway `SchemaBootstrap` zone, then deletes the zone (schema is container-wide, so it survives, and no sample can reach real devices). It runs off the launch path from `AppDelegate`, is gated on `iCloudSyncEnabled`, and re-pushes only when a `Mirror`-derived fingerprint of the field set changes, so adding a field to `SyncedArticleRecord` auto-triggers a push. To push on demand **without** enabling sync (which would also start `ConfigSyncService`/`ArticleSyncService` reconciling the real library), launch with `-PUSH_CLOUDKIT_SCHEMA`, which bypasses both the opt-in and the fingerprint. The practical way to run it is the **Mac Catalyst** build, which uses the Mac's own iCloud account — no simulator sign-in needed:
-  ```bash
-  xcodebuild -scheme Yana -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath /tmp/yana-mac build
-  /tmp/yana-mac/Build/Products/Debug-maccatalyst/Yana.app/Contents/MacOS/Yana -PUSH_CLOUDKIT_SCHEMA -settings.iCloudSyncEnabled NO 2>&1 | grep CloudKitSchemaBootstrap
-  ```
-  (`-settings.iCloudSyncEnabled NO` lands in `NSArgumentDomain`, which outranks the persisted value, so a dev machine that *does* have sync on still won't start a real sync for a schema push.) It logs the fields CloudKit echoed back per record type — server-side confirmation without needing a CloudKit management token, which `cktool export-schema` would require. **The bootstrap deliberately uses `NSLog`, not `Logger`:** `os_log` output does not surface from a locally built/run Mac Catalyst app (verified — `log stream` captured nothing), and `DebugSeed`/`ScreenshotSeed` use `NSLog` for the same reason. `initializeCloudKitSchema()` is deliberately **not** used: it derives a schema from a Core Data managed object model, and this project has none (the record types are hand-authored for `CKSyncEngine`).
+- **iCloud sync** ✅ — always-on native SwiftData+CloudKit mirroring of `Feed`, `Tag`, `Article`, and `StoredImage` into the user's private CloudKit database (`iCloud.de.fa-krug.Yana` container, `ModelConfiguration(cloudKitDatabase: .automatic)`). No opt-in toggle: the app runs local-only when the user is not signed into iCloud. Settings (non-secret prefs) sync via `NSUbiquitousKeyValueStore` (`SettingsCloudSync`); API keys sync via iCloud Keychain (always synchronisable). Per-device background-refresh cadence is controlled by `UpdateInterval` (`off / 30min / 1h / 2h / 4h / 8h / 24h`); `.off` acts as a pure-mirror mode (no aggregation, no retention). `LibraryDedup` collapses merge duplicates on scene-foreground. One-time `NativeCloudKitMigration` upgrades existing installs; `LegacyCloudKitCleanup` removes the old hand-built CloudKit zones and records. The CloudKit schema is auto-derived from the SwiftData models — **it must be deployed to Production in the CloudKit Dashboard before release**. A DEBUG smoke test `YanaTests/CloudKitSchemaCompatibilityTests` guards the required model invariants (all attributes optional/defaulted, all relationships optional with inverses, no `#Unique`).
 - **Open source** ✅ — MIT-licensed (`LICENSE`); Settings › About links the source repo and issue board, and credits NetNewsWire for the reader view; App Store copy lives under `docs/app-store/`
 - **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
 - **Multiple libraries** — support multiple independent local feed libraries/profiles
