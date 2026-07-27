@@ -11,6 +11,10 @@ import UIKit
 /// post-launch main-actor task so it does not block `didFinishLaunchingWithOptions`.
 enum AppContainer {
     static let shared: ModelContainer = {
+        // Install the CloudKit mirroring-event observer BEFORE any container is created. Setup
+        // events fire during `ModelContainer.init` and are where container/entitlement/account
+        // failures surface — an observer installed afterwards misses exactly those events.
+        CloudKitSyncMonitor.shared.start()
         do {
             return try StartupTrace.measure("ModelContainer.init") {
                 #if DEBUG
