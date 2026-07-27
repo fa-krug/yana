@@ -53,4 +53,27 @@ struct DiagnosticsRevealTests {
         #expect(result.state.count == 1)
         #expect(result.unlocked == false)
     }
+
+    @Test func aTapExactlyAtTheWindowBoundaryStillCounts() {
+        let firstTapAt = Date(timeIntervalSince1970: 1000)
+        let state = DiagnosticsReveal.State(firstTapAt: firstTapAt, count: 1)
+
+        // Exactly `window` (3.0s) after the first tap — the boundary is inclusive.
+        let result = DiagnosticsReveal.register(state, at: firstTapAt.addingTimeInterval(3.0))
+        #expect(result.state.firstTapAt == firstTapAt)
+        #expect(result.state.count == 2)
+        #expect(result.unlocked == false)
+    }
+
+    @Test func aTapJustPastTheWindowBoundaryResets() {
+        let firstTapAt = Date(timeIntervalSince1970: 1000)
+        let state = DiagnosticsReveal.State(firstTapAt: firstTapAt, count: 1)
+
+        // Just past `window` — the same tap count now restarts instead of continuing.
+        let now = firstTapAt.addingTimeInterval(3.001)
+        let result = DiagnosticsReveal.register(state, at: now)
+        #expect(result.state.firstTapAt == now)
+        #expect(result.state.count == 1)
+        #expect(result.unlocked == false)
+    }
 }

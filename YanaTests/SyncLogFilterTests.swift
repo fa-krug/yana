@@ -47,6 +47,11 @@ struct SyncLogFilterTests {
 
         filter.text = "failed"
         #expect(filter.apply(to: sample).map(\.sequence) == [2])
+
+        // Only entry 4's category ("coredata") contains this — its message ("mirroring started")
+        // does not — so this exercises the category branch specifically.
+        filter.text = "coredata"
+        #expect(filter.apply(to: sample).map(\.sequence) == [4])
     }
 
     @Test func filtersCombineWithAndSemantics() {
