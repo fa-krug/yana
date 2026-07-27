@@ -78,13 +78,81 @@ struct SyncDiagnostics: Sendable {
         )
     }
 
-    private static func accountStatusDescription() async -> String {
+    /// Reported instead of a real status when the probe is suppressed. Deliberately honest — "Not
+    /// checked" must never be mistaken for "no account".
+    static let accountStatusNotChecked = "Not checked"
+
+    /// Whether the `CKContainer` account probe must be skipped entirely for this process.
+    ///
+    /// **Trap hazard — this guard is load-bearing.** `CKContainer(identifier:)` *traps*
+    /// (EXC_BREAKPOINT / SIGTRAP, exit 133) in an **unsigned** Mac Catalyst build. Because the trap is
+    /// raised by the *initializer*, a `do`/`catch` around `accountStatus()` cannot contain it — the
+    /// process dies. Earlier work deliberately moved `CKContainer` off the launch path for exactly
+    /// this reason; the diagnostics screen put a construction behind a user tap, so the automation
+    /// paths this project actually drives from an unsigned build (UI tests and the screenshot lanes)
+    /// have to be excluded by name. Do **not** replace this with a runtime code-signing check: there
+    /// is no reliable one.
+    static var isAccountProbeSuppressed: Bool {
+        isAccountProbeSuppressed(arguments: ProcessInfo.processInfo.arguments)
+    }
+
+    /// The launch arguments that mark an automation run. Spelled out rather than read off
+    /// `MacScreenshotWindow.launchArgument`, which is compiled out of release builds; this guard is
+    /// not (a release UI-test run must be protected too).
+    static let automationLaunchArguments = [
+        "-UITEST_MAC_SCREENSHOTS",
+        "-UITEST_SCREENSHOTS",
+        "-UITEST_RESET_LIBRARY",
+        "-UITEST_SKIP_ONBOARDING",
+    ]
+
+    /// Pure form, so the rule is testable without launching under those arguments.
+    static func isAccountProbeSuppressed(arguments: [String]) -> Bool {
+        arguments.contains { automationLaunchArguments.contains($0) }
+    }
+
+    static func accountStatusDescription() async -> String {
+        guard !isAccountProbeSuppressed else { return accountStatusNotChecked }
         do {
+            // The construction on the next line is the trap site — see `isAccountProbeSuppressed`.
             let status = try await CKContainer(identifier: containerIdentifier).accountStatus()
             return describe(status)
         } catch {
             return "Unavailable: \(error.localizedDescription)"
         }
+    }
+
+    /// The block prepended to an exported log, so a log pasted into an issue is self-describing.
+    ///
+    /// Lives here rather than in the view because this is the type that owns the data. Deliberately
+    /// **not** localized: an exported log is developer-facing and travels to a bug tracker, where a
+    /// German header over English entry lines would only make it harder to read.
+    func exportHeader() -> String {
+        var lines = [
+            "=== Yana sync diagnostics ===",
+            "iCloud Account: \(accountStatus)",
+            "Container: \(containerIdentifier)",
+            "Environment: \(environment)",
+            "App: \(appVersion)",
+            "System: \(systemVersion) · \(idiom)",
+            "Library: \(feedCount) feeds · \(tagCount) tags · \(articleCount) articles · \(storedImageCount) images",
+            "Last Import: \(Self.stamp(lastImportSucceededAt))",
+            "Last Export: \(Self.stamp(lastExportSucceededAt))",
+        ]
+        if let lastErrorSummary {
+            lines.append("Last Error (this launch): \(lastErrorSummary)")
+        }
+        lines.append("=============================")
+        return lines.joined(separator: "\n")
+    }
+
+    private static func stamp(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        return ISO8601DateFormatter.string(
+            from: date,
+            timeZone: .current,
+            formatOptions: [.withInternetDateTime]
+        )
     }
 
     private static func count<T: PersistentModel>(

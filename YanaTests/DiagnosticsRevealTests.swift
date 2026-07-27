@@ -65,6 +65,38 @@ struct DiagnosticsRevealTests {
         #expect(result.unlocked == false)
     }
 
+    // MARK: - Visibility
+
+    // The property the whole reveal gesture exists to guarantee: Diagnostics is *hidden* until it is
+    // unlocked. Both settings hosts embed this rule, one of them inside a Catalyst-only view, so
+    // asserting it here is the only place it is checked.
+
+    @Test func diagnosticsIsHiddenWhileLockedAndUnrevealed() {
+        #expect(DiagnosticsReveal.isDiagnosticsVisible(unlocked: false, revealed: false) == false)
+        #expect(DiagnosticsReveal.visiblePanes(unlocked: false, revealed: false).contains(.diagnostics) == false)
+    }
+
+    @Test func diagnosticsIsVisibleOnceThePreferenceIsUnlocked() {
+        #expect(DiagnosticsReveal.isDiagnosticsVisible(unlocked: true, revealed: false))
+        #expect(DiagnosticsReveal.visiblePanes(unlocked: true, revealed: false).contains(.diagnostics))
+    }
+
+    /// The five-tap gesture flips `diagnosticsUnlocked` on the *About section's* own `AppSettings`
+    /// instance, which the enclosing settings screen is not guaranteed to observe — so the reveal
+    /// must also take effect from the host's own `revealed` state alone.
+    @Test func diagnosticsIsVisibleWhenRevealedBeforeThePreferenceIsRead() {
+        #expect(DiagnosticsReveal.isDiagnosticsVisible(unlocked: false, revealed: true))
+        #expect(DiagnosticsReveal.visiblePanes(unlocked: false, revealed: true).contains(.diagnostics))
+    }
+
+    @Test func hidingDiagnosticsRemovesOnlyThatPaneAndKeepsTheOrder() {
+        let hidden = DiagnosticsReveal.visiblePanes(unlocked: false, revealed: false)
+        #expect(hidden == SettingsPane.allCases.filter { $0 != .diagnostics })
+
+        let shown = DiagnosticsReveal.visiblePanes(unlocked: true, revealed: false)
+        #expect(shown == SettingsPane.allCases)
+    }
+
     @Test func aTapJustPastTheWindowBoundaryResets() {
         let firstTapAt = Date(timeIntervalSince1970: 1000)
         let state = DiagnosticsReveal.State(firstTapAt: firstTapAt, count: 1)

@@ -3708,6 +3708,36 @@
           }
         }
       }
+    },
+    "Refresh": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisieren"
+          }
+        }
+      }
+    },
+    "Copying or sharing the log may include article titles and links, so read it before sending it to anyone.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beim Kopieren oder Teilen des Protokolls können Artikeltitel und Links enthalten sein — es vor dem Senden durchlesen."
+          }
+        }
+      }
+    },
+    "%lld feeds · %lld tags · %lld articles · %lld images": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Feeds · %lld Tags · %lld Artikel · %lld Bilder"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

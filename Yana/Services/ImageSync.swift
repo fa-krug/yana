@@ -32,7 +32,9 @@ enum ImageSync {
         let descriptor = FetchDescriptor<StoredImage>(predicate: #Predicate { $0.contentHash == hash })
         guard let stored = (try? context.fetch(descriptor))?.first else { return false }
         _ = await imageStore.storeData(stored.data, ext: stored.ext)
-        SyncLog.shared.info("Materialized synced image \(hash) into the disk cache", category: "ImageSync")
+        // `.debug`, not `.info`: this fires once per image cache miss while scrolling the reader, so at
+        // `.info` it was a steady drip of sync-irrelevant entries churning the diagnostics buffer.
+        SyncLog.shared.debug("Materialized synced image \(hash) into the disk cache", category: "ImageSync")
         return true
     }
 }

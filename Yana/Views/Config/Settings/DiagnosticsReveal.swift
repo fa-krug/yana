@@ -29,4 +29,31 @@ enum DiagnosticsReveal {
         let count = state.count + 1
         return (State(firstTapAt: firstTapAt, count: count), count >= requiredTaps)
     }
+
+    // MARK: - Visibility
+
+    /// Whether the Diagnostics entry belongs in Settings.
+    ///
+    /// `unlocked` is the persisted `AppSettings.diagnosticsUnlocked` preference; `revealed` is the
+    /// presenting screen's own `@State`, set the instant the five-tap gesture fires. Both are needed:
+    /// `AboutSettingsSection` flips the preference on its *own* `AppSettings` instance, so the
+    /// enclosing settings screen is not guaranteed to observe that write, and only a mutation to its
+    /// own state reliably re-renders it.
+    ///
+    /// Extracted from the two hosts (`SettingsScreenView` on iOS, `MacSettingsWindow` on Catalyst)
+    /// because it is the one behaviour the whole reveal gesture exists to guarantee, and inline in a
+    /// view body it was untestable.
+    static func isDiagnosticsVisible(unlocked: Bool, revealed: Bool) -> Bool {
+        unlocked || revealed
+    }
+
+    /// The Mac Settings sidebar's panes, with `.diagnostics` filtered out until it is visible.
+    static func visiblePanes(
+        _ all: [SettingsPane] = SettingsPane.allCases,
+        unlocked: Bool,
+        revealed: Bool
+    ) -> [SettingsPane] {
+        let visible = isDiagnosticsVisible(unlocked: unlocked, revealed: revealed)
+        return all.filter { $0 != .diagnostics || visible }
+    }
 }

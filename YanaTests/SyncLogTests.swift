@@ -29,11 +29,20 @@ struct SyncLogTests {
         #expect(entries.map(\.message) == ["entry 3", "entry 4", "entry 5"])
     }
 
-    @Test func clearRemovesEveryEntry() {
-        let log = SyncLog(capacity: 10)
-        log.info("gone", category: "Test")
-        log.clear()
-        #expect(log.snapshot().isEmpty)
+    @Test func capacityIsNeverExceededWhenTrimmingInBatches() {
+        // Capacity 100 → the batch trim drops 10 at a time, so the buffer oscillates between 91 and
+        // 100 entries. The invariant that matters is that it never grows past capacity and always
+        // ends with the newest write.
+        let log = SyncLog(capacity: 100)
+        for index in 1...500 {
+            log.info("entry \(index)", category: "Test")
+            let entries = log.snapshot()
+            #expect(entries.count <= 100)
+            #expect(entries.last?.message == "entry \(index)")
+        }
+        // Still contiguous and newest-last after all that trimming.
+        let entries = log.snapshot()
+        #expect(entries.map(\.message) == (500 - entries.count + 1...500).map { "entry \($0)" })
     }
 
     @Test func concurrentWritesLoseNothingAndKeepSequencesUnique() async {

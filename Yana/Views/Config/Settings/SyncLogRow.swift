@@ -28,6 +28,12 @@ struct SyncLogRow: View {
             }
             Text(entry.message)
                 .font(.system(.caption, design: .monospaced))
+                // `CloudKitSyncMonitor` emits a whole error tree as ONE multi-line entry (see its
+                // `record`), so an uncapped row can be hundreds of lines tall — which destroys `List`
+                // performance and makes the trace unnavigable. 12 rather than the spec's 4: an error
+                // tree legitimately needs domain, code, message and a couple of nested levels before
+                // it says anything. The full text is still in the copied/shared export.
+                .lineLimit(12)
                 .textSelection(.enabled)
         }
         .padding(.vertical, 2)

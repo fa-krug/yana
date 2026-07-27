@@ -13,7 +13,9 @@ struct SyncLogHeaderView: View {
             row("Environment", diagnostics.environment)
             row("App", diagnostics.appVersion)
             row("System", "\(diagnostics.systemVersion) · \(diagnostics.idiom)")
-            row("Library", "\(diagnostics.feedCount) feeds · \(diagnostics.tagCount) tags · \(diagnostics.articleCount) articles · \(diagnostics.storedImageCount) images")
+            // Built as an interpolated `Text` rather than a plain Swift `String` so the four nouns
+            // reach the string catalog like every other label on this screen.
+            row("Library", Text("\(diagnostics.feedCount) feeds · \(diagnostics.tagCount) tags · \(diagnostics.articleCount) articles · \(diagnostics.storedImageCount) images"))
             row("Last Import", stamp(diagnostics.lastImportSucceededAt))
             row("Last Export", stamp(diagnostics.lastExportSucceededAt))
             if let error = diagnostics.lastErrorSummary {
@@ -32,13 +34,18 @@ struct SyncLogHeaderView: View {
         .padding(.vertical, 4)
     }
 
+    /// Verbatim value (identifiers, versions, timestamps — nothing translatable).
     private func row(_ label: LocalizedStringKey, _ value: String) -> some View {
+        row(label, Text(verbatim: value))
+    }
+
+    private func row(_ label: LocalizedStringKey, _ value: Text) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            Text(value)
+            value
                 .font(.system(.caption, design: .monospaced))
                 .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)

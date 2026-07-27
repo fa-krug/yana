@@ -20,9 +20,13 @@ struct MacSettingsWindow: View {
     @State private var diagnosticsRevealed = false
 
     /// Diagnostics is hidden until the version row in About is tapped five times, so the sidebar is
-    /// built from this rather than `allCases`.
+    /// built from this rather than `allCases`. The rule itself lives in `DiagnosticsReveal` so both
+    /// settings hosts share one tested implementation.
     private var visiblePanes: [SettingsPane] {
-        SettingsPane.allCases.filter { $0 != .diagnostics || settings.diagnosticsUnlocked || diagnosticsRevealed }
+        DiagnosticsReveal.visiblePanes(
+            unlocked: settings.diagnosticsUnlocked,
+            revealed: diagnosticsRevealed
+        )
     }
 
     var body: some View {

@@ -48,6 +48,17 @@ final class SyncLog: Sendable {
     /// Default retained-entry count. Oldest entries are evicted first.
     static let defaultCapacity = 2000
 
+    /// How much of the buffer is discarded in one go once capacity is reached, as a divisor of
+    /// `capacity` (10 → 10%).
+    ///
+    /// Not a true ring buffer: eviction shifts the backing array. Trimming exactly one entry per
+    /// write meant every write past capacity shifted 2000 elements **while holding the unfair lock**
+    /// that other threads spin on — during a mirroring burst, which is precisely when the lock is
+    /// contended. Trimming a batch amortises that shift to once per `capacity / trimDivisor` writes;
+    /// the cost is that the buffer holds between 90% and 100% of `capacity` rather than exactly
+    /// `capacity`, which no caller cares about.
+    static let trimDivisor = 10
+
     private struct Storage {
         var entries: [Entry] = []
         var nextSequence: UInt64 = 1
@@ -74,7 +85,12 @@ final class SyncLog: Sendable {
             state.nextSequence += 1
             state.entries.append(entry)
             if state.entries.count > capacity {
-                state.entries.removeFirst(state.entries.count - capacity)
+                // Batch the eviction — see `trimDivisor`. `- 1` keeps the small-capacity behaviour
+                // exact (capacity 3 still yields the last 3 entries), because for any capacity below
+                // `trimDivisor` the batch collapses to the plain overflow trim.
+                let overflow = state.entries.count - capacity
+                let batch = max(1, capacity / Self.trimDivisor)
+                state.entries.removeFirst(min(state.entries.count, overflow + batch - 1))
             }
             return entry
         }
@@ -88,8 +104,6 @@ final class SyncLog: Sendable {
 
     /// Chronological snapshot, oldest first.
     func snapshot() -> [Entry] { storage.withLock { $0.entries } }
-
-    func clear() { storage.withLock { $0.entries.removeAll() } }
 
     /// One line per entry, suitable for the clipboard or a shared `.txt`.
     static func exportText(_ entries: [Entry]) -> String {
