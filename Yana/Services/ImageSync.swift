@@ -10,14 +10,17 @@ enum ImageSync {
     static func ensureStored(hashes: Set<String>, context: ModelContext, imageStore: ImageStore) async {
         guard !hashes.isEmpty else { return }
         let existing = Set((try? context.fetch(FetchDescriptor<StoredImage>()))?.map(\.contentHash) ?? [])
-        var inserted = false
+        var insertedCount = 0
         for hash in hashes where !existing.contains(hash) {
             guard let bytes = await imageStore.rawData(forHash: hash) else { continue }
             let ext = await imageStore.recordedExt(forHash: hash)
             context.insert(StoredImage(contentHash: hash, data: bytes, ext: ext))
-            inserted = true
+            insertedCount += 1
         }
-        if inserted { try? context.save() }
+        if insertedCount > 0 {
+            try? context.save()
+            SyncLog.shared.info("Registered \(insertedCount) StoredImage row(s) for sync", category: "ImageSync")
+        }
     }
 
     /// Ensure the disk cache has bytes for `hash`. If the file is missing but a synced `StoredImage`
@@ -29,6 +32,7 @@ enum ImageSync {
         let descriptor = FetchDescriptor<StoredImage>(predicate: #Predicate { $0.contentHash == hash })
         guard let stored = (try? context.fetch(descriptor))?.first else { return false }
         _ = await imageStore.storeData(stored.data, ext: stored.ext)
+        SyncLog.shared.info("Materialized synced image \(hash) into the disk cache", category: "ImageSync")
         return true
     }
 }

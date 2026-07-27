@@ -78,9 +78,11 @@ enum LegacyCloudKitCleanup {
             try await database.deleteRecordZone(name: "SchemaBootstrap")
             try await database.deleteRecord(name: "config")
             settings.hasCleanedLegacyCloudKit = true
+            SyncLog.shared.info("Legacy CloudKit cleanup succeeded", category: "Cleanup")
         } catch {
             // Leave the flag unset so the next launch retries.
             // Network / auth errors land here; not-found is swallowed by the prod adapter.
+            SyncLog.shared.notice("Legacy CloudKit cleanup deferred: \(error.localizedDescription)", category: "Cleanup")
         }
     }
 }

@@ -195,6 +195,10 @@ final class AggregationService {
         let result = await writer.runUpdateAll(makeRunInputs())
         refreshFromStore()
         lastRunFailures = result.failures
+        SyncLog.shared.info(
+            "updateAll inserted \(result.inserted) article(s); \(result.failures.count) feed failure(s)",
+            category: "Aggregation"
+        )
         await syncReferencedImages()
         return result.inserted
     }
@@ -212,6 +216,10 @@ final class AggregationService {
         let result = await writer.runUpdate(feedID: feedID, makeRunInputs())
         refreshFromStore()
         lastRunFailures = result.failures
+        SyncLog.shared.info(
+            "update(\(feed.name)) inserted \(result.inserted) article(s); \(result.failures.count) failure(s)",
+            category: "Aggregation"
+        )
         await syncReferencedImages()
         return result.inserted
     }

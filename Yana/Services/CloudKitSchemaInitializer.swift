@@ -35,6 +35,7 @@ enum CloudKitSchemaInitializer {
             for: [Feed.self, Tag.self, Article.self, StoredImage.self]
         ) else {
             NSLog("CloudKitSchemaInitializer: could not build managed object model")
+            SyncLog.shared.error("Could not build managed object model", category: "Schema")
             return
         }
 
@@ -53,6 +54,7 @@ enum CloudKitSchemaInitializer {
         container.loadPersistentStores { _, error in box.error = error }
         if let error = box.error {
             NSLog("CloudKitSchemaInitializer: store load failed: \(error.localizedDescription)")
+            SyncLog.shared.error("Store load failed: \(error.localizedDescription)", category: "Schema")
             cleanup(storeURL)
             return
         }
@@ -60,8 +62,10 @@ enum CloudKitSchemaInitializer {
         do {
             try container.initializeCloudKitSchema(options: [])
             NSLog("CloudKitSchemaInitializer: Development schema initialized for \(containerIdentifier)")
+            SyncLog.shared.notice("Development schema initialized for \(containerIdentifier)", category: "Schema")
         } catch {
             NSLog("CloudKitSchemaInitializer: initializeCloudKitSchema failed: \(error.localizedDescription)")
+            SyncLog.shared.error("initializeCloudKitSchema failed: \(error.localizedDescription)", category: "Schema")
         }
 
         // Release file locks on the throwaway store, then delete it and its WAL/SHM siblings.

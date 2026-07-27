@@ -41,11 +41,13 @@ enum SettingsCloudSync {
         guard !isSuppressed else { return }
         store.set(settings.exportSyncedSettings(), forKey: key)
         store.synchronize()
+        SyncLog.shared.info("Pushed synced settings to iCloud key-value store", category: "Settings")
     }
 
     static func pull(into settings: AppSettings, store: KeyValueStore = NSUbiquitousKeyValueStore.default) {
         guard !isSuppressed, let data = store.data(forKey: key) else { return }
         settings.applySyncedSettings(data)
+        SyncLog.shared.info("Applied \(data.count) bytes of synced settings from iCloud", category: "Settings")
     }
 
     /// Pull once and observe external changes so remote edits apply live. Call at launch.
@@ -58,7 +60,10 @@ enum SettingsCloudSync {
             object: NSUbiquitousKeyValueStore.default,
             queue: .main
         ) { _ in
-            MainActor.assumeIsolated { pull(into: settings) }
+            MainActor.assumeIsolated {
+                SyncLog.shared.info("Synced settings changed on another device", category: "Settings")
+                pull(into: settings)
+            }
         }
     }
 }

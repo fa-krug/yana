@@ -13,7 +13,10 @@ enum NativeCloudKitMigration {
         settings: AppSettings = AppSettings(),
         imageStore: ImageStore = .shared
     ) async {
-        guard !settings.hasMigratedToNativeCloudKit else { return }
+        guard !settings.hasMigratedToNativeCloudKit else {
+            SyncLog.shared.info("Native CloudKit migration already done — skipping", category: "Migration")
+            return
+        }
 
         // 1. Seed StoredImage from every blob already cached on disk.
         let hashes = await imageStore.allHashes()
@@ -34,6 +37,7 @@ enum NativeCloudKitMigration {
         // 4. Mirror current synced prefs into KVS.
         SettingsCloudSync.push(settings)
 
+        SyncLog.shared.notice("Native CloudKit migration finished", category: "Migration")
         settings.hasMigratedToNativeCloudKit = true
 
         // 5. Collapse any duplicates introduced by the merge of the old and new libraries.

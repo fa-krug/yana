@@ -13,6 +13,9 @@ actor LibraryDeduper {
         deleted += try dedupeTags()
         deleted += try dedupeArticles()
         if deleted > 0 { try modelContext.save() }
+        if deleted > 0 {
+            SyncLog.shared.notice("Dedup collapsed \(deleted) duplicate row(s)", category: "Dedup")
+        }
         return deleted
     }
 
@@ -123,6 +126,7 @@ enum LibraryDedup {
             _ = try? await LibraryDeduper(modelContainer: container).deduplicate()
         }
         self.coalescer = coalescer
+        SyncLog.shared.info("Watching for CloudKit remote-change merges", category: "Dedup")
         NotificationCenter.default.addObserver(
             forName: .NSPersistentStoreRemoteChange,
             object: nil,
