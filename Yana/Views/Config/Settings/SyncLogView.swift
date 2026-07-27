@@ -20,16 +20,34 @@ struct SyncLogView: View {
 
     @State private var entries: [SyncLog.Entry] = []
     @State private var filter = SyncLogFilter()
+    /// The filtered entries actually shown/copied/shared. Held as state and recomputed only when
+    /// `entries` or `filter` actually change (in `reloadEntries()` and the `filter` `onChange`),
+    /// rather than as a computed property re-evaluated on every body pass — `SyncLogFilter.apply`
+    /// walks the whole buffer and does up to two ICU case-insensitive substring checks per entry, so
+    /// recomputing it five times per render (once per read site) at the 2000-entry cap would be
+    /// thousands of ICU comparisons a second during exactly the export burst this screen exists to
+    /// observe.
+    @State private var visibleEntries: [SyncLog.Entry] = []
+    /// `SyncLog.exportText(visibleEntries)` cached alongside `visibleEntries` for the same reason —
+    /// it joins the whole filtered set into one string, and both the Copy button and `ShareLink`
+    /// would otherwise rebuild it on every render.
+    @State private var exportText: String = ""
     @State private var diagnostics: SyncDiagnostics?
     @State private var isHeaderExpanded = true
     @State private var toast: ToastMessage?
-    /// Scroll to the newest entry once, on the first load. Not on every 1 s tick — that would yank
-    /// the list out from under you while reading.
+    /// Scroll to the newest entry once, on the first real render that has rows. Not on every 1 s
+    /// tick — that would yank the list out from under you while reading.
     @State private var hasScrolledToNewest = false
+    /// Counts entry-poll ticks so diagnostics (which cost a `CKContainer.accountStatus()` XPC round
+    /// trip plus four SQLite `fetchCount`s) refresh on a much slower cadence than the log itself —
+    /// see `diagnosticsRefreshEveryNTicks`.
+    @State private var tickCount = 0
 
-    private var visibleEntries: [SyncLog.Entry] { filter.apply(to: entries) }
-
-    private var exportText: String { SyncLog.exportText(visibleEntries) }
+    /// Diagnostics refresh every Nth entry tick (entries poll at 1 s, so 15 → ~15 s). Account status,
+    /// container, and environment are effectively constant for the session and the counts drift
+    /// slowly, so there is nothing to gain from refreshing them at 1 Hz — especially while the
+    /// header `DisclosureGroup` may not even be expanded.
+    private static let diagnosticsRefreshEveryNTicks = 15
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -59,7 +77,7 @@ struct SyncLogView: View {
                 Picker("Level", selection: $filter.level) {
                     Text("All").tag(SyncLog.Level?.none)
                     ForEach(SyncLog.Level.allCases) { level in
-                        Text(level.rawValue.capitalized).tag(SyncLog.Level?.some(level))
+                        Text(Self.levelLabel(level)).tag(SyncLog.Level?.some(level))
                     }
                 }
                 Picker("Source", selection: $filter.source) {
@@ -79,7 +97,6 @@ struct SyncLogView: View {
                 } else {
                     ForEach(visibleEntries) { entry in
                         SyncLogRow(entry: entry)
-                            .id(entry.id)
                     }
                 }
             } header: {
@@ -107,6 +124,7 @@ struct SyncLogView: View {
                     Image(systemName: "doc.on.doc")
                 }
                 .accessibilityLabel(Text("Copy Log"))
+                .accessibilityIdentifier("settings.diagnostics.copy")
                 .disabled(visibleEntries.isEmpty)
             }
             ToolbarItem {
@@ -116,35 +134,79 @@ struct SyncLogView: View {
                 ) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .accessibilityIdentifier("settings.diagnostics.share")
                 .disabled(visibleEntries.isEmpty)
             }
         }
+        // Scrolling on `entries.count` (a real state mutation that has already updated
+        // `visibleEntries` by the time this fires) rather than immediately after the first
+        // `reload()` call: assigning `entries` only *schedules* a re-render, so a `scrollTo` issued
+        // synchronously right after would target rows that SwiftUI has not laid out yet and silently
+        // do nothing. Gating on `!hasScrolledToNewest` keeps this a one-time park at the bottom.
+        .onChange(of: entries.count) {
+            guard !hasScrolledToNewest, let last = visibleEntries.last else { return }
+            proxy.scrollTo(last.id, anchor: .bottom)
+            hasScrolledToNewest = true
+        }
+        .onChange(of: filter) {
+            updateVisibleEntries()
+        }
         .task {
-            await reload()
-            // Chronological list, so the interesting end is the bottom — park there once.
-            if let last = visibleEntries.last {
-                proxy.scrollTo(last.id, anchor: .bottom)
-                hasScrolledToNewest = true
-            }
+            await reloadEntries()
+            await refreshDiagnostics()
             // Poll instead of observing: see the type comment.
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 if Task.isCancelled { break }
-                await reload()
+                await reloadEntries()
+                // Backstop for the `onChange` above: if the very first load already had rows and the
+                // change somehow wasn't observed (e.g. `entries.count` was unchanged because the
+                // first batch was empty and stayed empty until now), catch up here too.
                 if !hasScrolledToNewest, let last = visibleEntries.last {
                     proxy.scrollTo(last.id, anchor: .bottom)
                     hasScrolledToNewest = true
+                }
+                tickCount += 1
+                if tickCount % Self.diagnosticsRefreshEveryNTicks == 0 {
+                    await refreshDiagnostics()
                 }
             }
         }
         .accessibilityIdentifier("settings.diagnostics.log")
     }
 
-    private func reload() async {
+    private func reloadEntries() async {
         let buffered = SyncLog.shared.snapshot()
         let system = await SystemLogReader.fetch(since: SystemLogReader.logWindowStart)
-        entries = (buffered + system).sorted { $0.date < $1.date }
+        entries = (buffered + system).sorted { lhs, rhs in
+            // Not just `date <`: two entries can share a timestamp (system-clock resolution, or an
+            // app entry and a system entry logged in the same instant), and an unstable sort would
+            // let them swap order between polls, making rows visibly jump. Break ties by source then
+            // by each source's own monotonic sequence.
+            if lhs.date != rhs.date { return lhs.date < rhs.date }
+            if lhs.source != rhs.source { return lhs.source.rawValue < rhs.source.rawValue }
+            return lhs.sequence < rhs.sequence
+        }
+        updateVisibleEntries()
+    }
+
+    private func refreshDiagnostics() async {
         diagnostics = await SyncDiagnostics.make(context: modelContext)
+    }
+
+    private func updateVisibleEntries() {
+        let filtered = filter.apply(to: entries)
+        visibleEntries = filtered
+        exportText = SyncLog.exportText(filtered)
+    }
+
+    private static func levelLabel(_ level: SyncLog.Level) -> LocalizedStringKey {
+        switch level {
+        case .debug: "Debug"
+        case .info: "Info"
+        case .notice: "Notice"
+        case .error: "Error"
+        }
     }
 }
 
