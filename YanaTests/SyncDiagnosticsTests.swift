@@ -14,6 +14,11 @@ struct SyncDiagnosticsTests {
         #expect(SyncDiagnostics.describe(.couldNotDetermine) == "Could not determine")
     }
 
+    @Test func environmentNameMapsDebugToDevelopmentAndReleaseToProduction() {
+        #expect(SyncDiagnostics.environmentName(isDebugBuild: true) == "Development")
+        #expect(SyncDiagnostics.environmentName(isDebugBuild: false) == "Production")
+    }
+
     @Test func environmentReflectsTheBuildConfiguration() {
         #if DEBUG
         #expect(SyncDiagnostics.environment == "Development")

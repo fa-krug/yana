@@ -33,10 +33,16 @@ struct SyncDiagnostics: Sendable {
     /// runtime, and every shipping path agrees with the build configuration anyway.
     static var environment: String {
         #if DEBUG
-        "Development"
+        environmentName(isDebugBuild: true)
         #else
-        "Production"
+        environmentName(isDebugBuild: false)
         #endif
+    }
+
+    /// The CloudKit environment name for a build. Pure, so the mapping is testable independently
+    /// of the build configuration this target happens to be compiled with.
+    static func environmentName(isDebugBuild: Bool) -> String {
+        isDebugBuild ? "Development" : "Production"
     }
 
     static func describe(_ status: CKAccountStatus) -> String {
