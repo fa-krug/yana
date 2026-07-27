@@ -227,8 +227,45 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   device-locally and re-applies them on a local device re-fetch (`ArticleUpsert`); it is no longer a
   sync mechanism. `ArticleUID` (`Yana/Services/ArticleUID.swift`) remains the canonical article
   identity used for timeline anchor, retention, and dedup.
+  **Diagnostics:** `SyncLog` (`Yana/Services/SyncLog.swift`) is a nonisolated, lock-protected
+  in-memory ring buffer (2000 entries, current-launch only — no file persistence) that every sync
+  path writes to; each entry is also mirrored to `Logger` with `privacy: .public`, because redacting
+  those values is exactly the problem this buffer exists to work around — CoreData's own
+  `com.apple.coredata` logging blanks the useful ones to `<private>`. **`CloudKitSyncMonitor`**
+  (`Yana/Services/CloudKitSyncMonitor.swift`) observes
+  `NSPersistentCloudKitContainer.eventChangedNotification` and re-logs the **full** `NSError` tree
+  (every `userInfo` key, `CKPartialErrors`, `NSUnderlyingError`, recursively, indented by depth) for
+  the same reason. **Ordering is load-bearing:** `start()` is the first statement inside the
+  `AppContainer.shared` closure, before the live `.automatic` container is created, because setup
+  events — exactly where a container/entitlement/account failure surfaces — fire during
+  `ModelContainer.init`, and an observer installed afterwards misses them.
+  `SystemLogReader` (`Yana/Services/SystemLogReader.swift`) supplements the buffer with a
+  best-effort `OSLogStore(scope: .currentProcessIdentifier)` read of the `com.apple.coredata`
+  subsystem — persisted entries only, so it is often empty and can be a complete blackout on a
+  locally built Mac Catalyst run. Its `logWindowStart` lower bound is deliberately early — the
+  device's boot instant, derived from `ProcessInfo.systemUptime` (time since boot, not time since
+  this process launched) rather than a true process-start timestamp — which only widens the fetch
+  window and stays safe because `OSLogStore(scope: .currentProcessIdentifier)` already restricts
+  results to this process regardless of how far back the query reaches. `SyncDiagnostics`
+  (`Yana/Services/SyncDiagnostics.swift`) builds the pinned status header shown above the log —
+  iCloud account status, the `iCloud.de.fa-krug.Yana` container, the CloudKit environment derived
+  from the build configuration (Debug → Development, release → Production — the two mismatches that
+  explain most "sync doesn't work" reports), library row counts, and last import/export/error, the
+  last three read from `CloudKitSyncMonitor` (which deliberately never clears the last error on a
+  later success, since "sync failed at some point this launch" stays worth knowing even after a
+  subsequent export succeeds).
 - **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref (tapping an image opens it full-screen with pinch-to-zoom, double-tap-to-zoom and swipe-down-to-dismiss via `ReaderImageViewerViewController`); video embeds shown as tappable poster cards and tweet embeds as text cards — tapping a video plays it full-screen in-app via `ReaderVideoPlayerViewController` (YouTube/Dailymotion in a `WKWebView` privacy-mode player; a direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController`), while tweets/unplayable embeds open externally). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer; picks the most natural installed voice matching the article's detected language, keeps playing when the screen is locked or the app is backgrounded, and wires up Now Playing / remote play-pause controls). A dedicated **Reader** settings section exposes text size, font, the read-aloud voice, and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
 - **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings. The Settings screen (`SettingsScreenView`) ends with an **About** section (`aboutSection`) linking the source repo, the issue board (for source/bug requests), and a NetNewsWire credit for the reader view.
+  A **Diagnostics** section (iOS, `SettingsScreenView`) and `SettingsPane.diagnostics` (Mac,
+  `MacSettingsWindow`) present `SyncLogView` (`Yana/Views/Config/Settings/SyncLogView.swift`) — the
+  in-app sync log with a pinned `SyncLogHeaderView` status header, level/source/text filters
+  (`SyncLogFilter`), a copy-to-clipboard toolbar action, and a `.txt` `ShareLink`. It ships in every
+  build, including release (it is the only way to see why sync fails on a TestFlight/App Store build
+  talking to the Production CloudKit environment), but stays hidden until the **About → Version** row
+  is tapped five times within three seconds — the pure state machine in `DiagnosticsReveal`
+  (`Yana/Views/Config/Settings/DiagnosticsReveal.swift`) drives the gesture so its timing is unit-tested
+  without a UI. `AppSettings.diagnosticsUnlocked` (device-local, never synced) persists the reveal
+  across launches; a **Hide Diagnostics** action inside the log screen clears it again.
 - **Mac Catalyst windowing** (`Yana/Reader/Mac/`): on the Mac idiom, `ContentView` swaps the
   iPhone/iPad full-screen swipe reader for `MacRootView` — a permanent two-column
   `NavigationSplitView` (article-list sidebar + reader detail) — and presents the Welcome
