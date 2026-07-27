@@ -16,9 +16,14 @@ enum SystemLogReader {
     /// each app entry twice in the merged list.
     static let coreDataSubsystem = "com.apple.coredata"
 
-    /// Approximate process start, used as the default lower bound for a fetch. `OSLogStore` is
-    /// scoped to the current process anyway, so anything earlier cannot match.
-    static let processStart = Date().addingTimeInterval(-ProcessInfo.processInfo.systemUptime)
+    /// A deliberately-early lower bound for a fetch: the instant the device last booted, computed
+    /// from `systemUptime` (time since boot, not time since this process launched — a genuine
+    /// process-start timestamp would need `sysctl(KERN_PROC…)` C interop for no behavioural gain
+    /// here). Using boot time instead of true process start only makes the window *wider*, never
+    /// narrower, and `OSLogStore(scope: .currentProcessIdentifier)` already restricts results to
+    /// this process — so the extra width cannot pull in entries from another process. It only needs
+    /// to be early enough to miss nothing from this launch, and boot time always is.
+    static let logWindowStart = Date().addingTimeInterval(-ProcessInfo.processInfo.systemUptime)
 
     /// Fetch mirroring entries logged since `since`.
     ///
