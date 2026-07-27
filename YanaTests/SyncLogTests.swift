@@ -68,7 +68,17 @@ struct SyncLogTests {
         #expect(lines[0].contains("[app]"))
         #expect(lines[0].contains("[CloudKit]"))
         #expect(lines[0].contains("export FAILED"))
-        #expect(lines[0].contains("1970-01-01"))
+
+        // The timestamp is the bracketed first field. Parse it back and compare to `entry.date`
+        // instead of re-deriving the exact string `exportText` builds: this fails if the encoded
+        // instant is wrong (or unparsable), without hard-coding a calendar date that would only
+        // be correct in a positive-UTC-offset timezone, and without simply mirroring
+        // `exportText`'s own formatting call back at it.
+        #expect(lines[0].hasPrefix("["))
+        let stampField = String(lines[0].dropFirst().prefix { $0 != "]" })
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        #expect(parser.date(from: stampField) == entry.date)
     }
 
     @Test func entryIDDisambiguatesSourcesWithTheSameSequence() {
