@@ -6,6 +6,15 @@ struct SettingsScreenView: View {
     var onRestartOnboarding: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
+    @State private var settings = AppSettings()
+    @State private var toast: ToastMessage?
+    /// Set by `onRevealDiagnostics` the moment the version row's five-tap gesture unlocks
+    /// diagnostics. `AboutSettingsSection` flips `diagnosticsUnlocked` on its *own* `AppSettings`
+    /// instance, so this view's separate instance is never told to re-observe that change — only a
+    /// mutation to this view's own `@State` is guaranteed to trigger a re-render here. Gating on
+    /// this in addition to `settings.diagnosticsUnlocked` makes the reveal take effect immediately
+    /// by construction, not by relying on the toast assignment happening to re-render the body.
+    @State private var diagnosticsRevealed = false
 
     var body: some View {
         Form {
@@ -17,10 +26,19 @@ struct SettingsScreenView: View {
             AIProviderSettingsSection()
             AITuningSettingsSection()
             LibrarySettingsSection()
-            AboutSettingsSection(onRestartOnboarding: {
-                onRestartOnboarding()
-                dismiss()
-            })
+            AboutSettingsSection(
+                onRestartOnboarding: {
+                    onRestartOnboarding()
+                    dismiss()
+                },
+                onRevealDiagnostics: {
+                    diagnosticsRevealed = true
+                    toast = ToastMessage(text: String(localized: "Diagnostics enabled"))
+                }
+            )
+            if settings.diagnosticsUnlocked || diagnosticsRevealed {
+                diagnosticsSection
+            }
         }
         // Keep the toggle control on the trailing edge (matching the row pickers). On Mac Catalyst
         // the default form Toggle is a leading checkbox, which sits before the row's tinted icon and
@@ -32,6 +50,24 @@ struct SettingsScreenView: View {
                 Button { dismiss() } label: { Image(systemName: "xmark") }
                     .accessibilityLabel(Text("Close"))
             }
+        }
+        .toast($toast)
+    }
+
+    private var diagnosticsSection: some View {
+        Section {
+            NavigationLink {
+                SyncLogView(onHideDiagnostics: {
+                    settings.diagnosticsUnlocked = false
+                    diagnosticsRevealed = false
+                })
+            } label: {
+                Label("Diagnostics", systemImage: "stethoscope")
+                    .labelStyle(.tintedIcon(.teal))
+            }
+            .accessibilityIdentifier("settings.diagnostics")
+        } footer: {
+            Text("Shows this launch's iCloud sync activity, for troubleshooting and bug reports.")
         }
     }
 

@@ -18,7 +18,7 @@ enum FeedEditorTarget: Codable, Hashable {
 
 /// The panes of the Mac two-pane Settings window sidebar, in display order.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, reader, feeds, tags, integrations, ai, about
+    case general, reader, feeds, tags, integrations, ai, about, diagnostics
 
     var id: String { rawValue }
 
@@ -31,6 +31,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .integrations: "Integrations"
         case .ai: "AI"
         case .about: "About"
+        case .diagnostics: "Diagnostics"
         }
     }
 
@@ -43,6 +44,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .integrations: "puzzlepiece.extension"
         case .ai: "sparkles"
         case .about: "info.circle"
+        case .diagnostics: "stethoscope"
         }
     }
 }

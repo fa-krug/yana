@@ -33,7 +33,7 @@ struct WindowIdentityTests {
     }
 
     @Test func settingsPanesAreStableAndOrdered() {
-        #expect(SettingsPane.allCases == [.general, .reader, .feeds, .tags, .integrations, .ai, .about])
+        #expect(SettingsPane.allCases == [.general, .reader, .feeds, .tags, .integrations, .ai, .about, .diagnostics])
         #expect(SettingsPane.ai.rawValue == "ai")
     }
 }
