@@ -700,15 +700,12 @@ struct SystemLogReaderTests {
         #expect(SystemLogReader.level(for: .fault) == .error)
         #expect(SystemLogReader.level(for: .undefined) == .info)
     }
-
-    @Test func fetchReturnsSystemSourcedEntriesAndNeverThrows() async {
-        let entries = await SystemLogReader.fetch(since: Date().addingTimeInterval(-60))
-        // The unified log may legitimately have nothing for this process; the contract is only that
-        // whatever comes back is tagged `.system` and that failures surface as an entry, not a throw.
-        #expect(entries.allSatisfy { $0.source == .system })
-    }
 }
 ```
+
+There is deliberately **no** test calling `fetch(since:)`: the unified log legitimately returns
+nothing for the current process most of the time, so any assertion over its result passes vacuously.
+The fetch path is covered by the manual verification step at the end of this plan instead.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -804,7 +801,7 @@ enum SystemLogReader {
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test -only-testing:YanaTests/SystemLogReaderTests
 ```
 
-Expected: PASS, 2 tests.
+Expected: PASS, 1 test.
 
 - [ ] **Step 5: Commit**
 
