@@ -123,7 +123,15 @@ struct SyncLogView: View {
         .task {
             // Puts the account status into the *entry stream* (not only the header), once per launch.
             // Kept off the launch path on purpose — see `CloudKitSyncMonitor.logAccountStatusOnce`.
-            await CloudKitSyncMonitor.shared.logAccountStatusOnce()
+            // Spun off into its own `Task` rather than awaited inline: `accountStatus()` is an untimed
+            // CKContainer XPC round trip, and on exactly the device this screen exists for (broken or
+            // absent iCloud, possibly no network) it can hang well past a second. Awaiting it here would
+            // block the very first `reloadBufferedEntries()` behind that hang, showing a spinner over an
+            // empty list and delaying the poll loop below — on the device that most needs to see
+            // buffered entries immediately. The "once per launch" guard lives in
+            // `CloudKitSyncMonitor.logAccountStatusOnce` itself, so detaching the await here doesn't
+            // change how many times it can run.
+            Task { await CloudKitSyncMonitor.shared.logAccountStatusOnce() }
             reloadBufferedEntries()
             await refreshSystemEntries()
             await refreshDiagnostics()

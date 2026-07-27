@@ -146,7 +146,7 @@ final class CloudKitSyncMonitor: Sendable {
                 "\(phase) FAILED\n" + tree.joined(separator: "\n"),
                 category: Self.category
             )
-            let summary = "\(phase): \(error.domain) \(error.code) — \(error.localizedDescription)"
+            let summary = "\(phase): \(error.domain) \(error.code) — \(Self.truncate(error.localizedDescription))"
             state.withLock { $0.lastErrorSummary = summary }
             return
         }
