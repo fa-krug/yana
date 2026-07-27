@@ -75,8 +75,11 @@ enum LegacyCloudKitCleanup {
         guard !settings.hasCleanedLegacyCloudKit else { return }
         do {
             try await database.deleteRecordZone(name: "Articles")
+            SyncLog.shared.info("Deleted legacy zone: Articles", category: "Cleanup")
             try await database.deleteRecordZone(name: "SchemaBootstrap")
+            SyncLog.shared.info("Deleted legacy zone: SchemaBootstrap", category: "Cleanup")
             try await database.deleteRecord(name: "config")
+            SyncLog.shared.info("Deleted legacy record: config", category: "Cleanup")
             settings.hasCleanedLegacyCloudKit = true
             SyncLog.shared.info("Legacy CloudKit cleanup succeeded", category: "Cleanup")
         } catch {
