@@ -678,7 +678,11 @@ git commit -m "Log CloudKit mirroring events with the full error tree"
   - `static let coreDataSubsystem = "com.apple.coredata"`
   - `nonisolated static func fetch(since: Date) async -> [SyncLog.Entry]`
   - `static func level(for level: OSLogEntryLog.Level) -> SyncLog.Level`
-  - `static let processStart: Date` — approximate process start used as the default fetch window
+  - `static let logWindowStart: Date` — a deliberately-early lower bound for a fetch (the system
+    boot instant). Note `ProcessInfo.systemUptime` measures time since the **device** booted, not
+    since this process started, so this is earlier than launch — which is safe and sufficient,
+    because `OSLogStore(scope: .currentProcessIdentifier)` already restricts results to this
+    process and the bound only has to be early enough to miss nothing.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -738,9 +742,13 @@ enum SystemLogReader {
     /// each app entry twice in the merged list.
     static let coreDataSubsystem = "com.apple.coredata"
 
-    /// Approximate process start, used as the default lower bound for a fetch. `OSLogStore` is
-    /// scoped to the current process anyway, so anything earlier cannot match.
-    static let processStart = Date().addingTimeInterval(-ProcessInfo.processInfo.systemUptime)
+    /// A deliberately-early lower bound for a fetch: the system boot instant.
+    ///
+    /// `ProcessInfo.systemUptime` measures time since the **device** last booted, not since this
+    /// process started, so this is earlier than launch. That is safe and sufficient — `OSLogStore`
+    /// here is scoped to the current process, so entries from before launch cannot match, and the
+    /// bound only has to be early enough to miss nothing.
+    static let logWindowStart = Date().addingTimeInterval(-ProcessInfo.processInfo.systemUptime)
 
     /// Fetch mirroring entries logged since `since`.
     ///
@@ -1464,7 +1472,7 @@ git commit -m "Add pure log-filter and reveal-gesture logic"
 
 **Interfaces:**
 - Consumes: `SyncLog.shared.snapshot()`, `SyncLog.exportText(_:)` (Task 1);
-  `SystemLogReader.fetch(since:)`, `SystemLogReader.processStart` (Task 3);
+  `SystemLogReader.fetch(since:)`, `SystemLogReader.logWindowStart` (Task 3);
   `SyncDiagnostics.make(context:)` (Task 5); `SyncLogFilter` (Task 6).
 - Produces:
   - `struct SyncLogRow: View { let entry: SyncLog.Entry }`
@@ -1739,7 +1747,7 @@ struct SyncLogView: View {
 
     private func reload() async {
         let buffered = SyncLog.shared.snapshot()
-        let system = await SystemLogReader.fetch(since: SystemLogReader.processStart)
+        let system = await SystemLogReader.fetch(since: SystemLogReader.logWindowStart)
         entries = (buffered + system).sorted { $0.date < $1.date }
         diagnostics = await SyncDiagnostics.make(context: modelContext)
     }
