@@ -1,18 +1,43 @@
 import SwiftUI
 
-/// Reusable searchable + editable list used by the config hub's Feeds, Tags, and Articles
-/// screens. Owns the common chrome — `.searchable`, trailing delete (swipe + edit-mode),
-/// an optional leading-edge swipe action per row, optional reorder, and a search-aware
-/// empty state. Each screen keeps its own `@Query`, computes the filtered `items`, and
-/// passes a row builder plus edit closures. Callers that need no leading action use the
-/// `EmptyView` convenience initializer.
+/// Search field placement shared by every `ManagedList` caller. Factored out as a free enum
+/// (rather than living on `ManagedList` itself) so a caller can attach `.searchable()` — see
+/// `ManagedList`'s doc comment for why callers now own that modifier — without having to spell out
+/// `ManagedList`'s generic parameters just to reach a placement constant.
+enum ManagedListSearch {
+    /// On Mac Catalyst the automatic placement crams the search field into the compact toolbar row
+    /// next to the other bar buttons, which throws off the field's internal vertical text centering.
+    /// A dedicated always-on drawer gives it a full-width row at its natural height. iOS keeps
+    /// `.automatic` (the search field already renders correctly there).
+    static var placement: SearchFieldPlacement {
+        #if targetEnvironment(macCatalyst)
+        .navigationBarDrawer(displayMode: .always)
+        #else
+        .automatic
+        #endif
+    }
+}
+
+/// Reusable editable list used by the config hub's Feeds, Tags, and Articles screens. Owns the
+/// common chrome — trailing delete (swipe + edit-mode), an optional leading-edge swipe action per
+/// row, optional reorder, and a search-aware empty state. Each screen keeps its own `@Query`,
+/// computes the filtered `items`, and passes a row builder plus edit closures. Callers that need no
+/// leading action use the `EmptyView` convenience initializer.
 ///
 /// Reorder and search don't compose (moving rows within a filtered subset is ambiguous), so
 /// `onMove` is suppressed while a search is active.
+///
+/// **Callers attach `.searchable()` themselves, outside this view** — it is deliberately not
+/// applied here. `TagsView`/`FeedsView` wrap the `ManagedList`-hosting subview in `.id()` so it
+/// re-fetches its `@Query` on a CloudKit remote-change bump (see `LibraryRevision`); `.id()` forces
+/// full identity teardown of everything inside it, and `.searchable()`'s backing search
+/// controller is no exception — the *text* survives (it's a `@Binding` into the stable parent's
+/// `@State`), but first-responder status/cursor/keyboard do not, silently dropping focus out of the
+/// search field mid-typing. Keeping `.searchable()` on the stable parent avoids that; `searchText`
+/// is still threaded through here for the empty-state copy and to gate reorder.
 struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
     let items: [Item]
     @Binding var searchText: String
-    var searchPrompt: LocalizedStringKey
 
     var emptyTitle: LocalizedStringKey
     var emptyIcon: String
@@ -47,18 +72,6 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
         #endif
     }
 
-    /// On Mac Catalyst the automatic placement crams the search field into the compact toolbar row
-    /// next to the other bar buttons, which throws off the field's internal vertical text centering.
-    /// A dedicated always-on drawer gives it a full-width row at its natural height. iOS keeps
-    /// `.automatic` (the search field already renders correctly there).
-    private static var searchPlacement: SearchFieldPlacement {
-        #if targetEnvironment(macCatalyst)
-        .navigationBarDrawer(displayMode: .always)
-        #else
-        .automatic
-        #endif
-    }
-
     var body: some View {
         ScrollViewReader { proxy in
             List {
@@ -72,7 +85,6 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
                 .onDelete(perform: onDelete)
                 .onMove(perform: reorderEnabled ? onMove : nil)
             }
-            .searchable(text: $searchText, placement: Self.searchPlacement, prompt: searchPrompt)
             .overlay {
                 if items.isEmpty {
                     if searchText.isEmpty {
@@ -108,7 +120,6 @@ extension ManagedList where Leading == EmptyView {
     init(
         items: [Item],
         searchText: Binding<String>,
-        searchPrompt: LocalizedStringKey,
         emptyTitle: LocalizedStringKey,
         emptyIcon: String,
         emptyDescription: LocalizedStringKey,
@@ -118,7 +129,6 @@ extension ManagedList where Leading == EmptyView {
     ) {
         self.items = items
         self._searchText = searchText
-        self.searchPrompt = searchPrompt
         self.emptyTitle = emptyTitle
         self.emptyIcon = emptyIcon
         self.emptyDescription = emptyDescription

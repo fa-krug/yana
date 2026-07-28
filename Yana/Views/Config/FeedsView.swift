@@ -36,6 +36,13 @@ struct FeedsView: View {
             onExportOPML: exportOPML
         )
         .id(LibraryRevision.shared.token)
+        // `.searchable()` lives here, on the stable parent, not inside the `.id()`'d
+        // `FeedsListContent` — `.id()` tears down and recreates everything under it, including the
+        // search field's backing controller. The `searchText` *value* would survive (it's a
+        // `@Binding` into this view's own `@State`), but first-responder status/cursor/keyboard
+        // would not, silently kicking focus out of the field mid-typing. See `ManagedList`'s doc
+        // comment.
+        .searchable(text: $searchText, placement: ManagedListSearch.placement, prompt: "Search feeds")
         .navigationTitle("Feeds")
         #if !targetEnvironment(macCatalyst)
         .sheet(isPresented: $showingCreateFeed) {
@@ -158,7 +165,6 @@ private struct FeedsListContent: View {
         ManagedList(
             items: filteredFeeds,
             searchText: $searchText,
-            searchPrompt: "Search feeds",
             emptyTitle: "No Feeds",
             emptyIcon: "list.bullet.rectangle",
             emptyDescription: "Tap + to add your first feed.",

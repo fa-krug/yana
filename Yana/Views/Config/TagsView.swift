@@ -17,6 +17,12 @@ struct TagsView: View {
         // `showingCreateTag` stay on this parent so recreating the child loses none of them.
         TagsListContent(searchText: $searchText, tagsToDelete: $tagsToDelete)
             .id(LibraryRevision.shared.token)
+            // `.searchable()` lives here, on the stable parent, not inside the `.id()`'d subview:
+            // `.id()` tears down and recreates everything under it, including the search field's
+            // backing controller — the `searchText` *value* would survive (it's a `@Binding` into
+            // this view's own `@State`), but first-responder status/cursor/keyboard would not,
+            // silently kicking focus out of the field mid-typing. See `ManagedList`'s doc comment.
+            .searchable(text: $searchText, placement: ManagedListSearch.placement, prompt: "Search tags")
             .navigationTitle("Tags")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -78,7 +84,6 @@ private struct TagsListContent: View {
         ManagedList(
             items: filteredTags,
             searchText: $searchText,
-            searchPrompt: "Search tags",
             emptyTitle: "No Tags",
             emptyIcon: "tag",
             emptyDescription: "Tap + to create your first tag.",
