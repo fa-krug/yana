@@ -69,3 +69,24 @@ enum TimelineAnchor {
         TimelinePageIndex.index(of: identifier, in: items) ?? max(0, items.count - 1)
     }
 }
+
+/// Items addressable by their canonical cross-device `uid` (`ArticleSummary.uid` /
+/// `ArticleUID.make`) — the identity a synced timeline anchor resolves against, distinct from the
+/// per-device `identifier` a bare `TimelineIdentifiable` exposes.
+protocol TimelineUIDAddressable {
+    var uid: String { get }
+}
+
+extension ArticleSummary: TimelineUIDAddressable {}
+
+/// Resolves a synced timeline-anchor UID (`AppSettings.timelineAnchorSyncUID`) to its index in the
+/// displayed list. Returns `nil` both when the UID is absent and when it doesn't match any
+/// currently-displayed item — the latter is the normal case right after a remote anchor arrives for
+/// an article that hasn't synced to this device yet, and callers must leave the selection untouched
+/// rather than treat it as an error.
+enum TimelineUIDIndex {
+    static func index<T: TimelineUIDAddressable>(of uid: String?, in items: [T]) -> Int? {
+        guard let uid else { return nil }
+        return items.firstIndex { $0.uid == uid }
+    }
+}

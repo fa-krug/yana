@@ -311,7 +311,10 @@ final class AppSettings {
         }
         if let v = decoded.useSystemBrowser { useSystemBrowser = v }
         if let v = decoded.articleFullscreenEnabled { articleFullscreenEnabled = v }
-        if let uid = decoded.timelineAnchorUID {
+        // Only a UID that actually differs from the stored one is a real remote move: posting
+        // unconditionally made every unrelated settings pull (a model change, a knob tweak on the
+        // other device) yank the reader back to the anchor, even mid-read.
+        if let uid = decoded.timelineAnchorUID, uid != timelineAnchorSyncUID {
             timelineAnchorSyncUID = uid
             NotificationCenter.default.post(name: Self.timelinePositionDidChange, object: self)
         }

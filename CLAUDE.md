@@ -224,7 +224,21 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   bridges the two — registers `StoredImage` rows after aggregation and materialises blobs on cache
   miss in the reader/logo views.
   Settings sync via `NSUbiquitousKeyValueStore` (`SettingsCloudSync`,
-  `Yana/Services/SettingsCloudSync.swift`) for the allow-listed non-secret prefs. API-key secrets
+  `Yana/Services/SettingsCloudSync.swift`) for the allow-listed non-secret prefs, including the
+  synced reading position: `AppSettings.SyncedSettings.timelineAnchorUID`, applied by
+  `applySyncedSettings` (which posts `AppSettings.timelinePositionDidChange` **only when the
+  decoded UID differs from the stored one** — posting unconditionally made every unrelated pull
+  yank the reader back to the anchor). The anchor write sites (`ReaderHostView`'s `saveAnchor`/
+  `openArticle`; `TimelineModel`'s `selection` setter/`moveSelection`) call
+  `SettingsCloudSync.pushSoon`, which coalesces a burst of writes — continuous swiping/selection —
+  into one KVS write via `AnchorPushCoalescer` (3s of quiet; instantiable like `LibraryRevision` so
+  tests can inject a short interval). The scene `.background` `push` remains the guaranteed flush.
+  Both `ReaderHostView` (iOS) and `TimelineModel` (Mac) observe `timelinePositionDidChange` and
+  resolve the synced UID to an index via `TimelineUIDIndex` (`Yana/Utilities/TimelineFiltering.swift`,
+  ignoring a UID that hasn't synced to this device yet); the remote-apply path (`ReaderHostView`'s
+  `jumpToSyncedTimelinePosition`, `TimelineModel`'s method of the same name) sets the index directly
+  rather than through the push-triggering write path, so applying a remote anchor can never itself
+  push and ping-pong between two open devices. API-key secrets
   sync via **iCloud Keychain** — `KeychainService` now writes `kSecAttrSynchronizable` always
   (defaulting true; no toggle). `BackgroundRefreshManager` reschedules itself from the per-device
   **`UpdateInterval`** (`Yana/Models/UpdateInterval.swift`; `AppSettings.updateInterval`): seven

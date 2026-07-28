@@ -21,6 +21,44 @@ extension KeyValueStore where Self == NSUbiquitousKeyValueStore {
     static var ubiquitous: NSUbiquitousKeyValueStore { .default }
 }
 
+/// Coalesces a burst of timeline-anchor writes (continuous reader swiping, sidebar selection, or
+/// Next/Previous Article) into a single `SettingsCloudSync.push`. Without this, every article the
+/// user pages past would be its own `NSUbiquitousKeyValueStore` write — that store is not built for
+/// high-frequency writes, and it is shared with every other synced key besides.
+///
+/// Interval: 3 seconds of quiet. Long enough that swiping through a handful of articles in a row
+/// collapses into one write; short enough that a second device opening mid-session still sees a
+/// reasonably fresh position rather than one several scrolls stale. The scene `.background` push
+/// (`YanaApp.swift`) remains the guaranteed flush for whatever hasn't yet coalesced when the app is
+/// backgrounded.
+///
+/// Instantiable (mirrors `LibraryRevision`) rather than a bare static so tests can inject a short
+/// interval and a private `KeyValueStore` fake without waiting on production timing or touching
+/// shared state between tests. `SettingsCloudSync.pushSoon` uses `.shared` in production.
+@MainActor
+final class AnchorPushCoalescer {
+    static let shared = AnchorPushCoalescer()
+
+    private let interval: Duration
+    private var coalescer: TrailingCoalescer?
+    /// The most recent (settings, store) pair to push once the quiet period elapses. Updated on
+    /// every call so the coalescer always flushes the latest position, not a stale intermediate one.
+    private var pending: (() -> Void)?
+
+    init(interval: Duration = .seconds(3)) {
+        self.interval = interval
+    }
+
+    func pushSoon(_ settings: AppSettings, store: KeyValueStore) {
+        pending = { SettingsCloudSync.push(settings, store: store) }
+        let coalescer = coalescer ?? TrailingCoalescer(interval: interval) { [weak self] in
+            self?.pending?()
+        }
+        self.coalescer = coalescer
+        coalescer.schedule()
+    }
+}
+
 /// Syncs the allow-listed non-secret settings across devices via `NSUbiquitousKeyValueStore`.
 /// Feeds/tags/articles/images sync natively through SwiftData+CloudKit; this covers only the
 /// UserDefaults-backed prefs SwiftData can't carry. Device-local prefs (updateInterval, voice,
@@ -42,6 +80,20 @@ enum SettingsCloudSync {
         store.set(settings.exportSyncedSettings(), forKey: key)
         store.synchronize()
         SyncLog.shared.info("Pushed synced settings to iCloud key-value store", category: "Settings")
+    }
+
+    /// Coalesced push for high-frequency write sites — the timeline anchor updates on every reader
+    /// swipe, sidebar selection, and Next/Previous Article. Call `push` directly for one-shot /
+    /// flush sites (scene `.background`, the one-time migration); this defers to
+    /// `AnchorPushCoalescer` so a burst of anchor changes becomes one write. See
+    /// `AnchorPushCoalescer` for the chosen interval and rationale.
+    static func pushSoon(
+        _ settings: AppSettings,
+        store: KeyValueStore = NSUbiquitousKeyValueStore.default,
+        coalescer: AnchorPushCoalescer = .shared
+    ) {
+        guard !isSuppressed else { return }
+        coalescer.pushSoon(settings, store: store)
     }
 
     static func pull(into settings: AppSettings, store: KeyValueStore = NSUbiquitousKeyValueStore.default) {

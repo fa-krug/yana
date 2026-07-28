@@ -25,18 +25,38 @@ final class TimelineModel {
     var isSummarizing = false
     var toast: ToastMessage?
 
-    private let settings = AppSettings()
+    private let settings: AppSettings
     private var didRestoreAnchor = false
 
     private var modelContext: ModelContext?
     private var store: ArticleStore?
 
+    /// Notification center the synced-anchor observer registers on. Injectable so tests can post to
+    /// a private center instead of racing other suites on `.default` (mirrors `LibraryRevision`).
+    private let notificationCenter: NotificationCenter
+    private var anchorObserver: NSObjectProtocol?
+
+    /// Pushes a changed anchor to iCloud KVS (coalesced). Injectable so tests can assert the
+    /// no-ping-pong guarantee directly: `jumpToSyncedTimelinePosition` must never call this, only
+    /// the user-driven `selection` setter and `moveSelection` may.
+    var pushAnchor: (AppSettings) -> Void = { SettingsCloudSync.pushSoon($0) }
+
     var isConfigured: Bool { modelContext != nil }
+
+    init(settings: AppSettings = AppSettings(), notificationCenter: NotificationCenter = .default) {
+        self.settings = settings
+        self.notificationCenter = notificationCenter
+    }
 
     func configure(modelContext: ModelContext, store: ArticleStore) {
         guard self.modelContext == nil else { return }
         self.modelContext = modelContext
         self.store = store
+        observeSyncedAnchor()
+    }
+
+    isolated deinit {
+        if let anchorObserver { notificationCenter.removeObserver(anchorObserver) }
     }
 
     // MARK: - Selection
@@ -54,6 +74,7 @@ final class TimelineModel {
             currentIndex = i
             settings.timelineAnchorIdentifier = id
             settings.timelineAnchorSyncUID = filteredArticles[i].uid
+            pushAnchor(settings)
         }
     }
 
@@ -81,6 +102,7 @@ final class TimelineModel {
         currentIndex = next
         settings.timelineAnchorIdentifier = filteredArticles[next].identifier
         settings.timelineAnchorSyncUID = filteredArticles[next].uid
+        pushAnchor(settings)
     }
 
     var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
@@ -135,6 +157,38 @@ final class TimelineModel {
     /// Keep selection valid after the filter narrows the timeline.
     func clampIndex() {
         currentIndex = min(currentIndex, max(0, filteredArticles.count - 1))
+    }
+
+    // MARK: - Synced anchor (remote apply)
+
+    /// Registers the observer that lets a remote timeline anchor move the Mac selection.
+    /// Previously the Mac side had no observer at all — `AppSettings.timelinePositionDidChange` was
+    /// only ever watched on iOS — so a position synced from another device never reached this
+    /// window. Idempotent; called once from `configure`.
+    private func observeSyncedAnchor() {
+        guard anchorObserver == nil else { return }
+        anchorObserver = notificationCenter.addObserver(
+            forName: AppSettings.timelinePositionDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.jumpToSyncedTimelinePosition() }
+        }
+    }
+
+    /// Moves the Mac selection to the synced timeline anchor article. This is the remote-anchor
+    /// apply path: a later task wires an explicit "scroll the sidebar to the selection" request that
+    /// must be bumped from here too, alongside the other programmatic-selection paths.
+    ///
+    /// Deliberately does **not** go through the `selection` setter — it sets `currentIndex` and
+    /// `timelineAnchorIdentifier` directly, so applying a remote anchor can never call `pushAnchor`
+    /// and loop the write straight back to the device that sent it (the "no ping-pong" requirement:
+    /// only user-driven selection changes push). Ignored when the anchored article hasn't synced to
+    /// this device yet (`TimelineUIDIndex.index` returns `nil`).
+    func jumpToSyncedTimelinePosition() {
+        guard didRestoreAnchor,
+              let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: filteredArticles)
+        else { return }
+        currentIndex = i
+        settings.timelineAnchorIdentifier = filteredArticles[i].identifier
     }
 
     // MARK: - Actions

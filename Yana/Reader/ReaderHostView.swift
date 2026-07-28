@@ -158,12 +158,15 @@ struct ReaderScreen: View {
     }
 
     /// Jump the reader to the synced timeline anchor article. Driven by `timelinePositionDidChange`
-    /// (posted when a pull applies a remote anchor UID). Sets `currentIndex` directly — never via
-    /// `saveAnchor` — so a remote jump can't loop back into a push.
+    /// (posted only when a pull applies a remote anchor UID that actually differs from the stored
+    /// one — see `AppSettings.applySyncedSettings`). Sets `currentIndex` directly — never via
+    /// `saveAnchor`, and never calls `SettingsCloudSync.pushSoon` — so applying a remote anchor can
+    /// never loop back into a push and ping-pong with the sending device. Ignored when the anchored
+    /// article hasn't synced to this device yet (`TimelineUIDIndex.index` returns `nil`).
     private func jumpToSyncedTimelinePosition() {
         guard didRestoreAnchor,
-              let syncUID = settings.timelineAnchorSyncUID,
-              let i = filteredArticles.firstIndex(where: { $0.uid == syncUID }) else { return }
+              let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: filteredArticles)
+        else { return }
         appState.currentIndex = i
         settings.timelineAnchorIdentifier = filteredArticles[i].identifier
     }
@@ -274,6 +277,7 @@ struct ReaderScreen: View {
             appState.currentIndex = i
             settings.timelineAnchorIdentifier = summary.identifier
             settings.timelineAnchorSyncUID = summary.uid
+            SettingsCloudSync.pushSoon(settings)
         }
         appState.showArticleList = false
     }
@@ -300,12 +304,15 @@ struct ReaderScreen: View {
     /// Persist the reading position. Called only from a completed user swipe (`onUserNavigate`),
     /// so it records exactly the article the user paged to and is never reached by the programmatic
     /// index moves of restore/reanchor/clamp — which previously could overwrite the anchor with a
-    /// fallback position.
+    /// fallback position. Pushes the new anchor (coalesced) since this is the user-driven write path;
+    /// `jumpToSyncedTimelinePosition` below is the remote-apply path and must never push, or two open
+    /// devices would trade anchor writes forever.
     private func saveAnchor(at index: Int) {
         let articles = filteredArticles
         guard articles.indices.contains(index) else { return }
         settings.timelineAnchorIdentifier = articles[index].identifier
         settings.timelineAnchorSyncUID = articles[index].uid
+        SettingsCloudSync.pushSoon(settings)
     }
 
     /// Keep the displayed article selected across timeline mutations (refresh / reload / retention
