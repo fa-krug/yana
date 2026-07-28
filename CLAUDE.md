@@ -443,6 +443,21 @@ before use, with Apple Intelligence checked for on-device availability instead.
 - Views use `String(localized:)` for computed property strings and string literals with `LocalizedStringKey` for SwiftUI text
 - All user-facing strings should be localizable
 - **ALWAYS create translations.** Whenever you add or change a user-facing string, you MUST add the corresponding entry to `Localizable.xcstrings` with a translation for **every** supported language (currently `de`), each marked `"state" : "translated"`. Never leave a new string English-only or untranslated. German follows Apple's localization style (infinitive for actions/instructions, e.g. "Im Browser öffnen", "In den Einstellungen hinzufügen"; no "Du"/"Sie"). When adding a new supported language, add it to `options.knownRegions` in `project.yml`, backfill translations for all existing strings, and update this list.
+- **Count-bearing strings need an explicit `en` plural block — English is NOT free.** The catalog is
+  hand-maintained, so a key with no `en` localization is not written to `en.lproj` at all and lookup
+  falls back to the **key itself**. For `"%lld articles"` that renders "1 articles"; for a key using
+  automatic grammar agreement (`^[…](inflect: true)`) the fallback path does not process the markup
+  either, so the literal `^[3 new article](inflect: true)` reaches the UI. Both shipped. So: any
+  string with a countable noun next to a number needs `variations.plural.{one,other}` for `en` *and*
+  for every other language whose forms differ — never rely on the source language falling back, and
+  never rely on `inflect: true`. `"%lld entries"` is the reference shape. When the count is not the
+  first argument (`"Delete “%@”? Its %lld articles …"`) a whole-string plural variation keys on the
+  wrong argument; use a `substitutions` entry (`argNum`, `formatSpecifier`, `%#@name@` in the value,
+  `%arg` inside the variation) — see `"Imported %lld feeds, skipped %lld."`. A bare number with no
+  noun (`"Daily Limit: %lld"`) or a unit abbreviation (`"%lld min"`, `"%llds"`) needs nothing.
+  `YanaTests/PluralAgreementTests.swift` renders each of these at count 1 and 2 per language; note
+  it pins the language via an explicit `.lproj` bundle, because the simulator is not necessarily
+  English and `locale:` alone selects plural *rules*, not the localization.
 
 ## Planned Features
 

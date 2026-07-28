@@ -180,6 +180,24 @@
               }
             }
           }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld article"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld articles"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -212,6 +230,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "Feed gültig – %lld Artikel"
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Feed valid — %lld article"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Feed valid — %lld articles"
+                }
+              }
+            }
           }
         }
       }
@@ -860,8 +896,30 @@
         },
         "en": {
           "stringUnit": {
-            "state": "new",
-            "value": "Delete “%1$@”? Its %2$lld articles will be removed."
+            "state": "translated",
+            "value": "Delete “%1$@”? Its %#@articleCount@ will be removed."
+          },
+          "substitutions": {
+            "articleCount": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg article"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg articles"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1168,13 +1226,57 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$lld Feeds importiert, %2$lld übersprungen."
+            "value": "%#@feedCount@ importiert, %2$lld übersprungen."
+          },
+          "substitutions": {
+            "feedCount": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Feed"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Feeds"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "en": {
           "stringUnit": {
-            "state": "new",
-            "value": "Imported %1$lld feeds, skipped %2$lld."
+            "state": "translated",
+            "value": "Imported %#@feedCount@, skipped %2$lld."
+          },
+          "substitutions": {
+            "feedCount": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg feed"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg feeds"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -1259,9 +1361,39 @@
     "Keep Articles: %lld days": {
       "localizations": {
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Artikel behalten: %lld Tage"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Artikel behalten: %lld Tag"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Artikel behalten: %lld Tage"
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Keep Articles: %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Keep Articles: %lld days"
+                }
+              }
+            }
           }
         }
       }
@@ -2460,6 +2592,24 @@
               }
             }
           }
+        },
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld new article"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld new articles"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -2701,6 +2851,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "„%1$@“ löschen? Die zugehörigen %2$lld Artikel werden endgültig gelöscht."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete “%1$@”? Its %#@articleCount@ will be permanently deleted."
+          },
+          "substitutions": {
+            "articleCount": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg article"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg articles"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3734,7 +3912,177 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld Feeds · %lld Tags · %lld Artikel · %lld Bilder"
+            "value": "%#@feeds@ · %#@tags@ · %#@articles@ · %#@images@"
+          },
+          "substitutions": {
+            "feeds": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Feed"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Feeds"
+                    }
+                  }
+                }
+              }
+            },
+            "tags": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Tag"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Tags"
+                    }
+                  }
+                }
+              }
+            },
+            "articles": {
+              "argNum": 3,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Artikel"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Artikel"
+                    }
+                  }
+                }
+              }
+            },
+            "images": {
+              "argNum": 4,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Bild"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg Bilder"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%#@feeds@ · %#@tags@ · %#@articles@ · %#@images@"
+          },
+          "substitutions": {
+            "feeds": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg feed"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg feeds"
+                    }
+                  }
+                }
+              }
+            },
+            "tags": {
+              "argNum": 2,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg tag"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg tags"
+                    }
+                  }
+                }
+              }
+            },
+            "articles": {
+              "argNum": 3,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg article"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg articles"
+                    }
+                  }
+                }
+              }
+            },
+            "images": {
+              "argNum": 4,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg image"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg images"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
