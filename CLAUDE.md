@@ -228,17 +228,34 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   synced reading position: `AppSettings.SyncedSettings.timelineAnchorUID`, applied by
   `applySyncedSettings` (which posts `AppSettings.timelinePositionDidChange` **only when the
   decoded UID differs from the stored one** — posting unconditionally made every unrelated pull
-  yank the reader back to the anchor). The anchor write sites (`ReaderHostView`'s `saveAnchor`/
-  `openArticle`; `TimelineModel`'s `selection` setter/`moveSelection`) call
-  `SettingsCloudSync.pushSoon`, which coalesces a burst of writes — continuous swiping/selection —
+  yank the reader back to the anchor). **`TimelineAnchorWriter`**
+  (`Yana/Services/TimelineAnchorWriter.swift`) is the single write path both platforms' user-driven
+  selection changes go through — its `record(_:)` persists both `timelineAnchorIdentifier` and the
+  canonical `timelineAnchorSyncUID`, then calls (an injectable) `pushAnchor`, which defaults to
+  `SettingsCloudSync.pushSoon`; that coalesces a burst of writes — continuous swiping/selection —
   into one KVS write via `AnchorPushCoalescer` (3s of quiet; instantiable like `LibraryRevision` so
   tests can inject a short interval). The scene `.background` `push` remains the guaranteed flush.
-  Both `ReaderHostView` (iOS) and `TimelineModel` (Mac) observe `timelinePositionDidChange` and
-  resolve the synced UID to an index via `TimelineUIDIndex` (`Yana/Utilities/TimelineFiltering.swift`,
-  ignoring a UID that hasn't synced to this device yet); the remote-apply path (`ReaderHostView`'s
-  `jumpToSyncedTimelinePosition`, `TimelineModel`'s method of the same name) sets the index directly
-  rather than through the push-triggering write path, so applying a remote anchor can never itself
-  push and ping-pong between two open devices. API-key secrets
+  On iOS, **`ReaderAnchorController`** (`Yana/Reader/ReaderAnchorController.swift`) wraps a
+  `TimelineAnchorWriter` and is `ReaderHostView`'s whole timeline-anchor read/write surface
+  (`saveAnchor`/`openArticle` call `record`/`recordOpenedArticle`; a SwiftUI view struct has no test
+  harness in this codebase, so this extraction is what makes the no-ping-pong guarantee assertable
+  at all instead of resting on "this private method never calls that other one"). On Mac,
+  `TimelineModel` holds the writer directly (`anchorWriter`) from its `selection` setter/
+  `moveSelection`. Both controllers observe `timelinePositionDidChange` and resolve the synced UID
+  to an index via `TimelineUIDIndex` (`Yana/Utilities/TimelineFiltering.swift`, ignoring a UID that
+  hasn't synced to this device yet); the remote-apply path
+  (`ReaderAnchorController.resolveSyncedAnchorIndex`, `TimelineModel.jumpToSyncedTimelinePosition`)
+  sets the index directly rather than through the writer, so applying a remote anchor can never
+  itself push and ping-pong between two open devices — asserted directly in
+  `ReaderAnchorControllerTests`/`TimelineModelTests` via a spy on `pushAnchor`, not just left as a
+  structural claim. The read-side reanchor (`ReaderAnchorController.reanchorIndex`,
+  `TimelineModel.reanchorToCurrentArticle`, both run on every timeline delivery once the anchor has
+  been restored) prefers the synced UID over the identifier before falling back: a remote anchor
+  commonly arrives for an article that hasn't synced to this device yet (KVS anchor propagation is
+  typically faster than the CloudKit article import it's waiting on), and since nothing re-posts
+  `timelinePositionDidChange` once the UID stops changing, this UID-first preference is what
+  self-heals the position once the awaited article lands on a later delivery — without it the
+  position would only catch up at the next launch. API-key secrets
   sync via **iCloud Keychain** — `KeychainService` now writes `kSecAttrSynchronizable` always
   (defaulting true; no toggle). `BackgroundRefreshManager` reschedules itself from the per-device
   **`UpdateInterval`** (`Yana/Models/UpdateInterval.swift`; `AppSettings.updateInterval`): seven

@@ -63,7 +63,7 @@ struct TimelineModelTests {
         model.applyTimeline()
 
         var pushed: [String] = []
-        model.pushAnchor = { pushed.append($0.timelineAnchorSyncUID ?? "") }
+        model.anchorWriter.pushAnchor = { pushed.append($0.timelineAnchorSyncUID ?? "") }
 
         model.selection = "b"
 
@@ -80,7 +80,7 @@ struct TimelineModelTests {
         model.currentIndex = 0   // away from the boundary so the move below actually changes the index
 
         var pushCount = 0
-        model.pushAnchor = { _ in pushCount += 1 }
+        model.anchorWriter.pushAnchor = { _ in pushCount += 1 }
 
         model.moveSelection(by: 1)
 
@@ -97,7 +97,7 @@ struct TimelineModelTests {
         model.currentIndex = model.filteredArticles.count - 1
 
         var pushCount = 0
-        model.pushAnchor = { _ in pushCount += 1 }
+        model.anchorWriter.pushAnchor = { _ in pushCount += 1 }
 
         model.moveSelection(by: 1)
 
@@ -113,7 +113,7 @@ struct TimelineModelTests {
         model.applyTimeline()
 
         var pushCount = 0
-        model.pushAnchor = { _ in pushCount += 1 }
+        model.anchorWriter.pushAnchor = { _ in pushCount += 1 }
 
         // Simulate a remote device's anchor arriving for article "a".
         settings.timelineAnchorSyncUID = model.filteredArticles.first { $0.identifier == "a" }?.uid
@@ -131,7 +131,7 @@ struct TimelineModelTests {
         model.applyTimeline()
 
         var pushCount = 0
-        model.pushAnchor = { _ in pushCount += 1 }
+        model.anchorWriter.pushAnchor = { _ in pushCount += 1 }
 
         settings.timelineAnchorSyncUID = model.filteredArticles.first { $0.identifier == "a" }?.uid
         center.post(name: AppSettings.timelinePositionDidChange, object: nil)
@@ -152,5 +152,56 @@ struct TimelineModelTests {
         model.jumpToSyncedTimelinePosition()
 
         #expect(model.currentIndex == before)
+    }
+
+    // MARK: - Self-heal: a pending remote anchor resolves once the article arrives
+
+    /// Widens the original brief: `jumpToSyncedTimelinePosition` correctly no-ops on an unmatched
+    /// UID, but that is the *likely* case in practice (KVS anchor propagation is typically faster
+    /// than the CloudKit article import it's waiting on), and nothing previously re-attempted the
+    /// match — `timelinePositionDidChange` won't re-post (the UID hasn't changed since it arrived),
+    /// so the position would only catch up at the next launch. `reanchorToCurrentArticle` (run from
+    /// `applyTimeline` on every `store.summaries` delivery) now prefers the synced UID over the
+    /// identifier, so once the awaited article lands on a later delivery, the selection self-heals
+    /// without needing another notification.
+    @Test func pendingRemoteAnchorResolvesOnceTheArticleArrives() async throws {
+        let settings = freshSettings()
+        let container = try makeContainer()
+        let context = container.mainContext
+        insertArticle("a", into: context, createdAt: Date(timeIntervalSince1970: 1))
+        insertArticle("b", into: context, createdAt: Date(timeIntervalSince1970: 2))
+        try context.save()
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        await store.refreshNow()   // store only knows about "a" and "b" so far
+
+        let model = TimelineModel(settings: settings, notificationCenter: NotificationCenter())
+        model.configure(modelContext: context, store: store)
+        model.applyTimeline()
+        #expect(model.selectedSummary?.identifier == "b")   // parked on the newest, as usual
+
+        // A remote device's anchor arrives for "c" — an article that hasn't synced to this device
+        // yet. `ArticleUID.make` keys only on (feed identifier, aggregator type, article identifier)
+        // when the article identifier is non-empty, so this is exactly the UID the real "c" will
+        // have once it arrives, without needing to fabricate a persisted article first.
+        let pendingUID = ArticleUID.make(
+            feedIdentifier: "f-c", aggregatorType: AggregatorType.feedContent.rawValue,
+            articleIdentifier: "c", date: .now, title: "c"
+        )
+        settings.timelineAnchorSyncUID = pendingUID
+        model.jumpToSyncedTimelinePosition()   // ignored: "c" isn't in filteredArticles yet
+        #expect(model.selectedSummary?.identifier == "b", "must not jump until the article actually arrives")
+
+        // Nothing re-posts `timelinePositionDidChange` (the UID hasn't changed) — the self-heal has
+        // to come from an ordinary timeline delivery once "c" lands.
+        insertArticle("c", into: context, createdAt: Date(timeIntervalSince1970: 3))
+        try context.save()
+        await store.refreshNow()
+        model.applyTimeline()   // an ordinary refresh delivery, not a remote-anchor notification
+
+        #expect(model.selectedSummary?.identifier == "c")
+        #expect(settings.timelineAnchorIdentifier == "c")
     }
 }

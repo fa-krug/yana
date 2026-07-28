@@ -36,16 +36,18 @@ final class TimelineModel {
     private let notificationCenter: NotificationCenter
     private var anchorObserver: NSObjectProtocol?
 
-    /// Pushes a changed anchor to iCloud KVS (coalesced). Injectable so tests can assert the
-    /// no-ping-pong guarantee directly: `jumpToSyncedTimelinePosition` must never call this, only
-    /// the user-driven `selection` setter and `moveSelection` may.
-    var pushAnchor: (AppSettings) -> Void = { SettingsCloudSync.pushSoon($0) }
+    /// Records + pushes a changed anchor to iCloud KVS (coalesced). The same `TimelineAnchorWriter`
+    /// type iOS's `ReaderAnchorController` uses, so the no-ping-pong guarantee is asserted against
+    /// one shared, testable seam on both platforms: `jumpToSyncedTimelinePosition` must never call
+    /// `anchorWriter.record`, only the user-driven `selection` setter and `moveSelection` may.
+    let anchorWriter: TimelineAnchorWriter
 
     var isConfigured: Bool { modelContext != nil }
 
     init(settings: AppSettings = AppSettings(), notificationCenter: NotificationCenter = .default) {
         self.settings = settings
         self.notificationCenter = notificationCenter
+        self.anchorWriter = TimelineAnchorWriter(settings: settings)
     }
 
     func configure(modelContext: ModelContext, store: ArticleStore) {
@@ -72,9 +74,7 @@ final class TimelineModel {
             guard let id = newValue,
                   let i = TimelinePageIndex.index(of: id, in: filteredArticles) else { return }
             currentIndex = i
-            settings.timelineAnchorIdentifier = id
-            settings.timelineAnchorSyncUID = filteredArticles[i].uid
-            pushAnchor(settings)
+            anchorWriter.record(filteredArticles[i])
         }
     }
 
@@ -100,9 +100,7 @@ final class TimelineModel {
         let next = min(max(currentIndex + offset, 0), filteredArticles.count - 1)
         guard next != currentIndex else { return }
         currentIndex = next
-        settings.timelineAnchorIdentifier = filteredArticles[next].identifier
-        settings.timelineAnchorSyncUID = filteredArticles[next].uid
-        pushAnchor(settings)
+        anchorWriter.record(filteredArticles[next])
     }
 
     var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
@@ -139,15 +137,30 @@ final class TimelineModel {
         guard !resolved.articles.isEmpty else { return }
         currentIndex = resolved.anchorIndex
         // A synced anchor (canonical UID) resolves exactly across devices; prefer it when present.
-        if let syncUID = settings.timelineAnchorSyncUID,
-           let i = resolved.articles.firstIndex(where: { $0.uid == syncUID }) {
+        if let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: resolved.articles) {
             currentIndex = i
             settings.timelineAnchorIdentifier = resolved.articles[i].identifier
         }
         didRestoreAnchor = true
     }
 
+    /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention
+    /// cleanup). Prefers the canonical synced UID over the per-device identifier: a remote anchor
+    /// may have arrived for an article that hadn't synced to this device yet — the *common* case,
+    /// since KVS anchor propagation is typically faster than the CloudKit article import catching
+    /// up — and once that article does arrive on a later delivery (this method runs again from
+    /// `applyTimeline`), this is what finally moves the selection: `timelinePositionDidChange` won't
+    /// re-fire, since the UID hasn't changed since it arrived. Without this self-heal the position
+    /// would only catch up on the next launch — close to the very symptom this task exists to fix.
+    /// Falls back to the identifier when the UID doesn't resolve either; the two are written in
+    /// lockstep by every local write (`TimelineAnchorWriter.record`), so they only disagree in
+    /// exactly this pending-sync window.
     private func reanchorToCurrentArticle() {
+        if let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: filteredArticles) {
+            currentIndex = i
+            settings.timelineAnchorIdentifier = filteredArticles[i].identifier
+            return
+        }
         guard let i = TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: filteredArticles) else {
             return
         }
@@ -179,9 +192,10 @@ final class TimelineModel {
     /// must be bumped from here too, alongside the other programmatic-selection paths.
     ///
     /// Deliberately does **not** go through the `selection` setter — it sets `currentIndex` and
-    /// `timelineAnchorIdentifier` directly, so applying a remote anchor can never call `pushAnchor`
-    /// and loop the write straight back to the device that sent it (the "no ping-pong" requirement:
-    /// only user-driven selection changes push). Ignored when the anchored article hasn't synced to
+    /// `timelineAnchorIdentifier` directly, so applying a remote anchor can never call
+    /// `anchorWriter.record` and loop the write straight back to the device that sent it (the
+    /// "no ping-pong" requirement: only user-driven selection changes push — see
+    /// `TimelineModelTests` for the assertion). Ignored when the anchored article hasn't synced to
     /// this device yet (`TimelineUIDIndex.index` returns `nil`).
     func jumpToSyncedTimelinePosition() {
         guard didRestoreAnchor,
