@@ -357,7 +357,8 @@ final class AggregationService {
                 candidates: ImagePruneCandidateStore.load(),
                 now: currentTime,
                 hasArticles: snapshot.hasArticles,
-                hasUnmigratedLegacyContent: snapshot.hasUnmigratedLegacyContent
+                hasUnmigratedLegacyContent: snapshot.hasUnmigratedLegacyContent,
+                hasUndecodableBlocks: snapshot.hasUndecodableBlocks
             )
             ImagePruneCandidateStore.save(decided.candidates)
             return decided

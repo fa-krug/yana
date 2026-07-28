@@ -18,7 +18,8 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: true,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates == ["h1": now])
@@ -33,7 +34,8 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: true,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete == ["h1"])
         #expect(result.candidates.isEmpty)
@@ -48,7 +50,8 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: true,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete.isEmpty)
         // The original first-seen timestamp is preserved, not reset to `now`.
@@ -64,7 +67,8 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: true,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates.isEmpty)
@@ -79,7 +83,8 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: true,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates.isEmpty)
@@ -98,7 +103,8 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: false,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete.isEmpty)
         // Candidate map passes through untouched — an incomplete run doesn't perturb it either.
@@ -120,7 +126,8 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: true,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates == existingCandidates)
@@ -139,7 +146,29 @@ struct ImagePrunePlanTests {
             now: now,
             quarantinePeriod: quarantine,
             hasArticles: true,
-            hasUnmigratedLegacyContent: true
+            hasUnmigratedLegacyContent: true,
+            hasUndecodableBlocks: false
+        )
+        #expect(result.toDelete.isEmpty)
+        #expect(result.candidates == existingCandidates)
+    }
+
+    /// Review finding 1: an article whose `blockData` fails to decode (e.g. an older build reading
+    /// a `Block`/`Embed.Kind` case a newer build wrote) reports zero in-body images to `referenced`
+    /// via `Article.blocks`'s `try?`-swallowing getter, exactly like the unmigrated-legacy-content
+    /// case above but with a different cause. Must bail the same way.
+    @Test func undecodableBlocksBailsWithNoDeletions() {
+        let firstSeen = now.addingTimeInterval(-quarantine - 1)
+        let existingCandidates: [String: Date] = ["h1": firstSeen]
+        let result = ImagePrunePlan.decide(
+            referenced: ["logo"],
+            stored: ["h1"],
+            candidates: existingCandidates,
+            now: now,
+            quarantinePeriod: quarantine,
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: true
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates == existingCandidates)
@@ -159,7 +188,8 @@ struct ImagePrunePlanTests {
             quarantinePeriod: quarantine,
             maxDeletionsPerPass: 2,
             hasArticles: true,
-            hasUnmigratedLegacyContent: false
+            hasUnmigratedLegacyContent: false,
+            hasUndecodableBlocks: false
         )
         #expect(result.toDelete == ["a", "b"])
         // "c" is still eligible (past quarantine) but deferred — its original timestamp is kept,
@@ -268,9 +298,8 @@ struct ImagePruneCandidateStoreTests {
     }
 }
 
-/// `AggregationWriter.referencedImageSnapshotForPruning()` — the atomic, failure-surfacing
-/// counterpart to `referencedImageHashes()` that `ImagePrunePlan`'s safety guards depend on
-/// (review finding 4).
+/// `AggregationWriter.referencedImageSnapshotForPruning()` — the failure-surfacing scan that
+/// `ImagePrunePlan`'s safety guards depend on (review finding 4).
 @MainActor
 @Suite("ReferencedImageSnapshotForPruning")
 struct ReferencedImageSnapshotForPruningTests {
@@ -289,6 +318,7 @@ struct ReferencedImageSnapshotForPruningTests {
         #expect(unwrapped.hasArticles == false)
         #expect(unwrapped.hashes.isEmpty)
         #expect(unwrapped.hasUnmigratedLegacyContent == false)
+        #expect(unwrapped.hasUndecodableBlocks == false)
     }
 
     @Test func flagsUnmigratedLegacyContent() async throws {
@@ -303,6 +333,44 @@ struct ReferencedImageSnapshotForPruningTests {
         let unwrapped = try #require(snapshot)
         #expect(unwrapped.hasArticles == true)
         #expect(unwrapped.hasUnmigratedLegacyContent == true)
+        #expect(unwrapped.hasUndecodableBlocks == false)
+    }
+
+    /// Review finding 1: an article whose `blockData` is non-empty but fails to decode as `[Block]`
+    /// (simulating an older build reading a newer build's article after an enum case was added)
+    /// must set `hasUndecodableBlocks`, not silently report zero in-body images via `Article.blocks`'s
+    /// `try?`-swallowing getter. Setting `blockData` directly (bypassing the `blocks` setter, which
+    /// always encodes valid JSON) is the cheap way to construct this without a real decode failure.
+    @Test func flagsUndecodableBlocks() async throws {
+        let container = try container()
+        let ctx = ModelContext(container)
+        let article = Article(title: "a", identifier: "a1", url: "u", author: "", iconURL: nil)
+        article.blockData = Data("not valid block json".utf8)
+        ctx.insert(article)
+        try ctx.save()
+
+        let snapshot = await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
+        let unwrapped = try #require(snapshot)
+        #expect(unwrapped.hasArticles == true)
+        #expect(unwrapped.hasUnmigratedLegacyContent == false)
+        #expect(unwrapped.hasUndecodableBlocks == true)
+    }
+
+    /// A legitimately empty body encodes to `[]` (non-empty `Data`, empty array) — this must NOT be
+    /// mistaken for an undecodable body. Guards against the "just check `blocks.isEmpty`" mistake
+    /// the finding explicitly warns off (that would disable the prune permanently).
+    @Test func emptyBlocksArrayIsNotFlaggedAsUndecodable() async throws {
+        let container = try container()
+        let ctx = ModelContext(container)
+        let article = Article(title: "a", identifier: "a1", url: "u", author: "", iconURL: nil)
+        article.blocks = []   // goes through the real setter: encodes to valid, empty-array JSON
+        ctx.insert(article)
+        try ctx.save()
+
+        let snapshot = await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
+        let unwrapped = try #require(snapshot)
+        #expect(unwrapped.hasArticles == true)
+        #expect(unwrapped.hasUndecodableBlocks == false)
     }
 
     @Test func hasArticlesAndReferencedComeFromTheSameScan() async throws {

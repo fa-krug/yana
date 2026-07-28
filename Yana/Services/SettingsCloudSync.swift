@@ -50,7 +50,7 @@ final class AnchorPushCoalescer {
     }
 
     func pushSoon(_ settings: AppSettings, store: KeyValueStore) {
-        pending = { SettingsCloudSync.push(settings, store: store) }
+        pending = { SettingsCloudSync.push(settings, store: store, logLevel: .debug) }
         let coalescer = coalescer ?? TrailingCoalescer(interval: interval) { [weak self] in
             self?.pending?()
         }
@@ -75,11 +75,18 @@ enum SettingsCloudSync {
             || args.contains("-UITEST_SKIP_ONBOARDING")
     }
 
-    static func push(_ settings: AppSettings, store: KeyValueStore = NSUbiquitousKeyValueStore.default) {
+    /// - Parameter logLevel: the `SyncLog` severity for the "Pushed…" line. Defaults to `.info` for
+    ///   the one-shot/flush call sites (scene `.background`, the one-time migration) where a push is
+    ///   a rare, noteworthy event. `pushSoon` below passes `.debug` instead — see its doc comment.
+    static func push(
+        _ settings: AppSettings,
+        store: KeyValueStore = NSUbiquitousKeyValueStore.default,
+        logLevel: SyncLog.Level = .info
+    ) {
         guard !isSuppressed else { return }
         store.set(settings.exportSyncedSettings(), forKey: key)
         store.synchronize()
-        SyncLog.shared.info("Pushed synced settings to iCloud key-value store", category: "Settings")
+        SyncLog.shared.log(logLevel, "Settings", "Pushed synced settings to iCloud key-value store")
     }
 
     /// Coalesced push for high-frequency write sites — the timeline anchor updates on every reader
@@ -87,6 +94,12 @@ enum SettingsCloudSync {
     /// flush sites (scene `.background`, the one-time migration); this defers to
     /// `AnchorPushCoalescer` so a burst of anchor changes becomes one write. See
     /// `AnchorPushCoalescer` for the chosen interval and rationale.
+    ///
+    /// Logs at `.debug`, not `.info`: KVS used to be written at most twice per launch, so an `.info`
+    /// line was a rare, meaningful event; now a burst fires on every reading session, and the
+    /// 2000-entry `SyncLog` buffer's whole reason for existing is to stay readable through the
+    /// exact kind of sync storm this would otherwise flood it with. The explicit `.background` /
+    /// migration `push` calls above keep `.info` — they are still a handful of calls per launch.
     static func pushSoon(
         _ settings: AppSettings,
         store: KeyValueStore = NSUbiquitousKeyValueStore.default,

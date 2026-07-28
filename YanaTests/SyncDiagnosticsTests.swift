@@ -72,6 +72,42 @@ struct SyncDiagnosticsTests {
         #expect(header.contains("Last Export: —"))
     }
 
+    // MARK: - Library summary
+
+    /// Review finding 6: `exportHeader()`'s "System Log" line was fixed to singularize, but the
+    /// "Library" line immediately above it — same function, same dump — still hand-built the four
+    /// nouns without singularizing any of them. Each noun must independently read "1 X", not "1 Xs".
+    @Test func librarySummarySingularizesEachNounIndependently() {
+        #expect(SyncDiagnostics.librarySummary(feedCount: 1, tagCount: 1, articleCount: 1, storedImageCount: 1)
+            == "1 feed · 1 tag · 1 article · 1 image")
+    }
+
+    @Test func librarySummaryPluralizesCountsOtherThanOne() {
+        #expect(SyncDiagnostics.librarySummary(feedCount: 0, tagCount: 2, articleCount: 210, storedImageCount: 97)
+            == "0 feeds · 2 tags · 210 articles · 97 images")
+    }
+
+    @Test func exportHeaderSingularizesTheLibraryLineWhenEveryCountIsOne() {
+        let diagnostics = sample()
+        let oneOfEach = SyncDiagnostics(
+            accountStatus: diagnostics.accountStatus,
+            containerIdentifier: diagnostics.containerIdentifier,
+            environment: diagnostics.environment,
+            appVersion: diagnostics.appVersion,
+            systemVersion: diagnostics.systemVersion,
+            idiom: diagnostics.idiom,
+            feedCount: 1,
+            tagCount: 1,
+            articleCount: 1,
+            storedImageCount: 1,
+            lastImportSucceededAt: diagnostics.lastImportSucceededAt,
+            lastExportSucceededAt: diagnostics.lastExportSucceededAt,
+            lastErrorSummary: diagnostics.lastErrorSummary,
+            systemLogEntryCount: diagnostics.systemLogEntryCount
+        )
+        #expect(oneOfEach.exportHeader().contains("Library: 1 feed · 1 tag · 1 article · 1 image"))
+    }
+
     // MARK: - System log summary
 
     /// The whole point of this line: "0 entries" (log opened, nothing persisted) must read

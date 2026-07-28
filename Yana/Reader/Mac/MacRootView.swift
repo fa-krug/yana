@@ -214,6 +214,18 @@ private struct MacSidebarView: View {
     /// SwiftUI re-render, not a new request) doesn't re-trigger a scroll.
     @State private var lastAppliedScrollToken: Int?
 
+    /// Browsing shows the model's filtered timeline; a live search swaps in predicate-fetched rows,
+    /// re-run through the same tag/feed filter so the sidebar stays a subset of the reader timeline.
+    ///
+    /// Cached, not a computed property (review finding 2): `.scrollPosition(id:)` below is a
+    /// two-way `Binding`, so SwiftUI writes `scrollAnchorID` back on every row-crossing-centre event
+    /// while the user scrolls — each write re-evaluates this view's `body`. A computed `displayed`
+    /// re-ran the `TagFilter`/`FeedFilter` passes (and, while a search is active, re-filtered the
+    /// search results) on every one of those scroll-driven passes, on top of the `ForEach` identity
+    /// diff `body` always pays. Caching it means a scroll-driven `body` pass is O(1) here; the value
+    /// only actually changes when one of its real inputs does — see `recomputeDisplayed()`.
+    @State private var displayed: [ArticleSummary] = []
+
     /// Extra vertical room per sidebar row — the AppKit-backed source list packs rows tightly by
     /// default, so the article list reads as a cramped wall of text. iOS never renders this view.
     private static let rowInsets = EdgeInsets(top: 10, leading: 14, bottom: 10, trailing: 12)
@@ -222,16 +234,6 @@ private struct MacSidebarView: View {
     /// focused pill reads as a deep violet instead of a glaring neon block, while white row text
     /// stays legible on top. `mix` resolves per-appearance, so it tracks light/dark like the accent.
     private static var selectionTint: Color { Color.accentColor.mix(with: .black, by: 0.3) }
-
-    /// Browsing shows the model's filtered timeline; a live search swaps in predicate-fetched rows,
-    /// re-run through the same tag/feed filter so the sidebar stays a subset of the reader timeline.
-    private var displayed: [ArticleSummary] {
-        guard let searchResults else { return model.filteredArticles }
-        let byTag = TagFilter.apply(to: searchResults,
-                                    disabledTagNames: settings.disabledTagNames,
-                                    includeUntagged: settings.includeUntagged)
-        return FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-    }
 
     var body: some View {
         // The List must be the DIRECT child of the NavigationSplitView sidebar column for the system
@@ -253,6 +255,16 @@ private struct MacSidebarView: View {
         // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.
         .accessibilityIdentifier("mac.sidebar.list")
         .listStyle(.sidebar)
+        .onAppear { recomputeDisplayed() }
+        // `displayed`'s real inputs: the model's filtered timeline, the live search results, and —
+        // only relevant while a search is active, since browsing already reads `model.filteredArticles`
+        // straight through — the tag/feed filter settings `recomputeDisplayed()` re-applies on top of
+        // `searchResults`. None of these fire on a mere scroll (see `displayed`'s doc comment).
+        .onChange(of: model.filteredArticles) { _, _ in recomputeDisplayed() }
+        .onChange(of: searchResults) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeDisplayed() }
         .scrollPosition(id: $scrollAnchorID, anchor: .center)
         .onChange(of: model.scrollTarget) { _, target in
             guard let target, target.token != lastAppliedScrollToken else { return }
@@ -317,6 +329,16 @@ private struct MacSidebarView: View {
                     }
                 }
         }
+    }
+
+    /// Recomputes the cached `displayed` from its real inputs. Called from the `onChange`/`onAppear`
+    /// hooks above, never from `body` itself — that's the whole point of caching it (review finding 2).
+    private func recomputeDisplayed() {
+        guard let searchResults else { displayed = model.filteredArticles; return }
+        let byTag = TagFilter.apply(to: searchResults,
+                                    disabledTagNames: settings.disabledTagNames,
+                                    includeUntagged: settings.includeUntagged)
+        displayed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
     }
 
     private func runSearch() async {

@@ -132,6 +132,24 @@ struct SyncDiagnostics: Sendable {
         return count == 1 ? "1 entry" : "\(count) entries"
     }
 
+    /// Hand-pluralizes each of the four `Library:` row nouns for `exportHeader()`, matching the
+    /// precedent `systemLogSummary(_:)` already sets for this same deliberately-unlocalized dump
+    /// text (see `exportHeader()`'s doc comment): not localized, but that is not license for broken
+    /// English grammar — `count == 1` must read singular for each noun independently ("1 feed", not
+    /// "1 feeds"), the same bug class `systemLogSummary(_:)` was fixed for.
+    static func librarySummary(feedCount: Int, tagCount: Int, articleCount: Int, storedImageCount: Int) -> String {
+        [
+            pluralCount(feedCount, singular: "feed", plural: "feeds"),
+            pluralCount(tagCount, singular: "tag", plural: "tags"),
+            pluralCount(articleCount, singular: "article", plural: "articles"),
+            pluralCount(storedImageCount, singular: "image", plural: "images"),
+        ].joined(separator: " · ")
+    }
+
+    private static func pluralCount(_ count: Int, singular: String, plural: String) -> String {
+        "\(count) \(count == 1 ? singular : plural)"
+    }
+
     /// Convenience over `systemLogEntryCount`, shared by `exportHeader()`.
     var systemLogSummary: String { Self.systemLogSummary(systemLogEntryCount) }
 
@@ -176,7 +194,7 @@ struct SyncDiagnostics: Sendable {
             "Environment: \(environment)",
             "App: \(appVersion)",
             "System: \(systemVersion) · \(idiom)",
-            "Library: \(feedCount) feeds · \(tagCount) tags · \(articleCount) articles · \(storedImageCount) images",
+            "Library: \(Self.librarySummary(feedCount: feedCount, tagCount: tagCount, articleCount: articleCount, storedImageCount: storedImageCount))",
             "System Log: \(systemLogSummary)",
             "Last Import: \(Self.stamp(lastImportSucceededAt))",
             "Last Export: \(Self.stamp(lastExportSucceededAt))",

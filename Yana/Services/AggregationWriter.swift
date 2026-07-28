@@ -24,8 +24,8 @@ struct AggregationRunResult: Sendable {
     var deletedUIDs: [String] = []
 }
 
-/// Everything the image-prune safety check needs, derived from a single `Article`/`Feed` fetch —
-/// see `AggregationWriter.referencedImageSnapshotForPruning()`.
+/// Everything the image-sync/prune paths need, derived from a single `Article`/`Feed` fetch — see
+/// `AggregationWriter.referencedImageSnapshotForPruning()`.
 struct ReferencedImageSnapshot: Sendable {
     /// Feed logos plus every lead image and in-body image/embed poster across all articles.
     let hashes: Set<String>
@@ -35,6 +35,15 @@ struct ReferencedImageSnapshot: Sendable {
     /// article's `blocks` are empty until `BlockMigrator` sweeps it, so its in-body images are
     /// invisible to `hashes` — enrolling them as "unreferenced" would be wrong.
     let hasUnmigratedLegacyContent: Bool
+    /// Whether any article's `blockData` is non-empty but failed to decode as `[Block]`.
+    /// `Article.blocks`'s getter (`(try? JSONDecoder().decode(...)) ?? []`) silently reports zero
+    /// in-body images for such an article — the same blind spot `hasUnmigratedLegacyContent` guards
+    /// against, with a different cause: `Block`/`Embed.Kind` use synthesized enum `Codable`, so an
+    /// older build decoding an article a newer build wrote (a case it doesn't know) throws
+    /// `dataCorrupted`. With always-on CloudKit mirroring, mixed app versions across a user's
+    /// devices is the normal state. Must be derived from an explicit decode attempt, never from
+    /// `article.blocks.isEmpty` — a legitimately empty body also decodes to `[]`.
+    let hasUndecodableBlocks: Bool
 }
 
 /// Runs the aggregation write path off the main actor in its own `ModelContext`. Everything the
@@ -48,30 +57,21 @@ actor AggregationWriter {
     // MARK: Public run entry points
 
     /// Every `yana-img://` content hash the library currently references — feed logos plus every
-    /// image and embed poster in every article body — so `ImageSync` can mirror the blobs.
+    /// image and embed poster in every article body — plus the safety facts `ImagePrunePlan.decide`
+    /// needs, all derived from the same transaction as the hash scan.
     ///
     /// Lives here, on the writer's background context, because the scan fetches all articles and
     /// JSON-decodes each body; on the main context it stalled the UI for hundreds of milliseconds
     /// after every update.
     ///
-    /// A fetch failure here is swallowed to an empty set — harmless for this method's one caller
-    /// (`ImageSync`'s registration pass: a miss just delays a sync-upload, self-correcting next
-    /// run). **Do not reuse this for anything where a miss must not look like "confirmed empty"**
-    /// — see `referencedImageSnapshotForPruning()`.
-    func referencedImageHashes() -> Set<String> {
-        (try? computeReferencedImageSnapshot())?.hashes ?? []
-    }
-
-    /// Same scan as `referencedImageHashes()`, but surfaces a fetch failure as `nil` instead of
-    /// swallowing it to empty, and derives `hasArticles`/`hasUnmigratedLegacyContent` from the
-    /// *same* transaction as the hash scan.
-    ///
-    /// This exists because the image-prune decision (`ImagePrunePlan.decide`) cannot tolerate
-    /// `referencedImageHashes()`'s "miss reads as empty" contract: for prune, an empty referenced
-    /// set is read as "nothing is referenced, everything stored is a delete candidate" — the same
-    /// miss that's harmless for a sync-registration pass would be account-wide destructive here
-    /// (a `StoredImage` delete propagates via CloudKit to every device). Callers must treat `nil`
-    /// as "unknown this pass" and skip pruning entirely, not fall back to an empty set.
+    /// Surfaces a fetch failure as `nil` rather than swallowing it to an empty set: this method has
+    /// two callers — `ImageSync`'s registration pass and the image-prune decision — and only the
+    /// former could tolerate a miss reading as "confirmed empty" (a delayed sync-upload,
+    /// self-correcting next run). For prune, an empty referenced set is read as "nothing is
+    /// referenced, everything stored is a delete candidate" — a miss there would be account-wide
+    /// destructive (a `StoredImage` delete propagates via CloudKit to every device). So both callers
+    /// share the stricter contract: `nil` means "unknown this pass", skip pruning (and registration)
+    /// entirely rather than falling back to an empty set.
     func referencedImageSnapshotForPruning() -> ReferencedImageSnapshot? {
         try? computeReferencedImageSnapshot()
     }
@@ -83,15 +83,23 @@ actor AggregationWriter {
         }
         let articles = try modelContext.fetch(FetchDescriptor<Article>())
         var hasUnmigratedLegacyContent = false
+        var hasUndecodableBlocks = false
         for article in articles {
             if let lead = ArticleImageRefs.hash(from: article.leadImageRef) { hashes.insert(lead) }
             hashes.formUnion(ArticleImageRefs.hashes(in: article.blocks))
             if !article.content.isEmpty { hasUnmigratedLegacyContent = true }
+            // Explicit decode, not `article.blocks.isEmpty` — a legitimately empty body also
+            // decodes to `[]`, and keying off that would disable the prune permanently.
+            if !article.blockData.isEmpty,
+               (try? JSONDecoder().decode([Block].self, from: article.blockData)) == nil {
+                hasUndecodableBlocks = true
+            }
         }
         return ReferencedImageSnapshot(
             hashes: hashes,
             hasArticles: !articles.isEmpty,
-            hasUnmigratedLegacyContent: hasUnmigratedLegacyContent
+            hasUnmigratedLegacyContent: hasUnmigratedLegacyContent,
+            hasUndecodableBlocks: hasUndecodableBlocks
         )
     }
 

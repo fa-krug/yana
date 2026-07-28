@@ -55,16 +55,22 @@ enum ImagePrunePlan {
     ///     (`Article.content`). Such an article's blocks are empty until `BlockMigrator` sweeps it,
     ///     so its in-body images are invisible to `referenced` — pruning while this is true could
     ///     delete images that *are* referenced, just not by anything this scan can see yet.
+    ///   - hasUndecodableBlocks: whether any article's `blockData` is non-empty but failed to
+    ///     decode as `[Block]` (see `ReferencedImageSnapshot.hasUndecodableBlocks`). Such an
+    ///     article's in-body images/embed posters are invisible to `referenced` the same way an
+    ///     unmigrated article's are, just via decode failure instead of an empty sweep — pruning
+    ///     while this is true risks deleting images that are still referenced.
     ///
-    /// **Safety bail-out.** `referenced` being empty while `hasArticles` is true, or
-    /// `hasUnmigratedLegacyContent` being true, means `referenced` cannot be trusted as "everything
-    /// actually in use" — in both cases this pass decides nothing at all (same as the `hasArticles`
-    /// guard: no deletions, candidate map passed through unchanged). This matters because
-    /// `referencedImageSnapshotForPruning()`'s only failure mode is returning `nil` for the whole
-    /// snapshot (callers skip this method entirely then) — but a library that genuinely has
-    /// articles and genuinely references nothing is not a realistic steady state (every feed has a
-    /// logo), so treating an empty `referenced` set as "trustworthy" would risk classifying an
-    /// upstream scan gap as "confirmed nothing is used" instead of "unknown, don't delete".
+    /// **Safety bail-out.** `referenced` being empty while `hasArticles` is true, or either
+    /// `hasUnmigratedLegacyContent` or `hasUndecodableBlocks` being true, means `referenced` cannot
+    /// be trusted as "everything actually in use" — in all cases this pass decides nothing at all
+    /// (same as the `hasArticles` guard: no deletions, candidate map passed through unchanged). This
+    /// matters because `referencedImageSnapshotForPruning()`'s only failure mode is returning `nil`
+    /// for the whole snapshot (callers skip this method entirely then) — but a library that
+    /// genuinely has articles and genuinely references nothing is not a realistic steady state
+    /// (every feed has a logo), so treating an empty `referenced` set as "trustworthy" would risk
+    /// classifying an upstream scan gap as "confirmed nothing is used" instead of "unknown, don't
+    /// delete".
     static func decide(
         referenced: Set<String>,
         stored: Set<String>,
@@ -73,9 +79,10 @@ enum ImagePrunePlan {
         quarantinePeriod: TimeInterval = ImagePrunePlan.quarantinePeriod,
         maxDeletionsPerPass: Int = ImagePrunePlan.maxDeletionsPerPass,
         hasArticles: Bool,
-        hasUnmigratedLegacyContent: Bool
+        hasUnmigratedLegacyContent: Bool,
+        hasUndecodableBlocks: Bool
     ) -> Result {
-        guard hasArticles, !hasUnmigratedLegacyContent, !referenced.isEmpty else {
+        guard hasArticles, !hasUnmigratedLegacyContent, !hasUndecodableBlocks, !referenced.isEmpty else {
             return Result(toDelete: [], candidates: candidates)
         }
 

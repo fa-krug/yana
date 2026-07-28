@@ -72,6 +72,26 @@ struct TimelineModelTests {
         #expect(settings.timelineAnchorIdentifier == "b")
     }
 
+    /// Review finding 3: the sidebar `List(selection:)` binding is re-read (and written back) after
+    /// any programmatic move of `currentIndex` (e.g. `jumpToSyncedTimelinePosition`). Re-selecting
+    /// the row already at `currentIndex` must be a no-op — otherwise a stale anchor could be pushed
+    /// back to iCloud KVS moments after a newer one arrived, and last-writer-wins could then drag
+    /// another device backwards.
+    @Test func settingSelectionToTheAlreadyCurrentIdDoesNotPush() async throws {
+        let settings = freshSettings()
+        let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
+        await store.refreshNow()
+        model.applyTimeline()
+        model.selection = "b"
+
+        var pushCount = 0
+        model.anchorWriter.pushAnchor = { _ in pushCount += 1 }
+
+        model.selection = "b"   // re-selecting the row already selected: a no-op re-write
+
+        #expect(pushCount == 0)
+    }
+
     @Test func moveSelectionPushesTheAnchor() async throws {
         let settings = freshSettings()
         let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
@@ -294,5 +314,62 @@ struct TimelineModelTests {
         #expect(model.scrollTarget?.id == restoredID)
         #expect(model.scrollTarget?.token != restoredToken,
                 "a repeated request for the same id must not be swallowed by a stale token")
+    }
+
+    // MARK: - clampIndex scroll bump (review finding 4)
+
+    /// Review finding 4: a filter toggle that shrinks the timeline past the current selection moves
+    /// `currentIndex` via `clampIndex()` — the reader detail pane (indexed by `currentIndex`)
+    /// follows automatically, but the sidebar `List` does not re-scroll on its own. Without a
+    /// guarded `requestScroll` call here, the reader and the sidebar selection visibly disagree
+    /// until the user scrolls manually — the exact symptom this task exists to fix for this one flow.
+    @Test func clampIndexBumpsTheScrollRequestWhenItActuallyMoves() async throws {
+        let settings = freshSettings()
+        let container = try makeContainer()
+        let context = container.mainContext
+        let feedA = Feed(name: "FeedA", aggregatorType: .feedContent, identifier: "fa")
+        let feedB = Feed(name: "FeedB", aggregatorType: .feedContent, identifier: "fb")
+        let a = Article(title: "a", identifier: "a", url: "https://x.com/a")
+        a.createdAt = Date(timeIntervalSince1970: 1); a.feed = feedA
+        let b = Article(title: "b", identifier: "b", url: "https://x.com/b")
+        b.createdAt = Date(timeIntervalSince1970: 2); b.feed = feedB
+        context.insert(feedA); context.insert(feedB); context.insert(a); context.insert(b)
+        try context.save()
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        await store.refreshNow()
+
+        let model = TimelineModel(settings: settings, notificationCenter: NotificationCenter())
+        model.configure(modelContext: context, store: store)
+        model.applyTimeline()   // parks on the newest, "b" (index 1)
+        #expect(model.selectedSummary?.identifier == "b")
+        let before = model.scrollTarget
+
+        // Disable FeedB: the timeline shrinks to just "a", so currentIndex (1) must clamp to 0.
+        settings.disabledFeedNames = ["FeedB"]
+        model.recomputeFilter()
+        model.clampIndex()
+
+        #expect(model.selectedSummary?.identifier == "a")
+        #expect(model.scrollTarget?.id == "a")
+        #expect(model.scrollTarget?.token != before?.token)
+    }
+
+    /// The companion guard: when the filter change leaves `currentIndex` in range,
+    /// `clampIndex()` must not bump the scroll request — same reasoning as the click path
+    /// (`settingSelectionDoesNotBumpTheScrollRequest`): an unnecessary scroll would fight the
+    /// user's own scrolling for no reason.
+    @Test func clampIndexDoesNotBumpTheScrollRequestWhenTheIndexIsAlreadyValid() async throws {
+        let settings = freshSettings()
+        let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
+        await store.refreshNow()
+        model.applyTimeline()
+        let before = model.scrollTarget
+
+        model.clampIndex()   // filteredArticles unchanged; currentIndex already in range
+
+        #expect(model.scrollTarget?.token == before?.token)
     }
 }

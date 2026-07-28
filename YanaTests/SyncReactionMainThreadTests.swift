@@ -72,10 +72,10 @@ struct SyncReactionMainThreadTests {
         let imageStore = ImageStore(directory: fixture.directory.appendingPathComponent("images"))
 
         let stall = await MainActorResponsiveness.measuring {
-            let hashes = await OffMainActor.run {
-                await AggregationWriter(modelContainer: fixture.container).referencedImageHashes()
+            let snapshot = await OffMainActor.run {
+                await AggregationWriter(modelContainer: fixture.container).referencedImageSnapshotForPruning()
             }
-            await ImageSync.ensureStored(hashes: hashes, container: fixture.container,
+            await ImageSync.ensureStored(hashes: snapshot?.hashes ?? [], container: fixture.container,
                                          imageStore: imageStore)
         }
 

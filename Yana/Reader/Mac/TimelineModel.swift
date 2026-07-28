@@ -87,7 +87,15 @@ final class TimelineModel {
         }
         set {
             guard let id = newValue,
-                  let i = TimelinePageIndex.index(of: id, in: filteredArticles) else { return }
+                  let i = TimelinePageIndex.index(of: id, in: filteredArticles),
+                  // The sidebar `List(selection:)` binding is re-read (and written back) after any
+                  // programmatic move of `currentIndex` — e.g. `jumpToSyncedTimelinePosition` — so
+                  // without this guard, re-selecting the row already at `currentIndex` would still
+                  // call `anchorWriter.record`/`pushSoon` for a no-op selection change. Worst case
+                  // that's a stale anchor pushed back to iCloud KVS moments after a newer one
+                  // arrived, which last-writer-wins could then drag another device backwards.
+                  i != currentIndex
+            else { return }
             currentIndex = i
             anchorWriter.record(filteredArticles[i])
         }
@@ -199,9 +207,18 @@ final class TimelineModel {
         }
     }
 
-    /// Keep selection valid after the filter narrows the timeline.
+    /// Keep selection valid after the filter narrows the timeline. When a filter toggle actually
+    /// moves the selection (the timeline shrank past the previous `currentIndex`), the reader
+    /// detail pane follows automatically (it's indexed by `currentIndex`), but the sidebar `List`
+    /// does not re-scroll on its own — so without the guarded `requestScroll` below the reader and
+    /// the sidebar selection visibly disagree until the user scrolls manually.
     func clampIndex() {
-        currentIndex = min(currentIndex, max(0, filteredArticles.count - 1))
+        let clamped = min(currentIndex, max(0, filteredArticles.count - 1))
+        guard clamped != currentIndex else { return }
+        currentIndex = clamped
+        if filteredArticles.indices.contains(clamped) {
+            requestScroll(to: filteredArticles[clamped].identifier)
+        }
     }
 
     // MARK: - Synced anchor (remote apply)
