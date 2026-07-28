@@ -3637,6 +3637,16 @@
         }
       }
     },
+    "System Log": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemprotokoll"
+          }
+        }
+      }
+    },
     "Last Import": {
       "localizations": {
         "de": {

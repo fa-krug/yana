@@ -34,7 +34,7 @@ struct SyncDiagnosticsTests {
 
     // MARK: - Export header
 
-    private func sample(lastErrorSummary: String? = nil) -> SyncDiagnostics {
+    private func sample(lastErrorSummary: String? = nil, systemLogEntryCount: Int? = nil) -> SyncDiagnostics {
         SyncDiagnostics(
             accountStatus: "Available",
             containerIdentifier: SyncDiagnostics.containerIdentifier,
@@ -48,7 +48,8 @@ struct SyncDiagnosticsTests {
             storedImageCount: 97,
             lastImportSucceededAt: Date(timeIntervalSince1970: 1_000_000),
             lastExportSucceededAt: nil,
-            lastErrorSummary: lastErrorSummary
+            lastErrorSummary: lastErrorSummary,
+            systemLogEntryCount: systemLogEntryCount
         )
     }
 
@@ -63,10 +64,32 @@ struct SyncDiagnosticsTests {
         #expect(header.contains("App: 1.2.3 (45)"))
         #expect(header.contains("System: iOS 26.0 · iPhone"))
         #expect(header.contains("Library: 4 feeds · 3 tags · 210 articles · 97 images"))
+        #expect(header.contains("System Log: Unavailable"))
         // 1_000_000s after the epoch is 12 Jan 1970 in every plausible local time zone; matched
         // loosely so the assertion cannot flake on the runner's zone.
         #expect(header.contains("Last Import: 1970-01-1"))
         #expect(header.contains("Last Export: —"))
+    }
+
+    // MARK: - System log summary
+
+    /// The whole point of this line: "0 entries" (log opened, nothing persisted) must read
+    /// differently from "Unavailable" (log could not be read at all) — a reader must never confuse
+    /// the two.
+    @Test func systemLogSummaryDistinguishesUnavailableFromAnHonestZero() {
+        #expect(SyncDiagnostics.systemLogSummary(nil) == "Unavailable")
+        #expect(SyncDiagnostics.systemLogSummary(0) == "0 entries")
+        #expect(SyncDiagnostics.systemLogSummary(42) == "42 entries")
+    }
+
+    @Test func exportHeaderReportsTheSystemLogCountWhenAvailable() {
+        let header = sample(systemLogEntryCount: 7).exportHeader()
+        #expect(header.contains("System Log: 7 entries"))
+        #expect(header.contains("System Log: Unavailable") == false)
+    }
+
+    @Test func exportHeaderReportsUnavailableWhenTheSystemLogCountIsNil() {
+        #expect(sample(systemLogEntryCount: nil).exportHeader().contains("System Log: Unavailable"))
     }
 
     @Test func exportHeaderOmitsTheErrorLineWhenThereIsNoError() {

@@ -33,6 +33,10 @@ struct SyncLogView: View {
     /// also stabilises row identity: system `sequence` renumbers from 0 on every fetch, so re-fetching
     /// churned every system row's `id` and made `ForEach` rebuild it, losing text selection.
     @State private var systemEntries: [SyncLog.Entry] = []
+    /// Count of *real* system-log entries backing `systemEntries`, or `nil` if the read failed
+    /// outright — fed to `SyncDiagnostics` so the pinned header / exported log can say "unavailable"
+    /// rather than a misleading zero. Set alongside `systemEntries` by `refreshSystemEntries()`.
+    @State private var systemLogEntryCount: Int?
     @State private var entries: [SyncLog.Entry] = []
     @State private var filter = SyncLogFilter()
     /// The filtered entries actually shown/copied/shared. Held as state and recomputed only when the
@@ -242,12 +246,14 @@ struct SyncLogView: View {
     }
 
     private func refreshSystemEntries() async {
-        systemEntries = await SystemLogReader.fetch(since: SystemLogReader.logWindowStart)
+        let result = await SystemLogReader.fetch(since: SystemLogReader.logWindowStart)
+        systemEntries = result.entries
+        systemLogEntryCount = result.realEntryCount
         mergeEntries()
     }
 
     private func refreshDiagnostics() async {
-        diagnostics = await SyncDiagnostics.make(context: modelContext)
+        diagnostics = await SyncDiagnostics.make(context: modelContext, systemLogEntryCount: systemLogEntryCount)
     }
 
     /// Force everything, for the toolbar Refresh button: the buffer, the unified-log supplement, and

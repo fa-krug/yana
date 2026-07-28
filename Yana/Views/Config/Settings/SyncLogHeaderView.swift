@@ -16,6 +16,7 @@ struct SyncLogHeaderView: View {
             // Built as an interpolated `Text` rather than a plain Swift `String` so the four nouns
             // reach the string catalog like every other label on this screen.
             row("Library", Text("\(diagnostics.feedCount) feeds · \(diagnostics.tagCount) tags · \(diagnostics.articleCount) articles · \(diagnostics.storedImageCount) images"))
+            row("System Log", diagnostics.systemLogSummary)
             row("Last Import", stamp(diagnostics.lastImportSucceededAt))
             row("Last Export", stamp(diagnostics.lastExportSucceededAt))
             if let error = diagnostics.lastErrorSummary {

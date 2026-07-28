@@ -24,6 +24,9 @@ struct SyncDiagnostics: Sendable {
     var lastImportSucceededAt: Date?
     var lastExportSucceededAt: Date?
     var lastErrorSummary: String?
+    /// Real entries `SystemLogReader.fetch` read from the unified log — `nil` if that read failed
+    /// outright (log unavailable), distinct from a legitimate zero (log opened, nothing persisted).
+    var systemLogEntryCount: Int?
 
     /// The private-database container SwiftData mirrors into.
     static let containerIdentifier = "iCloud.de.fa-krug.Yana"
@@ -59,7 +62,8 @@ struct SyncDiagnostics: Sendable {
     @MainActor
     static func make(
         context: ModelContext,
-        monitor: CloudKitSyncMonitor = .shared
+        monitor: CloudKitSyncMonitor = .shared,
+        systemLogEntryCount: Int? = nil
     ) async -> SyncDiagnostics {
         SyncDiagnostics(
             accountStatus: await accountStatusDescription(),
@@ -74,7 +78,8 @@ struct SyncDiagnostics: Sendable {
             storedImageCount: count(FetchDescriptor<StoredImage>(), in: context),
             lastImportSucceededAt: monitor.lastImportSucceededAt(),
             lastExportSucceededAt: monitor.lastExportSucceededAt(),
-            lastErrorSummary: monitor.lastErrorSummary()
+            lastErrorSummary: monitor.lastErrorSummary(),
+            systemLogEntryCount: systemLogEntryCount
         )
     }
 
@@ -111,6 +116,20 @@ struct SyncDiagnostics: Sendable {
         arguments.contains { automationLaunchArguments.contains($0) }
     }
 
+    /// The system-log line's rendered value: a count when `SystemLogReader.fetch` succeeded (0 is a
+    /// legitimate, honest answer — "the log was open and had nothing persisted"), or "Unavailable"
+    /// when the read itself failed. Pure so the mapping is testable without a live `OSLogStore`
+    /// fetch. Deliberately **not** localized, matching every other dynamic value on this screen
+    /// (`accountStatus`, `environment`) — only the row *labels* go through the string catalog.
+    static func systemLogSummary(_ count: Int?) -> String {
+        guard let count else { return "Unavailable" }
+        return "\(count) entries"
+    }
+
+    /// Convenience over `systemLogEntryCount`, shared by both the pinned header view and
+    /// `exportHeader()` so the two stay in lockstep.
+    var systemLogSummary: String { Self.systemLogSummary(systemLogEntryCount) }
+
     static func accountStatusDescription() async -> String {
         guard !isAccountProbeSuppressed else { return accountStatusNotChecked }
         do {
@@ -136,6 +155,7 @@ struct SyncDiagnostics: Sendable {
             "App: \(appVersion)",
             "System: \(systemVersion) · \(idiom)",
             "Library: \(feedCount) feeds · \(tagCount) tags · \(articleCount) articles · \(storedImageCount) images",
+            "System Log: \(systemLogSummary)",
             "Last Import: \(Self.stamp(lastImportSucceededAt))",
             "Last Export: \(Self.stamp(lastExportSucceededAt))",
         ]
