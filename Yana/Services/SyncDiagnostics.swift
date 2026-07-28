@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 import SwiftData
+import SwiftUI
 import UIKit
 
 /// A point-in-time snapshot of everything worth knowing about this device's sync setup, shown pinned
@@ -116,19 +117,40 @@ struct SyncDiagnostics: Sendable {
         arguments.contains { automationLaunchArguments.contains($0) }
     }
 
-    /// The system-log line's rendered value: a count when `SystemLogReader.fetch` succeeded (0 is a
-    /// legitimate, honest answer — "the log was open and had nothing persisted"), or "Unavailable"
-    /// when the read itself failed. Pure so the mapping is testable without a live `OSLogStore`
-    /// fetch. Deliberately **not** localized, matching every other dynamic value on this screen
-    /// (`accountStatus`, `environment`) — only the row *labels* go through the string catalog.
+    /// The system-log line's rendered value for `exportHeader()`: a count when
+    /// `SystemLogReader.fetch` succeeded (0 is a legitimate, honest answer — "the log was open and
+    /// had nothing persisted"), or "Unavailable" when the read itself failed. Pure so the mapping is
+    /// testable without a live `OSLogStore` fetch.
+    ///
+    /// Deliberately **not** localized — `exportHeader()` as a whole is documented as developer-facing
+    /// dump text, matching every other dynamic value in it (`accountStatus`, `environment`, the
+    /// `Library` counts). But "not localized" does not mean "grammatically wrong": `count == 1` must
+    /// still read "1 entry", not "1 entries" — that bug is independent of localization, and English
+    /// is the one language this string is ever shown in.
     static func systemLogSummary(_ count: Int?) -> String {
         guard let count else { return "Unavailable" }
-        return "\(count) entries"
+        return count == 1 ? "1 entry" : "\(count) entries"
     }
 
-    /// Convenience over `systemLogEntryCount`, shared by both the pinned header view and
-    /// `exportHeader()` so the two stay in lockstep.
+    /// Convenience over `systemLogEntryCount`, shared by `exportHeader()`.
     var systemLogSummary: String { Self.systemLogSummary(systemLogEntryCount) }
+
+    /// SwiftUI-rendered form of the same value, for the pinned header row. Unlike
+    /// `systemLogSummary()` above, this **is** shown directly to the user, so the count-bearing noun
+    /// must route through the string catalog rather than being hand-built — the same treatment the
+    /// `Library` row already gets, and Global Constraint 5's exact subject. Reuses the existing
+    /// `"%lld entries"` catalog key (already carrying correct `en`/`de` `one`/`other` plural forms)
+    /// by building the identical `Text("\(count) entries")` shape `SyncLogView`'s own section header
+    /// uses, rather than adding a near-duplicate localized string. "Unavailable" is not a
+    /// count-bearing noun, so it stays verbatim — consistent with every other status word on this
+    /// screen (`accountStatus`'s "Unavailable: …", `describe(_:)`'s case strings).
+    static func systemLogText(_ count: Int?) -> Text {
+        guard let count else { return Text(verbatim: "Unavailable") }
+        return Text("\(count) entries")
+    }
+
+    /// Convenience over `systemLogEntryCount`, used by the pinned header view.
+    var systemLogText: Text { Self.systemLogText(systemLogEntryCount) }
 
     static func accountStatusDescription() async -> String {
         guard !isAccountProbeSuppressed else { return accountStatusNotChecked }

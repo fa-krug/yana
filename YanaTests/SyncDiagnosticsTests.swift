@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 import SwiftData
+import SwiftUI
 import Testing
 @testable import Yana
 
@@ -80,6 +81,22 @@ struct SyncDiagnosticsTests {
         #expect(SyncDiagnostics.systemLogSummary(nil) == "Unavailable")
         #expect(SyncDiagnostics.systemLogSummary(0) == "0 entries")
         #expect(SyncDiagnostics.systemLogSummary(42) == "42 entries")
+    }
+
+    /// The boundary the earlier version of this function got wrong: `count == 1` must read "1
+    /// entry", singular — not "1 entries". `exportHeader()` is developer-facing dump text and
+    /// deliberately unlocalized, but that is not license for broken English grammar.
+    @Test func systemLogSummarySingularizesACountOfOne() {
+        #expect(SyncDiagnostics.systemLogSummary(1) == "1 entry")
+    }
+
+    /// Only the nil→"Unavailable" branch is checked via direct `Text` equality here: it is a plain
+    /// `Text(verbatim:)` with no `LocalizedStringKey`/plural resolution involved, so structural
+    /// equality is dependable. The count-bearing branch is **not** asserted this way — see
+    /// `PluralAgreementTests.diagnosticsSystemLogRowCountAgrees()` for why and for the real coverage
+    /// of that shape.
+    @Test func systemLogTextIsVerbatimUnavailableWhenCountIsNil() {
+        #expect(SyncDiagnostics.systemLogText(nil) == Text(verbatim: "Unavailable"))
     }
 
     @Test func exportHeaderReportsTheSystemLogCountWhenAvailable() {
