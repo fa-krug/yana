@@ -16,8 +16,17 @@ enum ImagePrunePlan {
     /// How long a hash must sit unreferenced before it's actually deleted.
     static let quarantinePeriod: TimeInterval = 24 * 3600
 
+    /// Caps how many hashes a single pass deletes. CLAUDE.md notes a `CKError.partialFailure` over
+    /// a ~400-record CloudKit export batch is already enough to flood the diagnostics buffer;
+    /// capping here bounds both the SwiftData transaction size and the CloudKit delete burst per
+    /// pass. Hashes past the cap simply carry over as still-quarantined candidates — the
+    /// quarantine already means they're safe to delete whenever we get to them, so draining a large
+    /// backlog across several passes is harmless.
+    static let maxDeletionsPerPass = 500
+
     struct Result: Sendable, Equatable {
-        /// Hashes safe to delete now: still unreferenced, and quarantined long enough.
+        /// Hashes safe to delete now: still unreferenced, quarantined long enough, and within this
+        /// pass's cap.
         let toDelete: Set<String>
         /// The candidate map to persist for the next pass.
         let candidates: [String: Date]
@@ -25,8 +34,8 @@ enum ImagePrunePlan {
 
     /// - Parameters:
     ///   - referenced: every hash the library currently uses — feed logos plus every lead image
-    ///     and in-body image/embed poster across all articles. Reuses
-    ///     `AggregationWriter.referencedImageHashes()`; never re-derived here.
+    ///     and in-body image/embed poster across all articles. Comes from
+    ///     `AggregationWriter.referencedImageSnapshotForPruning()`; never re-derived here.
     ///   - stored: every hash under consideration for pruning — the union of `StoredImage` row
     ///     hashes and on-disk `ImageStore` hashes (the disk cache can hold blobs the row set never
     ///     covered, and vice versa).
@@ -36,27 +45,52 @@ enum ImagePrunePlan {
     ///     and would let an imported month-old blob clear the age check instantly.
     ///   - now: the clock, injectable for tests.
     ///   - quarantinePeriod: injectable for tests; production callers use the default.
+    ///   - maxDeletionsPerPass: injectable for tests; production callers use the default.
     ///   - hasArticles: whether the library has any `Article` row at all. An empty article table
-    ///     means the store looks incomplete (fresh install, mid-import) — a legitimate empty
-    ///     *referenced* set (articles with no images) is fine, but zero articles is not enough
-    ///     information to prune safely, so nothing is decided: no deletions, and the candidate map
-    ///     is returned unchanged so an incomplete run can't warp the quarantine clock either.
+    ///     means the store looks incomplete (fresh install, mid-import) — zero articles is not
+    ///     enough information to prune safely, so nothing is decided: no deletions, and the
+    ///     candidate map is returned unchanged so an incomplete run can't warp the quarantine clock
+    ///     either.
+    ///   - hasUnmigratedLegacyContent: whether any article still holds legacy pre-migration HTML
+    ///     (`Article.content`). Such an article's blocks are empty until `BlockMigrator` sweeps it,
+    ///     so its in-body images are invisible to `referenced` — pruning while this is true could
+    ///     delete images that *are* referenced, just not by anything this scan can see yet.
+    ///
+    /// **Safety bail-out.** `referenced` being empty while `hasArticles` is true, or
+    /// `hasUnmigratedLegacyContent` being true, means `referenced` cannot be trusted as "everything
+    /// actually in use" — in both cases this pass decides nothing at all (same as the `hasArticles`
+    /// guard: no deletions, candidate map passed through unchanged). This matters because
+    /// `referencedImageSnapshotForPruning()`'s only failure mode is returning `nil` for the whole
+    /// snapshot (callers skip this method entirely then) — but a library that genuinely has
+    /// articles and genuinely references nothing is not a realistic steady state (every feed has a
+    /// logo), so treating an empty `referenced` set as "trustworthy" would risk classifying an
+    /// upstream scan gap as "confirmed nothing is used" instead of "unknown, don't delete".
     static func decide(
         referenced: Set<String>,
         stored: Set<String>,
         candidates: [String: Date],
         now: Date,
         quarantinePeriod: TimeInterval = ImagePrunePlan.quarantinePeriod,
-        hasArticles: Bool
+        maxDeletionsPerPass: Int = ImagePrunePlan.maxDeletionsPerPass,
+        hasArticles: Bool,
+        hasUnmigratedLegacyContent: Bool
     ) -> Result {
-        guard hasArticles else { return Result(toDelete: [], candidates: candidates) }
+        guard hasArticles, !hasUnmigratedLegacyContent, !referenced.isEmpty else {
+            return Result(toDelete: [], candidates: candidates)
+        }
 
         var nextCandidates: [String: Date] = [:]
         var toDelete: Set<String> = []
-        for hash in stored {
+        // Sorted so the cap below is deterministic (and testable) rather than depending on Set's
+        // unspecified iteration order.
+        for hash in stored.sorted() {
             guard !referenced.contains(hash) else { continue }   // referenced -> never a candidate
             if let firstSeen = candidates[hash], now.timeIntervalSince(firstSeen) >= quarantinePeriod {
-                toDelete.insert(hash)
+                if toDelete.count < maxDeletionsPerPass {
+                    toDelete.insert(hash)
+                } else {
+                    nextCandidates[hash] = firstSeen   // still eligible; deferred to a later pass
+                }
             } else {
                 nextCandidates[hash] = candidates[hash] ?? now
             }
@@ -69,16 +103,21 @@ enum ImagePrunePlan {
 /// not `AppSettings.SyncedSettings` and not the SwiftData store — these are local first-seen
 /// timestamps that must never sync (a candidate timestamp from another device would defeat the
 /// whole quarantine guard, same reasoning as the `StoredImage.createdAt` note above).
+///
+/// Binary property-list encoded rather than JSON: a library the size the prune pass exists for
+/// (thousands of unreferenced hashes) turns a JSON `[String: Date]` — 64-char hex keys plus JSON
+/// punctuation — into a ~1 MB text blob decoded/encoded on every pass; a binary plist stores the
+/// same dictionary far more compactly and natively (no string round-trip for the dates).
 enum ImagePruneCandidateStore {
     static let defaultsKey = "yana.imagePruneCandidates"
 
     static func load(defaults: UserDefaults = .standard) -> [String: Date] {
         guard let data = defaults.data(forKey: defaultsKey) else { return [:] }
-        return (try? JSONDecoder().decode([String: Date].self, from: data)) ?? [:]
+        return (try? PropertyListDecoder().decode([String: Date].self, from: data)) ?? [:]
     }
 
     static func save(_ candidates: [String: Date], defaults: UserDefaults = .standard) {
-        guard let data = try? JSONEncoder().encode(candidates) else { return }
+        guard let data = try? PropertyListEncoder().encode(candidates) else { return }
         defaults.set(data, forKey: defaultsKey)
     }
 }
@@ -88,25 +127,32 @@ enum ImagePruneCandidateStore {
 /// caller's-thread rule (see `OffMainActor`).
 @ModelActor
 actor ImagePruneRunner {
-    /// Whether the library has any `Article` row, and every hash with a `StoredImage` row.
-    func snapshot() -> (hasArticles: Bool, storedHashes: Set<String>) {
-        let hasArticles = ((try? modelContext.fetchCount(FetchDescriptor<Article>())) ?? 0) > 0
+    /// Every hash with a `StoredImage` row. (`hasArticles`, previously also returned here, now
+    /// comes from `AggregationWriter.referencedImageSnapshotForPruning()` instead, so it's derived
+    /// from the same transaction as `referenced` — see that method's doc comment for why the two
+    /// facts must not come from independent fetches.)
+    func storedHashes() -> Set<String> {
         let rows = (try? modelContext.fetch(FetchDescriptor<StoredImage>())) ?? []
-        return (hasArticles, Set(rows.map(\.contentHash)))
+        return Set(rows.map(\.contentHash))
     }
 
-    /// Deletes every `StoredImage` row whose `contentHash` is in `hashes`. Returns the count
-    /// actually deleted, for logging.
+    /// Deletes every `StoredImage` row whose `contentHash` is in `hashes`, saving every `batchSize`
+    /// deletions rather than once at the end — so a large pass never holds the context (or hands
+    /// CloudKit) one giant transaction, mirroring `BlockMigrator.migrate(batchSize:)`. `hashes` is
+    /// expected to already be capped by `ImagePrunePlan.maxDeletionsPerPass`; batching here is a
+    /// second, independent line of defense for whatever is passed in. Returns the count actually
+    /// deleted, for logging.
     @discardableResult
-    func deleteRows(hashes: Set<String>) -> Int {
+    func deleteRows(hashes: Set<String>, batchSize: Int = 200) -> Int {
         guard !hashes.isEmpty else { return 0 }
         let rows = (try? modelContext.fetch(FetchDescriptor<StoredImage>())) ?? []
         var deleted = 0
         for row in rows where hashes.contains(row.contentHash) {
             modelContext.delete(row)
             deleted += 1
+            if deleted % batchSize == 0 { try? modelContext.save() }
         }
-        if deleted > 0 { try? modelContext.save() }
+        if deleted % batchSize != 0 { try? modelContext.save() }
         return deleted
     }
 }

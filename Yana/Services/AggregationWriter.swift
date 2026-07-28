@@ -24,6 +24,19 @@ struct AggregationRunResult: Sendable {
     var deletedUIDs: [String] = []
 }
 
+/// Everything the image-prune safety check needs, derived from a single `Article`/`Feed` fetch —
+/// see `AggregationWriter.referencedImageSnapshotForPruning()`.
+struct ReferencedImageSnapshot: Sendable {
+    /// Feed logos plus every lead image and in-body image/embed poster across all articles.
+    let hashes: Set<String>
+    /// Whether the library has any `Article` row at all.
+    let hasArticles: Bool
+    /// Whether any article still holds un-migrated legacy HTML (`Article.content`). Such an
+    /// article's `blocks` are empty until `BlockMigrator` sweeps it, so its in-body images are
+    /// invisible to `hashes` — enrolling them as "unreferenced" would be wrong.
+    let hasUnmigratedLegacyContent: Bool
+}
+
 /// Runs the aggregation write path off the main actor in its own `ModelContext`. Everything the
 /// old `AggregationService.aggregate(feed:)` did on the main context happens here instead; only
 /// `Sendable` values cross the boundary (see `AggregationRunInputs`/`AggregationRunResult`).
@@ -40,16 +53,46 @@ actor AggregationWriter {
     /// Lives here, on the writer's background context, because the scan fetches all articles and
     /// JSON-decodes each body; on the main context it stalled the UI for hundreds of milliseconds
     /// after every update.
+    ///
+    /// A fetch failure here is swallowed to an empty set — harmless for this method's one caller
+    /// (`ImageSync`'s registration pass: a miss just delays a sync-upload, self-correcting next
+    /// run). **Do not reuse this for anything where a miss must not look like "confirmed empty"**
+    /// — see `referencedImageSnapshotForPruning()`.
     func referencedImageHashes() -> Set<String> {
+        (try? computeReferencedImageSnapshot())?.hashes ?? []
+    }
+
+    /// Same scan as `referencedImageHashes()`, but surfaces a fetch failure as `nil` instead of
+    /// swallowing it to empty, and derives `hasArticles`/`hasUnmigratedLegacyContent` from the
+    /// *same* transaction as the hash scan.
+    ///
+    /// This exists because the image-prune decision (`ImagePrunePlan.decide`) cannot tolerate
+    /// `referencedImageHashes()`'s "miss reads as empty" contract: for prune, an empty referenced
+    /// set is read as "nothing is referenced, everything stored is a delete candidate" — the same
+    /// miss that's harmless for a sync-registration pass would be account-wide destructive here
+    /// (a `StoredImage` delete propagates via CloudKit to every device). Callers must treat `nil`
+    /// as "unknown this pass" and skip pruning entirely, not fall back to an empty set.
+    func referencedImageSnapshotForPruning() -> ReferencedImageSnapshot? {
+        try? computeReferencedImageSnapshot()
+    }
+
+    private func computeReferencedImageSnapshot() throws -> ReferencedImageSnapshot {
         var hashes = Set<String>()
-        for feed in (try? modelContext.fetch(FetchDescriptor<Feed>())) ?? [] {
+        for feed in try modelContext.fetch(FetchDescriptor<Feed>()) {
             if let logo = feed.logoHash, !logo.isEmpty { hashes.insert(logo) }
         }
-        for article in (try? modelContext.fetch(FetchDescriptor<Article>())) ?? [] {
+        let articles = try modelContext.fetch(FetchDescriptor<Article>())
+        var hasUnmigratedLegacyContent = false
+        for article in articles {
             if let lead = ArticleImageRefs.hash(from: article.leadImageRef) { hashes.insert(lead) }
             hashes.formUnion(ArticleImageRefs.hashes(in: article.blocks))
+            if !article.content.isEmpty { hasUnmigratedLegacyContent = true }
         }
-        return hashes
+        return ReferencedImageSnapshot(
+            hashes: hashes,
+            hasArticles: !articles.isEmpty,
+            hasUnmigratedLegacyContent: hasUnmigratedLegacyContent
+        )
     }
 
     func runUpdateAll(_ inputs: AggregationRunInputs) async -> AggregationRunResult {

@@ -12,12 +12,13 @@ struct ImagePrunePlanTests {
 
     @Test func unreferencedHashNotDeletedOnFirstSight() {
         let result = ImagePrunePlan.decide(
-            referenced: [],
+            referenced: ["logo"],
             stored: ["h1"],
             candidates: [:],
             now: now,
             quarantinePeriod: quarantine,
-            hasArticles: true
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates == ["h1": now])
@@ -26,12 +27,13 @@ struct ImagePrunePlanTests {
     @Test func unreferencedHashOlderThanQuarantineIsDeleted() {
         let firstSeen = now.addingTimeInterval(-quarantine - 1)
         let result = ImagePrunePlan.decide(
-            referenced: [],
+            referenced: ["logo"],
             stored: ["h1"],
             candidates: ["h1": firstSeen],
             now: now,
             quarantinePeriod: quarantine,
-            hasArticles: true
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false
         )
         #expect(result.toDelete == ["h1"])
         #expect(result.candidates.isEmpty)
@@ -40,12 +42,13 @@ struct ImagePrunePlanTests {
     @Test func unreferencedHashYoungerThanQuarantineIsNotDeleted() {
         let firstSeen = now.addingTimeInterval(-3600)   // 1 hour ago, well under 24h
         let result = ImagePrunePlan.decide(
-            referenced: [],
+            referenced: ["logo"],
             stored: ["h1"],
             candidates: ["h1": firstSeen],
             now: now,
             quarantinePeriod: quarantine,
-            hasArticles: true
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false
         )
         #expect(result.toDelete.isEmpty)
         // The original first-seen timestamp is preserved, not reset to `now`.
@@ -60,7 +63,8 @@ struct ImagePrunePlanTests {
             candidates: ["h1": firstSeen],
             now: now,
             quarantinePeriod: quarantine,
-            hasArticles: true
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates.isEmpty)
@@ -74,7 +78,8 @@ struct ImagePrunePlanTests {
             candidates: [:],
             now: now,
             quarantinePeriod: quarantine,
-            hasArticles: true
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false
         )
         #expect(result.toDelete.isEmpty)
         #expect(result.candidates.isEmpty)
@@ -92,15 +97,78 @@ struct ImagePrunePlanTests {
             candidates: existingCandidates,
             now: now,
             quarantinePeriod: quarantine,
-            hasArticles: false
+            hasArticles: false,
+            hasUnmigratedLegacyContent: false
         )
         #expect(result.toDelete.isEmpty)
         // Candidate map passes through untouched — an incomplete run doesn't perturb it either.
         #expect(result.candidates == existingCandidates)
     }
+
+    /// Safety bail-out (review finding 4): a fetch failure upstream of `decide` can surface as an
+    /// empty `referenced` set even though the library genuinely has articles — indistinguishable,
+    /// from inside this function, from "confirmed nothing is used". Since every feed normally has
+    /// a logo, `hasArticles == true && referenced.isEmpty` is treated as untrustworthy input, not
+    /// as ground truth, and nothing is decided at all.
+    @Test func emptyReferencedSetWithArticlesPresentBailsWithNoDeletions() {
+        let firstSeen = now.addingTimeInterval(-quarantine - 1)
+        let existingCandidates: [String: Date] = ["h1": firstSeen]
+        let result = ImagePrunePlan.decide(
+            referenced: [],
+            stored: ["h1", "h2"],
+            candidates: existingCandidates,
+            now: now,
+            quarantinePeriod: quarantine,
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false
+        )
+        #expect(result.toDelete.isEmpty)
+        #expect(result.candidates == existingCandidates)
+    }
+
+    /// Safety bail-out (review finding 4): an article still holding legacy pre-migration HTML has
+    /// empty `blocks` until `BlockMigrator` sweeps it, so its in-body images are invisible to
+    /// `referenced` — pruning while this is true risks deleting images that are actually in use.
+    @Test func unmigratedLegacyContentBailsWithNoDeletions() {
+        let firstSeen = now.addingTimeInterval(-quarantine - 1)
+        let existingCandidates: [String: Date] = ["h1": firstSeen]
+        let result = ImagePrunePlan.decide(
+            referenced: ["logo"],
+            stored: ["h1"],
+            candidates: existingCandidates,
+            now: now,
+            quarantinePeriod: quarantine,
+            hasArticles: true,
+            hasUnmigratedLegacyContent: true
+        )
+        #expect(result.toDelete.isEmpty)
+        #expect(result.candidates == existingCandidates)
+    }
+
+    /// Review finding 3: an unbounded pass could delete (and hand CloudKit) tens of thousands of
+    /// records in one go on a large backlog. `maxDeletionsPerPass` caps a single pass; anything
+    /// past the cap stays a quarantined candidate for the next pass instead of being dropped.
+    @Test func maxDeletionsPerPassCapsAndDefersRemainder() {
+        let firstSeen = now.addingTimeInterval(-quarantine - 1)
+        let candidates: [String: Date] = ["a": firstSeen, "b": firstSeen, "c": firstSeen]
+        let result = ImagePrunePlan.decide(
+            referenced: ["logo"],
+            stored: ["a", "b", "c"],
+            candidates: candidates,
+            now: now,
+            quarantinePeriod: quarantine,
+            maxDeletionsPerPass: 2,
+            hasArticles: true,
+            hasUnmigratedLegacyContent: false
+        )
+        #expect(result.toDelete == ["a", "b"])
+        // "c" is still eligible (past quarantine) but deferred — its original timestamp is kept,
+        // not reset, so it's picked up (and capped again if needed) on the next pass.
+        #expect(result.candidates == ["c": firstSeen])
+    }
 }
 
-/// The SwiftData half: `ImagePruneRunner`'s `snapshot`/`deleteRows` on its own `@ModelActor`
+/// The SwiftData half: `ImagePruneRunner`'s `storedHashes`/`deleteRows` on its own `@ModelActor`
 /// context.
 @MainActor
 @Suite("ImagePruneRunner")
@@ -113,23 +181,20 @@ struct ImagePruneRunnerTests {
         )
     }
 
-    @Test func snapshotReportsNoArticlesOnEmptyLibrary() async throws {
+    @Test func storedHashesEmptyOnEmptyLibrary() async throws {
         let container = try container()
-        let (hasArticles, storedHashes) = await ImagePruneRunner(modelContainer: container).snapshot()
-        #expect(hasArticles == false)
+        let storedHashes = await ImagePruneRunner(modelContainer: container).storedHashes()
         #expect(storedHashes.isEmpty)
     }
 
-    @Test func snapshotReportsArticlesAndStoredHashes() async throws {
+    @Test func storedHashesReportsEveryStoredImageRow() async throws {
         let container = try container()
         let ctx = ModelContext(container)
-        ctx.insert(Article(title: "a", identifier: "a1", url: "u", author: "", iconURL: nil))
         ctx.insert(StoredImage(contentHash: "h1", data: Data([1]), ext: "png"))
         ctx.insert(StoredImage(contentHash: "h2", data: Data([2]), ext: "jpg"))
         try ctx.save()
 
-        let (hasArticles, storedHashes) = await ImagePruneRunner(modelContainer: container).snapshot()
-        #expect(hasArticles == true)
+        let storedHashes = await ImagePruneRunner(modelContainer: container).storedHashes()
         #expect(storedHashes == ["h1", "h2"])
     }
 
@@ -157,6 +222,25 @@ struct ImagePruneRunnerTests {
         #expect(deleted == 0)
         #expect(try ctx.fetch(FetchDescriptor<StoredImage>()).count == 1)
     }
+
+    /// Review finding 3: deletes must be batched (saved every `batchSize`, not once at the end).
+    /// A small `batchSize` here forces multiple save boundaries; correctness across those
+    /// boundaries — nothing lost, nothing double-handled — is what would break if the batching
+    /// were off by one.
+    @Test func deleteRowsBatchesAcrossMultipleSaves() async throws {
+        let container = try container()
+        let ctx = ModelContext(container)
+        let hashes = (1...5).map { "h\($0)" }
+        for hash in hashes {
+            ctx.insert(StoredImage(contentHash: hash, data: Data([1]), ext: "png"))
+        }
+        try ctx.save()
+
+        let deleted = await ImagePruneRunner(modelContainer: container)
+            .deleteRows(hashes: Set(hashes), batchSize: 2)
+        #expect(deleted == 5)
+        #expect(try ctx.fetch(FetchDescriptor<StoredImage>()).isEmpty)
+    }
 }
 
 /// `ImagePruneCandidateStore`'s `UserDefaults` round-trip. Uses a private suite so it never
@@ -181,5 +265,61 @@ struct ImagePruneCandidateStoreTests {
         ImagePruneCandidateStore.save(candidates, defaults: defaults)
         let loaded = ImagePruneCandidateStore.load(defaults: defaults)
         #expect(loaded == candidates)
+    }
+}
+
+/// `AggregationWriter.referencedImageSnapshotForPruning()` — the atomic, failure-surfacing
+/// counterpart to `referencedImageHashes()` that `ImagePrunePlan`'s safety guards depend on
+/// (review finding 4).
+@MainActor
+@Suite("ReferencedImageSnapshotForPruning")
+struct ReferencedImageSnapshotForPruningTests {
+    private func container() throws -> ModelContainer {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        return try ModelContainer(
+            for: Feed.self, Yana.Tag.self, Article.self, StoredImage.self,
+            configurations: config
+        )
+    }
+
+    @Test func reportsNoArticlesOnEmptyLibrary() async throws {
+        let container = try container()
+        let snapshot = await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
+        let unwrapped = try #require(snapshot)
+        #expect(unwrapped.hasArticles == false)
+        #expect(unwrapped.hashes.isEmpty)
+        #expect(unwrapped.hasUnmigratedLegacyContent == false)
+    }
+
+    @Test func flagsUnmigratedLegacyContent() async throws {
+        let container = try container()
+        let ctx = ModelContext(container)
+        let article = Article(title: "a", identifier: "a1", url: "u", author: "", iconURL: nil)
+        article.content = "<p>legacy html, not yet swept to blocks</p>"
+        ctx.insert(article)
+        try ctx.save()
+
+        let snapshot = await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
+        let unwrapped = try #require(snapshot)
+        #expect(unwrapped.hasArticles == true)
+        #expect(unwrapped.hasUnmigratedLegacyContent == true)
+    }
+
+    @Test func hasArticlesAndReferencedComeFromTheSameScan() async throws {
+        let container = try container()
+        let ctx = ModelContext(container)
+        let feed = Feed(name: "F", aggregatorType: .feedContent, identifier: "f1")
+        feed.logoHash = "logohash"
+        ctx.insert(feed)
+        let article = Article(title: "a", identifier: "a1", url: "u", author: "", iconURL: nil)
+        article.feed = feed
+        ctx.insert(article)
+        try ctx.save()
+
+        let snapshot = await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
+        let unwrapped = try #require(snapshot)
+        #expect(unwrapped.hasArticles == true)
+        #expect(unwrapped.hashes.contains("logohash"))
+        #expect(unwrapped.hasUnmigratedLegacyContent == false)
     }
 }

@@ -215,8 +215,8 @@ final class AggregationService {
             "updateAll inserted \(result.inserted) article(s); \(result.failures.count) feed failure(s)",
             category: "Aggregation"
         )
-        await syncReferencedImages()
-        await pruneOrphanedImages()
+        let snapshot = await syncReferencedImages()
+        await pruneOrphanedImages(snapshot: snapshot)
         return result.inserted
     }
 
@@ -236,8 +236,8 @@ final class AggregationService {
             "update(\(feed.name)) inserted \(result.inserted) article(s); \(result.failures.count) failure(s)",
             category: "Aggregation"
         )
-        await syncReferencedImages()
-        await pruneOrphanedImages()
+        let snapshot = await syncReferencedImages()
+        await pruneOrphanedImages(snapshot: snapshot)
         return result.inserted
     }
 
@@ -255,7 +255,7 @@ final class AggregationService {
         let result = await runOffMain { await $0.runForceReloadFeed(feedID: feedID, $1) }
         refreshFromStore()
         lastRunFailures = result.failures
-        await syncReferencedImages()
+        await syncReferencedImages()   // registration only — forceReload skips retention, so it skips prune too
         return result.inserted
     }
 
@@ -280,7 +280,7 @@ final class AggregationService {
         let articleID = article.persistentModelID
         let result = await runOffMain { await $0.runForceReloadArticle(articleID: articleID, $1) }
         reconcileArticle(articleID)
-        await syncReferencedImages()
+        await syncReferencedImages()   // registration only — forceReload skips retention, so it skips prune too
         return result.inserted
     }
 
@@ -301,46 +301,67 @@ final class AggregationService {
     // MARK: - Helpers
 
     /// Register `StoredImage` rows for every image the current library references, so CloudKit
-    /// mirrors the blobs. `ensureStored` skips hashes that already have a row.
+    /// mirrors the blobs. `ensureStored` skips hashes that already have a row. Returns the
+    /// snapshot it computed (`nil` if the underlying fetch failed) so `pruneOrphanedImages(snapshot:)`
+    /// can reuse the *same* scan instead of re-fetching every `Feed`/`Article` a second time —
+    /// the two used to each run their own full pass, doubling this method's own documented cost.
     ///
     /// **Both halves run off the main actor, and must keep doing so.** The scan fetches every
     /// article and JSON-decodes every body to walk its blocks; done on the main context that was a
     /// 222 ms freeze on a 4 000-article library, after *every* update — including the reader's
     /// pull-to-refresh and every scheduled background refresh with the app on screen.
-    private func syncReferencedImages() async {
+    @discardableResult
+    private func syncReferencedImages() async -> ReferencedImageSnapshot? {
         let container = context.container
-        let hashes = await OffMainActor.run {
-            await AggregationWriter(modelContainer: container).referencedImageHashes()
+        guard let snapshot = await OffMainActor.run({
+            await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
+        }) else {
+            SyncLog.shared.error(
+                "Image sync skipped this pass: could not read the referenced-image snapshot",
+                category: "ImageSync"
+            )
+            return nil
         }
-        await ImageSync.ensureStored(hashes: hashes, container: container, imageStore: .shared)
+        await ImageSync.ensureStored(hashes: snapshot.hashes, container: container, imageStore: .shared)
+        return snapshot
     }
 
     /// Prune `StoredImage` rows (and matching `ImageStore` disk blobs) that nothing references any
     /// more. Runs right after retention on the same two entry points that run retention
     /// (`updateAll`/`update(feed:)`) — not on `forceReload`, which also skips retention — and is
     /// gated on the same `UpdateInterval == .off` condition retention already uses, so it never
-    /// runs when the device is a pure-mirror. See `ImagePrunePlan` for the two-phase quarantine
-    /// that makes this safe against an incomplete local article set.
-    private func pruneOrphanedImages() async {
+    /// runs when the device is a pure-mirror. See `ImagePrunePlan` for the two-phase quarantine and
+    /// the safety bail-outs that make this safe against an incomplete local article set.
+    ///
+    /// `snapshot` is the one `syncReferencedImages()` already computed this run (`nil` when that
+    /// scan failed) — reused, not re-fetched, and a `nil` snapshot means "skip pruning too": a
+    /// failed fetch must never be read as "confirmed nothing is referenced".
+    private func pruneOrphanedImages(snapshot: ReferencedImageSnapshot?) async {
         guard settings.updateInterval != .off else { return }
+        guard let snapshot else { return }   // syncReferencedImages() already logged the failure
         let container = context.container
+        let currentTime = now()
 
-        let referenced = await OffMainActor.run {
-            await AggregationWriter(modelContainer: container).referencedImageHashes()
-        }
-        let (hasArticles, storedRowHashes) = await OffMainActor.run {
-            await ImagePruneRunner(modelContainer: container).snapshot()
+        let storedRowHashes = await OffMainActor.run {
+            await ImagePruneRunner(modelContainer: container).storedHashes()
         }
         let diskHashes = await ImageStore.shared.allHashes()
 
-        let plan = ImagePrunePlan.decide(
-            referenced: referenced,
-            stored: storedRowHashes.union(diskHashes),
-            candidates: ImagePruneCandidateStore.load(),
-            now: now(),
-            hasArticles: hasArticles
-        )
-        ImagePruneCandidateStore.save(plan.candidates)
+        // decide()/load()/save() off the main actor too: on the reporting library (15k+ images)
+        // the candidate map is tens of thousands of entries, and both the decision loop and the
+        // UserDefaults encode/decode are O(that), not the cheap O(1) they look like at a glance.
+        let plan = await OffMainActor.run {
+            let decided = ImagePrunePlan.decide(
+                referenced: snapshot.hashes,
+                stored: storedRowHashes.union(diskHashes),
+                candidates: ImagePruneCandidateStore.load(),
+                now: currentTime,
+                hasArticles: snapshot.hasArticles,
+                hasUnmigratedLegacyContent: snapshot.hasUnmigratedLegacyContent
+            )
+            ImagePruneCandidateStore.save(decided.candidates)
+            return decided
+        }
         guard !plan.toDelete.isEmpty else { return }
 
         let rowsDeleted = await OffMainActor.run {
