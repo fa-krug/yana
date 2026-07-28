@@ -222,7 +222,26 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   Images sync via `StoredImage` (mirrored as a CKAsset via `@Attribute(.externalStorage)`).
   `ImageStore` is a disk cache in front of it; `ImageSync` (`Yana/Services/ImageSync.swift`)
   bridges the two — registers `StoredImage` rows after aggregation and materialises blobs on cache
-  miss in the reader/logo views.
+  miss in the reader/logo views. **`ImagePrune`** (`Yana/Services/ImagePrune.swift`) removes
+  `StoredImage` rows (and their `ImageStore` disk blobs) nothing references any more, run by
+  `AggregationService.pruneOrphanedImages(snapshot:)` right after retention on the same two entry
+  points as retention (`updateAll`/`update(feed:)`; skipped on `forceReload`, like retention, and
+  gated off when `UpdateInterval == .off`). Because a `StoredImage` delete propagates via CloudKit
+  to every device, it never deletes on the first sighting of an unreferenced hash: the pure
+  `ImagePrunePlan.decide` (SwiftData-free, directly unit-tested in `ImagePruneTests`) records a
+  hash as a *candidate* keyed to a **locally recorded** first-seen timestamp
+  (`ImagePruneCandidateStore`, binary-plist `UserDefaults` — deliberately never
+  `StoredImage.createdAt`, which mirrors from the originating device and would let an imported
+  month-old blob clear the age check instantly) and only deletes it once a later pass finds it
+  still unreferenced 24h later. It also bails entirely — no deletions, candidate map untouched — on
+  any sign the referenced set can't be trusted: zero articles, an empty referenced set while
+  articles exist, any article with un-migrated legacy `content`, any article with undecodable
+  `blockData` (see `ReferencedImageSnapshot`, computed once by
+  `AggregationWriter.referencedImageSnapshotForPruning()` and reused rather than re-fetched for both
+  the registration and the prune decision), or a failed snapshot fetch. Deletions are capped at 500
+  per pass (`ImagePrunePlan.maxDeletionsPerPass`) and saved in batches of 200
+  (`ImagePruneRunner.deleteRows(hashes:batchSize:)`); anything past the cap just carries over as a
+  still-quarantined candidate for the next pass.
   Settings sync via `NSUbiquitousKeyValueStore` (`SettingsCloudSync`,
   `Yana/Services/SettingsCloudSync.swift`) for the allow-listed non-secret prefs, including the
   synced reading position: `AppSettings.SyncedSettings.timelineAnchorUID`, applied by
@@ -278,7 +297,14 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   subview that owns its `@Query` — not the whole screen — so the reset never discards state above
   it (search text, an open sheet, a pending delete confirmation): `TagsView`/`FeedsView` split off a
   `…ListContent` subview and keep every state-owning `@State` plus every presenting
-  `.sheet`/`.alert`/`.fileImporter`/`.toast` on the stable parent; `FeedEditorView` splits off
+  `.sheet`/`.alert`/`.fileImporter`/`.toast` **and `.searchable()`** on the stable parent — `.id()`
+  forces full identity teardown of everything inside it, and `.searchable()`'s backing search
+  controller is no exception: the search *text* survives (it's a `@Binding` into the stable
+  parent's `@State`), but first-responder status/cursor/keyboard do not, silently dropping focus
+  out of the field mid-typing. This is why `ManagedList` (`Yana/Views/Config/ManagedList.swift`,
+  shared by Feeds/Tags/Articles) no longer applies `.searchable()` itself — every caller now
+  attaches it outside, on the `.id()`-stable parent, per the placement in the free
+  `ManagedListSearch` enum; `FeedEditorView` splits off
   `FeedTagsPicker`, bound to `model.selectedTagNames` so an in-progress selection survives the
   reset; `MacFilterBar` (`Yana/Reader/Mac/MacRootView.swift`) has no local state to lose and is
   `.id()`-wrapped directly. A full re-fetch on every bump is cheap for these small lists, so unlike
@@ -326,15 +352,25 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   device's boot instant, derived from `ProcessInfo.systemUptime` (time since boot, not time since
   this process launched) rather than a true process-start timestamp — which only widens the fetch
   window and stays safe because `OSLogStore(scope: .currentProcessIdentifier)` already restricts
-  results to this process regardless of how far back the query reaches. `SyncDiagnostics`
-  (`Yana/Services/SyncDiagnostics.swift`) builds the pinned status header shown above the log —
-  iCloud account status, the `iCloud.de.fa-krug.Yana` container, the CloudKit environment derived
-  from the build configuration (Debug → Development, release → Production — the two mismatches that
-  explain most "sync doesn't work" reports), library row counts, and last import/export/error, the
-  last three read from `CloudKitSyncMonitor` (which deliberately never clears the last error on a
-  later success, since "sync failed at some point this launch" stays worth knowing even after a
-  subsequent export succeeds). `SyncDiagnostics.exportHeader()` renders that same header as the text
-  block prepended to a copied/shared log, so a log pasted into an issue is self-describing.
+  results to this process regardless of how far back the query reaches. `fetch(since:)` returns a
+  `FetchResult` (`entries`, plus `realEntryCount: Int?`) rather than just the merged entries: `nil`
+  means the read itself failed (log unavailable), `0` means it succeeded and genuinely found
+  nothing persisted — a distinction the pinned header needs but the entries array alone can't carry,
+  since both cases substitute a single synthetic explanatory entry (`wrapped(_:)`/`emptyLogEntry()`)
+  into the merged log so an empty viewer never leaves you guessing which case you're in.
+  `SyncDiagnostics` (`Yana/Services/SyncDiagnostics.swift`) builds the pinned status header shown
+  above the log — iCloud account status, the `iCloud.de.fa-krug.Yana` container, the CloudKit
+  environment derived from the build configuration (Debug → Development, release → Production — the
+  two mismatches that explain most "sync doesn't work" reports), library row counts, a `System Log:`
+  line built from that same `realEntryCount` (a count, or "Unavailable" for `nil`; rendered as
+  localized `Text` on screen via `systemLogText`/`systemLogText(_:)`, and as unlocalized dump text in
+  `exportHeader()` via `systemLogSummary`/`systemLogSummary(_:)` — deliberately not localized like
+  every other dynamic value in that export block, but still grammatically correct singular/plural),
+  and last import/export/error, the last three read from `CloudKitSyncMonitor` (which deliberately
+  never clears the last error on a later success, since "sync failed at some point this launch"
+  stays worth knowing even after a subsequent export succeeds). `SyncDiagnostics.exportHeader()`
+  renders that same header as the text block prepended to a copied/shared log, so a log pasted into
+  an issue is self-describing.
   **`CKContainer(identifier:)` traps in an unsigned Mac Catalyst build** (EXC_BREAKPOINT, exit 133)
   and the trap comes from the *initializer*, so no `catch` can contain it — the account probe is
   therefore skipped entirely for automation runs (`SyncDiagnostics.isAccountProbeSuppressed`, keyed on
@@ -388,7 +424,21 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   the sidebar into the reader, Esc returns it to the sidebar; the same article actions (Open in Browser,
   Copy Link, Reload) are also surfaced in the Article menu for discoverability. The sidebar width is
   remembered across launches via `AppSettings.macSidebarWidth` (device-local, never synced), with
-  bounds/clamping handled by `SidebarWidth` (`Yana/Reader/Mac/SidebarWidth.swift`).
+  bounds/clamping handled by `SidebarWidth` (`Yana/Reader/Mac/SidebarWidth.swift`). The sidebar also
+  scrolls to follow a **programmatic** selection change: `TimelineModel` bumps a `scrollTarget`
+  (`SidebarScrollRequest { id, token }`) from `moveSelection`, the launch anchor restore, a remote
+  anchor landing via `jumpToSyncedTimelinePosition`, and the `reanchorToCurrentArticle` self-heal —
+  never from the `selection` setter the `List` itself drives on a user click, which would fight the
+  user's own scrolling. `MacSidebarView` consumes it via `.scrollPosition(id:anchor:)` applied
+  directly to the `List` (not a wrapping `ScrollViewReader`, which previously suppressed the
+  source-list chrome — translucent material, inset rounded selection, no separators — and was
+  removed for exactly that reason); `token` always increments even when `id` repeats, so a second
+  request for the same article isn't silently deduped by SwiftUI's value-equality change detection.
+  `displayed` (the rows actually shown — `model.filteredArticles`, or live search results re-run
+  through the tag/feed filter) is cached in `@State` rather than computed, because
+  `.scrollPosition(id:)` is a two-way binding that SwiftUI writes back on every row-crossing-centre
+  event while the user scrolls, and a computed `displayed` re-ran both filter passes on every one of
+  those scroll-driven `body` re-evaluations.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
@@ -452,7 +502,9 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   `@ModelActor` call must go through `OffMainActor.run`
   (`Yana/Utilities/OffMainActor.swift`): `ArticleStore.fullLoad`/`publishFastDataset`,
   `AggregationService.runOffMain` (all five `AggregationWriter` entry points, plus
-  `referencedImageHashes`), `LibraryDedup.runAndWait`, `ImageSync.ensureStored`. `OffMainActorTests`
+  `AggregationWriter.referencedImageSnapshotForPruning()`, reached from
+  `AggregationService.syncReferencedImages()`), `LibraryDedup.runAndWait`, `ImageSync.ensureStored`.
+  `OffMainActorTests`
   pins the executor behaviour (including the "created off-main is not enough" case) so a future
   SwiftData change is caught, and `SyncReactionMainThreadTests` measures main-actor responsiveness
   across the whole sync-reaction chain — a regression there shows up as a stall, not a wrong value.
@@ -471,6 +523,16 @@ before use, with Apple Intelligence checked for on-device availability instead.
 - `YanaTests/` — unit tests using Swift Testing framework (`import Testing`)
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/CloudKitSchemaCompatibilityTests.swift` — DEBUG smoke test: builds an on-disk `.automatic` SwiftData container and asserts it initialises, guarding the CloudKit model invariants (all attributes optional/defaulted, relationships optional with inverses, no `#Unique`)
+- `YanaTests/ImagePruneTests.swift` — pins `ImagePrunePlan.decide`'s safety bail-outs directly (no
+  `Article`s, empty referenced set, unmigrated legacy content, undecodable `blockData`, each with no
+  deletions and an untouched candidate map), the quarantine timing, the per-pass deletion cap, and
+  (via `AggregationWriter`) that the decode feeding `hasUndecodableBlocks` never mistakes a
+  legitimately-empty `[Block]` body for a decode failure — deliberately over-tested given a
+  `StoredImage` delete is irreversible and propagates to every device via CloudKit.
+- `YanaTests/ReaderAnchorControllerTests.swift`/`TimelineModelTests.swift`/
+  `TimelineAnchorWriterTests.swift` — assert the timeline-anchor no-ping-pong guarantee (a remote
+  anchor apply never calls back into `TimelineAnchorWriter.record`, via a spy on `pushAnchor`) on
+  both platforms, not just as a structural claim.
 - `YanaUITests/YanaUITests.swift` — UI tests using XCTest
 - Run tests: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
 - All tests use `@MainActor` for safe concurrency
@@ -531,7 +593,7 @@ before use, with Apple Intelligence checked for on-device availability instead.
 - **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background refresh
 - **Credential validation** ✅ — per-section **Test** buttons in Settings that verify Reddit, YouTube, and AI-provider keys (and Apple Intelligence availability) via a minimal auth probe, classifying failures as invalid credentials / network / unexpected response
 - **Read-aloud** ✅ — `ReaderSpeechController` reads articles aloud with a voice matching the article's language, continues from the lock screen / Control Center, and exposes a voice picker in the Reader settings section
-- **iCloud sync** ✅ — always-on native SwiftData+CloudKit mirroring of `Feed`, `Tag`, `Article`, and `StoredImage` into the user's private CloudKit database (`iCloud.de.fa-krug.Yana` container, `ModelConfiguration(cloudKitDatabase: .automatic)`). No opt-in toggle: the app runs local-only when the user is not signed into iCloud. Settings (non-secret prefs) sync via `NSUbiquitousKeyValueStore` (`SettingsCloudSync`); API keys sync via iCloud Keychain (always synchronisable). Per-device background-refresh cadence is controlled by `UpdateInterval` (`off / 30min / 1h / 2h / 4h / 8h / 24h`); `.off` acts as a pure-mirror mode (no aggregation, no retention). `LibraryDedup` collapses merge duplicates on scene-foreground. One-time `NativeCloudKitMigration` upgrades existing installs; `LegacyCloudKitCleanup` removes the old hand-built CloudKit zones and records. The CloudKit schema is auto-derived from the SwiftData models — **it must be deployed to Production in the CloudKit Dashboard before release**. A DEBUG smoke test `YanaTests/CloudKitSchemaCompatibilityTests` guards the required model invariants (all attributes optional/defaulted, all relationships optional with inverses, no `#Unique`).
+- **iCloud sync** ✅ — always-on native SwiftData+CloudKit mirroring of `Feed`, `Tag`, `Article`, and `StoredImage` into the user's private CloudKit database (`iCloud.de.fa-krug.Yana` container, `ModelConfiguration(cloudKitDatabase: .automatic)`). No opt-in toggle: the app runs local-only when the user is not signed into iCloud. Settings (non-secret prefs) sync via `NSUbiquitousKeyValueStore` (`SettingsCloudSync`); API keys sync via iCloud Keychain (always synchronisable). Per-device background-refresh cadence is controlled by `UpdateInterval` (`off / 30min / 1h / 2h / 4h / 8h / 24h`); `.off` acts as a pure-mirror mode (no aggregation, no retention). `LibraryDedup` collapses merge duplicates on scene-foreground; `LibraryRevision` re-triggers the smaller `@Query`-backed lists (Tags/Feeds/filter bars) on a remote merge, which `@Query` otherwise misses entirely. `ImagePrune` deletes orphaned `StoredImage` rows (and their disk blobs) after a 24h locally-quarantined grace period, right after retention. One-time `NativeCloudKitMigration` upgrades existing installs; `LegacyCloudKitCleanup` removes the old hand-built CloudKit zones and records. The CloudKit schema is auto-derived from the SwiftData models — **it must be deployed to Production in the CloudKit Dashboard before release**. A DEBUG smoke test `YanaTests/CloudKitSchemaCompatibilityTests` guards the required model invariants (all attributes optional/defaulted, all relationships optional with inverses, no `#Unique`).
 - **Open source** ✅ — MIT-licensed (`LICENSE`); Settings › About links the source repo and issue board, and credits NetNewsWire for the reader view; App Store copy lives under `docs/app-store/`
 - **Biometric auth** — Face ID / Touch ID protection (same pattern as MySquad)
 - **Multiple libraries** — support multiple independent local feed libraries/profiles
