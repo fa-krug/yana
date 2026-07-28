@@ -5,7 +5,6 @@ import SwiftUI
 struct FeedEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Tag.sortOrder) private var allTags: [Tag]
 
     /// nil = create a new feed.
     let feed: Feed?
@@ -73,26 +72,13 @@ struct FeedEditorView: View {
             }
 
             Section("Tags") {
-                if allTags.isEmpty {
-                    Text("No tags yet. Create tags in the Tags screen.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(allTags) { tag in
-                        Button {
-                            toggleTag(tag.name)
-                        } label: {
-                            HStack {
-                                TagColorDot(colorHex: tag.colorHex)
-                                Text(tag.name)
-                                Spacer()
-                                if model.selectedTagNames.contains(tag.name) {
-                                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
-                                }
-                            }
-                        }
-                        .tint(.primary)
-                    }
-                }
+                // Its own `@Query`, re-identified by `.id()` on a CloudKit remote-change bump (see
+                // `LibraryRevision`) so a tag added on another device shows up in this picker
+                // without a relaunch — `@Query` never sees `.NSPersistentStoreRemoteChange` on its
+                // own. `model.selectedTagNames` lives on this view's own `@State`, untouched by the
+                // subview's identity reset.
+                FeedTagsPicker(selectedTagNames: $model.selectedTagNames)
+                    .id(LibraryRevision.shared.token)
             }
 
             AggregatorOptionsForm(options: $model.options, identifier: model.identifier)
@@ -190,14 +176,6 @@ struct FeedEditorView: View {
         }
     }
 
-    private func toggleTag(_ name: String) {
-        if model.selectedTagNames.contains(name) {
-            model.selectedTagNames.remove(name)
-        } else {
-            model.selectedTagNames.insert(name)
-        }
-    }
-
     /// Auto-save on exit. Invalid entries are discarded: a new feed is never inserted,
     /// and an existing feed keeps its last valid state.
     private func save() {
@@ -207,7 +185,11 @@ struct FeedEditorView: View {
         // whose identifier changed. `apply` has already filled in a missing scheme synchronously.
         let shouldResolve = model.type.resolvesFeedURL && (isNew || model.identifierChanged)
         let target = feed ?? Feed(name: "", aggregatorType: .fullWebsite, identifier: "")
-        model.apply(to: target, availableTags: allTags)
+        // Fetched directly rather than through a `@Query` (which this view no longer keeps, and
+        // which could otherwise be stale on a `.automatic` store — see `LibraryRevision`): this
+        // runs once, at save time, so a plain fetch is both simpler and always current.
+        let currentTags = (try? modelContext.fetch(FetchDescriptor<Tag>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
+        model.apply(to: target, availableTags: currentTags)
         if isNew { modelContext.insert(target) }
         try? modelContext.save()
 
@@ -228,6 +210,46 @@ struct FeedEditorView: View {
                 try? context.save()
             }
             if isNew { onCreate?(target) }
+        }
+    }
+}
+
+/// The tag-picker's `@Query`-owning half; see `FeedEditorView`'s Tags section for why it's split
+/// out. `selectedTagNames` is a `Binding` into `FeedEditorModel`, which lives on the parent's own
+/// `@State`, so recreating this subview on a remote-change bump never discards an in-progress
+/// selection.
+private struct FeedTagsPicker: View {
+    @Query(sort: \Tag.sortOrder) private var allTags: [Tag]
+    @Binding var selectedTagNames: Set<String>
+
+    var body: some View {
+        if allTags.isEmpty {
+            Text("No tags yet. Create tags in the Tags screen.")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(allTags) { tag in
+                Button {
+                    toggleTag(tag.name)
+                } label: {
+                    HStack {
+                        TagColorDot(colorHex: tag.colorHex)
+                        Text(tag.name)
+                        Spacer()
+                        if selectedTagNames.contains(tag.name) {
+                            Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+                .tint(.primary)
+            }
+        }
+    }
+
+    private func toggleTag(_ name: String) {
+        if selectedTagNames.contains(name) {
+            selectedTagNames.remove(name)
+        } else {
+            selectedTagNames.insert(name)
         }
     }
 }

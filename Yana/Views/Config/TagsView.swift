@@ -6,10 +6,69 @@ import SwiftUI
 /// suppressed while a search is active. Deletes go through a confirmation dialog.
 struct TagsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Tag.sortOrder) private var tags: [Tag]
     @State private var tagsToDelete: [Tag]?
     @State private var searchText = ""
     @State private var showingCreateTag = false
+
+    var body: some View {
+        // The `@Query` lives on `TagsListContent`, re-identified by `.id()` on a CloudKit
+        // remote-change bump (see `LibraryRevision`) so it re-fetches — `@Query` never sees
+        // `.NSPersistentStoreRemoteChange` on its own. `searchText`/`tagsToDelete`/
+        // `showingCreateTag` stay on this parent so recreating the child loses none of them.
+        TagsListContent(searchText: $searchText, tagsToDelete: $tagsToDelete)
+            .id(LibraryRevision.shared.token)
+            .navigationTitle("Tags")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingCreateTag = true } label: { Image(systemName: "plus") }
+                }
+                #if !targetEnvironment(macCatalyst)
+                // The Mac has no edit mode: rows reorder by dragging and delete by swiping, so the
+                // localized "Edit" button (which the compact Mac nav bar truncates to "B…") is dropped.
+                ToolbarItem(placement: .topBarLeading) { EditButton() }
+                #endif
+            }
+            .sheet(isPresented: $showingCreateTag) {
+                NavigationStack { TagEditorView(tag: nil) }
+            }
+            .alert(
+                (tagsToDelete?.count ?? 0) == 1
+                    ? String(localized: "Delete Tag?")
+                    : String(localized: "Delete Tags?"),
+                isPresented: Binding(get: { tagsToDelete != nil }, set: { if !$0 { tagsToDelete = nil } })
+            ) {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    if let resolved = tagsToDelete {
+                        delete(resolved)
+                        Haptics.notify(.success)
+                    }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {}
+            } message: {
+                if let resolved = tagsToDelete {
+                    let names = resolved.map(\.name).joined(separator: ", ")
+                    Text(String(localized: "Delete \(names)? This cannot be undone."))
+                }
+            }
+    }
+
+    private func delete(_ resolved: [Tag]) {
+        for tag in resolved {
+            guard !tag.isBuiltIn else { continue } // Starred is locked
+            modelContext.delete(tag)
+        }
+        try? modelContext.save()
+    }
+}
+
+/// The `@Query`-owning half of `TagsView`, split out so a CloudKit remote-change `.id()` reset
+/// only recreates the list (and its `@Query`), not the parent's search text, create-sheet flag,
+/// or delete-confirmation state.
+private struct TagsListContent: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \Tag.sortOrder) private var tags: [Tag]
+    @Binding var searchText: String
+    @Binding var tagsToDelete: [Tag]?
 
     private var filteredTags: [Tag] {
         NameSearch.filter(tags, query: searchText, name: \.name)
@@ -48,47 +107,6 @@ struct TagsView: View {
             }
             .tint(.primary)
         }
-        .navigationTitle("Tags")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showingCreateTag = true } label: { Image(systemName: "plus") }
-            }
-            #if !targetEnvironment(macCatalyst)
-            // The Mac has no edit mode: rows reorder by dragging and delete by swiping, so the
-            // localized "Edit" button (which the compact Mac nav bar truncates to "B…") is dropped.
-            ToolbarItem(placement: .topBarLeading) { EditButton() }
-            #endif
-        }
-        .sheet(isPresented: $showingCreateTag) {
-            NavigationStack { TagEditorView(tag: nil) }
-        }
-        .alert(
-            (tagsToDelete?.count ?? 0) == 1
-                ? String(localized: "Delete Tag?")
-                : String(localized: "Delete Tags?"),
-            isPresented: Binding(get: { tagsToDelete != nil }, set: { if !$0 { tagsToDelete = nil } })
-        ) {
-            Button(String(localized: "Delete"), role: .destructive) {
-                if let resolved = tagsToDelete {
-                    delete(resolved)
-                    Haptics.notify(.success)
-                }
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        } message: {
-            if let resolved = tagsToDelete {
-                let names = resolved.map(\.name).joined(separator: ", ")
-                Text(String(localized: "Delete \(names)? This cannot be undone."))
-            }
-        }
-    }
-
-    private func delete(_ resolved: [Tag]) {
-        for tag in resolved {
-            guard !tag.isBuiltIn else { continue } // Starred is locked
-            modelContext.delete(tag)
-        }
-        try? modelContext.save()
     }
 
     private func move(_ source: IndexSet, _ destination: Int) {

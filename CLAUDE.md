@@ -236,7 +236,27 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   **`LibraryDedup`** (`Yana/Services/LibraryDedup.swift`, `@ModelActor`, run on scene-foreground)
   collapses duplicate `Feed`/`Tag`/`Article` rows (which CloudKit can create since it forbids unique
   constraints) by natural key, keeping the earliest `createdAt` (first-writer-wins) and OR-ing
-  starred. **`NativeCloudKitMigration`** (`Yana/Services/NativeCloudKitMigration.swift`, one-time)
+  starred. **`LibraryRevision`** (`Yana/Services/LibraryRevision.swift`, `@MainActor @Observable`,
+  `.shared`) is the fix for the smaller `@Query`-backed lists that have the same blind spot as
+  `ArticleStore` had: a CloudKit merge posts `.NSPersistentStoreRemoteChange`, not
+  `ModelContext.didSave`, so `@Query` is never re-evaluated and Tags/Feeds/the Mac filter bar/the
+  feed editor's tag picker keep showing a stale fetch until some local write happens to save or the
+  app relaunches (visibly, "add a tag on macOS, it never appears on iOS"). It observes that
+  notification with the same `TrailingCoalescer` debounce `LibraryDedup` uses and bumps a
+  `token` int; each affected view applies `.id(LibraryRevision.shared.token)` to the **narrowest**
+  subview that owns its `@Query` — not the whole screen — so the reset never discards state above
+  it (search text, an open sheet, a pending delete confirmation): `TagsView`/`FeedsView` split off a
+  `…ListContent` subview and keep every state-owning `@State` plus every presenting
+  `.sheet`/`.alert`/`.fileImporter`/`.toast` on the stable parent; `FeedEditorView` splits off
+  `FeedTagsPicker`, bound to `model.selectedTagNames` so an in-progress selection survives the
+  reset; `MacFilterBar` (`Yana/Reader/Mac/MacRootView.swift`) has no local state to lose and is
+  `.id()`-wrapped directly. A full re-fetch on every bump is cheap for these small lists, so unlike
+  `ArticleStore` there is no splicing — the observer fires several times per **local** save too (a
+  `.automatic` store's own behavior, per `ArticleStoreIncrementalTests`), and a redundant re-fetch
+  there is harmless. `ReaderHostView`/`ArticleListView`'s `builtInTags` query and `WelcomeView`'s
+  onboarding-only `feeds` query are deliberately left unwired — they only ever reflect
+  this-device-local bootstrap/onboarding state, not something another device can add remotely.
+  **`NativeCloudKitMigration`** (`Yana/Services/NativeCloudKitMigration.swift`, one-time)
   seeds `StoredImage` from the disk cache, forces keys synchronisable, maps old
   `backgroundInterval`/passive → `UpdateInterval`, and pushes prefs to KVS.
   **`LegacyCloudKitCleanup`** (`Yana/Services/LegacyCloudKitCleanup.swift`) performs a best-effort,

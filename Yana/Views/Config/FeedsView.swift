@@ -4,11 +4,18 @@ import UniformTypeIdentifiers
 
 /// Searchable flat list of feeds with tag chips, last-fetched time, error badge, enable state,
 /// per-feed update, and article count. Add / delete (with confirmation); "Update all".
+///
+/// Owns the state a user can be mid-interaction with — search text, the create/export sheets, the
+/// delete confirmation, an in-flight OPML import, the toast — plus every modifier that
+/// *presents* something (`.sheet`, `.fileImporter`, `.alert`, `.toast`). `FeedsListContent` owns
+/// the `@Query` and everything that only needs to *display* feed data; it's re-identified by
+/// `.id()` on a CloudKit remote-change bump (see `LibraryRevision`), since `@Query` never sees
+/// `.NSPersistentStoreRemoteChange` on its own. Keeping the presentation modifiers on this stable
+/// outer view means a merge landing while, say, the create-feed sheet is open never dismisses it —
+/// only a view's presentation host, not the thing it presents, would be affected by the child's
+/// identity reset.
 struct FeedsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openWindow) private var openWindow
-    @Query(sort: \Feed.name) private var feeds: [Feed]
     @State private var isImporting = false
     @State private var isImportingOPML = false
     @State private var exportURL: URL?
@@ -16,8 +23,115 @@ struct FeedsView: View {
     @State private var toast: ToastMessage?
     @State private var feedToDelete: Feed?
     @State private var searchText = ""
-    @State private var settings = AppSettings()
     @State private var showingCreateFeed = false
+
+    var body: some View {
+        FeedsListContent(
+            searchText: $searchText,
+            feedToDelete: $feedToDelete,
+            showingCreateFeed: $showingCreateFeed,
+            isImporting: $isImporting,
+            isImportingOPML: $isImportingOPML,
+            toast: $toast,
+            onExportOPML: exportOPML
+        )
+        .id(LibraryRevision.shared.token)
+        .navigationTitle("Feeds")
+        #if !targetEnvironment(macCatalyst)
+        .sheet(isPresented: $showingCreateFeed) {
+            NavigationStack {
+                FeedEditorView(feed: nil) { newFeed in
+                    // Fetch the just-added feed right away, unless it was created disabled.
+                    guard newFeed.enabled else { return }
+                    UpdateActivity.shared.restart {
+                        let count = await AggregationService(context: modelContext).update(feed: newFeed)
+                        guard !Task.isCancelled else { return }
+                        toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: newFeed.name))
+                    }
+                }
+            }
+        }
+        #endif
+        .fileImporter(
+            isPresented: $isImporting,
+            allowedContentTypes: [UTType(filenameExtension: "opml") ?? .xml, .xml],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImport(result)
+        }
+        .sheet(isPresented: $isExporting) {
+            if let url = exportURL { ShareSheet(activityItems: [url]) }
+        }
+        .toast($toast)
+        .alert(
+            String(localized: "Delete Feed?"),
+            isPresented: Binding(get: { feedToDelete != nil }, set: { if !$0 { feedToDelete = nil } })
+        ) {
+            if let feed = feedToDelete {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    modelContext.delete(feed)
+                    try? modelContext.save()
+                    Haptics.notify(.success)
+                }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            if let feed = feedToDelete {
+                Text(
+                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \((feed.articles ?? []).count) articles will be permanently deleted.")
+                )
+            }
+        }
+    }
+
+    private func exportOPML() {
+        let xml = FeedPortability.exportOPML(context: modelContext)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Yana-Feeds.opml")
+        do {
+            try xml.data(using: .utf8)?.write(to: url)
+            exportURL = url
+            isExporting = true
+        } catch {
+            toast = ToastMessage(text: String(localized: "Export failed."), style: .error)
+        }
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>) {
+        guard case let .success(urls) = result, let url = urls.first else { return }
+        isImportingOPML = true
+        // Let SwiftUI paint the overlay before the synchronous parse blocks the main actor.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            defer { isImportingOPML = false }
+            let needsStop = url.startAccessingSecurityScopedResource()
+            defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
+            guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
+                toast = ToastMessage(text: String(localized: "Could not read the file."), style: .error)
+                return
+            }
+            let r = FeedPortability.importOPML(xml, context: modelContext)
+            toast = ToastMessage(text: String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped)."))
+        }
+    }
+}
+
+/// The `@Query`-owning half of `FeedsView`; see that type's doc comment for why it's split out.
+/// Everything here only *displays* feed data or fires a background update/reload — nothing here
+/// presents a sheet/alert/fileImporter, so a `.id()` reset (recreating this whole subview) never
+/// dismisses anything the user has open.
+private struct FeedsListContent: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
+    @Query(sort: \Feed.name) private var feeds: [Feed]
+    @Binding var searchText: String
+    @Binding var feedToDelete: Feed?
+    @Binding var showingCreateFeed: Bool
+    @Binding var isImporting: Bool
+    @Binding var isImportingOPML: Bool
+    @Binding var toast: ToastMessage?
+    let onExportOPML: () -> Void
+    @State private var settings = AppSettings()
     @State private var articleCounts: [PersistentIdentifier: Int] = [:]
 
     private func refreshArticleCounts() {
@@ -97,51 +211,9 @@ struct FeedsView: View {
             }
         }
         .animation(Motion.resolve(CrossFade.animation, reduceMotion: reduceMotion), value: isImportingOPML)
-        .navigationTitle("Feeds")
         .onAppear { refreshArticleCounts() }
         .onChange(of: feeds) { _, _ in refreshArticleCounts() }
         .toolbar { feedsToolbar }
-        #if !targetEnvironment(macCatalyst)
-        .sheet(isPresented: $showingCreateFeed) {
-            NavigationStack {
-                FeedEditorView(feed: nil) { newFeed in
-                    // Fetch the just-added feed right away, unless it was created disabled.
-                    guard newFeed.enabled else { return }
-                    updateOne(newFeed)
-                }
-            }
-        }
-        #endif
-        .fileImporter(
-            isPresented: $isImporting,
-            allowedContentTypes: [UTType(filenameExtension: "opml") ?? .xml, .xml],
-            allowsMultipleSelection: false
-        ) { result in
-            handleImport(result)
-        }
-        .sheet(isPresented: $isExporting) {
-            if let url = exportURL { ShareSheet(activityItems: [url]) }
-        }
-        .toast($toast)
-        .alert(
-            String(localized: "Delete Feed?"),
-            isPresented: Binding(get: { feedToDelete != nil }, set: { if !$0 { feedToDelete = nil } })
-        ) {
-            if let feed = feedToDelete {
-                Button(String(localized: "Delete"), role: .destructive) {
-                    modelContext.delete(feed)
-                    try? modelContext.save()
-                    Haptics.notify(.success)
-                }
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {}
-        } message: {
-            if let feed = feedToDelete {
-                Text(
-                    String(localized: "Delete \u{201C}\(feed.name)\u{201D}? Its \((feed.articles ?? []).count) articles will be permanently deleted.")
-                )
-            }
-        }
     }
 
     @ToolbarContentBuilder private var feedsToolbar: some ToolbarContent {
@@ -172,7 +244,7 @@ struct FeedsView: View {
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
-                Button { exportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
+                Button { onExportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
                 Button { isImporting = true } label: { Label("Import OPML", systemImage: "square.and.arrow.down") }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -195,7 +267,7 @@ struct FeedsView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                Button { exportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
+                Button { onExportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
                 Button { isImporting = true } label: { Label("Import OPML", systemImage: "square.and.arrow.down") }
             } label: {
                 Image(systemName: "ellipsis.circle")
@@ -280,36 +352,6 @@ struct FeedsView: View {
             let count = await AggregationService(context: modelContext).forceReload(feed: feed)
             guard !Task.isCancelled else { return }
             toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
-        }
-    }
-
-    private func exportOPML() {
-        let xml = FeedPortability.exportOPML(context: modelContext)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Yana-Feeds.opml")
-        do {
-            try xml.data(using: .utf8)?.write(to: url)
-            exportURL = url
-            isExporting = true
-        } catch {
-            toast = ToastMessage(text: String(localized: "Export failed."), style: .error)
-        }
-    }
-
-    private func handleImport(_ result: Result<[URL], Error>) {
-        guard case let .success(urls) = result, let url = urls.first else { return }
-        isImportingOPML = true
-        // Let SwiftUI paint the overlay before the synchronous parse blocks the main actor.
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(50))
-            defer { isImportingOPML = false }
-            let needsStop = url.startAccessingSecurityScopedResource()
-            defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
-            guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
-                toast = ToastMessage(text: String(localized: "Could not read the file."), style: .error)
-                return
-            }
-            let r = FeedPortability.importOPML(xml, context: modelContext)
-            toast = ToastMessage(text: String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped)."))
         }
     }
 }

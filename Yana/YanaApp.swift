@@ -170,6 +170,10 @@ struct YanaApp: App {
                     await NativeCloudKitMigration.runIfNeeded(container: AppContainer.shared)
                     // Register the remote-change observer so dedup fires on every CloudKit merge.
                     LibraryDedup.startObserving(container: AppContainer.shared)
+                    // Register the remote-change observer so @Query-backed lists (Tags, Feeds, the
+                    // Mac filter bar, the feed editor's tag picker) refresh on a CloudKit merge —
+                    // @Query itself never sees `.NSPersistentStoreRemoteChange`.
+                    LibraryRevision.shared.startObserving()
                     Task(priority: .utility) { await LegacyCloudKitCleanup.runIfNeeded() }
                     SettingsCloudSync.start(appSettings)
                     // Convert any pre-migration articles still holding legacy HTML into native
