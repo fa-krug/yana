@@ -86,12 +86,14 @@ actor AggregationWriter {
         var hasUndecodableBlocks = false
         for article in articles {
             if let lead = ArticleImageRefs.hash(from: article.leadImageRef) { hashes.insert(lead) }
-            hashes.formUnion(ArticleImageRefs.hashes(in: article.blocks))
             if !article.content.isEmpty { hasUnmigratedLegacyContent = true }
-            // Explicit decode, not `article.blocks.isEmpty` — a legitimately empty body also
-            // decodes to `[]`, and keying off that would disable the prune permanently.
-            if !article.blockData.isEmpty,
-               (try? JSONDecoder().decode([Block].self, from: article.blockData)) == nil {
+            // Single explicit decode (not `article.blocks`, which would decode the same bytes a
+            // second time) feeds both the hash scan and the undecodable check. Not
+            // `article.blocks.isEmpty` — a legitimately empty body also decodes to `[]`, and keying
+            // off that would disable the prune permanently.
+            if let decoded = try? JSONDecoder().decode([Block].self, from: article.blockData) {
+                hashes.formUnion(ArticleImageRefs.hashes(in: decoded))
+            } else if !article.blockData.isEmpty {
                 hasUndecodableBlocks = true
             }
         }
