@@ -109,23 +109,7 @@ final class ReaderImageViewerViewController: UIViewController {
     // MARK: - Chrome & dismiss
 
     private func addCloseButton() {
-        var config = UIButton.Configuration.filled()
-        config.image = UIImage(systemName: "xmark")
-        config.baseBackgroundColor = .black.withAlphaComponent(0.55)
-        config.baseForegroundColor = .white
-        config.cornerStyle = .capsule
-        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10)
-
-        let button = UIButton(configuration: config)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.accessibilityLabel = String(localized: "Close")
-        button.addTarget(self, action: #selector(close), for: .touchUpInside)
-        view.addSubview(button)
-        NSLayoutConstraint.activate([
-            button.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            button.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
-        ])
-        closeButton = button
+        closeButton = ReaderCloseButton.add(to: view, target: self, action: #selector(close))
     }
 
     /// Lets the user swipe the image down to dismiss when it isn't zoomed in (the scroll view owns

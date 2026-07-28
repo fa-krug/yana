@@ -51,7 +51,10 @@ struct TagsView: View {
         .navigationTitle("Tags")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showingCreateTag = true } label: { Image(systemName: "plus") }
+                Button { showingCreateTag = true } label: {
+                    Image(systemName: "plus").macToolbarIcon()
+                }
+                .help(Text("Add Tag"))
             }
             #if !targetEnvironment(macCatalyst)
             // The Mac has no edit mode: rows reorder by dragging and delete by swiping, so the

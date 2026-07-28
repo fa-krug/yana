@@ -53,8 +53,10 @@ struct ExtractionPreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button { reload() } label: { Image(systemName: "arrow.clockwise") }
-                    .disabled(isLoading)
+                Button { reload() } label: {
+                    Image(systemName: "arrow.clockwise").macToolbarIcon()
+                }
+                .disabled(isLoading)
             }
         }
         .task { if case .loading = state { await load() } }

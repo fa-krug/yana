@@ -1,19 +1,12 @@
-import SwiftData
 import SwiftUI
 
 /// Stable identifiers for the Mac (Mac Catalyst) auxiliary windows opened via `openWindow`.
+///
+/// The feed editor is deliberately NOT here: editing pushes inside the Settings window (like the
+/// Tags pane) and creating presents a sheet (like Add Tag), so it needs no window of its own.
 enum WindowID {
     static let settings = "settings"
     static let welcome = "welcome"
-    static let feedEditor = "feed-editor"
-}
-
-/// Which feed the feed-editor window edits. `.create` = a brand-new feed.
-/// `PersistentIdentifier` is `Codable` + `Hashable`, so this is a valid `WindowGroup(for:)` value:
-/// each distinct feed gets its own editor window, and every `.create` shares one.
-enum FeedEditorTarget: Codable, Hashable {
-    case create
-    case edit(PersistentIdentifier)
 }
 
 /// The panes of the Mac two-pane Settings window sidebar, in display order.

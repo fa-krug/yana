@@ -17,13 +17,17 @@ struct EditorSaveBehavior: ViewModifier {
         if isCreating {
             content.toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onCancel) { Image(systemName: "xmark") }
-                        .accessibilityLabel(Text("Cancel"))
+                    Button(action: onCancel) {
+                        Image(systemName: "xmark").macToolbarIcon()
+                    }
+                    .accessibilityLabel(Text("Cancel"))
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: onSave) { Image(systemName: "checkmark") }
-                        .accessibilityLabel(Text("Save"))
-                        .disabled(!canSave)
+                    Button(action: onSave) {
+                        Image(systemName: "checkmark").macToolbarIcon()
+                    }
+                    .accessibilityLabel(Text("Save"))
+                    .disabled(!canSave)
                 }
             }
         } else {

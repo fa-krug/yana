@@ -316,17 +316,21 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - **Mac Catalyst windowing** (`Yana/Reader/Mac/`): on the Mac idiom, `ContentView` swaps the
   iPhone/iPad full-screen swipe reader for `MacRootView` — a permanent two-column
   `NavigationSplitView` (article-list sidebar + reader detail) — and presents the Welcome
-  (onboarding), feed editor, and Settings screens as **separate windows** instead of the
+  (onboarding) and Settings screens as **separate windows** instead of the
   `.fullScreenCover`/sheets iOS uses. Both the macOS-only `Settings` scene and the singleton
   `Window(id:)` scene are unavailable under Mac Catalyst (it compiles against the iOS SDK), so
-  `YanaApp` declares three extra value-based `WindowGroup`s keyed by the stable identifiers in
+  `YanaApp` declares two extra value-based `WindowGroup`s keyed by the stable identifiers in
   `WindowID`, each opened via `openWindow(id:value:)`: `WindowID.settings` and `WindowID.welcome`
   bind `for: Bool.self` and always pass the constant `true` so SwiftUI dedupes to one window
-  instead of opening a new one per call; `WindowID.feedEditor` binds `for: FeedEditorTarget.self`
-  so every `.create` shares one window and each `.edit(id)` gets its own. `MacSettingsWindow` is a
+  instead of opening a new one per call. The **feed editor is deliberately not a window**: editing a
+  feed pushes in place inside the Settings window's `NavigationStack` (like the Tags pane) and
+  creating one presents a sheet (like Add Tag), so `FeedsView` now takes the same path on both
+  platforms and `WindowID.feedEditor`/`FeedEditorTarget`/`FeedEditorWindowRoot` are gone.
+  `MacSettingsWindow` is a
   two-pane sidebar over `SettingsPane` (General/Reader/Feeds/Tags/Integrations/AI/About — General
-  folds in Notifications/Library, which now includes the per-device `UpdateInterval` picker); `WelcomeWindowRoot`/`FeedEditorWindowRoot` host the same
-  `WelcomeView`/`FeedEditorView` iOS uses. Each window is its own SwiftUI hierarchy, so they
+  folds in Notifications/Library, which now includes the per-device `UpdateInterval` picker);
+  `WelcomeWindowRoot` hosts the same
+  `WelcomeView` iOS uses. Each window is its own SwiftUI hierarchy, so they
   coordinate through shared observable state (`AppState`, `ArticleStore`, `AppSettings`) passed in
   at scene creation rather than closures back to a presenting view. `MacCommands.swift` adds the
   Mac menu-bar commands (article navigation, star, read-aloud, update-all), reading the frontmost
@@ -338,6 +342,17 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   Copy Link, Reload) are also surfaced in the Article menu for discoverability. The sidebar width is
   remembered across launches via `AppSettings.macSidebarWidth` (device-local, never synced), with
   bounds/clamping handled by `SidebarWidth` (`Yana/Reader/Mac/SidebarWidth.swift`).
+  **Mac chrome conventions** live in two no-op-off-Catalyst helpers so every "this only looks wrong
+  on the Mac" tweak has one home: `MacToolbarStyle.swift` (`macToolbarIcon()` — horizontal label
+  padding, without which a lone toolbar button's background is an upright oval reading as a "0"; peer
+  actions go in **one `ControlGroup` hosted directly by a `ToolbarItem`**, which is the only
+  construction Catalyst actually joins — a `ToolbarItemGroup` renders separate round buttons and a
+  `ControlGroup` *nested* in one renders blank — and a pull-down `Menu` stays its own item with
+  `.menuIndicator(.hidden)`) and `MacFormStyle.swift` (`macDisclosureLabel()` — the Mac idiom draws a
+  `DisclosureGroup`'s chevron on the leading edge with no gap). `.toggleStyle(.switch)` must be set
+  per window, since each is its own SwiftUI hierarchy. The sidebar's selection fill is the accent
+  damped toward black (`MacSidebarView.selectionTint`), and `MacArticleRow` inverts its
+  accent-tinted feed name to white on the selected row so it does not vanish into that fill.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure

@@ -56,7 +56,7 @@ struct SelectorListView: View {
                     Button {
                         showConfirm = true
                     } label: {
-                        Label("Auto-generate with AI", systemImage: "sparkles")
+                        Label("Auto-generate with AI", systemImage: "sparkles").macToolbarIcon()
                     }
                     .disabled(isGenerating || identifier.trimmingCharacters(in: .whitespaces).isEmpty)
                 }

@@ -69,42 +69,7 @@ struct SyncLogView: View {
     private func content(proxy: ScrollViewProxy) -> some View {
         titled(logList)
         .toast($toast)
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    Task { await refreshEverything() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .accessibilityLabel(Text("Refresh"))
-                .accessibilityIdentifier("settings.diagnostics.refresh")
-            }
-            ToolbarItem {
-                Button {
-                    UIPasteboard.general.string = exportPayload()
-                    toast = ToastMessage(text: String(localized: "Log copied"))
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .accessibilityLabel(Text("Copy Log"))
-                .accessibilityIdentifier("settings.diagnostics.copy")
-                .disabled(visibleEntries.isEmpty)
-            }
-            ToolbarItem {
-                // `SyncLogDocument` holds a *closure*, not the rendered string: `ShareLink`'s item is
-                // rebuilt on every render pass, and rendering the export eagerly meant one
-                // ISO-8601 format call per entry (up to 2000) per render, for a string nobody had
-                // asked for. The closure runs only when the user actually shares.
-                ShareLink(
-                    item: SyncLogDocument(makeText: exportPayloadProvider()),
-                    preview: SharePreview("Yana Sync Log")
-                ) {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .accessibilityIdentifier("settings.diagnostics.share")
-                .disabled(visibleEntries.isEmpty)
-            }
-        }
+        .toolbar { logToolbar }
         // Scrolling on `entries.count` (a real state mutation that has already updated
         // `visibleEntries` by the time this fires) rather than immediately after the first
         // `reload()` call: assigning `entries` only *schedules* a re-render, so a `scrollTo` issued
@@ -147,6 +112,62 @@ struct SyncLogView: View {
             }
         }
         .accessibilityIdentifier("settings.diagnostics.log")
+    }
+
+    /// Refresh / copy / share. On the Mac they are one joined `ControlGroup` (see
+    /// `MacRootView.toolbar`) so no action stands alone in the window toolbar; on iOS they stay
+    /// individual nav-bar items, which is what that bar already groups for us.
+    @ToolbarContentBuilder private var logToolbar: some ToolbarContent {
+        #if targetEnvironment(macCatalyst)
+        ToolbarItem {
+            ControlGroup {
+                refreshButton
+                copyButton
+                shareButton
+            }
+        }
+        #else
+        ToolbarItem { refreshButton }
+        ToolbarItem { copyButton }
+        ToolbarItem { shareButton }
+        #endif
+    }
+
+    private var refreshButton: some View {
+        Button {
+            Task { await refreshEverything() }
+        } label: {
+            Image(systemName: "arrow.clockwise").macToolbarIcon()
+        }
+        .accessibilityLabel(Text("Refresh"))
+        .accessibilityIdentifier("settings.diagnostics.refresh")
+    }
+
+    private var copyButton: some View {
+        Button {
+            UIPasteboard.general.string = exportPayload()
+            toast = ToastMessage(text: String(localized: "Log copied"))
+        } label: {
+            Image(systemName: "doc.on.doc").macToolbarIcon()
+        }
+        .accessibilityLabel(Text("Copy Log"))
+        .accessibilityIdentifier("settings.diagnostics.copy")
+        .disabled(visibleEntries.isEmpty)
+    }
+
+    /// `SyncLogDocument` holds a *closure*, not the rendered string: `ShareLink`'s item is rebuilt on
+    /// every render pass, and rendering the export eagerly meant one ISO-8601 format call per entry
+    /// (up to 2000) per render, for a string nobody had asked for. The closure runs only when the
+    /// user actually shares.
+    private var shareButton: some View {
+        ShareLink(
+            item: SyncLogDocument(makeText: exportPayloadProvider()),
+            preview: SharePreview("Yana Sync Log")
+        ) {
+            Image(systemName: "square.and.arrow.up").macToolbarIcon()
+        }
+        .accessibilityIdentifier("settings.diagnostics.share")
+        .disabled(visibleEntries.isEmpty)
     }
 
     private var logList: some View {
