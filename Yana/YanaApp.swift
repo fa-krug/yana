@@ -156,6 +156,10 @@ struct YanaApp: App {
                         LibraryDedup.run(container: AppContainer.shared)
                     case .background:
                         SettingsCloudSync.push(appSettings)
+                        // The timeline index cache is written on a delay (see
+                        // `ArticleStore.cacheWriteDelay`); flush it before the app can be suspended
+                        // so the next cold start paints from an up-to-date cache.
+                        Task { await articleStore.flushCache() }
                     default:
                         break
                     }

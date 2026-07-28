@@ -20,7 +20,7 @@ enum NativeCloudKitMigration {
 
         // 1. Seed StoredImage from every blob already cached on disk.
         let hashes = await imageStore.allHashes()
-        await ImageSync.ensureStored(hashes: hashes, context: container.mainContext, imageStore: imageStore)
+        await ImageSync.ensureStored(hashes: hashes, container: container, imageStore: imageStore)
 
         // 2. Re-save all existing API keys unconditionally so any key stored by the old
         //    non-sync build is migrated into the current (synchronizable) domain.

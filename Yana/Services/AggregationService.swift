@@ -184,6 +184,23 @@ final class AggregationService {
             })
     }
 
+    /// Run one write-path pass on a fresh `AggregationWriter`, off the main actor.
+    ///
+    /// The hop is load-bearing, not decorative. `AggregationWriter` is a `@ModelActor`, and a
+    /// `@ModelActor` executes on its **caller's** thread — awaited directly from this `@MainActor`
+    /// coordinator, the fetch/parse/upsert path would run on the main thread and freeze the UI for
+    /// the length of the run. `AggregationRunInputs`/`AggregationRunResult` are `Sendable`, which is
+    /// what makes crossing the boundary legal (see `OffMainActor`).
+    private func runOffMain<T: Sendable>(
+        _ body: @escaping @Sendable (AggregationWriter, AggregationRunInputs) async -> T
+    ) async -> T {
+        let container = context.container
+        let inputs = makeRunInputs()
+        return await OffMainActor.run {
+            await body(AggregationWriter(modelContainer: container), inputs)
+        }
+    }
+
     /// Update all enabled feeds. One feed's failure never aborts the run.
     @discardableResult
     func updateAll() async -> Int {
@@ -191,8 +208,7 @@ final class AggregationService {
         isUpdating = true
         defer { isUpdating = false; updateProgress.reset() }
         try? context.save()                         // flush so the writer's fetch sees pending feeds
-        let writer = AggregationWriter(modelContainer: context.container)
-        let result = await writer.runUpdateAll(makeRunInputs())
+        let result = await runOffMain { await $0.runUpdateAll($1) }
         refreshFromStore()
         lastRunFailures = result.failures
         SyncLog.shared.info(
@@ -212,8 +228,7 @@ final class AggregationService {
         defer { isUpdating = false }
         try? context.save()
         let feedID = feed.persistentModelID
-        let writer = AggregationWriter(modelContainer: context.container)
-        let result = await writer.runUpdate(feedID: feedID, makeRunInputs())
+        let result = await runOffMain { await $0.runUpdate(feedID: feedID, $1) }
         refreshFromStore()
         lastRunFailures = result.failures
         SyncLog.shared.info(
@@ -235,8 +250,7 @@ final class AggregationService {
         defer { isUpdating = false }
         try? context.save()
         let feedID = feed.persistentModelID
-        let writer = AggregationWriter(modelContainer: context.container)
-        let result = await writer.runForceReloadFeed(feedID: feedID, makeRunInputs())
+        let result = await runOffMain { await $0.runForceReloadFeed(feedID: feedID, $1) }
         refreshFromStore()
         lastRunFailures = result.failures
         await syncReferencedImages()
@@ -262,8 +276,7 @@ final class AggregationService {
         defer { isUpdating = false }
         try? context.save()
         let articleID = article.persistentModelID
-        let writer = AggregationWriter(modelContainer: context.container)
-        let result = await writer.runForceReloadArticle(articleID: articleID, makeRunInputs())
+        let result = await runOffMain { await $0.runForceReloadArticle(articleID: articleID, $1) }
         reconcileArticle(articleID)
         await syncReferencedImages()
         return result.inserted
@@ -278,8 +291,7 @@ final class AggregationService {
     func summarize(_ article: Article) async -> Bool {
         try? context.save()
         let articleID = article.persistentModelID
-        let writer = AggregationWriter(modelContainer: context.container)
-        let (ok, _) = await writer.runSummarize(articleID: articleID, makeRunInputs())
+        let (ok, _) = await runOffMain { await $0.runSummarize(articleID: articleID, $1) }
         reconcileArticle(articleID)
         return ok
     }
@@ -287,45 +299,18 @@ final class AggregationService {
     // MARK: - Helpers
 
     /// Register `StoredImage` rows for every image the current library references, so CloudKit
-    /// mirrors the blobs. Cheap: `ensureStored` skips hashes that already have a row.
+    /// mirrors the blobs. `ensureStored` skips hashes that already have a row.
+    ///
+    /// **Both halves run off the main actor, and must keep doing so.** The scan fetches every
+    /// article and JSON-decodes every body to walk its blocks; done on the main context that was a
+    /// 222 ms freeze on a 4 000-article library, after *every* update — including the reader's
+    /// pull-to-refresh and every scheduled background refresh with the app on screen.
     private func syncReferencedImages() async {
-        let feeds = (try? context.fetch(FetchDescriptor<Feed>())) ?? []
-        let articles = (try? context.fetch(FetchDescriptor<Article>())) ?? []
-        var hashes = Set<String>()
-        for feed in feeds { if let h = feed.logoHash, !h.isEmpty { hashes.insert(h) } }
-        for article in articles {
-            if !article.leadImageRef.isEmpty { hashes.insert(Self.hash(fromRef: article.leadImageRef)) }
-            for ref in Self.imageRefs(in: article.blocks) { hashes.insert(Self.hash(fromRef: ref)) }
+        let container = context.container
+        let hashes = await OffMainActor.run {
+            await AggregationWriter(modelContainer: container).referencedImageHashes()
         }
-        hashes.remove("")
-        await ImageSync.ensureStored(hashes: hashes, context: context, imageStore: .shared)
-    }
-
-    /// All `yana-img://` refs referenced anywhere in a block tree — top-level `.image` blocks,
-    /// `.embed` poster thumbnails, and refs nested inside `.list` items or `.blockquote` content.
-    private static func imageRefs(in blocks: [Block]) -> [String] {
-        var refs: [String] = []
-        for block in blocks {
-            switch block {
-            case let .image(ref, _):
-                refs.append(ref)
-            case let .embed(embed):
-                if let thumb = embed.thumbnailRef { refs.append(thumb) }
-            case let .list(_, items):
-                for item in items { refs.append(contentsOf: imageRefs(in: item)) }
-            case let .blockquote(inner):
-                refs.append(contentsOf: imageRefs(in: inner))
-            default:
-                break
-            }
-        }
-        return refs
-    }
-
-    /// Strip the `yana-img://` scheme prefix to get the bare content hash.
-    private static func hash(fromRef ref: String) -> String {
-        let prefix = "\(ReaderWeb.imageScheme)://"
-        return ref.hasPrefix(prefix) ? String(ref.dropFirst(prefix.count)) : ref
+        await ImageSync.ensureStored(hashes: hashes, container: container, imageStore: .shared)
     }
 
     /// Refresh this (main) context's registered `Feed` objects from the store after the background

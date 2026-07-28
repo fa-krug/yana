@@ -34,6 +34,24 @@ actor AggregationWriter {
 
     // MARK: Public run entry points
 
+    /// Every `yana-img://` content hash the library currently references — feed logos plus every
+    /// image and embed poster in every article body — so `ImageSync` can mirror the blobs.
+    ///
+    /// Lives here, on the writer's background context, because the scan fetches all articles and
+    /// JSON-decodes each body; on the main context it stalled the UI for hundreds of milliseconds
+    /// after every update.
+    func referencedImageHashes() -> Set<String> {
+        var hashes = Set<String>()
+        for feed in (try? modelContext.fetch(FetchDescriptor<Feed>())) ?? [] {
+            if let logo = feed.logoHash, !logo.isEmpty { hashes.insert(logo) }
+        }
+        for article in (try? modelContext.fetch(FetchDescriptor<Article>())) ?? [] {
+            if let lead = ArticleImageRefs.hash(from: article.leadImageRef) { hashes.insert(lead) }
+            hashes.formUnion(ArticleImageRefs.hashes(in: article.blocks))
+        }
+        return hashes
+    }
+
     func runUpdateAll(_ inputs: AggregationRunInputs) async -> AggregationRunResult {
         pendingTouched.removeAll()
         var result = AggregationRunResult()

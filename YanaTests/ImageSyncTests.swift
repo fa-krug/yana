@@ -5,14 +5,14 @@ import Foundation
 
 @MainActor
 struct ImageSyncTests {
-    private func context() throws -> ModelContext {
+    private func container() throws -> ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        let container = try ModelContainer(
+        return try ModelContainer(
             for: Feed.self, Tag.self, Article.self, StoredImage.self,
             configurations: config
         )
-        return ModelContext(container)
     }
+    private func context() throws -> ModelContext { ModelContext(try container()) }
     private func tempStore() -> ImageStore {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("imgsync-\(UUID().uuidString)")
@@ -20,10 +20,11 @@ struct ImageSyncTests {
     }
 
     @Test func ensureStoredInsertsRowsForDiskBlobs() async throws {
-        let ctx = try context()
+        let container = try container()
+        let ctx = ModelContext(container)
         let store = tempStore()
         let hash = await store.storeData(Data([9,9,9]), ext: "png")
-        await ImageSync.ensureStored(hashes: [hash], context: ctx, imageStore: store)
+        await ImageSync.ensureStored(hashes: [hash], container: container, imageStore: store)
         let rows = try ctx.fetch(FetchDescriptor<StoredImage>())
         #expect(rows.count == 1)
         #expect(rows.first?.contentHash == hash)
@@ -31,11 +32,12 @@ struct ImageSyncTests {
     }
 
     @Test func ensureStoredIsIdempotent() async throws {
-        let ctx = try context()
+        let container = try container()
+        let ctx = ModelContext(container)
         let store = tempStore()
         let hash = await store.storeData(Data([1]), ext: "jpg")
-        await ImageSync.ensureStored(hashes: [hash], context: ctx, imageStore: store)
-        await ImageSync.ensureStored(hashes: [hash], context: ctx, imageStore: store)
+        await ImageSync.ensureStored(hashes: [hash], container: container, imageStore: store)
+        await ImageSync.ensureStored(hashes: [hash], container: container, imageStore: store)
         #expect(try ctx.fetch(FetchDescriptor<StoredImage>()).count == 1)
     }
 

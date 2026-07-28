@@ -156,7 +156,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   (one case per content source), the `Aggregator` protocol, `AggregatedArticle` DTO,
   `AggregatorRegistry`, and `ArticleSearch` (pure case/diacritic-insensitive matcher over
   title/content/author/feed name). Concrete aggregators are added incrementally.
-- **Services** (`Yana/Services/`): `AggregationService` (`@MainActor` coordinator that orchestrates feed updates and delegates the write path to the `@ModelActor` `AggregationWriter` (its own background `ModelContext`), so article upserts, per-feed saves, and retention run off the main thread; `updateAll()`/`update(feed:)` return the count of newly inserted articles; the reader and `ArticleStore` observe committed changes via fresh fetches — the `ModelContext.didSave` observer still fires for the background context's saves, and `ArticleResolution` resolves by a fresh persistent-id-scoped fetch), `KeychainService` (stores aggregator API keys), the AI
+- **Services** (`Yana/Services/`): `AggregationService` (`@MainActor` coordinator that orchestrates feed updates and delegates the write path to the `@ModelActor` `AggregationWriter` (its own background `ModelContext`), so article upserts, per-feed saves, and retention run off the main thread — every writer call goes through `AggregationService.runOffMain`, which is what actually keeps it there (see **`@ModelActor` runs on its caller's thread** under Key patterns); `updateAll()`/`update(feed:)` return the count of newly inserted articles; the reader and `ArticleStore` observe committed changes via fresh fetches — the `ModelContext.didSave` observer still fires for the background context's saves, and `ArticleResolution` resolves by a fresh persistent-id-scoped fetch), `KeychainService` (stores aggregator API keys), the AI
   post-processing pair — `AIClient` (OpenAI/Anthropic/Gemini/Mistral/Qwen/DeepSeek JSON-mode calls;
   Mistral/Qwen/DeepSeek use the OpenAI-compatible API with a custom `apiBaseURL`) and
   `AIProcessor` (gate, HTML strip, prompt, drop-on-failure; runs after the run cap, before upsert;
@@ -175,7 +175,25 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   (`Feed` ↔ OPML mapping: restores type/options/tags, falls back to `feedContent` for foreign
   OPML, dedupes by identifier+type) — and `ArticleStore` (`@MainActor @Observable`; loads the
   whole library's lightweight `ArticleSummary` metadata once at launch via an `@ModelActor`
-  background loader, then stays in sync via a coalesced `ModelContext.didSave` observer;
+  loader wrapped in `OffMainActor.run` (the wrapper, not the `@ModelActor`, is what puts the fetch
+  on a background thread), then keeps it current **incrementally**: `ModelContext.didSave` carries
+  the `PersistentIdentifier`s of the rows a save touched, so `LibraryChangeSet` filters them to
+  `Article`s and `SummaryIndexMerge` splices just those rows into the `createdAt`-ascending index —
+  work proportional to the change, not to the library. A save touching no `Article` (a feed logo, a
+  tag, a `StoredImage` row) costs nothing at all, and a burst is coalesced and single-flighted.
+  Falls back to a full re-read when the change set exceeds `spliceLimit`, or when the index came
+  from the disk cache and so carries no `persistentID`s to match on (`SummaryIndexMerge.isSpliceable`).
+  A **second** observer on `.NSPersistentStoreRemoteChange` handles CloudKit merges: those land
+  below SwiftData, through Core Data, so no `ModelContextDidSave` is posted and there are no
+  identifiers to splice with (without this observer a purely remote change would not reach the
+  timeline until some local write happened to save). It must **not** simply re-read, because on a
+  `.automatic` store a *local* save posts that notification too, several times per save — verified
+  in `ArticleStoreIncrementalTests`. It instead runs `reconcileIfCountDiffers`: one cheap `COUNT`
+  aggregate, re-reading only when the store and the index actually disagree, which after a local
+  splice they don't. Blind spot, deliberately accepted: a merge that inserts and deletes equal
+  numbers of rows, or only edits existing ones, is missed until the next change or relaunch.
+  The disk cache is rewritten on a `cacheWriteDelay` timer, not per refresh, and flushed on
+  scene-background;
   consumed by both the reader and `ArticleListView` in place of per-view `@Query`s; the reader
   resolves each page's full `Article` (with its `[Block]` body) on demand by `persistentID`) —
   and the **iCloud sync** stack — native SwiftData+CloudKit mirroring, always on.
@@ -371,6 +389,22 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - **Typed options:** per-feed config is a `Codable` `AggregatorOptions` enum (one case per
   aggregator type, including per-scraper structs), not a JSON blob.
 - **Swift 6:** strict concurrency with `@MainActor` annotations throughout.
+- **`@ModelActor` runs on its caller's thread — always wrap it in `OffMainActor.run`.** A
+  `@ModelActor` does **not** own a background queue: SwiftData's `DefaultSerialModelExecutor` runs
+  enqueued jobs inline on the calling thread, so `await someModelActor.work()` from a `@MainActor`
+  type performs the whole fetch/save **on the main thread**. Constructing the actor off-main does not
+  help — the thread is chosen at the `await`, not at `init`. Declaring a type `@ModelActor` therefore
+  says nothing about which thread it runs on; only the caller does. This is the single biggest
+  main-thread hazard in this codebase: it turned an iCloud import (a burst of saves, each waking
+  `ArticleStore`'s full re-index) into a ~300 ms UI freeze per import batch, and made the
+  post-update image scan a further 222 ms, both on a 4 000-article library. Every main-actor →
+  `@ModelActor` call must go through `OffMainActor.run`
+  (`Yana/Utilities/OffMainActor.swift`): `ArticleStore.fullLoad`/`publishFastDataset`,
+  `AggregationService.runOffMain` (all five `AggregationWriter` entry points, plus
+  `referencedImageHashes`), `LibraryDedup.runAndWait`, `ImageSync.ensureStored`. `OffMainActorTests`
+  pins the executor behaviour (including the "created off-main is not enough" case) so a future
+  SwiftData change is caught, and `SyncReactionMainThreadTests` measures main-actor responsiveness
+  across the whole sync-reaction chain — a regression there shows up as a stall, not a wrong value.
 - **Platform:** iOS 26.0+ (iPhone and iPad).
 
 ### Aggregator types

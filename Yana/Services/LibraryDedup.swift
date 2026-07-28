@@ -100,7 +100,15 @@ actor LibraryDeduper {
 /// Fire-and-forget dedup pass, off the render path.
 enum LibraryDedup {
     static func run(container: ModelContainer) {
-        Task.detached(priority: .utility) {
+        Task.detached(priority: .utility) { await runAndWait(container: container) }
+    }
+
+    /// Awaitable single pass. Routed through `OffMainActor` because `LibraryDeduper` is a
+    /// `@ModelActor`, and a `@ModelActor` runs on its caller's thread — awaited straight from the
+    /// main actor (as the remote-change coalescer does) the full three-table scan would freeze the
+    /// UI for the length of the scan.
+    static func runAndWait(container: ModelContainer) async {
+        await OffMainActor.run {
             _ = try? await LibraryDeduper(modelContainer: container).deduplicate()
         }
     }
@@ -122,8 +130,10 @@ enum LibraryDedup {
     /// seconds is harmless — dedup is best-effort cleanup, not a display-correctness invariant.
     @MainActor
     static func startObserving(container: ModelContainer) {
+        // `TrailingCoalescer` is `@MainActor`, so its action runs there — hence `runAndWait`, which
+        // hops off the main actor before touching the `@ModelActor`.
         let coalescer = TrailingCoalescer(interval: .seconds(1.5)) {
-            _ = try? await LibraryDeduper(modelContainer: container).deduplicate()
+            await runAndWait(container: container)
         }
         self.coalescer = coalescer
         SyncLog.shared.info("Watching for CloudKit remote-change merges", category: "Dedup")
