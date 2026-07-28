@@ -5,6 +5,19 @@ import SwiftUI
 import UIKit
 #endif
 
+/// A one-shot request to scroll the Mac sidebar to a specific row. `TimelineModel` bumps this only
+/// from programmatic selection changes (`moveSelection`, the anchor restore in `applyTimeline`, a
+/// remote anchor landing via `jumpToSyncedTimelinePosition`, and the self-heal in
+/// `reanchorToCurrentArticle`) — never from the `selection` setter, which is what the sidebar
+/// `List` itself drives on a user click; bumping from there would fight the user's own scrolling.
+/// `token` always increments even when `id` repeats, so a second request for the same article
+/// (e.g. the launch anchor restore immediately followed by a remote anchor for that same article)
+/// is not silently deduplicated by SwiftUI's usual value-equality change detection.
+struct SidebarScrollRequest: Equatable {
+    let id: String
+    let token: Int
+}
+
 /// Shared timeline engine for the Mac window: filtering, selection/anchor memory, and the article
 /// actions (refresh, star, summarize, force-update, copy link). Mirrors the logic
 /// `ReaderScreen` runs on iOS, so the two surfaces behave identically; it is factored out here so
@@ -22,6 +35,8 @@ final class TimelineModel {
     var currentIndex = 0
     /// Bumped after a summary/force-reload writes new content so the detail page re-renders.
     private(set) var reloadToken = 0
+    /// See `SidebarScrollRequest`: consumed by `MacSidebarView` to scroll the selected row into view.
+    private(set) var scrollTarget: SidebarScrollRequest?
     var isSummarizing = false
     var toast: ToastMessage?
 
@@ -101,6 +116,13 @@ final class TimelineModel {
         guard next != currentIndex else { return }
         currentIndex = next
         anchorWriter.record(filteredArticles[next])
+        requestScroll(to: filteredArticles[next].identifier)
+    }
+
+    /// Bumps `scrollTarget` for a programmatic selection change (never for the `selection` setter's
+    /// click path — see `SidebarScrollRequest`).
+    private func requestScroll(to id: String) {
+        scrollTarget = SidebarScrollRequest(id: id, token: (scrollTarget?.token ?? 0) + 1)
     }
 
     var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
@@ -142,6 +164,9 @@ final class TimelineModel {
             settings.timelineAnchorIdentifier = resolved.articles[i].identifier
         }
         didRestoreAnchor = true
+        // The launch case: the sidebar has no rows to scroll to until this delivery, so this is the
+        // first point a scroll request can be made.
+        requestScroll(to: resolved.articles[currentIndex].identifier)
     }
 
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention
@@ -155,16 +180,23 @@ final class TimelineModel {
     /// Falls back to the identifier when the UID doesn't resolve either; the two are written in
     /// lockstep by every local write (`TimelineAnchorWriter.record`), so they only disagree in
     /// exactly this pending-sync window.
+    ///
+    /// This runs on every ordinary timeline delivery (most of which leave `currentIndex` unchanged,
+    /// since the identifier already resolves to the same row), so it only bumps `scrollTarget` when
+    /// the index actually moves — the rare self-heal case — rather than on every delivery.
     private func reanchorToCurrentArticle() {
+        let previous = currentIndex
         if let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: filteredArticles) {
             currentIndex = i
             settings.timelineAnchorIdentifier = filteredArticles[i].identifier
+        } else if let i = TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: filteredArticles) {
+            currentIndex = i
+        } else {
             return
         }
-        guard let i = TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: filteredArticles) else {
-            return
+        if currentIndex != previous {
+            requestScroll(to: filteredArticles[currentIndex].identifier)
         }
-        currentIndex = i
     }
 
     /// Keep selection valid after the filter narrows the timeline.
@@ -188,8 +220,8 @@ final class TimelineModel {
     }
 
     /// Moves the Mac selection to the synced timeline anchor article. This is the remote-anchor
-    /// apply path: a later task wires an explicit "scroll the sidebar to the selection" request that
-    /// must be bumped from here too, alongside the other programmatic-selection paths.
+    /// apply path, so it also bumps `scrollTarget` (see `SidebarScrollRequest`) to scroll the
+    /// sidebar to the newly selected row, alongside the other programmatic-selection paths.
     ///
     /// Deliberately does **not** go through the `selection` setter — it sets `currentIndex` and
     /// `timelineAnchorIdentifier` directly, so applying a remote anchor can never call
@@ -203,6 +235,7 @@ final class TimelineModel {
         else { return }
         currentIndex = i
         settings.timelineAnchorIdentifier = filteredArticles[i].identifier
+        requestScroll(to: filteredArticles[i].identifier)
     }
 
     // MARK: - Actions

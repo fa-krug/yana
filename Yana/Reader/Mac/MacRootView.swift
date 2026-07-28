@@ -207,6 +207,12 @@ private struct MacSidebarView: View {
     @State private var searchText = ""
     @State private var debouncedSearch = ""
     @State private var searchResults: [ArticleSummary]?
+    /// Drives `.scrollPosition(id:)` below. Mirrors `model.scrollTarget.id` — see that modifier's
+    /// `.onChange` for why a repeated request for the same id still needs to reach the List.
+    @State private var scrollAnchorID: String?
+    /// The last `scrollTarget.token` applied, so a delivery that doesn't change the token (a plain
+    /// SwiftUI re-render, not a new request) doesn't re-trigger a scroll.
+    @State private var lastAppliedScrollToken: Int?
 
     /// Extra vertical room per sidebar row — the AppKit-backed source list packs rows tightly by
     /// default, so the article list reads as a cramped wall of text. iOS never renders this view.
@@ -230,8 +236,12 @@ private struct MacSidebarView: View {
     var body: some View {
         // The List must be the DIRECT child of the NavigationSplitView sidebar column for the system
         // to give it the source-list chrome (translucent material, inset rounded selection, no
-        // separators). Wrapping it in a ScrollViewReader defeats that, so we let the List drive its
-        // own selection-follow scrolling rather than a reader proxy.
+        // separators) — a prior version of this view wrapped it in a ScrollViewReader precisely to
+        // scroll to the selection, and that wrapper was what suppressed the chrome; it was removed
+        // for exactly that reason. `.scrollPosition(id:anchor:)` below is a modifier applied
+        // directly to this same List (like `.listStyle(.sidebar)` or `.searchable` already are), not
+        // a wrapping container, so it programmatically scrolls the selected row into view without
+        // repeating that failure.
         List(selection: $model.selection) {
             ForEach(displayed) { summary in
                 MacArticleRow(summary: summary, model: model,
@@ -243,6 +253,21 @@ private struct MacSidebarView: View {
         // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.
         .accessibilityIdentifier("mac.sidebar.list")
         .listStyle(.sidebar)
+        .scrollPosition(id: $scrollAnchorID, anchor: .center)
+        .onChange(of: model.scrollTarget) { _, target in
+            guard let target, target.token != lastAppliedScrollToken else { return }
+            lastAppliedScrollToken = target.token
+            if scrollAnchorID == target.id {
+                // Same id as already applied (e.g. the launch anchor restore immediately followed by
+                // a remote anchor for that same article): reassigning the identical value wouldn't
+                // change `scrollAnchorID` at all, so SwiftUI would never re-issue the scroll. Bounce
+                // through `nil` first so the following assignment is a genuine change.
+                scrollAnchorID = nil
+                Task { @MainActor in scrollAnchorID = target.id }
+            } else {
+                scrollAnchorID = target.id
+            }
+        }
         // The selection highlight follows the tint. The brand accent is a bright lavender that
         // fills the whole selected pill at full saturation — glaring against the dark sidebar — so
         // damp it toward a deeper violet for the sidebar only. Derived from the accent so it stays

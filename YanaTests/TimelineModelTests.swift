@@ -193,6 +193,7 @@ struct TimelineModelTests {
         settings.timelineAnchorSyncUID = pendingUID
         model.jumpToSyncedTimelinePosition()   // ignored: "c" isn't in filteredArticles yet
         #expect(model.selectedSummary?.identifier == "b", "must not jump until the article actually arrives")
+        let scrollBeforeSelfHeal = model.scrollTarget
 
         // Nothing re-posts `timelinePositionDidChange` (the UID hasn't changed) — the self-heal has
         // to come from an ordinary timeline delivery once "c" lands.
@@ -203,5 +204,95 @@ struct TimelineModelTests {
 
         #expect(model.selectedSummary?.identifier == "c")
         #expect(settings.timelineAnchorIdentifier == "c")
+        // The self-heal in `reanchorToCurrentArticle` moves the selection programmatically, so it
+        // must scroll the sidebar too, same as the other programmatic paths.
+        #expect(model.scrollTarget?.id == "c")
+        #expect(model.scrollTarget?.token != scrollBeforeSelfHeal?.token)
+    }
+
+    // MARK: - Sidebar scroll requests (Task 5)
+
+    /// Pins "macOS also doesn't focus the article list on the current selected article": every
+    /// programmatic selection-move path must bump `scrollTarget` so `MacSidebarView` can scroll the
+    /// row into view, while the click path (the `selection` setter, which the `List` itself already
+    /// follows) must not — bumping there would fight the user's own scrolling.
+    @Test func moveSelectionBumpsTheScrollRequest() async throws {
+        let settings = freshSettings()
+        let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
+        await store.refreshNow()
+        model.applyTimeline()
+        model.currentIndex = 0
+        let before = model.scrollTarget
+
+        model.moveSelection(by: 1)
+
+        #expect(model.selectedSummary?.identifier == "b")
+        #expect(model.scrollTarget?.id == "b")
+        #expect(model.scrollTarget?.token != before?.token)
+    }
+
+    @Test func settingSelectionDoesNotBumpTheScrollRequest() async throws {
+        let settings = freshSettings()
+        let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
+        await store.refreshNow()
+        model.applyTimeline()
+        let before = model.scrollTarget
+
+        model.selection = "b"   // the click path: the List already follows this on its own
+
+        #expect(model.selectedSummary?.identifier == "b")
+        #expect(model.scrollTarget?.token == before?.token,
+                "the click path must not bump the scroll request, or it would fight the user's own scrolling")
+    }
+
+    /// The launch case the user reported: the first `applyTimeline` call restores the saved anchor
+    /// before the sidebar has any rows laid out, so this is the earliest point a scroll request can
+    /// be made at all.
+    @Test func applyTimelineBumpsTheScrollRequestOnTheAnchorRestore() async throws {
+        let settings = freshSettings()
+        let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
+        await store.refreshNow()
+        #expect(model.scrollTarget == nil)
+
+        model.applyTimeline()
+
+        #expect(model.scrollTarget?.id == model.selectedSummary?.identifier)
+    }
+
+    @Test func jumpToSyncedTimelinePositionBumpsTheScrollRequest() async throws {
+        let settings = freshSettings()
+        let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
+        await store.refreshNow()
+        model.applyTimeline()
+        let before = model.scrollTarget
+
+        settings.timelineAnchorSyncUID = model.filteredArticles.first { $0.identifier == "a" }?.uid
+        model.jumpToSyncedTimelinePosition()
+
+        #expect(model.selectedSummary?.identifier == "a")
+        #expect(model.scrollTarget?.id == "a")
+        #expect(model.scrollTarget?.token != before?.token)
+    }
+
+    /// The exact sequence the brief calls out: the launch anchor restore is immediately followed by
+    /// a remote anchor arriving for that *same* already-selected article. The id doesn't change, but
+    /// the token still must, or `MacSidebarView`'s `.onChange(of: model.scrollTarget)` would see an
+    /// equal value and never re-issue the scroll.
+    @Test func repeatedRequestForTheSameArticleStillBumpsTheToken() async throws {
+        let settings = freshSettings()
+        let (model, store, _) = try makeConfiguredModel(settings: settings, center: NotificationCenter())
+        await store.refreshNow()
+        model.applyTimeline()   // restores the anchor and requests a scroll to the parked article
+
+        let restoredID = model.selectedSummary?.identifier
+        let restoredToken = model.scrollTarget?.token
+
+        // A remote anchor for that same already-selected article arrives right after launch.
+        settings.timelineAnchorSyncUID = model.selectedSummary?.uid
+        model.jumpToSyncedTimelinePosition()
+
+        #expect(model.scrollTarget?.id == restoredID)
+        #expect(model.scrollTarget?.token != restoredToken,
+                "a repeated request for the same id must not be swallowed by a stale token")
     }
 }
