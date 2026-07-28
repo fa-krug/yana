@@ -24,6 +24,35 @@ struct ReaderVideoPlayerTests {
         #expect(url?.absoluteString.contains("youtube-nocookie.com/embed/dQw4w9WgXcQ") == true)
     }
 
+    // The player page is loaded as the **top-level** document, so the provider is first-party and
+    // can keep its own cookies (consent choice, quality) between plays. An `origin=` parameter names
+    // the *embedder* of an <iframe>; carrying one into a first-party load both misstates the origin
+    // and marks the player as embedded, which is exactly the arrangement whose cookies WebKit drops.
+    @Test func youTubePlayerURLCarriesNoEmbedderOrigin() {
+        let e = embed(.youtube, url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        let url = ReaderVideoPlayerViewController.playerURL(for: e)
+        #expect(url?.absoluteString.contains("origin=") == false)
+    }
+
+    // The Dailymotion player's "we use required trackers" notice is suppressed through the player's
+    // OWN mechanism: it records that it already showed the notice in `dmp_consent_fallback_shown` and
+    // skips it while that flag is live, so pre-seeding the flag means the notice never renders. Keyed
+    // on the player's host, because only Dailymotion's player reads that key.
+    @Test func dailymotionPlayerSuppressesTheTrackerNotice() {
+        let e = embed(.dailymotion, url: "https://www.dailymotion.com/video/xasx4q2")
+        let url = ReaderVideoPlayerViewController.playerURL(for: e)
+        #expect(url != nil)
+        let script = ReaderVideoPlayerViewController.noticeSuppressionScript(for: url!)
+        #expect(script?.contains("dmp_consent_fallback_shown") == true)
+    }
+
+    // YouTube's player does not show that notice and does not read that key, so it gets no script.
+    @Test func youTubePlayerGetsNoSuppressionScript() {
+        let e = embed(.youtube, url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        let url = ReaderVideoPlayerViewController.playerURL(for: e)
+        #expect(ReaderVideoPlayerViewController.noticeSuppressionScript(for: url!) == nil)
+    }
+
     // Tweet/generic embeds are not inline-playable (they open externally).
     @Test func tweetIsNotPlayable() {
         #expect(ReaderVideoPlayerViewController.playerURL(for: embed(.tweet, url: "https://x.com/a/status/1")) == nil)
