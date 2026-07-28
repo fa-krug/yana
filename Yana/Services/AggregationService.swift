@@ -216,6 +216,7 @@ final class AggregationService {
             category: "Aggregation"
         )
         await syncReferencedImages()
+        await pruneOrphanedImages()
         return result.inserted
     }
 
@@ -236,6 +237,7 @@ final class AggregationService {
             category: "Aggregation"
         )
         await syncReferencedImages()
+        await pruneOrphanedImages()
         return result.inserted
     }
 
@@ -311,6 +313,48 @@ final class AggregationService {
             await AggregationWriter(modelContainer: container).referencedImageHashes()
         }
         await ImageSync.ensureStored(hashes: hashes, container: container, imageStore: .shared)
+    }
+
+    /// Prune `StoredImage` rows (and matching `ImageStore` disk blobs) that nothing references any
+    /// more. Runs right after retention on the same two entry points that run retention
+    /// (`updateAll`/`update(feed:)`) — not on `forceReload`, which also skips retention — and is
+    /// gated on the same `UpdateInterval == .off` condition retention already uses, so it never
+    /// runs when the device is a pure-mirror. See `ImagePrunePlan` for the two-phase quarantine
+    /// that makes this safe against an incomplete local article set.
+    private func pruneOrphanedImages() async {
+        guard settings.updateInterval != .off else { return }
+        let container = context.container
+
+        let referenced = await OffMainActor.run {
+            await AggregationWriter(modelContainer: container).referencedImageHashes()
+        }
+        let (hasArticles, storedRowHashes) = await OffMainActor.run {
+            await ImagePruneRunner(modelContainer: container).snapshot()
+        }
+        let diskHashes = await ImageStore.shared.allHashes()
+
+        let plan = ImagePrunePlan.decide(
+            referenced: referenced,
+            stored: storedRowHashes.union(diskHashes),
+            candidates: ImagePruneCandidateStore.load(),
+            now: now(),
+            hasArticles: hasArticles
+        )
+        ImagePruneCandidateStore.save(plan.candidates)
+        guard !plan.toDelete.isEmpty else { return }
+
+        let rowsDeleted = await OffMainActor.run {
+            await ImagePruneRunner(modelContainer: container).deleteRows(hashes: plan.toDelete)
+        }
+        var diskOnlyDeleted = 0
+        for hash in plan.toDelete {
+            let hadFile = await ImageStore.shared.remove(forHash: hash)
+            if hadFile, !storedRowHashes.contains(hash) { diskOnlyDeleted += 1 }
+        }
+        SyncLog.shared.info(
+            "Pruned \(rowsDeleted) orphaned image(s), \(diskOnlyDeleted) disk file(s)",
+            category: "ImagePrune"
+        )
     }
 
     /// Refresh this (main) context's registered `Feed` objects from the store after the background

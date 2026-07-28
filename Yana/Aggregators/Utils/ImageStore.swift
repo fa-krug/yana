@@ -83,6 +83,18 @@ actor ImageStore {
     /// Every content hash currently cached on disk (from the seeded extension map).
     func allHashes() -> Set<String> { Set(extensions.keys) }
 
+    /// Deletes the on-disk blob for `hash`, if any, and drops it from the extension map so a
+    /// later `fileURL(forHash:)` doesn't resolve a stale extension. Returns whether a file existed
+    /// to remove (used by `ImagePrunePlan`'s caller to distinguish a real deletion from a no-op).
+    @discardableResult
+    func remove(forHash hash: String) -> Bool {
+        let url = fileURL(forHash: hash)
+        let existed = FileManager.default.fileExists(atPath: url.path)
+        if existed { try? FileManager.default.removeItem(at: url) }
+        extensions.removeValue(forKey: hash)
+        return existed
+    }
+
     private static func hash(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }

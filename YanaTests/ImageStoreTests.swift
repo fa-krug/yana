@@ -60,6 +60,26 @@ struct ImageStoreTests {
         #expect(buf[cornerAlphaIndex] == 0)   // corner background transparent in the cached file
     }
 
+    @Test func removeDeletesFileAndDropsFromExtensionMap() async throws {
+        let store = ImageStore(directory: tempDir(), fetch: { _ in (Data([1, 2, 3]), "image/png") })
+        let hash = await store.storeData(Data([1, 2, 3]), ext: "png")
+        let url = await store.fileURL(forHash: hash)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+
+        let removed = await store.remove(forHash: hash)
+        #expect(removed == true)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        // Extension mapping is gone too, so a re-check resolves the fallback ".img" name, not "png".
+        let resolvedAfter = await store.fileURL(forHash: hash)
+        #expect(resolvedAfter.pathExtension == "img")
+    }
+
+    @Test func removeOfMissingHashReturnsFalse() async {
+        let store = ImageStore(directory: tempDir(), fetch: { _ in (Data(), nil) })
+        let removed = await store.remove(forHash: "does-not-exist")
+        #expect(removed == false)
+    }
+
     @Test func rewriteImagesReplacesSrcWithScheme() async throws {
         let data = pngData()
         let store = ImageStore(directory: tempDir(), fetch: { _ in (data, "image/png") })
