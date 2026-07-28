@@ -3507,6 +3507,16 @@
         }
       }
     },
+    "Add Tag": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tag hinzufügen"
+          }
+        }
+      }
+    },
     "Starred": {
       "localizations": {
         "de": {

@@ -215,16 +215,6 @@ struct YanaApp: App {
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 620)
 
-        // The feed editor (create + edit) as its own window, replacing the sheet used on iOS.
-        // Value-based `for: FeedEditorTarget.self` gives per-target window dedup: every `.create`
-        // shares one window, and each `.edit(id)` gets its own.
-        WindowGroup(id: WindowID.feedEditor, for: FeedEditorTarget.self) { $target in
-            FeedEditorWindowRoot(target: target ?? .create)
-                .environment(articleStore)
-        }
-        .modelContainer(AppContainer.shared)
-        .defaultSize(width: 560, height: 640)
-
         // Onboarding as its own window, replacing the `.fullScreenCover` used on iOS. `Window(id:)`
         // is `@available(iOS, unavailable)` and does not compile under Mac Catalyst (which builds
         // against the iOS SDK), so this uses the same value-based `WindowGroup` singleton pattern as

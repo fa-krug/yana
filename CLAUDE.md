@@ -376,7 +376,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   therefore skipped entirely for automation runs (`SyncDiagnostics.isAccountProbeSuppressed`, keyed on
   the `-UITEST_*` launch arguments) and reports `"Not checked"`. Do not replace that guard with a
   runtime code-signing check.
-- **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref (tapping an image opens it full-screen with pinch-to-zoom, double-tap-to-zoom and swipe-down-to-dismiss via `ReaderImageViewerViewController`); video embeds shown as tappable poster cards and tweet embeds as text cards — tapping a video plays it full-screen in-app via `ReaderVideoPlayerViewController` (YouTube/Dailymotion in a `WKWebView` privacy-mode player; a direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController`), while tweets/unplayable embeds open externally). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer; picks the most natural installed voice matching the article's detected language, keeps playing when the screen is locked or the app is backgrounded, and wires up Now Playing / remote play-pause controls). A dedicated **Reader** settings section exposes text size, font, the read-aloud voice, and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
+- **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView). Article bodies are stored as a closed, typed `[Block]` model (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled `InlineRun`s — produced from the pipeline's sanitized HTML by `BlockParser` at import time, and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://` ref (tapping an image opens it full-screen with pinch-to-zoom, double-tap-to-zoom and swipe-down-to-dismiss via `ReaderImageViewerViewController`); video embeds shown as tappable poster cards and tweet embeds as text cards — tapping a video plays it full-screen in-app via `ReaderVideoPlayerViewController` (YouTube/Dailymotion in a `WKWebView` privacy-mode player; a direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController`), while tweets/unplayable embeds open externally. **The provider's player must stay the top-level document** — `webView.load(URLRequest(...))`, never an `<iframe>` inside a `loadHTMLString` page on the synthetic `ReaderWeb.baseOrigin`, which is what it used to be. That arrangement made the provider cross-site, and WebKit blocks third-party cookies and DOM storage with no opt-out, so the player could keep no state at all: measured, it could neither write a cookie nor read one that already existed, and Dailymotion re-showed its "we use required trackers" notice on **every** playback. Loading first-party also lets a `WKUserScript` reach the page, which is how `noticeSuppressionScript(for:)` suppresses that notice — by pre-seeding the player's own `dmp_consent_fallback_shown` localStorage flag (~30-day TTL) at `.atDocumentStart` rather than hiding its DOM, so it cannot hide the wrong element and degrades to merely showing the notice again if Dailymotion renames the key. Dailymotion offers no parameter for this; its only supported route is for the embedder to run a TCF 2 certified CMP. The YouTube player URL carries **no** `origin=` parameter for the same reason — that names an iframe's embedder). `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh); each page's full `Article` (with blocks) is resolved lazily by `persistentID` when the page is rendered. Body text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system browser (per the "Use System Browser" setting) via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer; picks the most natural installed voice matching the article's detected language, keeps playing when the screen is locked or the app is backgrounded, and wires up Now Playing / remote play-pause controls). A dedicated **Reader** settings section exposes text size, font, the read-aloud voice, and the system-browser preference. (The former `WKWebView`/warmup/pool/`.nnwtheme`-CSS stack was retired in the native-block migration; `BlockMigration` converts any pre-migration HTML articles to blocks in a one-time background sweep off the launch path.)
 - **Views** (`Yana/Views/`): the configuration hub — feeds with OPML import/export, tags, a searchable `ArticleListView` → `ArticleDetailView`, and settings. The Settings screen (`SettingsScreenView`) ends with an **About** section (`aboutSection`) linking the source repo, the issue board (for source/bug requests), and a NetNewsWire credit for the reader view.
   A **Diagnostics** section (iOS, `SettingsScreenView`) and `SettingsPane.diagnostics` (Mac,
   `MacSettingsWindow`) present `SyncLogView` (`Yana/Views/Config/Settings/SyncLogView.swift`) — the
@@ -403,17 +403,21 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - **Mac Catalyst windowing** (`Yana/Reader/Mac/`): on the Mac idiom, `ContentView` swaps the
   iPhone/iPad full-screen swipe reader for `MacRootView` — a permanent two-column
   `NavigationSplitView` (article-list sidebar + reader detail) — and presents the Welcome
-  (onboarding), feed editor, and Settings screens as **separate windows** instead of the
+  (onboarding) and Settings screens as **separate windows** instead of the
   `.fullScreenCover`/sheets iOS uses. Both the macOS-only `Settings` scene and the singleton
   `Window(id:)` scene are unavailable under Mac Catalyst (it compiles against the iOS SDK), so
-  `YanaApp` declares three extra value-based `WindowGroup`s keyed by the stable identifiers in
+  `YanaApp` declares two extra value-based `WindowGroup`s keyed by the stable identifiers in
   `WindowID`, each opened via `openWindow(id:value:)`: `WindowID.settings` and `WindowID.welcome`
   bind `for: Bool.self` and always pass the constant `true` so SwiftUI dedupes to one window
-  instead of opening a new one per call; `WindowID.feedEditor` binds `for: FeedEditorTarget.self`
-  so every `.create` shares one window and each `.edit(id)` gets its own. `MacSettingsWindow` is a
+  instead of opening a new one per call. The **feed editor is deliberately not a window**: editing a
+  feed pushes in place inside the Settings window's `NavigationStack` (like the Tags pane) and
+  creating one presents a sheet (like Add Tag), so `FeedsView` now takes the same path on both
+  platforms and `WindowID.feedEditor`/`FeedEditorTarget`/`FeedEditorWindowRoot` are gone.
+  `MacSettingsWindow` is a
   two-pane sidebar over `SettingsPane` (General/Reader/Feeds/Tags/Integrations/AI/About — General
-  folds in Notifications/Library, which now includes the per-device `UpdateInterval` picker); `WelcomeWindowRoot`/`FeedEditorWindowRoot` host the same
-  `WelcomeView`/`FeedEditorView` iOS uses. Each window is its own SwiftUI hierarchy, so they
+  folds in Notifications/Library, which now includes the per-device `UpdateInterval` picker);
+  `WelcomeWindowRoot` hosts the same
+  `WelcomeView` iOS uses. Each window is its own SwiftUI hierarchy, so they
   coordinate through shared observable state (`AppState`, `ArticleStore`, `AppSettings`) passed in
   at scene creation rather than closures back to a presenting view. `MacCommands.swift` adds the
   Mac menu-bar commands (article navigation, star, read-aloud, update-all), reading the frontmost
@@ -439,6 +443,17 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   `.scrollPosition(id:)` is a two-way binding that SwiftUI writes back on every row-crossing-centre
   event while the user scrolls, and a computed `displayed` re-ran both filter passes on every one of
   those scroll-driven `body` re-evaluations.
+  **Mac chrome conventions** live in two no-op-off-Catalyst helpers so every "this only looks wrong
+  on the Mac" tweak has one home: `MacToolbarStyle.swift` (`macToolbarIcon()` — horizontal label
+  padding, without which a lone toolbar button's background is an upright oval reading as a "0"; peer
+  actions go in **one `ControlGroup` hosted directly by a `ToolbarItem`**, which is the only
+  construction Catalyst actually joins — a `ToolbarItemGroup` renders separate round buttons and a
+  `ControlGroup` *nested* in one renders blank — and a pull-down `Menu` stays its own item with
+  `.menuIndicator(.hidden)`) and `MacFormStyle.swift` (`macDisclosureLabel()` — the Mac idiom draws a
+  `DisclosureGroup`'s chevron on the leading edge with no gap). `.toggleStyle(.switch)` must be set
+  per window, since each is its own SwiftUI hierarchy. The sidebar's selection fill is the accent
+  damped toward black (`MacSidebarView.selectionTint`), and `MacArticleRow` inverts its
+  accent-tinted feed name to white on the selected row so it does not vanish into that fill.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure

@@ -15,7 +15,7 @@ struct AITuningSettingsSection: View {
             Stepper("Max Tokens: \(settings.aiMaxTokens)", value: $settings.aiMaxTokens, in: 256...8000, step: 256)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)
-            DisclosureGroup("Advanced") {
+            DisclosureGroup {
                 Stepper("Max Prompt Length: \(settings.aiMaxPromptLength)", value: $settings.aiMaxPromptLength, in: 100...4000, step: 100)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
@@ -37,6 +37,9 @@ struct AITuningSettingsSection: View {
                 Stepper("Request Delay: \(settings.aiRequestDelay)s", value: $settings.aiRequestDelay, in: 0...60)
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
+            } label: {
+                // The Mac draws the chevron on the leading edge with no gap, so the label needs one.
+                Text("Advanced").macDisclosureLabel()
             }
         }
     }

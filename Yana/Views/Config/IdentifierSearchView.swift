@@ -195,8 +195,10 @@ struct IdentifierSearchView: View {
             .task { await model.preload() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }
-                        .accessibilityLabel("Cancel")
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").macToolbarIcon()
+                    }
+                    .accessibilityLabel("Cancel")
                 }
             }
         }

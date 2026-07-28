@@ -3,6 +3,19 @@
 **Date:** 2026-07-25
 **Scope:** `Yana/Reader/Mac/MacRootView.swift` (the Mac Catalyst window's detail-pane toolbar)
 
+> **Superseded 2026-07-28 — the hand-rolled pill is gone.** The joined group is now a SwiftUI
+> `ControlGroup` hosted **directly by a `ToolbarItem`**, which renders its segments correctly; the
+> empty-pill bug this spec worked around applies to a `ControlGroup` nested inside a
+> `ToolbarItemGroup`, which is how it was written when the bug was hit (commit `0cf55dc`).
+> `ToolbarItemGroup` alone does *not* join its members on Catalyst — verified from captured window
+> screenshots: they render as separate round buttons. The `More` menu stays a **separate item**
+> beside the group (as this spec had it) with its pull-down chevron suppressed via
+> `.menuIndicator(.hidden)`, every other Mac toolbar (Feeds, Diagnostics) uses
+> the same construction, and lone toolbar buttons get horizontal label padding
+> (`MacToolbarMetrics.iconPadding`) so their background is a circle and not an upright oval. The
+> spinner design below (cross-fade in place, constant item set, ~0.5 s minimum visibility) is
+> unchanged and still current.
+
 ## Problem
 
 The Mac window's article toolbar currently renders the four primary actions

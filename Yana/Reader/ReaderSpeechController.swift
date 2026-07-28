@@ -6,8 +6,10 @@ import NaturalLanguage
 /// Reads an article's text aloud with `AVSpeechSynthesizer`. Owned by the reader's pager so a single
 /// synthesizer survives page swipes; the pager stops it whenever the visible article changes.
 ///
-/// State is a simple three-way machine — `idle → speaking ⇄ paused` — surfaced to the pager via
-/// `onStateChange` so it can keep the play/pause toolbar button in sync. The spoken voice is picked
+/// State is a simple three-way machine — `idle → speaking ⇄ paused`. UIKit hosts (the iOS pager)
+/// learn about changes through the `onStateChange` callback; SwiftUI hosts (the Mac window's
+/// toolbar) need `@Observable` for it, and without it the Mac play/pause icon never redrew even
+/// though pressing the button did drive the synthesizer. The spoken voice is picked
 /// to match the article's detected language (German articles read in a German voice, etc.), preferring
 /// the most natural (Premium → Enhanced → default) voice the user has installed for that language.
 ///
@@ -16,6 +18,7 @@ import NaturalLanguage
 /// `MPRemoteCommandCenter` registration surfaces the article on the lock screen with working
 /// play/pause/stop controls.
 @MainActor
+@Observable
 final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
     enum State { case idle, speaking, paused }

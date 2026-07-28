@@ -44,7 +44,7 @@ struct FeedsView: View {
         // comment.
         .searchable(text: $searchText, placement: ManagedListSearch.placement, prompt: "Search feeds")
         .navigationTitle("Feeds")
-        #if !targetEnvironment(macCatalyst)
+        // Creating a feed is a sheet on both platforms, like Add Tag — not a separate Mac window.
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
                 FeedEditorView(feed: nil) { newFeed in
@@ -58,7 +58,6 @@ struct FeedsView: View {
                 }
             }
         }
-        #endif
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [UTType(filenameExtension: "opml") ?? .xml, .xml],
@@ -190,20 +189,14 @@ private struct FeedsListContent: View {
                 .disabled(!settings.isSourceEnabled(feed.type))
             }
         ) { feed in
-            #if targetEnvironment(macCatalyst)
-            Button {
-                openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.edit(feed.persistentModelID))
-            } label: {
-                row(feed)
-            }
-            .buttonStyle(.plain)
-            #else
+            // Editing pushes in place on both platforms, like the Tags pane — on the Mac that is
+            // inside the Settings window's `NavigationStack`, so a feed no longer takes over a
+            // separate window.
             NavigationLink {
                 FeedEditorView(feed: feed)
             } label: {
                 row(feed)
             }
-            #endif
         }
         .overlay {
             if isImportingOPML {
@@ -224,11 +217,14 @@ private struct FeedsListContent: View {
 
     @ToolbarContentBuilder private var feedsToolbar: some ToolbarContent {
         #if targetEnvironment(macCatalyst)
-        // On the Mac, join update + add into one pill (matching the reader window's toolbar) instead
-        // of separate squashed toolbar buttons. The update segment cross-fades to a spinner while a
-        // run is in flight; tapping it then cancels the run.
+        // On the Mac every action goes in ONE `ControlGroup` — the system's joined toolbar group,
+        // matching the reader window's toolbar (see `MacRootView.toolbar` for why it is a
+        // `ControlGroup` hosted directly by a `ToolbarItem` and not a `ToolbarItemGroup`). The
+        // update segment cross-fades to a spinner while a run is in flight, which keeps the item
+        // set constant — that is what Catalyst needs to avoid re-validation flicker; tapping it
+        // then cancels the run.
         ToolbarItem(placement: .primaryAction) {
-            MacToolbarPill {
+            ControlGroup {
                 Button {
                     if isUpdating { UpdateActivity.shared.cancel() } else { updateAll() }
                 } label: {
@@ -236,25 +232,33 @@ private struct FeedsListContent: View {
                         Image(systemName: "arrow.clockwise").opacity(isUpdating ? 0 : 1)
                         ProgressView().controlSize(.small).opacity(isUpdating ? 1 : 0)
                     }
-                    .frame(width: 34, height: 28)
-                    .contentShape(Rectangle())
+                    .macToolbarIcon()
                 }
-                .buttonStyle(.borderless)
                 .disabled(!isUpdating && feeds.isEmpty)
                 .help(isUpdating ? Text("Stop updating") : Text("Update all"))
                 .accessibilityLabel(isUpdating ? Text("Stop updating") : Text("Update all"))
-                MacPillButton(title: "Add Feed", systemImage: "plus") {
-                    openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create)
+
+                Button {
+                    showingCreateFeed = true
+                } label: {
+                    Label("Add Feed", systemImage: "plus").macToolbarIcon()
                 }
+                .help(Text("Add Feed"))
             }
         }
+        // The overflow menu is its own item, matching the reader window: a pull-down is not a peer
+        // action, so it never becomes a segment of the group.
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button { onExportOPML() } label: { Label("Export OPML", systemImage: "square.and.arrow.up") }
                 Button { isImporting = true } label: { Label("Import OPML", systemImage: "square.and.arrow.down") }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Label("More", systemImage: "ellipsis").macToolbarIcon()
             }
+            // A pull-down chevron beside the ellipsis is redundant — the glyph already reads as
+            // "more". `.menuIndicator(.hidden)` is the standard way to drop it.
+            .menuIndicator(.hidden)
+            .help(Text("More"))
         }
         #else
         ToolbarItem(placement: .topBarTrailing) {

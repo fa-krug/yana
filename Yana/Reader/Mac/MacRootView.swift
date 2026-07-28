@@ -25,11 +25,14 @@ struct MacRootView: View {
     @State private var showSpinner = false
     /// Keeps the spinner up for a minimum interval so a sub-second update doesn't flash it.
     @State private var spinnerHoldTask: Task<Void, Never>?
+    /// Creating a feed is a sheet here too (matching Add Tag and the Feeds pane), not the separate
+    /// window it used to be — this window is simply where the empty-library and sidebar CTAs live.
+    @State private var showingCreateFeed = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             MacSidebarView(model: model, settings: settings,
-                           onCreateFeed: { openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create) },
+                           onCreateFeed: { showingCreateFeed = true },
                            focusedPane: $focusedPane)
                 .navigationSplitViewColumnWidth(
                     min: SidebarWidth.min, ideal: restoredSidebarWidth, max: SidebarWidth.max)
@@ -39,6 +42,19 @@ struct MacRootView: View {
                 .toolbar { toolbar }
         }
         .accessibilityIdentifier("mac.window.root")
+        .sheet(isPresented: $showingCreateFeed) {
+            NavigationStack {
+                FeedEditorView(feed: nil) { newFeed in
+                    // Same post-create fetch the editor window used to do.
+                    guard newFeed.enabled else { return }
+                    UpdateActivity.shared.restart {
+                        _ = await AggregationService(context: AppContainer.shared.mainContext)
+                            .update(feed: newFeed)
+                    }
+                }
+            }
+            .toggleStyle(.switch)
+        }
         .toast($model.toast)
         // Scene-wide (not tied to which view has focus) so ⌘↑/⌘↓ move the article even when the
         // UIKit reader in the detail pane holds first responder.
@@ -82,7 +98,7 @@ struct MacRootView: View {
 
     @ViewBuilder private var detail: some View {
         if model.filteredArticles.isEmpty {
-            MacEmptyLibraryView(onCreateFeed: { openWindow(id: WindowID.feedEditor, value: FeedEditorTarget.create) })
+            MacEmptyLibraryView(onCreateFeed: { showingCreateFeed = true })
         } else {
             MacReaderDetailView(
                 articles: model.filteredArticles,
@@ -97,33 +113,60 @@ struct MacRootView: View {
         }
     }
 
+    /// The four article actions live in **one** `ControlGroup`, which is the system's joined toolbar
+    /// group: it draws the shared capsule and the segment spacing itself, replacing the hand-rolled
+    /// `glassEffect` pill this used to be. `ToolbarItemGroup` is *not* the equivalent on Catalyst —
+    /// verified: its members render as separate round buttons, not a group. The overflow `Menu`
+    /// deliberately stays outside as its own item.
+    ///
+    /// The `ControlGroup` must be hosted **directly** by a `ToolbarItem`. Nested inside a
+    /// `ToolbarItemGroup` (as it was before commit 0cf55dc) it renders its content empty once the
+    /// toolbar re-validates, which is the blank-pill bug that motivated hand-rolling in the first
+    /// place; hosted directly it renders its segments.
+    ///
+    /// Two constraints shape the contents: the item set must stay constant, because
+    /// adding/removing an item makes Catalyst re-validate the toolbar and flicker — hence the
+    /// "Update all" button cross-fades its icon to a spinner in place rather than a spinner item
+    /// appearing beside it — and the icons stay in one visual family (no mixed `.circle` variants),
+    /// which is what made the old pill read as a jumble.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        // The primary actions as one joined segmented pill (hand-rolled — NOT a ControlGroup,
-        // which renders empty in a Catalyst toolbar after re-validation). The trailing "Update all"
-        // segment doubles as the busy indicator: its icon cross-fades to a spinner while a run is in
-        // flight, so the spinner lives *inside* the group without ever changing the toolbar item set
-        // (adding/removing an item is what makes Mac Catalyst re-validate and flicker) or the pill's
-        // width (the spinner occupies the same 34 × 28 slot as the icon).
         ToolbarItem(placement: .primaryAction) {
-            MacToolbarPill {
-                MacPillButton(title: isSelectedStarred ? "Unstar" : "Star",
-                              systemImage: isSelectedStarred ? "star.fill" : "star",
-                              disabled: model.selectedSummary == nil) {
+            ControlGroup {
+                Button {
                     if let article = model.selectedArticle() { model.toggleStar(article) }
+                } label: {
+                    Label(isSelectedStarred ? "Unstar" : "Star",
+                          systemImage: isSelectedStarred ? "star.fill" : "star")
+                        .macToolbarIcon()
                 }
-                MacPillButton(title: "Read Aloud",
-                              systemImage: speech.state == .speaking ? "pause.circle" : "play.circle",
-                              disabled: model.selectedSummary == nil) {
+                .disabled(model.selectedSummary == nil)
+                .help(Text(isSelectedStarred ? "Unstar" : "Star"))
+
+                Button {
                     if let article = model.selectedArticle() { toggleSpeech(article) }
+                } label: {
+                    Label("Read Aloud",
+                          systemImage: speech.state == .speaking ? "pause.fill" : "play.fill")
+                        .macToolbarIcon()
                 }
-                MacPillButton(title: "Open Page", systemImage: "safari",
-                              disabled: model.selectedSummary == nil) {
+                .disabled(model.selectedSummary == nil)
+                .help(Text("Read Aloud"))
+
+                Button {
                     if let article = model.selectedArticle() { model.openWebsite(article) }
+                } label: {
+                    Label("Open Page", systemImage: "safari").macToolbarIcon()
                 }
-                updateSegment
+                .disabled(model.selectedSummary == nil)
+                .help(Text("Open Page"))
+
+                updateButton
             }
         }
 
+        // The overflow menu stays its OWN toolbar item, never a segment of the group: it is a
+        // pull-down, not a peer action, and a lone item's label padding keeps it a round button
+        // rather than an upright oval.
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button { openWindow(id: WindowID.settings, value: true) } label: { Label("Settings", systemImage: "gearshape") }
@@ -144,16 +187,21 @@ struct MacRootView: View {
                     } label: { Label("Copy link", systemImage: "link") }
                 }
             } label: {
-                Label("More", systemImage: "ellipsis.circle")
+                Label("More", systemImage: "ellipsis").macToolbarIcon()
             }
+            // A pull-down chevron beside the ellipsis is redundant — the glyph already reads as
+            // "more". `.menuIndicator(.hidden)` is the standard way to drop it.
+            .menuIndicator(.hidden)
+            .help(Text("More"))
         }
     }
 
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
 
-    /// The trailing pill segment: "Update all", whose icon cross-fades to a spinner while a run is
-    /// in flight so the busy indicator sits inside the group without changing its width.
-    private var updateSegment: some View {
+    /// "Update all", whose icon cross-fades to a spinner while a run is in flight so the busy
+    /// indicator sits inside the group without changing the item set or the group's width (both
+    /// children stay laid out — only their opacity changes).
+    private var updateButton: some View {
         Button {
             model.triggerRefresh()
         } label: {
@@ -161,10 +209,8 @@ struct MacRootView: View {
                 Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
                 ProgressView().controlSize(.small).opacity(showSpinner ? 1 : 0)
             }
-            .frame(width: 34, height: 28)
-            .contentShape(Rectangle())
+            .macToolbarIcon()
         }
-        .buttonStyle(.borderless)
         .disabled(showSpinner)
         .help(Text("Update all"))
         .accessibilityLabel(showSpinner ? Text("Updating") : Text("Update all"))
@@ -233,7 +279,9 @@ private struct MacSidebarView: View {
     /// A calmer selection fill than the raw accent: the brand lavender mixed toward black so the
     /// focused pill reads as a deep violet instead of a glaring neon block, while white row text
     /// stays legible on top. `mix` resolves per-appearance, so it tracks light/dark like the accent.
-    private static var selectionTint: Color { Color.accentColor.mix(with: .black, by: 0.3) }
+    /// The mix is deliberately shallow — the accent asset itself is already a darkened lavender, so
+    /// the old 0.3 would compound into near-black here.
+    private static var selectionTint: Color { Color.accentColor.mix(with: .black, by: 0.18) }
 
     var body: some View {
         // The List must be the DIRECT child of the NavigationSplitView sidebar column for the system
@@ -432,7 +480,7 @@ private struct MacArticleRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 6) {
                     if !summary.feedName.isEmpty {
-                        Text(summary.feedName).fontWeight(.medium).foregroundStyle(Color.accentColor)
+                        Text(summary.feedName).fontWeight(.medium).foregroundStyle(feedNameColor)
                         Text("·").foregroundStyle(.tertiary)
                     }
                     Text(summary.createdAt, style: .date).foregroundStyle(.tertiary)
@@ -450,6 +498,11 @@ private struct MacArticleRow: View {
         .onHover { isHovering = $0 }
         .contextMenu { contextMenuItems }
     }
+
+    /// The feed name is accent-tinted, which is exactly the hue the selection pill is derived from —
+    /// on the selected row it would disappear into its own background. Invert it there to the white
+    /// the system already draws the rest of the selected row's text in.
+    private var feedNameColor: Color { isSelected ? .white : Color.accentColor }
 
     @ViewBuilder private var hoverBackground: some View {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
