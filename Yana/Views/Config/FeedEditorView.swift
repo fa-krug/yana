@@ -72,10 +72,7 @@ struct FeedEditorView: View {
             }
 
             Section("Tags") {
-                // Its own `@Query`, re-identified by `.id()` on a CloudKit remote-change bump (see
-                // `LibraryRevision`) so a tag added on another device shows up in this picker
-                // without a relaunch — `@Query` never sees `.NSPersistentStoreRemoteChange` on its
-                // own. `model.selectedTagNames` lives on this view's own `@State`, untouched by the
+                // Its own `@Query`, re-identified by `.id()` on a remote-change bump. `model.selectedTagNames` lives on this view's own `@State`, untouched by the
                 // subview's identity reset.
                 FeedTagsPicker(selectedTagNames: $model.selectedTagNames)
                     .id(LibraryRevision.shared.token)

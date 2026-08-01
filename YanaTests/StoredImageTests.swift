@@ -6,7 +6,7 @@ import Testing
 @MainActor
 struct StoredImageTests {
     private func container() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
                            configurations: config)
     }

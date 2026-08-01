@@ -7,7 +7,7 @@ import Testing
 @Suite("AggregationRetentionGate")
 struct AggregationRetentionGateTests {
     private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, StoredImage.self,
                                            configurations: config)
         let seed = ModelContext(container)

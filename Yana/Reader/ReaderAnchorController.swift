@@ -43,8 +43,7 @@ final class ReaderAnchorController {
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention
     /// cleanup). Prefers the canonical synced UID over the per-device identifier: a remote anchor
     /// may have arrived for an article that hadn't synced to this device yet — the *common* case,
-    /// since KVS anchor propagation is typically faster than the CloudKit article import catching
-    /// up — and once that article does arrive on a later delivery, this is what finally moves the
+    /// and once that article does arrive on a later delivery, this is what finally moves the
     /// selection (`timelinePositionDidChange` won't re-fire, since the UID hasn't changed since it
     /// arrived; without this self-heal the position would only catch up on the next launch). Falls
     /// back to the identifier when the UID doesn't resolve either; the two are written in lockstep

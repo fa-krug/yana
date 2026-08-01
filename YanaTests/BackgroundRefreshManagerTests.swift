@@ -22,7 +22,7 @@ struct BackgroundRefreshManagerTests {
     }
 
     private func makeContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
         let context = ModelContext(container)
         context.insert(Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true))
@@ -115,7 +115,7 @@ struct BackgroundRefreshManagerTests {
     func passiveScheduleNoOps() throws {
         let container = try ModelContainer(
             for: Feed.self, Yana.Tag.self, Article.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         var scheduled = false
         let off = BackgroundRefreshManager(
             container: container,

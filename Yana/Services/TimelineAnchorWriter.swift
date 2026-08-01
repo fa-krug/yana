@@ -1,7 +1,7 @@
 import Foundation
 
 /// Records the timeline anchor (both the per-device `identifier` and the canonical cross-device
-/// `uid`) and pushes it to iCloud sync. This is the single write path both platforms' user-driven
+/// `uid`). This is the single write path both platforms' user-driven
 /// selection changes go through — iOS's `ReaderAnchorController` (backing `ReaderScreen`'s
 /// `saveAnchor`/`openArticle`) and Mac's `TimelineModel` (`selection` setter/`moveSelection`) — so
 /// the no-ping-pong guarantee (only a user-driven change may push) is a testable seam instead of

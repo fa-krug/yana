@@ -51,7 +51,7 @@ final class TimelineModel {
     private let notificationCenter: NotificationCenter
     private var anchorObserver: NSObjectProtocol?
 
-    /// Records + pushes a changed anchor to iCloud KVS (coalesced). The same `TimelineAnchorWriter`
+    /// Records a changed anchor. The same `TimelineAnchorWriter`
     /// type iOS's `ReaderAnchorController` uses, so the no-ping-pong guarantee is asserted against
     /// one shared, testable seam on both platforms: `jumpToSyncedTimelinePosition` must never call
     /// `anchorWriter.record`, only the user-driven `selection` setter and `moveSelection` may.
@@ -92,7 +92,7 @@ final class TimelineModel {
                   // programmatic move of `currentIndex` — e.g. `jumpToSyncedTimelinePosition` — so
                   // without this guard, re-selecting the row already at `currentIndex` would still
                   // call `anchorWriter.record`/`pushSoon` for a no-op selection change. Worst case
-                  // that's a stale anchor pushed back to iCloud KVS moments after a newer one
+                  // that"s a stale anchor
                   // arrived, which last-writer-wins could then drag another device backwards.
                   i != currentIndex
             else { return }
@@ -180,8 +180,7 @@ final class TimelineModel {
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention
     /// cleanup). Prefers the canonical synced UID over the per-device identifier: a remote anchor
     /// may have arrived for an article that hadn't synced to this device yet — the *common* case,
-    /// since KVS anchor propagation is typically faster than the CloudKit article import catching
-    /// up — and once that article does arrive on a later delivery (this method runs again from
+    /// and once that article does arrive on a later delivery (this method runs again from
     /// `applyTimeline`), this is what finally moves the selection: `timelinePositionDidChange` won't
     /// re-fire, since the UID hasn't changed since it arrived. Without this self-heal the position
     /// would only catch up on the next launch — close to the very symptom this task exists to fix.

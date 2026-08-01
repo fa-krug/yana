@@ -47,7 +47,7 @@ actor ArticleSummaryLoader {
     }
 
     /// How many `Article` rows the store holds. A single SQL aggregate — cheap enough to run as a
-    /// probe on every CloudKit merge notification, which a full re-read is not.
+    /// probe on every remote merge notification, which a full re-read is not.
     func articleCount() throws -> Int {
         try modelContext.fetchCount(FetchDescriptor<Article>())
     }
@@ -157,11 +157,11 @@ final class ArticleStore {
     /// - `ModelContext.didSave` names the exact rows that changed, so the index is **spliced**.
     ///   It only fires for saves made through a SwiftData `ModelContext` — every local write
     ///   (aggregation, starring, dedup, image registration).
-    /// - `.NSPersistentStoreRemoteChange` fires when CloudKit mirroring merges a batch into the
+    /// - `.NSPersistentStoreRemoteChange` fires when mirroring merges a batch into the
     ///   store. That happens below SwiftData, through Core Data, so no `ModelContextDidSave` is
     ///   posted and there are no identifiers to splice with. Without this observer a purely remote
     ///   change would not reach the timeline until some local write happened to save.
-    ///   It cannot simply force a full re-read, though: on a `.automatic` (CloudKit) store a
+    ///   It cannot simply force a full re-read, though: on a store a
     ///   **local** save posts this notification too — several times per save — so re-reading on
     ///   each one would undo the whole point of splicing. It sets `needsCountProbe` instead; see
     ///   `reconcileIfCountDiffers`.
@@ -277,7 +277,7 @@ final class ArticleStore {
         } else {
             await splice(change)
             // Splice first, then probe: after applying the rows a local save named, a count that
-            // still disagrees means something arrived that named no rows — a CloudKit merge.
+            // still disagrees means something arrived that named no rows — a remote merge.
             if probe { await reconcileIfCountDiffers() }
         }
         hasLoaded = true
@@ -286,7 +286,7 @@ final class ArticleStore {
     /// Re-read the library only if the store holds a different number of articles than the index.
     ///
     /// This is what makes observing `.NSPersistentStoreRemoteChange` affordable. That notification
-    /// fires for local saves as well as CloudKit merges, so it cannot mean "re-read"; but a merge
+    /// fires for local saves as well as remote merges, so it cannot mean "re-read"; but a merge
     /// that actually delivered or removed articles changes the row count, and a `COUNT` is a single
     /// cheap aggregate. After a local save has been spliced, the counts agree and nothing happens.
     ///
@@ -348,7 +348,7 @@ final class ArticleStore {
     /// Publish a new index and schedule the disk-cache rewrite.
     ///
     /// Assigning an identical array would still be an observable mutation: SwiftUI would re-run the
-    /// timeline filter and the pager would reconcile its pages, for nothing. A CloudKit reconcile
+    /// timeline filter and the pager would reconcile its pages, for nothing. A remote reconcile
     /// that finds no local difference is exactly that case, so the equality check pays for itself.
     private func publish(_ next: [ArticleSummary]) {
         guard next != summaries else { return }

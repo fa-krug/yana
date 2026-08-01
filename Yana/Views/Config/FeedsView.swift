@@ -9,8 +9,7 @@ import UniformTypeIdentifiers
 /// delete confirmation, an in-flight OPML import, the toast — plus every modifier that
 /// *presents* something (`.sheet`, `.fileImporter`, `.alert`, `.toast`). `FeedsListContent` owns
 /// the `@Query` and everything that only needs to *display* feed data; it's re-identified by
-/// `.id()` on a CloudKit remote-change bump (see `LibraryRevision`), since `@Query` never sees
-/// `.NSPersistentStoreRemoteChange` on its own. Keeping the presentation modifiers on this stable
+/// `.id()` on a remote-change bump. Keeping the presentation modifiers on this stable
 /// outer view means a merge landing while, say, the create-feed sheet is open never dismisses it —
 /// only a view's presentation host, not the thing it presents, would be affected by the child's
 /// identity reset.

@@ -156,29 +156,12 @@ final class AppSettings {
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
         // Onboarding
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
-        // Migration
-        static let hasMigratedToNativeCloudKit = "settings.hasMigratedToNativeCloudKit"
-        static let hasCleanedLegacyCloudKit = "settings.hasCleanedLegacyCloudKit"
         // Mac window layout (device-local, never synced)
         static let macSidebarWidth = "settings.macSidebarWidth"
         // Diagnostics (device-local, never synced)
         static let diagnosticsUnlocked = "settings.diagnosticsUnlocked"
     }
 
-    // MARK: Migration
-
-    /// One-time: whether the native SwiftData+CloudKit migration has run. Device-local.
-    var hasMigratedToNativeCloudKit: Bool {
-        get { access(keyPath: \.hasMigratedToNativeCloudKit); return defaults.bool(forKey: Key.hasMigratedToNativeCloudKit) }
-        set { withMutation(keyPath: \.hasMigratedToNativeCloudKit) { defaults.set(newValue, forKey: Key.hasMigratedToNativeCloudKit) } }
-    }
-
-    /// One-time: whether the legacy hand-built CloudKit artifacts have been cleaned up. Device-local.
-    /// Stays false (retried next launch) until the deletion succeeds.
-    var hasCleanedLegacyCloudKit: Bool {
-        get { access(keyPath: \.hasCleanedLegacyCloudKit); return defaults.bool(forKey: Key.hasCleanedLegacyCloudKit) }
-        set { withMutation(keyPath: \.hasCleanedLegacyCloudKit) { defaults.set(newValue, forKey: Key.hasCleanedLegacyCloudKit) } }
-    }
 
     // MARK: Legacy helpers (used by NativeCloudKitMigration to read old keys)
 

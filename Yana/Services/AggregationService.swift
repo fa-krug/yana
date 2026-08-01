@@ -300,8 +300,8 @@ final class AggregationService {
 
     // MARK: - Helpers
 
-    /// Register `StoredImage` rows for every image the current library references, so CloudKit
-    /// mirrors the blobs. `ensureStored` skips hashes that already have a row. Returns the
+    /// Register `StoredImage` rows for every image the current library references.
+    /// `ensureStored` skips hashes that already have a row. Returns the
     /// snapshot it computed (`nil` if the underlying fetch failed) so `pruneOrphanedImages(snapshot:)`
     /// can reuse the *same* scan instead of re-fetching every `Feed`/`Article` a second time —
     /// the two used to each run their own full pass, doubling this method's own documented cost.

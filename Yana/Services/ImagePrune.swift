@@ -5,9 +5,8 @@ import SwiftData
 /// as a `nonisolated`, SwiftData-free type so the interesting behaviour is unit-testable directly
 /// (see `ImagePruneTests`); the SwiftData/disk plumbing lives in `ImagePruneRunner` below.
 ///
-/// **Why a two-phase quarantine.** A `StoredImage` delete propagates through CloudKit to every
-/// other device. If this device's article set is momentarily incomplete — mid-import, partially
-/// synced, a fresh install still pulling down — a hash can look unreferenced *here* while another
+/// **Why a two-phase quarantine.** If this device"s article set is momentarily incomplete — mid-import, partially
+/// a fresh install still pulling down — a hash can look unreferenced *here* while another
 /// device still needs it, and deleting it would destroy it everywhere. So a hash is never deleted
 /// the first time it's seen unreferenced: it's recorded as a *candidate* with a local first-seen
 /// timestamp, and only deleted once a later pass finds it still unreferenced after
@@ -17,8 +16,7 @@ enum ImagePrunePlan {
     static let quarantinePeriod: TimeInterval = 24 * 3600
 
     /// Caps how many hashes a single pass deletes. CLAUDE.md notes a `CKError.partialFailure` over
-    /// a ~400-record CloudKit export batch is already enough to flood the diagnostics buffer;
-    /// capping here bounds both the SwiftData transaction size and the CloudKit delete burst per
+    /// capping here bounds the SwiftData transaction size per
     /// pass. Hashes past the cap simply carry over as still-quarantined candidates — the
     /// quarantine already means they're safe to delete whenever we get to them, so draining a large
     /// backlog across several passes is harmless.
@@ -145,7 +143,7 @@ actor ImagePruneRunner {
 
     /// Deletes every `StoredImage` row whose `contentHash` is in `hashes`, saving every `batchSize`
     /// deletions rather than once at the end — so a large pass never holds the context (or hands
-    /// CloudKit) one giant transaction, mirroring `BlockMigrator.migrate(batchSize:)`. `hashes` is
+    /// one giant transaction, mirroring `BlockMigrator.migrate(batchSize:)`. `hashes` is
     /// expected to already be capped by `ImagePrunePlan.maxDeletionsPerPass`; batching here is a
     /// second, independent line of defense for whatever is passed in. Returns the count actually
     /// deleted, for logging.

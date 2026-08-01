@@ -204,7 +204,7 @@ struct ImagePrunePlanTests {
 @Suite("ImagePruneRunner")
 struct ImagePruneRunnerTests {
     private func container() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(
             for: Feed.self, Yana.Tag.self, Article.self, StoredImage.self,
             configurations: config
@@ -304,7 +304,7 @@ struct ImagePruneCandidateStoreTests {
 @Suite("ReferencedImageSnapshotForPruning")
 struct ReferencedImageSnapshotForPruningTests {
     private func container() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(
             for: Feed.self, Yana.Tag.self, Article.self, StoredImage.self,
             configurations: config

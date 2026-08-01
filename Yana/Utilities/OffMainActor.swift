@@ -10,7 +10,7 @@ import Foundation
 /// only the caller's isolation decides. Constructing the actor off-main doesn't help either — the
 /// thread is picked at the `await`, not at `init` (`OffMainActorTests` pins all three behaviours).
 ///
-/// That trap is what made the UI lag during an iCloud sync: a CloudKit import arrives as a burst of
+/// That trap is what made the UI lag during syncs: an import arrives as a burst of
 /// saves, each waking `ArticleStore`'s full-library re-index and `LibraryDedup`'s three-table scan,
 /// and on a 4 000-article library each burst froze the main thread for ~300–600 ms.
 ///
