@@ -27,24 +27,9 @@ struct SettingsScreenView: View {
 
     var body: some View {
         Form {
-            organizeSection
-            ReaderSettingsSection()
-            RedditSettingsSection()
-            YouTubeSettingsSection()
-            NotificationsSettingsSection()
             AIProviderSettingsSection()
-            AITuningSettingsSection()
-            LibrarySettingsSection()
-            AboutSettingsSection(
-                onRestartOnboarding: {
-                    onRestartOnboarding()
-                    dismiss()
-                },
-                onRevealDiagnostics: {
-                    diagnosticsRevealed = true
-                    toast = ToastMessage(text: String(localized: "Diagnostics enabled"))
-                }
-            )
+            ServerSettingsSection()
+
             if DiagnosticsReveal.isDiagnosticsVisible(
                 unlocked: settings.diagnosticsUnlocked,
                 revealed: diagnosticsRevealed
@@ -96,23 +81,4 @@ struct SettingsScreenView: View {
         }
     }
 
-    private var organizeSection: some View {
-        Section {
-            NavigationLink {
-                FeedsView()
-            } label: {
-                Label("Feeds", systemImage: "list.bullet.rectangle")
-                    .labelStyle(.tintedIcon(.orange))
-            }
-            .accessibilityIdentifier("settings.feeds")
-            NavigationLink {
-                TagsView()
-            } label: {
-                Label("Tags", systemImage: "tag")
-                    .labelStyle(.tintedIcon(.pink))
-            }
-        } footer: {
-            Text("Manage your feeds and the tags applied to articles.")
-        }
-    }
 }

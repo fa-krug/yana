@@ -24,7 +24,9 @@ struct AIProviderSettingsSection: View {
     var body: some View {
         Section("AI Provider") {
             Picker(selection: $settings.activeAIProvider) {
-                ForEach(AIProvider.allCases) { Text($0.displayName).tag($0) }
+                ForEach([AIProvider.none, AIProvider.server, AIProvider.appleIntelligence]) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
             } label: {
                 Label("Active Provider", systemImage: "sparkles")
                     .labelStyle(.tintedIcon(.purple))
@@ -159,6 +161,13 @@ struct AIProviderSettingsSection: View {
                     await CredentialTester.ai(provider: .deepseek, apiKey: deepseekKey,
                                               model: settings.deepseekModel,
                                               openaiAPIURL: settings.openaiAPIURL)
+                }
+            }
+        case .server:
+            CredentialTestControls(status: appleStatus, disabled: false, onClear: { appleStatus = .idle }) {
+                CredentialTest.run({ appleStatus = $0 }) {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    return nil
                 }
             }
         case .appleIntelligence:
