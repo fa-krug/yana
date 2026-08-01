@@ -81,23 +81,4 @@ struct SettingsScreenView: View {
         }
     }
 
-    private var organizeSection: some View {
-        Section {
-            NavigationLink {
-                FeedsView()
-            } label: {
-                Label("Feeds", systemImage: "list.bullet.rectangle")
-                    .labelStyle(.tintedIcon(.orange))
-            }
-            .accessibilityIdentifier("settings.feeds")
-            NavigationLink {
-                TagsView()
-            } label: {
-                Label("Tags", systemImage: "tag")
-                    .labelStyle(.tintedIcon(.pink))
-            }
-        } footer: {
-            Text("Manage your feeds and the tags applied to articles.")
-        }
-    }
 }
