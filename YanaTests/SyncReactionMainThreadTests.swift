@@ -3,9 +3,9 @@ import SwiftData
 import Testing
 @testable import Yana
 
-/// Pins the fix for "the UI lags during iCloud sync".
+/// Pins the fix for "the UI lags during sync".
 ///
-/// A CloudKit import lands as a burst of saves, and every save wakes the reaction chain
+/// An import lands as a burst of saves, and every save wakes the reaction chain
 /// (`ArticleStore`'s full re-index, `LibraryDedup`'s three-table scan). Those run inside
 /// `@ModelActor`s — which execute on the *caller's* thread, so when a `@MainActor` type awaits one
 /// the whole database pass happens on the main thread. Measured on a 4 000-article library that was
@@ -84,7 +84,7 @@ struct SyncReactionMainThreadTests {
     }
 
     /// End-to-end: import batches landing while `ArticleStore` observes saves — the actual
-    /// "iCloud sync is running and the reader is on screen" situation.
+    /// "sync is running and the reader is on screen" situation.
     @Test func importBatchesLeaveTheMainActorResponsive() async throws {
         let fixture = try LibraryFixture.make(articleCount: 3000)
         defer { try? FileManager.default.removeItem(at: fixture.directory) }

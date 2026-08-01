@@ -8,22 +8,17 @@ struct KeychainServiceTests {
 
     // MARK: - Helpers
 
-    /// Ensure a clean state before each test by deleting the test key and
-    /// resetting the global sync flag.
+    /// Ensure a clean state before each test by deleting the test key.
     private func cleanup(item: KeychainService.APIKeyItem) {
         KeychainService.deleteAPIKey(for: item)
-        KeychainService.synchronizeWithICloud = false
     }
 
-    // MARK: - Basic round-trip (sync OFF)
+    // MARK: - Basic round-trip
 
-    @Test func roundTripWithSyncOff() {
+    @Test func roundTrip() {
         let item = KeychainService.APIKeyItem.mistralAPIKey
         cleanup(item: item)
         defer { cleanup(item: item) }
-
-        // sync flag must be off for this test (explicitly set by cleanup)
-        #expect(KeychainService.synchronizeWithICloud == false)
 
         let saved = KeychainService.saveAPIKey("test-secret-999", for: item)
         #expect(saved)
@@ -42,82 +37,4 @@ struct KeychainServiceTests {
         #expect(KeychainService.APIKeyItem.allCases.count == 9)
     }
 
-    // MARK: - migrateSynchronizable
-
-    @Test func migrateSynchronizablePreservesValueAndUpdatesFlag() {
-        let item = KeychainService.APIKeyItem.qwenAPIKey
-        cleanup(item: item)
-        defer { cleanup(item: item) }
-
-        // 1. Store a value while sync is OFF (local keychain).
-        KeychainService.synchronizeWithICloud = false
-        let saved = KeychainService.saveAPIKey("migrate-test-value", for: item)
-        #expect(saved)
-        #expect(KeychainService.loadAPIKey(for: item) == "migrate-test-value")
-
-        // 2. Migrate to sync=true.
-        //    On simulator / unit-test host without iCloud Keychain entitlements,
-        //    writing a synchronizable item may fail with errSecMissingEntitlement.
-        //    In that case the migration re-save is a no-op (save returns false),
-        //    but the flag is still updated and the PREVIOUSLY saved local copy is
-        //    already gone (delete-before-save cleared it). We only assert what is
-        //    reliably observable in this environment.
-        let migrated = KeychainService.migrateSynchronizable(to: true)
-        #expect(migrated == true)
-        #expect(KeychainService.synchronizeWithICloud == true)
-
-        // The value should still be readable IF the synchronizable write succeeded,
-        // OR not readable if the host lacks the entitlement — either outcome is
-        // valid here; we just must not crash.
-        _ = KeychainService.loadAPIKey(for: item)
-
-        // 3. Migrate back to sync=false.  Re-save should succeed (local domain).
-        let migratedBack = KeychainService.migrateSynchronizable(to: false)
-        #expect(migratedBack == true)
-        #expect(KeychainService.synchronizeWithICloud == false)
-
-        // 4. Calling migrate with the same value is a no-op.
-        let noOp = KeychainService.migrateSynchronizable(to: false)
-        #expect(noOp == false)
-    }
-
-    // MARK: - Flag state isolation
-
-    @Test func flagDefaultsToTrue() {
-        // The global flag must start as true (sync always on by default).
-        // This test is intentionally simple — it documents the contract.
-        // Reset to true since prior tests may have changed it.
-        KeychainService.synchronizeWithICloud = true
-        #expect(KeychainService.synchronizeWithICloud == true)
-    }
-
-    // MARK: - resaveAllSynchronizable
-
-    @Test func resaveAllSynchronizablePreservesLoadableKey() {
-        let item = KeychainService.APIKeyItem.deepseekAPIKey
-        KeychainService.deleteAPIKey(for: item)
-        defer {
-            KeychainService.deleteAPIKey(for: item)
-            // Restore the global default (true) so subsequent tests and
-            // KeychainSyncDefaultTests.defaultsToSynchronizable() see a clean slate.
-            KeychainService.synchronizeWithICloud = true
-        }
-
-        // 1. Save a key in the non-synchronizable domain.
-        KeychainService.synchronizeWithICloud = false
-        let saved = KeychainService.saveAPIKey("resave-test-value", for: item)
-        #expect(saved)
-        #expect(KeychainService.loadAPIKey(for: item) == "resave-test-value")
-
-        // 2. Switch to synchronizable domain and call resaveAllSynchronizable().
-        //    On simulator / unit-test host without iCloud Keychain entitlements the
-        //    re-save write may return errSecMissingEntitlement (save returns false),
-        //    but the call must complete without crashing and the key must still be
-        //    readable (Any-matching load finds whichever copy is present).
-        KeychainService.synchronizeWithICloud = true
-        KeychainService.resaveAllSynchronizable()
-
-        // 3. The key must still be loadable regardless of entitlement availability.
-        #expect(KeychainService.loadAPIKey(for: item) != nil)
-    }
 }
