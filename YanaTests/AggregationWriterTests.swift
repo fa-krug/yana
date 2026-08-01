@@ -7,7 +7,7 @@ import Testing
 @Suite("AggregationWriter")
 struct AggregationWriterTests {
     private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
         let seed = ModelContext(container)
         seed.insert(Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true))

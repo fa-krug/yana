@@ -6,8 +6,7 @@ import SwiftData
 struct BackgroundRefreshIntervalTests {
     private func container() throws -> ModelContainer {
         try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
-                           configurations: ModelConfiguration(isStoredInMemoryOnly: true,
-                                                              cloudKitDatabase: .none))
+                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     }
 
     @Test func offMeansNoScheduling() throws {

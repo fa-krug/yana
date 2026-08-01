@@ -11,9 +11,7 @@ struct TagsView: View {
     @State private var showingCreateTag = false
 
     var body: some View {
-        // The `@Query` lives on `TagsListContent`, re-identified by `.id()` on a CloudKit
-        // remote-change bump (see `LibraryRevision`) so it re-fetches — `@Query` never sees
-        // `.NSPersistentStoreRemoteChange` on its own. `searchText`/`tagsToDelete`/
+        // The `@Query` lives on `TagsListContent`, re-identified by `.id()` on a remote-change bump. `searchText`/`tagsToDelete`/
         // `showingCreateTag` stay on this parent so recreating the child loses none of them.
         TagsListContent(searchText: $searchText, tagsToDelete: $tagsToDelete)
             .id(LibraryRevision.shared.token)
@@ -70,7 +68,7 @@ struct TagsView: View {
     }
 }
 
-/// The `@Query`-owning half of `TagsView`, split out so a CloudKit remote-change `.id()` reset
+/// The `@Query`-owning half of `TagsView`, split out so a remote-change `.id()` reset
 /// only recreates the list (and its `@Query`), not the parent's search text, create-sheet flag,
 /// or delete-confirmation state.
 private struct TagsListContent: View {

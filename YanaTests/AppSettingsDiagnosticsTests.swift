@@ -27,7 +27,7 @@ struct AppSettingsDiagnosticsTests {
         let destination = makeSettings()
         destination.applySyncedSettings(source.exportSyncedSettings())
 
-        // Device-local by design: the flag must not ride along in the iCloud key-value payload.
+        // Device-local by design.
         #expect(destination.diagnosticsUnlocked == false)
 
         let json = try #require(

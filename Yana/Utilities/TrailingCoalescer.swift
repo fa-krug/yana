@@ -8,8 +8,7 @@ import Foundation
 ///   while a run is in flight, exactly one follow-up run is guaranteed after the current one
 ///   finishes — so nothing is missed, but nothing stacks up either.
 ///
-/// This tames the CloudKit sync storm: a merge fires `ModelContext.didSave` /
-/// `.NSPersistentStoreRemoteChange` many times in quick succession, and each naive reaction
+/// This tames sync storms: a merge fires `ModelContext.didSave` many times in quick succession, and each naive reaction
 /// (a full-library re-fetch in `ArticleStore`, a full three-table scan in `LibraryDedup`) is
 /// expensive and contends with the reader. Coalescing turns a burst into one run (or at most one
 /// in-flight + one trailing run).

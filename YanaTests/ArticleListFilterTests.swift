@@ -11,7 +11,7 @@ struct ArticleListFilterTests {
     private func makeContext() throws -> ModelContext {
         let container = try ModelContainer(
             for: Article.self, Feed.self, Tag.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         return ModelContext(container)
     }

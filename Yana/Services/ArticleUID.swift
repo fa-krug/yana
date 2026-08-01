@@ -5,12 +5,11 @@ import Foundation
 /// triple (the same key `StarredMark` uses); when a feed yields no `articleIdentifier`, a
 /// deterministic `date+title` hash fills the third segment so the UID is still unique and stable.
 ///
-/// The UID doubles as the CloudKit record name when iCloud sync is enabled, so it must satisfy
-/// CloudKit's limits. Both segments are unbounded source-supplied strings (a feed URL and the
+/// Both segments are unbounded source-supplied strings (a feed URL and the
 /// source's link/permalink/GUID), and their concatenation can exceed the record-name limit.
 /// Bounding it here keeps every consumer in agreement.
 enum ArticleUID {
-    /// CloudKit rejects a record name longer than this, measured in UTF-16 code units.
+    /// Max size of a UID.
     static let recordNameLimit = 255
 
     static func make(

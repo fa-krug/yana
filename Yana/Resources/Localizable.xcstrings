@@ -3157,16 +3157,6 @@
         }
       }
     },
-    "Your library syncs automatically across your devices via iCloud.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deine Mediathek wird automatisch über iCloud zwischen deinen Geräten synchronisiert."
-          }
-        }
-      }
-    },
     "Your own private feed reader — all your sources, gathered on your device.": {
       "localizations": {
         "de": {
@@ -3387,92 +3377,12 @@
         }
       }
     },
-    "Sync via iCloud": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Via iCloud synchronisieren"
-          }
-        }
-      }
-    },
-    "iCloud Sync": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud-Synchronisierung"
-          }
-        }
-      }
-    },
-    "Syncs feeds, tags, settings, API keys, and full articles (including images) across your devices via iCloud.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Synchronisiert Feeds, Tags, Einstellungen, API-Schlüssel und vollständige Artikel (inklusive Bilder) über iCloud auf allen Geräten."
-          }
-        }
-      }
-    },
-    "A passive device never fetches in the background and relies on iCloud for its articles.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ein passives Gerät ruft nichts im Hintergrund ab und bezieht seine Artikel aus iCloud."
-          }
-        }
-      }
-    },
     "Passive Device": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Passives Gerät"
-          }
-        }
-      }
-    },
-    "Sign in to iCloud in Settings to sync.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zum Synchronisieren in den Einstellungen bei iCloud anmelden."
-          }
-        }
-      }
-    },
-    "iCloud is unreachable. Check your connection.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud ist nicht erreichbar. Verbindung prüfen."
-          }
-        }
-      }
-    },
-    "Your iCloud storage is full.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dein iCloud-Speicher ist voll."
-          }
-        }
-      }
-    },
-    "iCloud access is restricted for this account.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der iCloud-Zugriff ist für dieses Konto eingeschränkt."
           }
         }
       }
@@ -3603,16 +3513,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Synchronisierungsstatus"
-          }
-        }
-      }
-    },
-    "iCloud Account": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud-Account"
           }
         }
       }
@@ -3893,16 +3793,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Diagnose aktiviert"
-          }
-        }
-      }
-    },
-    "Shows this launch's iCloud sync activity, for troubleshooting and bug reports.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zeigt die iCloud-Synchronisierung des aktuellen App-Starts — für Fehlersuche und Fehlerberichte."
           }
         }
       }

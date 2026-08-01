@@ -1,8 +1,6 @@
 import Foundation
 
-/// How often THIS device aggregates in the background. Device-local, never synced (each device
-/// picks its own cadence). `.off` makes the device a pure iCloud mirror: no background aggregation
-/// and no retention cleanup — it still receives synced articles/deletes via CloudKit.
+/// How often THIS device aggregates in the background. Device-local. `.off` disables background aggregation.
 enum UpdateInterval: String, CaseIterable, Identifiable, Sendable {
     case off, min30, min60, hour2, hour4, hour8, hour24
 

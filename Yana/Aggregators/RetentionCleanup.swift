@@ -3,7 +3,7 @@ import SwiftData
 
 /// Deletes articles older than the retention window, except those the user has Starred, and
 /// returns the canonical UIDs of everything it deleted so the caller can propagate the deletion to
-/// iCloud. (Spec §2 — age is the only cleanup criterion; there is no read/unread state.)
+/// (Spec §2 — age is the only cleanup criterion; there is no read/unread state.)
 enum RetentionCleanup {
     /// `nonisolated`: operates purely on the passed-in `ModelContext`, so it runs on whichever
     /// actor owns that context — the main-actor `AggregationService` or the background

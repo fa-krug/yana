@@ -7,8 +7,7 @@ import Testing
 struct LibraryDedupTests {
     private func container() throws -> ModelContainer {
         try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, StoredImage.self,
-                           configurations: ModelConfiguration(isStoredInMemoryOnly: true,
-                                                              cloudKitDatabase: .none))
+                           configurations: ModelConfiguration(isStoredInMemoryOnly: true))
     }
 
     @Test func collapsesDuplicateFeedsKeepingEarliest() async throws {

@@ -14,7 +14,7 @@ struct TimelineAnchorWriterTests {
     }
 
     private func summary(_ id: String) throws -> ArticleSummary {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
         let context = ModelContext(container)
         let feed = Feed(name: "Feed", aggregatorType: .feedContent, identifier: "f")

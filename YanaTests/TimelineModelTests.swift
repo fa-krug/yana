@@ -21,7 +21,7 @@ struct TimelineModelTests {
     }
 
     private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
     }
 
@@ -75,7 +75,7 @@ struct TimelineModelTests {
     /// Review finding 3: the sidebar `List(selection:)` binding is re-read (and written back) after
     /// any programmatic move of `currentIndex` (e.g. `jumpToSyncedTimelinePosition`). Re-selecting
     /// the row already at `currentIndex` must be a no-op — otherwise a stale anchor could be pushed
-    /// back to iCloud KVS moments after a newer one arrived, and last-writer-wins could then drag
+    /// back moments after a newer one arrived, and last-writer-wins could then drag
     /// another device backwards.
     @Test func settingSelectionToTheAlreadyCurrentIdDoesNotPush() async throws {
         let settings = freshSettings()
@@ -177,8 +177,7 @@ struct TimelineModelTests {
     // MARK: - Self-heal: a pending remote anchor resolves once the article arrives
 
     /// Widens the original brief: `jumpToSyncedTimelinePosition` correctly no-ops on an unmatched
-    /// UID, but that is the *likely* case in practice (KVS anchor propagation is typically faster
-    /// than the CloudKit article import it's waiting on), and nothing previously re-attempted the
+    /// UID, but that is the *likely* case in practice and nothing previously re-attempted the
     /// match — `timelinePositionDidChange` won't re-post (the UID hasn't changed since it arrived),
     /// so the position would only catch up at the next launch. `reanchorToCurrentArticle` (run from
     /// `applyTimeline` on every `store.summaries` delivery) now prefers the synced UID over the

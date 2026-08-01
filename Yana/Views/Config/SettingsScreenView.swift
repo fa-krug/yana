@@ -45,21 +45,6 @@ struct SettingsScreenView: View {
                     toast = ToastMessage(text: String(localized: "Diagnostics enabled"))
                 }
             )
-            if DiagnosticsReveal.isDiagnosticsVisible(
-                unlocked: settings.diagnosticsUnlocked,
-                revealed: diagnosticsRevealed
-            ) {
-                diagnosticsSection
-            }
-        }
-        // Attached to the Form, *outside* the conditional section, so the destination survives the
-        // section disappearing.
-        .navigationDestination(isPresented: $showingDiagnostics) {
-            SyncLogView(onHideDiagnostics: {
-                showingDiagnostics = false
-                settings.diagnosticsUnlocked = false
-                diagnosticsRevealed = false
-            })
         }
         // Keep the toggle control on the trailing edge (matching the row pickers). On Mac Catalyst
         // the default form Toggle is a leading checkbox, which sits before the row's tinted icon and

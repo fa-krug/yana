@@ -1,8 +1,7 @@
 import Foundation
 import SwiftData
 
-/// Content-addressed image blob, synced via SwiftData+CloudKit. The bytes travel as a CKAsset
-/// (external storage). `ImageStore` keeps a disk cache in front of this; `ImageSync` bridges the two.
+/// Content-addressed image blob, `ImageStore` keeps a disk cache in front of this; `ImageSync` bridges the two.
 /// `contentHash` matches the `yana-img://<hash>` refs embedded in article blocks and `Feed.logoHash`.
 @Model
 final class StoredImage {

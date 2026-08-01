@@ -7,7 +7,7 @@ import Testing
 @Suite("ArticleResolution")
 struct ArticleResolutionTests {
     private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
     }
 

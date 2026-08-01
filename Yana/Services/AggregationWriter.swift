@@ -40,8 +40,7 @@ struct ReferencedImageSnapshot: Sendable {
     /// in-body images for such an article — the same blind spot `hasUnmigratedLegacyContent` guards
     /// against, with a different cause: `Block`/`Embed.Kind` use synthesized enum `Codable`, so an
     /// older build decoding an article a newer build wrote (a case it doesn't know) throws
-    /// `dataCorrupted`. With always-on CloudKit mirroring, mixed app versions across a user's
-    /// devices is the normal state. Must be derived from an explicit decode attempt, never from
+    /// `dataCorrupted`. Must be derived from an explicit decode attempt, never from
     /// `article.blocks.isEmpty` — a legitimately empty body also decodes to `[]`.
     let hasUndecodableBlocks: Bool
 }
@@ -69,7 +68,7 @@ actor AggregationWriter {
     /// former could tolerate a miss reading as "confirmed empty" (a delayed sync-upload,
     /// self-correcting next run). For prune, an empty referenced set is read as "nothing is
     /// referenced, everything stored is a delete candidate" — a miss there would be account-wide
-    /// destructive (a `StoredImage` delete propagates via CloudKit to every device). So both callers
+    /// destructive. So both callers
     /// share the stricter contract: `nil` means "unknown this pass", skip pruning (and registration)
     /// entirely rather than falling back to an empty set.
     func referencedImageSnapshotForPruning() -> ReferencedImageSnapshot? {
