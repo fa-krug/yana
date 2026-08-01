@@ -27,24 +27,9 @@ struct SettingsScreenView: View {
 
     var body: some View {
         Form {
-            organizeSection
-            ReaderSettingsSection()
-            RedditSettingsSection()
-            YouTubeSettingsSection()
-            NotificationsSettingsSection()
             AIProviderSettingsSection()
-            AITuningSettingsSection()
-            LibrarySettingsSection()
-            AboutSettingsSection(
-                onRestartOnboarding: {
-                    onRestartOnboarding()
-                    dismiss()
-                },
-                onRevealDiagnostics: {
-                    diagnosticsRevealed = true
-                    toast = ToastMessage(text: String(localized: "Diagnostics enabled"))
-                }
-            )
+            ServerSettingsSection()
+
             if DiagnosticsReveal.isDiagnosticsVisible(
                 unlocked: settings.diagnosticsUnlocked,
                 revealed: diagnosticsRevealed

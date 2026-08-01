@@ -9,6 +9,7 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
     case qwen
     case deepseek
     case appleIntelligence
+    case server
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .qwen: "Qwen"
         case .deepseek: "DeepSeek"
         case .appleIntelligence: "Apple Intelligence"
+        case .server: "Server"
         }
     }
 
@@ -37,6 +39,7 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .qwen: ["qwen3.5-flash", "qwen3.5-plus", "qwen3-max"]
         case .deepseek: ["deepseek-v4-flash", "deepseek-v4-pro"]
         case .appleIntelligence: []
+        case .server: []
         }
     }
 
@@ -51,7 +54,7 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
         case .mistral: "https://api.mistral.ai/v1"
         case .qwen: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
         case .deepseek: "https://api.deepseek.com/v1"
-        case .none, .anthropic, .gemini, .appleIntelligence: ""
+        case .none, .anthropic, .gemini, .appleIntelligence, .server: ""
         }
     }
 
@@ -59,7 +62,7 @@ enum AIProvider: String, CaseIterable, Sendable, Identifiable {
     /// (`.none`, on-device `.appleIntelligence`).
     var apiKeyItem: KeychainService.APIKeyItem? {
         switch self {
-        case .none, .appleIntelligence: return nil
+        case .none, .appleIntelligence, .server: return nil
         case .openai: return .openaiAPIKey
         case .anthropic: return .anthropicAPIKey
         case .gemini: return .geminiAPIKey
@@ -98,6 +101,7 @@ final class AppSettings {
             Key.mistralModel: "mistral-small-latest",
             Key.qwenModel: "qwen3.5-flash",
             Key.deepseekModel: "deepseek-v4-flash",
+            Key.serverHostURL: "",
             Key.aiTemperature: 0.3,
             Key.aiMaxTokens: 2000,
             Key.aiMaxPromptLength: 500,
@@ -130,6 +134,7 @@ final class AppSettings {
         static let mistralModel = "settings.mistralModel"
         static let qwenModel = "settings.qwenModel"
         static let deepseekModel = "settings.deepseekModel"
+        static let serverHostURL = "settings.serverHostURL"
         // AI knobs
         static let aiTemperature = "settings.aiTemperature"
         static let aiMaxTokens = "settings.aiMaxTokens"
@@ -223,6 +228,7 @@ final class AppSettings {
         var mistralModel: String?
         var qwenModel: String?
         var deepseekModel: String?
+        var serverHostURL: String?
         var aiTemperature: Double?
         var aiMaxTokens: Int?
         var aiMaxPromptLength: Int?
@@ -257,6 +263,7 @@ final class AppSettings {
             mistralModel: mistralModel,
             qwenModel: qwenModel,
             deepseekModel: deepseekModel,
+            serverHostURL: serverHostURL,
             aiTemperature: aiTemperature,
             aiMaxTokens: aiMaxTokens,
             aiMaxPromptLength: aiMaxPromptLength,
@@ -294,6 +301,7 @@ final class AppSettings {
         if let v = decoded.mistralModel { mistralModel = v }
         if let v = decoded.qwenModel { qwenModel = v }
         if let v = decoded.deepseekModel { deepseekModel = v }
+        if let v = decoded.serverHostURL { serverHostURL = v }
         if let v = decoded.aiTemperature { aiTemperature = v }
         if let v = decoded.aiMaxTokens { aiMaxTokens = v }
         if let v = decoded.aiMaxPromptLength { aiMaxPromptLength = v }
@@ -406,6 +414,11 @@ final class AppSettings {
         set { withMutation(keyPath: \.deepseekModel) { defaults.set(newValue, forKey: Key.deepseekModel) } }
     }
 
+    var serverHostURL: String {
+        get { access(keyPath: \.serverHostURL); return defaults.string(forKey: Key.serverHostURL) ?? "" }
+        set { withMutation(keyPath: \.serverHostURL) { defaults.set(newValue, forKey: Key.serverHostURL) } }
+    }
+
     // MARK: AI model (generic accessor)
     /// Model currently selected for `provider`. Provides a single generic path over the
     /// per-provider model properties (used by the onboarding AI step); `.none` /
@@ -418,7 +431,7 @@ final class AppSettings {
         case .mistral: mistralModel
         case .qwen: qwenModel
         case .deepseek: deepseekModel
-        case .none, .appleIntelligence: ""
+        case .none, .appleIntelligence, .server: ""
         }
     }
 
@@ -430,7 +443,7 @@ final class AppSettings {
         case .mistral: mistralModel = value
         case .qwen: qwenModel = value
         case .deepseek: deepseekModel = value
-        case .none, .appleIntelligence: break
+        case .none, .appleIntelligence, .server: break
         }
     }
 
