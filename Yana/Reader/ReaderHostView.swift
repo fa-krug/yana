@@ -154,25 +154,11 @@ struct ReaderScreen: View {
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }   // wait for a non-empty delivery to anchor
         appState.currentIndex = resolved.anchorIndex
-        // A synced anchor (canonical UID) resolves exactly across devices; prefer it when present.
-        if let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: resolved.articles) {
-            appState.currentIndex = i
-            settings.timelineAnchorIdentifier = resolved.articles[i].identifier
-        }
+
         didRestoreAnchor = true
     }
 
-    /// Jump the reader to the synced timeline anchor article. Driven by `timelinePositionDidChange`
-    /// (posted only when a pull applies a remote anchor UID that actually differs from the stored
-    /// one — see `AppSettings.applySyncedSettings`). Delegates to `ReaderAnchorController`, which
-    /// never touches `TimelineAnchorWriter` on this path — see `ReaderAnchorControllerTests` for the
-    /// assertion that this can never loop back into a push and ping-pong with the sending device.
-    /// Ignored when the anchored article hasn't synced to this device yet.
-    private func jumpToSyncedTimelinePosition() {
-        guard let i = anchorController.resolveSyncedAnchorIndex(didRestoreAnchor: didRestoreAnchor, in: filteredArticles)
-        else { return }
-        appState.currentIndex = i
-    }
+
 
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
 
@@ -256,9 +242,7 @@ struct ReaderScreen: View {
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
-        .onReceive(NotificationCenter.default.publisher(for: AppSettings.timelinePositionDidChange)) { _ in
-            jumpToSyncedTimelinePosition()
-        }
+
     }
 
     private func toggleStar(_ article: Article) {

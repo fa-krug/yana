@@ -35,7 +35,6 @@ struct FeedsView: View {
             toast: $toast,
             onExportOPML: exportOPML
         )
-        .id(LibraryRevision.shared.token)
         // `.searchable()` lives here, on the stable parent, not inside the `.id()`'d
         // `FeedsListContent` — `.id()` tears down and recreates everything under it, including the
         // search field's backing controller. The `searchText` *value* would survive (it's a

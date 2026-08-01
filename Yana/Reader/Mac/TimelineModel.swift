@@ -46,10 +46,7 @@ final class TimelineModel {
     private var modelContext: ModelContext?
     private var store: ArticleStore?
 
-    /// Notification center the synced-anchor observer registers on. Injectable so tests can post to
-    /// a private center instead of racing other suites on `.default` (mirrors `LibraryRevision`).
-    private let notificationCenter: NotificationCenter
-    private var anchorObserver: NSObjectProtocol?
+
 
     /// Records + pushes a changed anchor to iCloud KVS (coalesced). The same `TimelineAnchorWriter`
     /// type iOS's `ReaderAnchorController` uses, so the no-ping-pong guarantee is asserted against
@@ -59,9 +56,8 @@ final class TimelineModel {
 
     var isConfigured: Bool { modelContext != nil }
 
-    init(settings: AppSettings = AppSettings(), notificationCenter: NotificationCenter = .default) {
+    init(settings: AppSettings = AppSettings()) {
         self.settings = settings
-        self.notificationCenter = notificationCenter
         self.anchorWriter = TimelineAnchorWriter(settings: settings)
     }
 
@@ -69,11 +65,6 @@ final class TimelineModel {
         guard self.modelContext == nil else { return }
         self.modelContext = modelContext
         self.store = store
-        observeSyncedAnchor()
-    }
-
-    isolated deinit {
-        if let anchorObserver { notificationCenter.removeObserver(anchorObserver) }
     }
 
     // MARK: - Selection
@@ -166,11 +157,7 @@ final class TimelineModel {
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }
         currentIndex = resolved.anchorIndex
-        // A synced anchor (canonical UID) resolves exactly across devices; prefer it when present.
-        if let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: resolved.articles) {
-            currentIndex = i
-            settings.timelineAnchorIdentifier = resolved.articles[i].identifier
-        }
+
         didRestoreAnchor = true
         // The launch case: the sidebar has no rows to scroll to until this delivery, so this is the
         // first point a scroll request can be made.
@@ -178,26 +165,10 @@ final class TimelineModel {
     }
 
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention
-    /// cleanup). Prefers the canonical synced UID over the per-device identifier: a remote anchor
-    /// may have arrived for an article that hadn't synced to this device yet — the *common* case,
-    /// since KVS anchor propagation is typically faster than the CloudKit article import catching
-    /// up — and once that article does arrive on a later delivery (this method runs again from
-    /// `applyTimeline`), this is what finally moves the selection: `timelinePositionDidChange` won't
-    /// re-fire, since the UID hasn't changed since it arrived. Without this self-heal the position
-    /// would only catch up on the next launch — close to the very symptom this task exists to fix.
-    /// Falls back to the identifier when the UID doesn't resolve either; the two are written in
-    /// lockstep by every local write (`TimelineAnchorWriter.record`), so they only disagree in
-    /// exactly this pending-sync window.
-    ///
-    /// This runs on every ordinary timeline delivery (most of which leave `currentIndex` unchanged,
-    /// since the identifier already resolves to the same row), so it only bumps `scrollTarget` when
-    /// the index actually moves — the rare self-heal case — rather than on every delivery.
+    /// cleanup).
     private func reanchorToCurrentArticle() {
         let previous = currentIndex
-        if let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: filteredArticles) {
-            currentIndex = i
-            settings.timelineAnchorIdentifier = filteredArticles[i].identifier
-        } else if let i = TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: filteredArticles) {
+        if let i = TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: filteredArticles) {
             currentIndex = i
         } else {
             return
@@ -221,39 +192,7 @@ final class TimelineModel {
         }
     }
 
-    // MARK: - Synced anchor (remote apply)
 
-    /// Registers the observer that lets a remote timeline anchor move the Mac selection.
-    /// Previously the Mac side had no observer at all — `AppSettings.timelinePositionDidChange` was
-    /// only ever watched on iOS — so a position synced from another device never reached this
-    /// window. Idempotent; called once from `configure`.
-    private func observeSyncedAnchor() {
-        guard anchorObserver == nil else { return }
-        anchorObserver = notificationCenter.addObserver(
-            forName: AppSettings.timelinePositionDidChange, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.jumpToSyncedTimelinePosition() }
-        }
-    }
-
-    /// Moves the Mac selection to the synced timeline anchor article. This is the remote-anchor
-    /// apply path, so it also bumps `scrollTarget` (see `SidebarScrollRequest`) to scroll the
-    /// sidebar to the newly selected row, alongside the other programmatic-selection paths.
-    ///
-    /// Deliberately does **not** go through the `selection` setter — it sets `currentIndex` and
-    /// `timelineAnchorIdentifier` directly, so applying a remote anchor can never call
-    /// `anchorWriter.record` and loop the write straight back to the device that sent it (the
-    /// "no ping-pong" requirement: only user-driven selection changes push — see
-    /// `TimelineModelTests` for the assertion). Ignored when the anchored article hasn't synced to
-    /// this device yet (`TimelineUIDIndex.index` returns `nil`).
-    func jumpToSyncedTimelinePosition() {
-        guard didRestoreAnchor,
-              let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: filteredArticles)
-        else { return }
-        currentIndex = i
-        settings.timelineAnchorIdentifier = filteredArticles[i].identifier
-        requestScroll(to: filteredArticles[i].identifier)
-    }
 
     // MARK: - Actions
 

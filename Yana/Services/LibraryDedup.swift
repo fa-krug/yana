@@ -13,9 +13,6 @@ actor LibraryDeduper {
         deleted += try dedupeTags()
         deleted += try dedupeArticles()
         if deleted > 0 { try modelContext.save() }
-        if deleted > 0 {
-            SyncLog.shared.notice("Dedup collapsed \(deleted) duplicate row(s)", category: "Dedup")
-        }
         return deleted
     }
 
@@ -113,36 +110,4 @@ enum LibraryDedup {
         }
     }
 
-    // MARK: - Remote-change observer
-
-    /// Coalescer for remote-change-triggered dedup passes. Held statically so the observer keeps it
-    /// alive for the app's lifetime.
-    @MainActor private static var coalescer: TrailingCoalescer?
-
-    /// Registers a `NSPersistentStoreRemoteChange` observer so a dedup pass fires automatically
-    /// whenever CloudKit merges remote changes into the local store.
-    ///
-    /// A large sync arrives as many merges over several seconds, firing this notification
-    /// repeatedly. A full three-table dedup scan per notification is wasteful and contends with the
-    /// reader, so the passes are coalesced: the burst collapses into a single scan once merges stop
-    /// for the debounce window, and single-flighting guarantees at most one in-flight pass plus one
-    /// trailing pass (never an overlapping stack). Duplicates persisting for a couple of extra
-    /// seconds is harmless — dedup is best-effort cleanup, not a display-correctness invariant.
-    @MainActor
-    static func startObserving(container: ModelContainer) {
-        // `TrailingCoalescer` is `@MainActor`, so its action runs there — hence `runAndWait`, which
-        // hops off the main actor before touching the `@ModelActor`.
-        let coalescer = TrailingCoalescer(interval: .seconds(1.5)) {
-            await runAndWait(container: container)
-        }
-        self.coalescer = coalescer
-        SyncLog.shared.info("Watching for CloudKit remote-change merges", category: "Dedup")
-        NotificationCenter.default.addObserver(
-            forName: .NSPersistentStoreRemoteChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in coalescer.schedule() }
-        }
-    }
 }

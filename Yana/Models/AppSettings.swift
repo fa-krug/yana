@@ -78,10 +78,6 @@ final class AppSettings {
     static let articleTextSizeDidChange = Notification.Name("YanaArticleTextSizeDidChange")
     /// Posted when `articleFont` changes so the reader can re-render live (no app restart).
     static let articleFontDidChange = Notification.Name("YanaArticleFontDidChange")
-    /// Posted when the timeline anchor identifier changes (e.g. from a synced pull applying a new
-    /// `timelineAnchorUID`) so the reader can jump to that exact article. Cross-instance safe:
-    /// separate `AppSettings` instances share this global notification.
-    static let timelinePositionDidChange = Notification.Name("YanaTimelinePositionDidChange")
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -146,7 +142,6 @@ final class AppSettings {
         static let disabledFeedNames = "settings.disabledFeedNames"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
-        static let timelineAnchorSyncUID = "settings.timelineAnchorSyncUID"
         // Reader
         static let articleTextSize = "settings.articleTextSize"
         static let articleFont = "settings.articleFont"
@@ -204,121 +199,6 @@ final class AppSettings {
         set { withMutation(keyPath: \.diagnosticsUnlocked) { defaults.set(newValue, forKey: Key.diagnosticsUnlocked) } }
     }
 
-    // MARK: Sync serialization
-
-    /// The allow-listed subset of settings that the iCloud sync layer may push/pull.
-    /// Excluded keys (voice, timeline position, onboarding flags, filter state, device-local flags)
-    /// are physically absent from this struct and therefore cannot be serialized.
-    struct SyncedSettings: Codable {
-        var activeAIProvider: String?
-        var retentionDays: Int?
-        var redditEnabled: Bool?
-        var redditUserAgent: String?
-        var youtubeEnabled: Bool?
-        var notificationsEnabled: Bool?
-        var openaiAPIURL: String?
-        var openaiModel: String?
-        var anthropicModel: String?
-        var geminiModel: String?
-        var mistralModel: String?
-        var qwenModel: String?
-        var deepseekModel: String?
-        var aiTemperature: Double?
-        var aiMaxTokens: Int?
-        var aiMaxPromptLength: Int?
-        var aiDefaultDailyLimit: Int?
-        var aiDefaultMonthlyLimit: Int?
-        var aiRequestTimeout: Int?
-        var aiMaxRetries: Int?
-        var aiRetryDelay: Int?
-        var aiRequestDelay: Int?
-        var articleTextSize: Int?
-        var articleFont: Int?
-        var useSystemBrowser: Bool?
-        var articleFullscreenEnabled: Bool?
-        /// The anchored article's identifier (exact within the now-identical timeline). Present only
-        /// when this device has iCloud sync on; a receiving device jumps to that exact article.
-        var timelineAnchorUID: String?
-    }
-
-    /// Snapshot the current synced settings into JSON-encoded `Data`.
-    func exportSyncedSettings() -> Data {
-        let snapshot = SyncedSettings(
-            activeAIProvider: activeAIProvider.rawValue,
-            retentionDays: retentionDays,
-            redditEnabled: redditEnabled,
-            redditUserAgent: redditUserAgent,
-            youtubeEnabled: youtubeEnabled,
-            notificationsEnabled: notificationsEnabled,
-            openaiAPIURL: openaiAPIURL,
-            openaiModel: openaiModel,
-            anthropicModel: anthropicModel,
-            geminiModel: geminiModel,
-            mistralModel: mistralModel,
-            qwenModel: qwenModel,
-            deepseekModel: deepseekModel,
-            aiTemperature: aiTemperature,
-            aiMaxTokens: aiMaxTokens,
-            aiMaxPromptLength: aiMaxPromptLength,
-            aiDefaultDailyLimit: aiDefaultDailyLimit,
-            aiDefaultMonthlyLimit: aiDefaultMonthlyLimit,
-            aiRequestTimeout: aiRequestTimeout,
-            aiMaxRetries: aiMaxRetries,
-            aiRetryDelay: aiRetryDelay,
-            aiRequestDelay: aiRequestDelay,
-            articleTextSize: articleTextSize.rawValue,
-            articleFont: articleFont.rawValue,
-            useSystemBrowser: useSystemBrowser,
-            articleFullscreenEnabled: articleFullscreenEnabled,
-            timelineAnchorUID: timelineAnchorSyncUID
-        )
-        return (try? JSONEncoder().encode(snapshot)) ?? Data()
-    }
-
-    /// Apply a synced-settings payload, assigning each present field through the typed setter
-    /// so `@Observable` mutations fire and change-notifications post. Missing fields are skipped.
-    func applySyncedSettings(_ data: Data) {
-        guard let decoded = try? JSONDecoder().decode(SyncedSettings.self, from: data) else { return }
-        if let raw = decoded.activeAIProvider {
-            activeAIProvider = AIProvider(rawValue: raw) ?? activeAIProvider
-        }
-        if let v = decoded.retentionDays { retentionDays = v }
-        if let v = decoded.redditEnabled { redditEnabled = v }
-        if let v = decoded.redditUserAgent { redditUserAgent = v }
-        if let v = decoded.youtubeEnabled { youtubeEnabled = v }
-        if let v = decoded.notificationsEnabled { notificationsEnabled = v }
-        if let v = decoded.openaiAPIURL { openaiAPIURL = v }
-        if let v = decoded.openaiModel { openaiModel = v }
-        if let v = decoded.anthropicModel { anthropicModel = v }
-        if let v = decoded.geminiModel { geminiModel = v }
-        if let v = decoded.mistralModel { mistralModel = v }
-        if let v = decoded.qwenModel { qwenModel = v }
-        if let v = decoded.deepseekModel { deepseekModel = v }
-        if let v = decoded.aiTemperature { aiTemperature = v }
-        if let v = decoded.aiMaxTokens { aiMaxTokens = v }
-        if let v = decoded.aiMaxPromptLength { aiMaxPromptLength = v }
-        if let v = decoded.aiDefaultDailyLimit { aiDefaultDailyLimit = v }
-        if let v = decoded.aiDefaultMonthlyLimit { aiDefaultMonthlyLimit = v }
-        if let v = decoded.aiRequestTimeout { aiRequestTimeout = v }
-        if let v = decoded.aiMaxRetries { aiMaxRetries = v }
-        if let v = decoded.aiRetryDelay { aiRetryDelay = v }
-        if let v = decoded.aiRequestDelay { aiRequestDelay = v }
-        if let v = decoded.articleTextSize {
-            articleTextSize = ArticleTextSize(rawValue: v) ?? articleTextSize
-        }
-        if let v = decoded.articleFont {
-            articleFont = ArticleFont(rawValue: v) ?? articleFont
-        }
-        if let v = decoded.useSystemBrowser { useSystemBrowser = v }
-        if let v = decoded.articleFullscreenEnabled { articleFullscreenEnabled = v }
-        // Only a UID that actually differs from the stored one is a real remote move: posting
-        // unconditionally made every unrelated settings pull (a model change, a knob tweak on the
-        // other device) yank the reader back to the anchor, even mid-read.
-        if let uid = decoded.timelineAnchorUID, uid != timelineAnchorSyncUID {
-            timelineAnchorSyncUID = uid
-            NotificationCenter.default.post(name: Self.timelinePositionDidChange, object: self)
-        }
-    }
 
     var activeAIProvider: AIProvider {
         get {
@@ -541,11 +421,5 @@ final class AppSettings {
     var timelineAnchorIdentifier: String? {
         get { access(keyPath: \.timelineAnchorIdentifier); return defaults.string(forKey: Key.timelineAnchorIdentifier) }
         set { withMutation(keyPath: \.timelineAnchorIdentifier) { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) } }
-    }
-    /// The canonical UID of the current anchor article, for cross-device sync (exact resolution).
-    /// Distinct from `timelineAnchorIdentifier`, which stays a per-feed identifier for local restore.
-    var timelineAnchorSyncUID: String? {
-        get { access(keyPath: \.timelineAnchorSyncUID); return defaults.string(forKey: Key.timelineAnchorSyncUID) }
-        set { withMutation(keyPath: \.timelineAnchorSyncUID) { defaults.set(newValue, forKey: Key.timelineAnchorSyncUID) } }
     }
 }

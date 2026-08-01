@@ -78,7 +78,6 @@ struct FeedEditorView: View {
                 // own. `model.selectedTagNames` lives on this view's own `@State`, untouched by the
                 // subview's identity reset.
                 FeedTagsPicker(selectedTagNames: $model.selectedTagNames)
-                    .id(LibraryRevision.shared.token)
             }
 
             AggregatorOptionsForm(options: $model.options, identifier: model.identifier)

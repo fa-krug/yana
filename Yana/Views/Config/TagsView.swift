@@ -16,7 +16,6 @@ struct TagsView: View {
         // `.NSPersistentStoreRemoteChange` on its own. `searchText`/`tagsToDelete`/
         // `showingCreateTag` stay on this parent so recreating the child loses none of them.
         TagsListContent(searchText: $searchText, tagsToDelete: $tagsToDelete)
-            .id(LibraryRevision.shared.token)
             // `.searchable()` lives here, on the stable parent, not inside the `.id()`'d subview:
             // `.id()` tears down and recreates everything under it, including the search field's
             // backing controller — the `searchText` *value* would survive (it's a `@Binding` into

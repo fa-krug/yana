@@ -88,21 +88,7 @@ struct PluralAgreementTests {
                 == "2 Feeds · 3 Tags · 4 Artikel · 5 Bilder")
     }
 
-    /// The diagnostics pinned header's "System Log" row (`SyncDiagnostics.systemLogText`) builds its
-    /// `Text` from this exact `"\(count) entries"` interpolation — the identical shape
-    /// `perLanguageResolutionWork()` above already pins as the control case for the `"%lld entries"`
-    /// key. A `Text`-vs-`Text` equality check was tried first and rejected: SwiftUI's `Text` does not
-    /// give dependable structural equality for `LocalizedStringKey`-driven content, even between two
-    /// syntactically identical construction sites (confirmed empirically — see the task report), so
-    /// this asserts the reused key/shape at the string level instead, exactly as
-    /// `perLanguageResolutionWork()` does. This is the count == 1 boundary the earlier
-    /// `SyncDiagnostics.systemLogSummary` bug ("1 entries") shipped without covering.
-    @Test func diagnosticsSystemLogRowCountAgrees() throws {
-        #expect(try en("\(1) entries") == "1 entry")
-        #expect(try en("\(0) entries") == "0 entries")
-        #expect(try de("\(1) entries") == "1 Eintrag")
-        #expect(try de("\(0) entries") == "0 Einträge")
-    }
+
 
     /// The notification title already handled English through `inflect: true` automatic grammar
     /// agreement, with an explicit `de` block. Pinned so a catalog edit can't quietly break it.

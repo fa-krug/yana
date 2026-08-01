@@ -47,22 +47,4 @@ struct TimelinePageIndexTests {
         #expect(TimelineAnchor.index(for: nil, in: list) == 1)
     }
 
-    // MARK: - TimelineUIDIndex (synced timeline anchor resolution)
-
-    @Test func uidIndexMatchesTheSyncedUID() throws {
-        let context = try makeContext()
-        let list = [summary("a", in: context), summary("b", in: context), summary("c", in: context)]
-        #expect(TimelineUIDIndex.index(of: list[2].uid, in: list) == 2)
-        #expect(TimelineUIDIndex.index(of: list[0].uid, in: list) == 0)
-    }
-
-    @Test func uidIndexLeavesSelectionUntouchedWhenAbsent() throws {
-        let context = try makeContext()
-        let list = [summary("a", in: context), summary("b", in: context)]
-        // A UID that hasn't synced to this device yet, and a nil anchor, both resolve to nil —
-        // callers must leave the current selection alone rather than treat this as an error.
-        #expect(TimelineUIDIndex.index(of: "not-synced-yet", in: list) == nil)
-        #expect(TimelineUIDIndex.index(of: nil, in: list) == nil)
-        #expect(TimelineUIDIndex.index(of: list[0].uid, in: [] as [ArticleSummary]) == nil)
-    }
 }

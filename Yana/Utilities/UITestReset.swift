@@ -31,7 +31,6 @@ enum UITestReset {
         // Both anchors would now point at articles that no longer exist.
         let settings = AppSettings()
         settings.timelineAnchorIdentifier = nil
-        settings.timelineAnchorSyncUID = nil
     }
 }
 #endif

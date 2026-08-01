@@ -349,7 +349,6 @@ private struct MacSidebarView: View {
             // its `@Query` re-fetches — `@Query` never sees `.NSPersistentStoreRemoteChange` on its
             // own. No local `@State` here to lose: `settings` is passed in and owned elsewhere.
             MacFilterBar(settings: settings)
-                .id(LibraryRevision.shared.token)
         }
         .task(id: searchText) {
             try? await Task.sleep(nanoseconds: 250_000_000)

@@ -211,10 +211,7 @@ final class AggregationService {
         let result = await runOffMain { await $0.runUpdateAll($1) }
         refreshFromStore()
         lastRunFailures = result.failures
-        SyncLog.shared.info(
-            "updateAll inserted \(result.inserted) article(s); \(result.failures.count) feed failure(s)",
-            category: "Aggregation"
-        )
+
         let snapshot = await syncReferencedImages()
         await pruneOrphanedImages(snapshot: snapshot)
         return result.inserted
@@ -232,10 +229,7 @@ final class AggregationService {
         let result = await runOffMain { await $0.runUpdate(feedID: feedID, $1) }
         refreshFromStore()
         lastRunFailures = result.failures
-        SyncLog.shared.info(
-            "update(\(feed.name)) inserted \(result.inserted) article(s); \(result.failures.count) failure(s)",
-            category: "Aggregation"
-        )
+
         let snapshot = await syncReferencedImages()
         await pruneOrphanedImages(snapshot: snapshot)
         return result.inserted
@@ -316,10 +310,7 @@ final class AggregationService {
         guard let snapshot = await OffMainActor.run({
             await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
         }) else {
-            SyncLog.shared.error(
-                "Image sync skipped this pass: could not read the referenced-image snapshot",
-                category: "ImageSync"
-            )
+
             return nil
         }
         await ImageSync.ensureStored(hashes: snapshot.hashes, container: container, imageStore: .shared)
@@ -373,10 +364,7 @@ final class AggregationService {
             let hadFile = await ImageStore.shared.remove(forHash: hash)
             if hadFile, !storedRowHashes.contains(hash) { diskOnlyDeleted += 1 }
         }
-        SyncLog.shared.info(
-            "Pruned \(rowsDeleted) orphaned image(s), \(diskOnlyDeleted) disk file(s)",
-            category: "ImagePrune"
-        )
+
     }
 
     /// Refresh this (main) context's registered `Feed` objects from the store after the background

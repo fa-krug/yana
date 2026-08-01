@@ -33,12 +33,9 @@ enum ImageSync {
     /// inserts off the main thread.
     static func ensureStored(hashes: Set<String>, container: ModelContainer, imageStore: ImageStore) async {
         guard !hashes.isEmpty else { return }
-        let inserted = await OffMainActor.run {
-            await StoredImageRegistrar(modelContainer: container)
+        await OffMainActor.run {
+            _ = await StoredImageRegistrar(modelContainer: container)
                 .register(hashes: hashes, imageStore: imageStore)
-        }
-        if inserted > 0 {
-            SyncLog.shared.info("Registered \(inserted) StoredImage row(s) for sync", category: "ImageSync")
         }
     }
 
@@ -54,9 +51,7 @@ enum ImageSync {
         let descriptor = FetchDescriptor<StoredImage>(predicate: #Predicate { $0.contentHash == hash })
         guard let stored = (try? context.fetch(descriptor))?.first else { return false }
         _ = await imageStore.storeData(stored.data, ext: stored.ext)
-        // `.debug`, not `.info`: this fires once per image cache miss while scrolling the reader, so at
-        // `.info` it was a steady drip of sync-irrelevant entries churning the diagnostics buffer.
-        SyncLog.shared.debug("Materialized synced image \(hash) into the disk cache", category: "ImageSync")
+
         return true
     }
 }

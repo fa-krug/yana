@@ -24,8 +24,6 @@ struct LibrarySettingsSection: View {
             }
         } header: {
             Text("Library")
-        } footer: {
-            Text("Your library syncs automatically across your devices via iCloud.")
         }
     }
 }

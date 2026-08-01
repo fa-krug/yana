@@ -32,7 +32,6 @@ struct TagFilterView: View {
                     includeUntagged: $includeUntagged,
                     settings: settings
                 )
-                .id(LibraryRevision.shared.token)
             }
             .navigationTitle("Filter")
             .toolbar {

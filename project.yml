@@ -58,8 +58,7 @@ targets:
         # Ship a real Mac app via Mac Catalyst (not the "Designed for iPad" runtime).
         # The Mac build mirrors the iOS 26 deployment target -> macOS 26. Keeping the same
         # PRODUCT_BUNDLE_IDENTIFIER across platforms (DERIVE = NO) means the Mac build shares the
-        # iCloud.de.fa-krug.Yana CloudKit container + Keychain, so ConfigSyncService syncs config
-        # iPhone <-> Mac with no extra code. macOS-only entitlements (App Sandbox, network client,
+        # Keychain. macOS-only entitlements (App Sandbox, network client,
         # user-selected files) live in the shared entitlements file and are ignored on iOS.
         SUPPORTS_MACCATALYST: true
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
