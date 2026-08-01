@@ -24,14 +24,39 @@ struct ReaderVideoPlayerTests {
         #expect(url?.absoluteString.contains("youtube-nocookie.com/embed/dQw4w9WgXcQ") == true)
     }
 
-    // The player page is loaded as the **top-level** document, so the provider is first-party and
-    // can keep its own cookies (consent choice, quality) between plays. An `origin=` parameter names
-    // the *embedder* of an <iframe>; carrying one into a first-party load both misstates the origin
-    // and marks the player as embedded, which is exactly the arrangement whose cookies WebKit drops.
-    @Test func youTubePlayerURLCarriesNoEmbedderOrigin() {
+    // YouTube's /embed/ endpoint only configures a player when it is actually embedded: loaded as a
+    // top-level document it sends no Referer and names no embedder, and answers with "Error 153 — the
+    // video player configuration failed". So the YouTube player must keep both halves of that context
+    // — the `origin=` parameter, and the iframe wrapper page whose base URL matches it.
+    @Test func youTubePlayerURLCarriesEmbedderOrigin() {
         let e = embed(.youtube, url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
         let url = ReaderVideoPlayerViewController.playerURL(for: e)
-        #expect(url?.absoluteString.contains("origin=") == false)
+        #expect(url?.absoluteString.contains("origin=\(ReaderWeb.baseOrigin)") == true)
+    }
+
+    @Test func youTubePlayerIsLoadedInsideAnIframe() {
+        let e = embed(.youtube, url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        let url = ReaderVideoPlayerViewController.playerURL(for: e)
+        #expect(ReaderVideoPlayerViewController.requiresEmbedderContext(url!))
+    }
+
+    // Every other provider loads top-level, which makes it first-party and lets it keep the cookies
+    // and DOM storage a cross-site iframe would have denied it.
+    @Test func dailymotionPlayerIsLoadedTopLevel() {
+        let e = embed(.dailymotion, url: "https://www.dailymotion.com/video/xasx4q2")
+        let url = ReaderVideoPlayerViewController.playerURL(for: e)
+        #expect(ReaderVideoPlayerViewController.requiresEmbedderContext(url!) == false)
+    }
+
+    // The host match is a real suffix match, not `contains` — an unrelated host that merely mentions
+    // YouTube must not be forced into the wrapper.
+    @Test func embedderContextIsMatchedOnTheHostSuffix() {
+        #expect(ReaderVideoPlayerViewController.requiresEmbedderContext(
+            URL(string: "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ")!))
+        #expect(ReaderVideoPlayerViewController.requiresEmbedderContext(
+            URL(string: "https://youtube.com/embed/dQw4w9WgXcQ")!))
+        #expect(ReaderVideoPlayerViewController.requiresEmbedderContext(
+            URL(string: "https://notyoutube.com/embed/dQw4w9WgXcQ")!) == false)
     }
 
     // The Dailymotion player's "we use required trackers" notice is suppressed through the player's

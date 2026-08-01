@@ -11,12 +11,13 @@ import WebKit
 /// with a single close button overlaid. Only providers we can map to an embeddable player are
 /// handled here; anything else falls back to opening externally (see `EmbedCardView`).
 ///
-/// The player URL is loaded as the **top-level document**, deliberately. It used to be wrapped in an
-/// `<iframe>` inside a `loadHTMLString` page whose origin was the synthetic `ReaderWeb.baseOrigin`,
-/// which made the provider cross-site — and WebKit blocks third-party cookies outright, with no
-/// opt-out. The provider could then neither write nor read its own cookies, so every single playback
-/// started from scratch: Dailymotion re-showed its consent banner every time. Loading the player
-/// first-party lets it keep that state, exactly as it would in a browser tab.
+/// **How the player is loaded differs per provider** — see `requiresEmbedderContext(_:)`. Dailymotion
+/// is loaded as the top-level document, which makes it first-party: WebKit blocks third-party cookies
+/// and DOM storage outright, with no opt-out, so inside an iframe on the synthetic `ReaderWeb.baseOrigin`
+/// the player could keep no state at all and re-showed its consent notice on every single playback.
+/// YouTube must go the other way and stay inside that iframe: its `/embed/` endpoint is only willing to
+/// play when it is actually embedded, and a top-level navigation to it — which carries no `Referer` and
+/// no embedder origin — is refused with **"Error 153 — the video player configuration failed"**.
 @MainActor
 final class ReaderVideoPlayerViewController: UIViewController {
 
@@ -62,10 +63,10 @@ final class ReaderVideoPlayerViewController: UIViewController {
         switch embed.provider {
         case .youtube:
             guard let id = EmbedRewriter.extractYouTubeID(from: embed.externalURL) else { return nil }
-            // No `origin=`: that parameter names the *embedder* of an iframe, and this player is
-            // loaded top-level (see the type comment). Passing our synthetic origin here would both
-            // misstate it and mark the player as embedded.
-            let params = "autoplay=1&playsinline=1&controls=1&rel=0&modestbranding=1&fs=1"
+            // `origin=` names the embedder of the iframe this player is loaded into, and must match
+            // the base URL of the wrapper page (see `html(embedURL:)`). It is not optional here:
+            // without an embedder the `/embed/` endpoint refuses to configure the player (error 153).
+            let params = "autoplay=1&playsinline=1&controls=1&rel=0&modestbranding=1&fs=1&origin=\(ReaderWeb.baseOrigin)"
             return URL(string: "https://www.youtube-nocookie.com/embed/\(id)?\(params)")
         case .dailymotion:
             guard let id = dailymotionID(from: embed.externalURL) else { return nil }
@@ -76,6 +77,26 @@ final class ReaderVideoPlayerViewController: UIViewController {
         case .tweet, .generic:
             return nil
         }
+    }
+
+    /// Whether this player has to be loaded *inside an iframe* on a wrapper page rather than as the
+    /// top-level document.
+    ///
+    /// True only for YouTube. Its `/embed/` endpoint exists to be embedded and validates that it is:
+    /// a top-level navigation sends no `Referer` and names no embedder, and the player answers with
+    /// **"Error 153 — the video player configuration failed"** instead of playing. So YouTube keeps the
+    /// wrapper page, whose base URL supplies the `Referer` that matches the `origin=` parameter
+    /// `playerURL(for:)` puts on the player URL.
+    ///
+    /// Every other provider loads top-level, which is strictly better where it works: the player is
+    /// then first-party and may keep its own cookies and DOM storage, which is what lets Dailymotion
+    /// remember it already showed its tracker notice (see `noticeSuppressionScript(for:)`). YouTube
+    /// gives that up, but has nothing to remember — its player is `-nocookie` privacy mode and starts
+    /// from a clean slate by design.
+    static func requiresEmbedderContext(_ playerURL: URL) -> Bool {
+        guard let host = playerURL.host?.lowercased() else { return false }
+        return host == "youtube.com" || host.hasSuffix(".youtube.com")
+            || host == "youtube-nocookie.com" || host.hasSuffix(".youtube-nocookie.com")
     }
 
     /// Script that suppresses the Dailymotion player's built-in "we use required trackers" notice —
@@ -161,7 +182,11 @@ final class ReaderVideoPlayerViewController: UIViewController {
 
         addCloseButton()
         addDismissPanGesture()
-        webView.load(URLRequest(url: embedURL))
+        if Self.requiresEmbedderContext(embedURL) {
+            webView.loadHTMLString(Self.html(embedURL: embedURL), baseURL: URL(string: ReaderWeb.baseOrigin))
+        } else {
+            webView.load(URLRequest(url: embedURL))
+        }
     }
 
     /// Lets the user swipe the player down to dismiss it, mirroring the sheet-style gesture (the
@@ -210,6 +235,28 @@ final class ReaderVideoPlayerViewController: UIViewController {
         // Tear down the web view first so playback (and audio) stops immediately on dismiss.
         webView.loadHTMLString("", baseURL: nil)
         dismiss(animated: true)
+    }
+
+    /// A self-contained page that paints the embed player edge-to-edge on black, used for the
+    /// providers that insist on being embedded (`requiresEmbedderContext(_:)`). Its base URL is
+    /// `ReaderWeb.baseOrigin`, so the iframe's `Referer` matches the `origin=` the player URL carries.
+    /// The iframe carries the same `allow`/`allowfullscreen` capabilities the providers expect for
+    /// autoplay + fullscreen.
+    private static func html(embedURL: URL) -> String {
+        let src = embedURL.absoluteString
+        let allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+        return """
+        <!DOCTYPE html><html><head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+        <style>
+        html,body{margin:0;padding:0;height:100%;width:100%;background:#000;overflow:hidden}
+        .wrap{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center}
+        iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
+        </style></head>
+        <body><div class="wrap">
+        <iframe src="\(src)" allow="\(allow)" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
+        </div></body></html>
+        """
     }
 }
 
