@@ -162,18 +162,6 @@ struct ReaderScreen: View {
         didRestoreAnchor = true
     }
 
-    /// Jump the reader to the synced timeline anchor article. Driven by `timelinePositionDidChange`
-    /// (posted only when a pull applies a remote anchor UID that actually differs from the stored
-    /// one — see `AppSettings.applySyncedSettings`). Delegates to `ReaderAnchorController`, which
-    /// never touches `TimelineAnchorWriter` on this path — see `ReaderAnchorControllerTests` for the
-    /// assertion that this can never loop back into a push and ping-pong with the sending device.
-    /// Ignored when the anchored article hasn't synced to this device yet.
-    private func jumpToSyncedTimelinePosition() {
-        guard let i = anchorController.resolveSyncedAnchorIndex(didRestoreAnchor: didRestoreAnchor, in: filteredArticles)
-        else { return }
-        appState.currentIndex = i
-    }
-
     private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
 
     private var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
@@ -256,9 +244,6 @@ struct ReaderScreen: View {
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
-        .onReceive(NotificationCenter.default.publisher(for: AppSettings.timelinePositionDidChange)) { _ in
-            jumpToSyncedTimelinePosition()
-        }
     }
 
     private func toggleStar(_ article: Article) {
@@ -305,22 +290,18 @@ struct ReaderScreen: View {
     /// Persist the reading position. Called only from a completed user swipe (`onUserNavigate`),
     /// so it records exactly the article the user paged to and is never reached by the programmatic
     /// index moves of restore/reanchor/clamp — which previously could overwrite the anchor with a
-    /// fallback position. Delegates to `ReaderAnchorController`, which pushes the new anchor
-    /// (coalesced) since this is the user-driven write path; `jumpToSyncedTimelinePosition` above is
-    /// the remote-apply path and must never push, or two open devices would trade anchor writes
-    /// forever — see `ReaderAnchorControllerTests` for the assertion.
+    /// fallback position. Delegates to `ReaderAnchorController`.
     private func saveAnchor(at index: Int) {
         anchorController.saveAnchor(at: index, in: filteredArticles)
     }
 
     /// Keep the displayed article selected across timeline mutations (refresh / reload / retention
     /// cleanup) by delegating to `ReaderAnchorController.reanchorIndex`, which re-resolves the saved
-    /// anchor (preferring the synced UID — see its doc comment for why that also self-heals a
-    /// pending remote anchor) to its new position, rather than holding a now-stale positional index.
-    /// When the anchor is *not* in the current slice (a partial/streamed query delivery, a transient
-    /// empty state mid-refresh, or an article that hasn't synced yet) we leave the index untouched
-    /// and wait for the next delivery — moving to a fallback here would jump the reader and persist
-    /// that wrong position as the new anchor.
+    /// anchor (preferring the canonical UID — see its doc comment) to its new position, rather than
+    /// holding a now-stale positional index. When the anchor is *not* in the current slice (a
+    /// partial/streamed query delivery, or a transient empty state mid-refresh) we leave the index
+    /// untouched and wait for the next delivery — moving to a fallback here would jump the reader
+    /// and persist that wrong position as the new anchor.
     private func reanchorToCurrentArticle() {
         guard let i = anchorController.reanchorIndex(in: filteredArticles) else { return }
         appState.currentIndex = i

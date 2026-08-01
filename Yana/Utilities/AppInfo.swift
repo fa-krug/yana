@@ -1,6 +1,6 @@
 import Foundation
 
-/// Bundle version information, for the Settings → About version row and the diagnostics header.
+/// Bundle version information, for the Settings → About version row.
 enum AppInfo {
     static var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"

@@ -11,7 +11,8 @@ import Testing
 /// Each string is resolved through the compiled catalog exactly as the UI resolves it, against an
 /// explicit `.lproj` bundle. Following `RefreshOutcomeTests`' note: the simulator's language is not
 /// guaranteed to be English, so the language has to be pinned rather than assumed — and `locale:`
-/// alone does not do it (it selects plural *rules*, not the localization).
+/// alone does not do it (it selects plural *rules*, not the localization). If per-language bundle
+/// resolution itself ever breaks, every test here fails at once rather than one of them.
 struct PluralAgreementTests {
 
     private static func bundle(_ language: String) -> Bundle? {
@@ -26,16 +27,6 @@ struct PluralAgreementTests {
 
     private func en(_ value: String.LocalizationValue) throws -> String { try render(value, "en") }
     private func de(_ value: String.LocalizationValue) throws -> String { try render(value, "de") }
-
-    /// Control: `"%lld entries"` already had both localizations, so this passes before *and* after
-    /// the fix. If per-language bundle resolution ever silently falls back, this fails first and
-    /// says so, instead of the real assertions failing for the wrong reason.
-    @Test func perLanguageResolutionWorks() throws {
-        #expect(try en("\(1) entries") == "1 entry")
-        #expect(try en("\(9) entries") == "9 entries")
-        #expect(try de("\(1) entries") == "1 Eintrag")
-        #expect(try de("\(9) entries") == "9 Einträge")
-    }
 
     @Test func feedRowArticleCountAgrees() throws {
         #expect(try en("\(1) articles") == "1 article")
@@ -74,34 +65,6 @@ struct PluralAgreementTests {
         #expect(try en("Imported \(3) feeds, skipped \(2).") == "Imported 3 feeds, skipped 2.")
         #expect(try de("Imported \(1) feeds, skipped \(0).") == "1 Feed importiert, 0 übersprungen.")
         #expect(try de("Imported \(3) feeds, skipped \(2).") == "3 Feeds importiert, 2 übersprungen.")
-    }
-
-    /// The diagnostics header's library row — four independent counts in one string.
-    @Test func diagnosticsLibraryRowCountsAgree() throws {
-        #expect(try en("\(1) feeds · \(1) tags · \(1) articles · \(1) images")
-                == "1 feed · 1 tag · 1 article · 1 image")
-        #expect(try en("\(2) feeds · \(3) tags · \(4) articles · \(5) images")
-                == "2 feeds · 3 tags · 4 articles · 5 images")
-        #expect(try de("\(1) feeds · \(1) tags · \(1) articles · \(1) images")
-                == "1 Feed · 1 Tag · 1 Artikel · 1 Bild")
-        #expect(try de("\(2) feeds · \(3) tags · \(4) articles · \(5) images")
-                == "2 Feeds · 3 Tags · 4 Artikel · 5 Bilder")
-    }
-
-    /// The diagnostics pinned header's "System Log" row (`SyncDiagnostics.systemLogText`) builds its
-    /// `Text` from this exact `"\(count) entries"` interpolation — the identical shape
-    /// `perLanguageResolutionWork()` above already pins as the control case for the `"%lld entries"`
-    /// key. A `Text`-vs-`Text` equality check was tried first and rejected: SwiftUI's `Text` does not
-    /// give dependable structural equality for `LocalizedStringKey`-driven content, even between two
-    /// syntactically identical construction sites (confirmed empirically — see the task report), so
-    /// this asserts the reused key/shape at the string level instead, exactly as
-    /// `perLanguageResolutionWork()` does. This is the count == 1 boundary the earlier
-    /// `SyncDiagnostics.systemLogSummary` bug ("1 entries") shipped without covering.
-    @Test func diagnosticsSystemLogRowCountAgrees() throws {
-        #expect(try en("\(1) entries") == "1 entry")
-        #expect(try en("\(0) entries") == "0 entries")
-        #expect(try de("\(1) entries") == "1 Eintrag")
-        #expect(try de("\(0) entries") == "0 Einträge")
     }
 
     /// The notification title already handled English through `inflect: true` automatic grammar

@@ -72,13 +72,9 @@ struct FeedEditorView: View {
             }
 
             Section("Tags") {
-                // Its own `@Query`, re-identified by `.id()` on a CloudKit remote-change bump (see
-                // `LibraryRevision`) so a tag added on another device shows up in this picker
-                // without a relaunch — `@Query` never sees `.NSPersistentStoreRemoteChange` on its
-                // own. `model.selectedTagNames` lives on this view's own `@State`, untouched by the
-                // subview's identity reset.
+                // Its own `@Query`. `model.selectedTagNames` lives on this view's own `@State`, so
+                // an in-progress selection is never owned by the picker subview.
                 FeedTagsPicker(selectedTagNames: $model.selectedTagNames)
-                    .id(LibraryRevision.shared.token)
             }
 
             AggregatorOptionsForm(options: $model.options, identifier: model.identifier)
@@ -185,8 +181,7 @@ struct FeedEditorView: View {
         // whose identifier changed. `apply` has already filled in a missing scheme synchronously.
         let shouldResolve = model.type.resolvesFeedURL && (isNew || model.identifierChanged)
         let target = feed ?? Feed(name: "", aggregatorType: .fullWebsite, identifier: "")
-        // Fetched directly rather than through a `@Query` (which this view no longer keeps, and
-        // which could otherwise be stale on a `.automatic` store — see `LibraryRevision`): this
+        // Fetched directly rather than through a `@Query` (which this view no longer keeps): this
         // runs once, at save time, so a plain fetch is both simpler and always current.
         let currentTags = (try? modelContext.fetch(FetchDescriptor<Tag>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
         model.apply(to: target, availableTags: currentTags)

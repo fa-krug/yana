@@ -11,14 +11,11 @@ struct TagsView: View {
     @State private var showingCreateTag = false
 
     var body: some View {
-        // The `@Query` lives on `TagsListContent`, re-identified by `.id()` on a CloudKit
-        // remote-change bump (see `LibraryRevision`) so it re-fetches — `@Query` never sees
-        // `.NSPersistentStoreRemoteChange` on its own. `searchText`/`tagsToDelete`/
-        // `showingCreateTag` stay on this parent so recreating the child loses none of them.
+        // The `@Query` lives on `TagsListContent`; `searchText`/`tagsToDelete`/`showingCreateTag`
+        // stay on this parent, which owns every state-bearing and presenting modifier.
         TagsListContent(searchText: $searchText, tagsToDelete: $tagsToDelete)
-            .id(LibraryRevision.shared.token)
-            // `.searchable()` lives here, on the stable parent, not inside the `.id()`'d subview:
-            // `.id()` tears down and recreates everything under it, including the search field's
+            // `.searchable()` lives here, on the stable parent, not inside the subview:
+            // a subview identity reset tears down everything under it, including the search field's
             // backing controller — the `searchText` *value* would survive (it's a `@Binding` into
             // this view's own `@State`), but first-responder status/cursor/keyboard would not,
             // silently kicking focus out of the field mid-typing. See `ManagedList`'s doc comment.
@@ -70,7 +67,7 @@ struct TagsView: View {
     }
 }
 
-/// The `@Query`-owning half of `TagsView`, split out so a CloudKit remote-change `.id()` reset
+/// The `@Query`-owning half of `TagsView`, split out so an identity reset of this subview
 /// only recreates the list (and its `@Query`), not the parent's search text, create-sheet flag,
 /// or delete-confirmation state.
 private struct TagsListContent: View {

@@ -3157,16 +3157,6 @@
         }
       }
     },
-    "Your library syncs automatically across your devices via iCloud.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deine Mediathek wird automatisch über iCloud zwischen deinen Geräten synchronisiert."
-          }
-        }
-      }
-    },
     "Your own private feed reader — all your sources, gathered on your device.": {
       "localizations": {
         "de": {
@@ -3387,96 +3377,6 @@
         }
       }
     },
-    "Sync via iCloud": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Via iCloud synchronisieren"
-          }
-        }
-      }
-    },
-    "iCloud Sync": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud-Synchronisierung"
-          }
-        }
-      }
-    },
-    "Syncs feeds, tags, settings, API keys, and full articles (including images) across your devices via iCloud.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Synchronisiert Feeds, Tags, Einstellungen, API-Schlüssel und vollständige Artikel (inklusive Bilder) über iCloud auf allen Geräten."
-          }
-        }
-      }
-    },
-    "A passive device never fetches in the background and relies on iCloud for its articles.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ein passives Gerät ruft nichts im Hintergrund ab und bezieht seine Artikel aus iCloud."
-          }
-        }
-      }
-    },
-    "Passive Device": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Passives Gerät"
-          }
-        }
-      }
-    },
-    "Sign in to iCloud in Settings to sync.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zum Synchronisieren in den Einstellungen bei iCloud anmelden."
-          }
-        }
-      }
-    },
-    "iCloud is unreachable. Check your connection.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud ist nicht erreichbar. Verbindung prüfen."
-          }
-        }
-      }
-    },
-    "Your iCloud storage is full.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dein iCloud-Speicher ist voll."
-          }
-        }
-      }
-    },
-    "iCloud access is restricted for this account.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der iCloud-Zugriff ist für dieses Konto eingeschränkt."
-          }
-        }
-      }
-    },
     "Read Aloud": {
       "localizations": {
         "de": {
@@ -3597,26 +3497,6 @@
         }
       }
     },
-    "Sync Status": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Synchronisierungsstatus"
-          }
-        }
-      }
-    },
-    "iCloud Account": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud-Account"
-          }
-        }
-      }
-    },
     "Container": {
       "localizations": {
         "de": {
@@ -3643,46 +3523,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "App"
-          }
-        }
-      }
-    },
-    "System Log": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Systemprotokoll"
-          }
-        }
-      }
-    },
-    "Last Import": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Letzter Import"
-          }
-        }
-      }
-    },
-    "Last Export": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Letzter Export"
-          }
-        }
-      }
-    },
-    "Last Error (this launch)": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Letzter Fehler (dieser Start)"
           }
         }
       }
@@ -3737,102 +3577,12 @@
         }
       }
     },
-    "Notice": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hinweis"
-          }
-        }
-      }
-    },
     "Error": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Fehler"
-          }
-        }
-      }
-    },
-    "No Entries": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Einträge"
-          }
-        }
-      }
-    },
-    "Nothing matches the current filter. The log covers this app launch only — the system portion shows only entries the unified log kept, which is often nothing.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nichts entspricht dem aktuellen Filter. Das Protokoll umfasst nur den aktuellen App-Start — der Systemteil zeigt nur Einträge, die das Systemprotokoll behalten hat, was oft keine sind."
-          }
-        }
-      }
-    },
-    "%lld entries": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld entry"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld entries"
-                }
-              }
-            }
-          }
-        },
-        "de": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld Eintrag"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld Einträge"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Hide Diagnostics": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diagnose ausblenden"
-          }
-        }
-      }
-    },
-    "Hiding removes this screen from Settings. Tap the version row in About five times to bring it back.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Beim Ausblenden verschwindet dieser Bereich aus den Einstellungen. Fünfmal auf die Version unter „Über“ tippen, um ihn wieder einzublenden."
           }
         }
       }
@@ -3847,62 +3597,12 @@
         }
       }
     },
-    "Copy Log": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Protokoll kopieren"
-          }
-        }
-      }
-    },
-    "Log copied": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Protokoll kopiert"
-          }
-        }
-      }
-    },
-    "Yana Sync Log": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Yana-Synchronisierungsprotokoll"
-          }
-        }
-      }
-    },
     "Version": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
             "value": "Version"
-          }
-        }
-      }
-    },
-    "Diagnostics enabled": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Diagnose aktiviert"
-          }
-        }
-      }
-    },
-    "Shows this launch's iCloud sync activity, for troubleshooting and bug reports.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zeigt die iCloud-Synchronisierung des aktuellen App-Starts — für Fehlersuche und Fehlerberichte."
           }
         }
       }
@@ -3917,192 +3617,12 @@
         }
       }
     },
-    "Copying or sharing the log may include article titles and links, so read it before sending it to anyone.": {
+    "Everything stays on this device. Older articles are removed automatically; starred articles are kept.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beim Kopieren oder Teilen des Protokolls können Artikeltitel und Links enthalten sein — es vor dem Senden durchlesen."
-          }
-        }
-      }
-    },
-    "%lld feeds · %lld tags · %lld articles · %lld images": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%#@feeds@ · %#@tags@ · %#@articles@ · %#@images@"
-          },
-          "substitutions": {
-            "feeds": {
-              "argNum": 1,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Feed"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Feeds"
-                    }
-                  }
-                }
-              }
-            },
-            "tags": {
-              "argNum": 2,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Tag"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Tags"
-                    }
-                  }
-                }
-              }
-            },
-            "articles": {
-              "argNum": 3,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Artikel"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Artikel"
-                    }
-                  }
-                }
-              }
-            },
-            "images": {
-              "argNum": 4,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Bild"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg Bilder"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%#@feeds@ · %#@tags@ · %#@articles@ · %#@images@"
-          },
-          "substitutions": {
-            "feeds": {
-              "argNum": 1,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg feed"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg feeds"
-                    }
-                  }
-                }
-              }
-            },
-            "tags": {
-              "argNum": 2,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg tag"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg tags"
-                    }
-                  }
-                }
-              }
-            },
-            "articles": {
-              "argNum": 3,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg article"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg articles"
-                    }
-                  }
-                }
-              }
-            },
-            "images": {
-              "argNum": 4,
-              "formatSpecifier": "lld",
-              "variations": {
-                "plural": {
-                  "one": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg image"
-                    }
-                  },
-                  "other": {
-                    "stringUnit": {
-                      "state": "translated",
-                      "value": "%arg images"
-                    }
-                  }
-                }
-              }
-            }
+            "value": "Alles bleibt auf diesem Gerät. Ältere Artikel werden automatisch entfernt; markierte Artikel bleiben erhalten."
           }
         }
       }

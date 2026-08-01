@@ -11,10 +11,6 @@ import UIKit
 /// post-launch main-actor task so it does not block `didFinishLaunchingWithOptions`.
 enum AppContainer {
     static let shared: ModelContainer = {
-        // Install the CloudKit mirroring-event observer BEFORE any container is created. Setup
-        // events fire during `ModelContainer.init` and are where container/entitlement/account
-        // failures surface — an observer installed afterwards misses exactly those events.
-        CloudKitSyncMonitor.shared.start()
         do {
             return try StartupTrace.measure("ModelContainer.init") {
                 #if DEBUG
@@ -38,27 +34,14 @@ enum AppContainer {
                             .appendingPathComponent(storeURL.lastPathComponent + suffix)
                         try? FileManager.default.removeItem(at: sibling)
                     }
-                    let config = ModelConfiguration(url: storeURL, cloudKitDatabase: .none)
-                    return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
+                    let config = ModelConfiguration(url: storeURL)
+                    return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                              configurations: config)
                 }
-                // DEBUG-only: on every development launch, push the SwiftData-derived schema to the
-                // CloudKit *Development* environment so newly added fields exist server-side and iCloud
-                // data syncs completely during development (technique: fatbobman.com). This runs to
-                // completion and fully tears down its temporary CloudKit container *before* the live
-                // container below is created, so the process never hosts two mirroring containers on the
-                // same CloudKit container at once (doing so crashes on a signed-in device). No-op without
-                // an iCloud account; compiled out of release builds.
-                CloudKitSchemaInitializer.run()
                 #endif
-                // Native CloudKit mirroring via SwiftData's .automatic integration.
-                // CloudKit model invariants (all enforced by CloudKitSchemaCompatibilityTests):
-                //   - All to-many relationships are [T]? (optional): Feed.articles, Feed.tags,
-                //     Tag.articles, Tag.feeds, Article.tags — required by CloudKit.
-                //   - All scalar attributes have default values or are optional.
-                //   - No #Unique constraints (CloudKit has no equivalent).
-                let config = ModelConfiguration(cloudKitDatabase: .automatic)
-                return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
+                // Local-only store. The app is fully self-contained: nothing leaves the device.
+                let config = ModelConfiguration()
+                return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                          configurations: config)
             }
         } catch {
@@ -102,8 +85,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 }
             }
         }
-        // Register for remote notifications so CloudKit silent pushes can wake the app.
-        application.registerForRemoteNotifications()
         StartupTrace.event("didFinishLaunching.end")
         return true
     }
@@ -128,21 +109,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
     #endif
 
-    func application(
-        _ application: UIApplication,
-        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
-        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
-    ) {
-        // SwiftData+CloudKit mirroring imports remote changes automatically; nothing to pull by hand.
-        completionHandler(.newData)
-    }
 }
 
 @main
 struct YanaApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var appState = AppState()
-    @State private var appSettings = AppSettings()
     @State private var articleStore = ArticleStore(container: AppContainer.shared)
     @Environment(\.scenePhase) private var scenePhase
 
@@ -152,10 +124,7 @@ struct YanaApp: App {
                 .environment(articleStore)
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
-                    case .active:
-                        LibraryDedup.run(container: AppContainer.shared)
                     case .background:
-                        SettingsCloudSync.push(appSettings)
                         // The timeline index cache is written on a delay (see
                         // `ArticleStore.cacheWriteDelay`); flush it before the app can be suspended
                         // so the next cold start paints from an up-to-date cache.
@@ -167,15 +136,7 @@ struct YanaApp: App {
                 .task {
                     StartupTrace.event("scene.task.begin")
                     articleStore.start()
-                    await NativeCloudKitMigration.runIfNeeded(container: AppContainer.shared)
-                    // Register the remote-change observer so dedup fires on every CloudKit merge.
-                    LibraryDedup.startObserving(container: AppContainer.shared)
-                    // Register the remote-change observer so @Query-backed lists (Tags, Feeds, the
-                    // Mac filter bar, the feed editor's tag picker) refresh on a CloudKit merge —
-                    // @Query itself never sees `.NSPersistentStoreRemoteChange`.
-                    LibraryRevision.shared.startObserving()
-                    Task(priority: .utility) { await LegacyCloudKitCleanup.runIfNeeded() }
-                    SettingsCloudSync.start(appSettings)
+                    LegacySettingsMigration.runIfNeeded()
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)

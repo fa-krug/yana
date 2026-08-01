@@ -116,42 +116,6 @@ struct AppSettingsTests {
         #expect(!posted)
     }
 
-    @Test func appliesSyncedAnchorPostsWhenUIDChanged() throws {
-        let settings = AppSettings(defaults: freshDefaults())
-        settings.timelineAnchorSyncUID = "uid-A"
-
-        nonisolated(unsafe) var posted = false
-        let token = NotificationCenter.default.addObserver(
-            forName: AppSettings.timelinePositionDidChange, object: nil, queue: nil
-        ) { _ in posted = true }
-        defer { NotificationCenter.default.removeObserver(token) }
-
-        let payload = AppSettings.SyncedSettings(timelineAnchorUID: "uid-B")
-        settings.applySyncedSettings(try JSONEncoder().encode(payload))
-
-        #expect(posted)
-        #expect(settings.timelineAnchorSyncUID == "uid-B")
-    }
-
-    @Test func appliesSyncedAnchorDoesNotPostWhenUIDUnchanged() throws {
-        let settings = AppSettings(defaults: freshDefaults())
-        settings.timelineAnchorSyncUID = "uid-A"
-
-        nonisolated(unsafe) var posted = false
-        let token = NotificationCenter.default.addObserver(
-            forName: AppSettings.timelinePositionDidChange, object: nil, queue: nil
-        ) { _ in posted = true }
-        defer { NotificationCenter.default.removeObserver(token) }
-
-        // Simulates an unrelated settings pull that happens to carry the same anchor UID this
-        // device already has — must not yank the reader back to the anchor.
-        let payload = AppSettings.SyncedSettings(timelineAnchorUID: "uid-A")
-        settings.applySyncedSettings(try JSONEncoder().encode(payload))
-
-        #expect(!posted)
-        #expect(settings.timelineAnchorSyncUID == "uid-A")
-    }
-
     @Test func isSourceEnabledGatesRedditAndYouTube() {
         let defaults = freshDefaults()
         let settings = AppSettings(defaults: defaults)

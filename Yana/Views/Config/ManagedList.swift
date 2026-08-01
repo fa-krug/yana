@@ -28,10 +28,10 @@ enum ManagedListSearch {
 /// `onMove` is suppressed while a search is active.
 ///
 /// **Callers attach `.searchable()` themselves, outside this view** — it is deliberately not
-/// applied here. `TagsView`/`FeedsView` wrap the `ManagedList`-hosting subview in `.id()` so it
-/// re-fetches its `@Query` on a CloudKit remote-change bump (see `LibraryRevision`); `.id()` forces
-/// full identity teardown of everything inside it, and `.searchable()`'s backing search
-/// controller is no exception — the *text* survives (it's a `@Binding` into the stable parent's
+/// applied here. `TagsView`/`FeedsView` split the `ManagedList`-hosting subview off from the state
+/// that must outlive it, and any identity reset of that subview tears down everything inside it;
+/// `.searchable()`'s backing search controller is no exception — the *text* survives (it's a
+/// `@Binding` into the stable parent's
 /// `@State`), but first-responder status/cursor/keyboard do not, silently dropping focus out of the
 /// search field mid-typing. Keeping `.searchable()` on the stable parent avoids that; `searchText`
 /// is still threaded through here for the empty-state copy and to gate reorder.

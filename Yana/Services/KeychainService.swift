@@ -3,23 +3,16 @@ import Security
 
 enum KeychainService: Sendable {
 
-    // MARK: - iCloud Sync Flag
-
-    /// Controls whether NEW saves are written as iCloud-synchronizable.
-    /// `true` by default (sync always on). Set via `migrateSynchronizable(to:)`.
-    nonisolated(unsafe) static var synchronizeWithICloud: Bool = true
-
     // MARK: - Core Operations
 
     @discardableResult
     static func save(key: String, value: String) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
 
-        // Delete any existing item first (Any-matching delete clears both local
-        // and synchronizable copies to avoid duplicates across domains).
+        // Delete any existing item first. The Any-matching delete also clears a copy left in the
+        // iCloud-synchronizable domain by a build that still had sync, so re-saving a key migrates
+        // it back to this device only.
         delete(key: key)
-
-        let syncValue: CFBoolean = synchronizeWithICloud ? kCFBooleanTrue! : kCFBooleanFalse!
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -27,7 +20,8 @@ enum KeychainService: Sendable {
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-            kSecAttrSynchronizable as String: syncValue,
+            // Keys never leave the device.
+            kSecAttrSynchronizable as String: kCFBooleanFalse!,
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -41,8 +35,8 @@ enum KeychainService: Sendable {
             kSecAttrAccount as String: key,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            // Match both local and synchronizable copies so load works regardless
-            // of which domain the item was stored in.
+            // Match both domains so a key written by an older, iCloud-synchronizing build still
+            // loads on this device.
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
         ]
 
@@ -59,7 +53,7 @@ enum KeychainService: Sendable {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: AppConstants.keychainService,
             kSecAttrAccount as String: key,
-            // Clear both local and synchronizable copies.
+            // Clear both domains, including anything an older synchronizing build left behind.
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
         ]
 
@@ -95,34 +89,11 @@ enum KeychainService: Sendable {
         delete(key: item.rawValue)
     }
 
-    // MARK: - iCloud Migration
+    // MARK: - Local-only migration
 
-    /// Migrates all stored API keys to the target synchronizability domain.
-    ///
-    /// Sets `synchronizeWithICloud` to `enabled`. If the value actually changed,
-    /// every `APIKeyItem` that has a stored value is re-saved in the new domain
-    /// (the Any-matching delete in `save` first clears whichever domain held the
-    /// old copy, then writes one copy under the new flag value).
-    ///
-    /// - Returns: `true` if the flag actually changed (a migration was performed),
-    ///   `false` if it was already set to `enabled`.
-    @discardableResult
-    static func migrateSynchronizable(to enabled: Bool) -> Bool {
-        guard synchronizeWithICloud != enabled else { return false }
-        synchronizeWithICloud = enabled
-
-        for item in APIKeyItem.allCases {
-            if let value = loadAPIKey(for: item) {
-                saveAPIKey(value, for: item)
-            }
-        }
-
-        return true
-    }
-
-    /// Re-saves every stored API key into the current (synchronizable) domain, unconditionally.
-    /// Used by the one-time migration so keys saved by the old build's non-sync domain propagate.
-    static func resaveAllSynchronizable() {
+    /// Re-saves every stored API key so any copy left in the iCloud-synchronizable domain by an
+    /// older build is replaced by a device-local one. Idempotent; safe to run on every launch.
+    static func migrateToDeviceLocal() {
         for item in APIKeyItem.allCases {
             if let value = loadAPIKey(for: item) { saveAPIKey(value, for: item) }
         }

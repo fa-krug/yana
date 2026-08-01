@@ -6,13 +6,11 @@ import UIKit
 #endif
 
 /// A one-shot request to scroll the Mac sidebar to a specific row. `TimelineModel` bumps this only
-/// from programmatic selection changes (`moveSelection`, the anchor restore in `applyTimeline`, a
-/// remote anchor landing via `jumpToSyncedTimelinePosition`, and the self-heal in
-/// `reanchorToCurrentArticle`) — never from the `selection` setter, which is what the sidebar
-/// `List` itself drives on a user click; bumping from there would fight the user's own scrolling.
-/// `token` always increments even when `id` repeats, so a second request for the same article
-/// (e.g. the launch anchor restore immediately followed by a remote anchor for that same article)
-/// is not silently deduplicated by SwiftUI's usual value-equality change detection.
+/// from programmatic selection changes (`moveSelection`, the anchor restore in `applyTimeline`, and
+/// the self-heal in `reanchorToCurrentArticle`) — never from the `selection` setter, which is what
+/// the sidebar `List` itself drives on a user click; bumping from there would fight the user's own
+/// scrolling. `token` always increments even when `id` repeats, so a second request for the same
+/// article is not silently deduplicated by SwiftUI's usual value-equality change detection.
 struct SidebarScrollRequest: Equatable {
     let id: String
     let token: Int
@@ -46,22 +44,16 @@ final class TimelineModel {
     private var modelContext: ModelContext?
     private var store: ArticleStore?
 
-    /// Notification center the synced-anchor observer registers on. Injectable so tests can post to
-    /// a private center instead of racing other suites on `.default` (mirrors `LibraryRevision`).
-    private let notificationCenter: NotificationCenter
-    private var anchorObserver: NSObjectProtocol?
-
-    /// Records + pushes a changed anchor to iCloud KVS (coalesced). The same `TimelineAnchorWriter`
-    /// type iOS's `ReaderAnchorController` uses, so the no-ping-pong guarantee is asserted against
-    /// one shared, testable seam on both platforms: `jumpToSyncedTimelinePosition` must never call
-    /// `anchorWriter.record`, only the user-driven `selection` setter and `moveSelection` may.
+    /// Records the anchor for a user-driven selection change. The same `TimelineAnchorWriter` type
+    /// iOS's `ReaderAnchorController` uses, so both platforms persist the reading position through
+    /// one shared, testable seam: only the `selection` setter and `moveSelection` may call it, never
+    /// a programmatic re-anchor.
     let anchorWriter: TimelineAnchorWriter
 
     var isConfigured: Bool { modelContext != nil }
 
-    init(settings: AppSettings = AppSettings(), notificationCenter: NotificationCenter = .default) {
+    init(settings: AppSettings = AppSettings()) {
         self.settings = settings
-        self.notificationCenter = notificationCenter
         self.anchorWriter = TimelineAnchorWriter(settings: settings)
     }
 
@@ -69,11 +61,6 @@ final class TimelineModel {
         guard self.modelContext == nil else { return }
         self.modelContext = modelContext
         self.store = store
-        observeSyncedAnchor()
-    }
-
-    isolated deinit {
-        if let anchorObserver { notificationCenter.removeObserver(anchorObserver) }
     }
 
     // MARK: - Selection
@@ -89,11 +76,9 @@ final class TimelineModel {
             guard let id = newValue,
                   let i = TimelinePageIndex.index(of: id, in: filteredArticles),
                   // The sidebar `List(selection:)` binding is re-read (and written back) after any
-                  // programmatic move of `currentIndex` — e.g. `jumpToSyncedTimelinePosition` — so
-                  // without this guard, re-selecting the row already at `currentIndex` would still
-                  // call `anchorWriter.record`/`pushSoon` for a no-op selection change. Worst case
-                  // that's a stale anchor pushed back to iCloud KVS moments after a newer one
-                  // arrived, which last-writer-wins could then drag another device backwards.
+                  // programmatic move of `currentIndex` — e.g. the anchor restore — so without this
+                  // guard, re-selecting the row already at `currentIndex` would still call
+                  // `anchorWriter.record` for a no-op selection change.
                   i != currentIndex
             else { return }
             currentIndex = i
@@ -166,7 +151,7 @@ final class TimelineModel {
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }
         currentIndex = resolved.anchorIndex
-        // A synced anchor (canonical UID) resolves exactly across devices; prefer it when present.
+        // The canonical UID also carries the feed, so prefer it when it resolves.
         if let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: resolved.articles) {
             currentIndex = i
             settings.timelineAnchorIdentifier = resolved.articles[i].identifier
@@ -178,16 +163,10 @@ final class TimelineModel {
     }
 
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention
-    /// cleanup). Prefers the canonical synced UID over the per-device identifier: a remote anchor
-    /// may have arrived for an article that hadn't synced to this device yet — the *common* case,
-    /// since KVS anchor propagation is typically faster than the CloudKit article import catching
-    /// up — and once that article does arrive on a later delivery (this method runs again from
-    /// `applyTimeline`), this is what finally moves the selection: `timelinePositionDidChange` won't
-    /// re-fire, since the UID hasn't changed since it arrived. Without this self-heal the position
-    /// would only catch up on the next launch — close to the very symptom this task exists to fix.
-    /// Falls back to the identifier when the UID doesn't resolve either; the two are written in
-    /// lockstep by every local write (`TimelineAnchorWriter.record`), so they only disagree in
-    /// exactly this pending-sync window.
+    /// cleanup). Prefers the canonical UID over the per-device identifier: the UID also carries the
+    /// feed, so it still resolves after a re-import that changed the article's row identity. Falls
+    /// back to the identifier when the UID doesn't resolve; the two are written in lockstep by
+    /// `TimelineAnchorWriter.record`.
     ///
     /// This runs on every ordinary timeline delivery (most of which leave `currentIndex` unchanged,
     /// since the identifier already resolves to the same row), so it only bumps `scrollTarget` when
@@ -219,40 +198,6 @@ final class TimelineModel {
         if filteredArticles.indices.contains(clamped) {
             requestScroll(to: filteredArticles[clamped].identifier)
         }
-    }
-
-    // MARK: - Synced anchor (remote apply)
-
-    /// Registers the observer that lets a remote timeline anchor move the Mac selection.
-    /// Previously the Mac side had no observer at all — `AppSettings.timelinePositionDidChange` was
-    /// only ever watched on iOS — so a position synced from another device never reached this
-    /// window. Idempotent; called once from `configure`.
-    private func observeSyncedAnchor() {
-        guard anchorObserver == nil else { return }
-        anchorObserver = notificationCenter.addObserver(
-            forName: AppSettings.timelinePositionDidChange, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.jumpToSyncedTimelinePosition() }
-        }
-    }
-
-    /// Moves the Mac selection to the synced timeline anchor article. This is the remote-anchor
-    /// apply path, so it also bumps `scrollTarget` (see `SidebarScrollRequest`) to scroll the
-    /// sidebar to the newly selected row, alongside the other programmatic-selection paths.
-    ///
-    /// Deliberately does **not** go through the `selection` setter — it sets `currentIndex` and
-    /// `timelineAnchorIdentifier` directly, so applying a remote anchor can never call
-    /// `anchorWriter.record` and loop the write straight back to the device that sent it (the
-    /// "no ping-pong" requirement: only user-driven selection changes push — see
-    /// `TimelineModelTests` for the assertion). Ignored when the anchored article hasn't synced to
-    /// this device yet (`TimelineUIDIndex.index` returns `nil`).
-    func jumpToSyncedTimelinePosition() {
-        guard didRestoreAnchor,
-              let i = TimelineUIDIndex.index(of: settings.timelineAnchorSyncUID, in: filteredArticles)
-        else { return }
-        currentIndex = i
-        settings.timelineAnchorIdentifier = filteredArticles[i].identifier
-        requestScroll(to: filteredArticles[i].identifier)
     }
 
     // MARK: - Actions

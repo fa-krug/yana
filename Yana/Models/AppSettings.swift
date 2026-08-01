@@ -78,10 +78,6 @@ final class AppSettings {
     static let articleTextSizeDidChange = Notification.Name("YanaArticleTextSizeDidChange")
     /// Posted when `articleFont` changes so the reader can re-render live (no app restart).
     static let articleFontDidChange = Notification.Name("YanaArticleFontDidChange")
-    /// Posted when the timeline anchor identifier changes (e.g. from a synced pull applying a new
-    /// `timelineAnchorUID`) so the reader can jump to that exact article. Cross-instance safe:
-    /// separate `AppSettings` instances share this global notification.
-    static let timelinePositionDidChange = Notification.Name("YanaTimelinePositionDidChange")
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -156,168 +152,24 @@ final class AppSettings {
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
         // Onboarding
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
-        // Migration
-        static let hasMigratedToNativeCloudKit = "settings.hasMigratedToNativeCloudKit"
-        static let hasCleanedLegacyCloudKit = "settings.hasCleanedLegacyCloudKit"
-        // Mac window layout (device-local, never synced)
+        // Mac window layout
         static let macSidebarWidth = "settings.macSidebarWidth"
-        // Diagnostics (device-local, never synced)
-        static let diagnosticsUnlocked = "settings.diagnosticsUnlocked"
+        // Migration
+        static let hasMigratedKeysToDeviceLocal = "settings.hasMigratedKeysToDeviceLocal"
     }
 
-    // MARK: Migration
-
-    /// One-time: whether the native SwiftData+CloudKit migration has run. Device-local.
-    var hasMigratedToNativeCloudKit: Bool {
-        get { access(keyPath: \.hasMigratedToNativeCloudKit); return defaults.bool(forKey: Key.hasMigratedToNativeCloudKit) }
-        set { withMutation(keyPath: \.hasMigratedToNativeCloudKit) { defaults.set(newValue, forKey: Key.hasMigratedToNativeCloudKit) } }
+    /// One-time: whether stored API keys have been moved out of the iCloud-synchronizable keychain
+    /// domain that an older build wrote them to. See `KeychainService.migrateToDeviceLocal()`.
+    var hasMigratedKeysToDeviceLocal: Bool {
+        get { access(keyPath: \.hasMigratedKeysToDeviceLocal); return defaults.bool(forKey: Key.hasMigratedKeysToDeviceLocal) }
+        set { withMutation(keyPath: \.hasMigratedKeysToDeviceLocal) { defaults.set(newValue, forKey: Key.hasMigratedKeysToDeviceLocal) } }
     }
-
-    /// One-time: whether the legacy hand-built CloudKit artifacts have been cleaned up. Device-local.
-    /// Stays false (retried next launch) until the deletion succeeds.
-    var hasCleanedLegacyCloudKit: Bool {
-        get { access(keyPath: \.hasCleanedLegacyCloudKit); return defaults.bool(forKey: Key.hasCleanedLegacyCloudKit) }
-        set { withMutation(keyPath: \.hasCleanedLegacyCloudKit) { defaults.set(newValue, forKey: Key.hasCleanedLegacyCloudKit) } }
-    }
-
-    // MARK: Legacy helpers (used by NativeCloudKitMigration to read old keys)
-
-    /// Reads a bool value for a raw UserDefaults key from this settings instance's store.
-    func legacyBool(_ key: String) -> Bool { defaults.bool(forKey: key) }
-    /// Reads a double value for a raw UserDefaults key from this settings instance's store.
-    func legacyDouble(_ key: String) -> Double { defaults.double(forKey: key) }
-    /// Returns true if a value exists for the raw key in this settings instance's store.
-    func legacyHas(_ key: String) -> Bool { defaults.object(forKey: key) != nil }
 
     /// The Mac window's remembered sidebar column width (device-local, never synced — window layout
     /// is per-device). 0 means "unset → use the ideal default".
     var macSidebarWidth: Double {
         get { access(keyPath: \.macSidebarWidth); return defaults.double(forKey: Key.macSidebarWidth) }
         set { withMutation(keyPath: \.macSidebarWidth) { defaults.set(newValue, forKey: Key.macSidebarWidth) } }
-    }
-
-    /// Whether the Settings → Diagnostics log is revealed on this device. Device-local and never
-    /// synced: the log ships in release builds but stays hidden until the version row in About is
-    /// tapped five times, and that choice should not follow the user to another device.
-    var diagnosticsUnlocked: Bool {
-        get { access(keyPath: \.diagnosticsUnlocked); return defaults.bool(forKey: Key.diagnosticsUnlocked) }
-        set { withMutation(keyPath: \.diagnosticsUnlocked) { defaults.set(newValue, forKey: Key.diagnosticsUnlocked) } }
-    }
-
-    // MARK: Sync serialization
-
-    /// The allow-listed subset of settings that the iCloud sync layer may push/pull.
-    /// Excluded keys (voice, timeline position, onboarding flags, filter state, device-local flags)
-    /// are physically absent from this struct and therefore cannot be serialized.
-    struct SyncedSettings: Codable {
-        var activeAIProvider: String?
-        var retentionDays: Int?
-        var redditEnabled: Bool?
-        var redditUserAgent: String?
-        var youtubeEnabled: Bool?
-        var notificationsEnabled: Bool?
-        var openaiAPIURL: String?
-        var openaiModel: String?
-        var anthropicModel: String?
-        var geminiModel: String?
-        var mistralModel: String?
-        var qwenModel: String?
-        var deepseekModel: String?
-        var aiTemperature: Double?
-        var aiMaxTokens: Int?
-        var aiMaxPromptLength: Int?
-        var aiDefaultDailyLimit: Int?
-        var aiDefaultMonthlyLimit: Int?
-        var aiRequestTimeout: Int?
-        var aiMaxRetries: Int?
-        var aiRetryDelay: Int?
-        var aiRequestDelay: Int?
-        var articleTextSize: Int?
-        var articleFont: Int?
-        var useSystemBrowser: Bool?
-        var articleFullscreenEnabled: Bool?
-        /// The anchored article's identifier (exact within the now-identical timeline). Present only
-        /// when this device has iCloud sync on; a receiving device jumps to that exact article.
-        var timelineAnchorUID: String?
-    }
-
-    /// Snapshot the current synced settings into JSON-encoded `Data`.
-    func exportSyncedSettings() -> Data {
-        let snapshot = SyncedSettings(
-            activeAIProvider: activeAIProvider.rawValue,
-            retentionDays: retentionDays,
-            redditEnabled: redditEnabled,
-            redditUserAgent: redditUserAgent,
-            youtubeEnabled: youtubeEnabled,
-            notificationsEnabled: notificationsEnabled,
-            openaiAPIURL: openaiAPIURL,
-            openaiModel: openaiModel,
-            anthropicModel: anthropicModel,
-            geminiModel: geminiModel,
-            mistralModel: mistralModel,
-            qwenModel: qwenModel,
-            deepseekModel: deepseekModel,
-            aiTemperature: aiTemperature,
-            aiMaxTokens: aiMaxTokens,
-            aiMaxPromptLength: aiMaxPromptLength,
-            aiDefaultDailyLimit: aiDefaultDailyLimit,
-            aiDefaultMonthlyLimit: aiDefaultMonthlyLimit,
-            aiRequestTimeout: aiRequestTimeout,
-            aiMaxRetries: aiMaxRetries,
-            aiRetryDelay: aiRetryDelay,
-            aiRequestDelay: aiRequestDelay,
-            articleTextSize: articleTextSize.rawValue,
-            articleFont: articleFont.rawValue,
-            useSystemBrowser: useSystemBrowser,
-            articleFullscreenEnabled: articleFullscreenEnabled,
-            timelineAnchorUID: timelineAnchorSyncUID
-        )
-        return (try? JSONEncoder().encode(snapshot)) ?? Data()
-    }
-
-    /// Apply a synced-settings payload, assigning each present field through the typed setter
-    /// so `@Observable` mutations fire and change-notifications post. Missing fields are skipped.
-    func applySyncedSettings(_ data: Data) {
-        guard let decoded = try? JSONDecoder().decode(SyncedSettings.self, from: data) else { return }
-        if let raw = decoded.activeAIProvider {
-            activeAIProvider = AIProvider(rawValue: raw) ?? activeAIProvider
-        }
-        if let v = decoded.retentionDays { retentionDays = v }
-        if let v = decoded.redditEnabled { redditEnabled = v }
-        if let v = decoded.redditUserAgent { redditUserAgent = v }
-        if let v = decoded.youtubeEnabled { youtubeEnabled = v }
-        if let v = decoded.notificationsEnabled { notificationsEnabled = v }
-        if let v = decoded.openaiAPIURL { openaiAPIURL = v }
-        if let v = decoded.openaiModel { openaiModel = v }
-        if let v = decoded.anthropicModel { anthropicModel = v }
-        if let v = decoded.geminiModel { geminiModel = v }
-        if let v = decoded.mistralModel { mistralModel = v }
-        if let v = decoded.qwenModel { qwenModel = v }
-        if let v = decoded.deepseekModel { deepseekModel = v }
-        if let v = decoded.aiTemperature { aiTemperature = v }
-        if let v = decoded.aiMaxTokens { aiMaxTokens = v }
-        if let v = decoded.aiMaxPromptLength { aiMaxPromptLength = v }
-        if let v = decoded.aiDefaultDailyLimit { aiDefaultDailyLimit = v }
-        if let v = decoded.aiDefaultMonthlyLimit { aiDefaultMonthlyLimit = v }
-        if let v = decoded.aiRequestTimeout { aiRequestTimeout = v }
-        if let v = decoded.aiMaxRetries { aiMaxRetries = v }
-        if let v = decoded.aiRetryDelay { aiRetryDelay = v }
-        if let v = decoded.aiRequestDelay { aiRequestDelay = v }
-        if let v = decoded.articleTextSize {
-            articleTextSize = ArticleTextSize(rawValue: v) ?? articleTextSize
-        }
-        if let v = decoded.articleFont {
-            articleFont = ArticleFont(rawValue: v) ?? articleFont
-        }
-        if let v = decoded.useSystemBrowser { useSystemBrowser = v }
-        if let v = decoded.articleFullscreenEnabled { articleFullscreenEnabled = v }
-        // Only a UID that actually differs from the stored one is a real remote move: posting
-        // unconditionally made every unrelated settings pull (a model change, a knob tweak on the
-        // other device) yank the reader back to the anchor, even mid-read.
-        if let uid = decoded.timelineAnchorUID, uid != timelineAnchorSyncUID {
-            timelineAnchorSyncUID = uid
-            NotificationCenter.default.post(name: Self.timelinePositionDidChange, object: self)
-        }
     }
 
     var activeAIProvider: AIProvider {
@@ -542,8 +394,9 @@ final class AppSettings {
         get { access(keyPath: \.timelineAnchorIdentifier); return defaults.string(forKey: Key.timelineAnchorIdentifier) }
         set { withMutation(keyPath: \.timelineAnchorIdentifier) { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) } }
     }
-    /// The canonical UID of the current anchor article, for cross-device sync (exact resolution).
-    /// Distinct from `timelineAnchorIdentifier`, which stays a per-feed identifier for local restore.
+    /// The canonical `ArticleUID` of the current anchor article. Distinct from
+    /// `timelineAnchorIdentifier`, which is only the per-feed identifier: the UID also carries the
+    /// feed, so it still resolves after a re-import that changed the article's row identity.
     var timelineAnchorSyncUID: String? {
         get { access(keyPath: \.timelineAnchorSyncUID); return defaults.string(forKey: Key.timelineAnchorSyncUID) }
         set { withMutation(keyPath: \.timelineAnchorSyncUID) { defaults.set(newValue, forKey: Key.timelineAnchorSyncUID) } }

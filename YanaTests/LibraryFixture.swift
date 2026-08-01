@@ -13,18 +13,13 @@ enum LibraryFixture {
         let directory: URL
     }
 
-    /// `cloudKit: true` builds the store the shipping app uses (`.automatic`), which is what turns
-    /// on persistent history tracking and therefore `.NSPersistentStoreRemoteChange`. Only tests
-    /// that care about mirroring behaviour need it; it initialises fine without an iCloud account.
-    static func make(articleCount: Int, feedCount: Int = 12, tagCount: Int = 8,
-                     cloudKit: Bool = false) throws -> Handle {
+    static func make(articleCount: Int, feedCount: Int = 12, tagCount: Int = 8) throws -> Handle {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("yana-fixture-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let container = try ModelContainer(
-            for: Feed.self, Tag.self, Article.self, StoredImage.self,
-            configurations: ModelConfiguration(url: dir.appendingPathComponent("test.store"),
-                                               cloudKitDatabase: cloudKit ? .automatic : .none)
+            for: Feed.self, Tag.self, Article.self,
+            configurations: ModelConfiguration(url: dir.appendingPathComponent("test.store"))
         )
         let context = ModelContext(container)
 
@@ -62,8 +57,8 @@ enum LibraryFixture {
         return Handle(container: container, directory: dir)
     }
 
-    /// Insert `count` articles from a background context and save — the shape of one CloudKit
-    /// import batch landing in the store.
+    /// Insert `count` articles from a background context and save — the shape of one aggregation
+    /// batch landing in the store.
     static func importBatch(into container: ModelContainer, feedID: PersistentIdentifier,
                             offset: Int, count: Int) async {
         await Task.detached(priority: .utility) {

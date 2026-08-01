@@ -25,7 +25,7 @@ struct LibrarySettingsSection: View {
         } header: {
             Text("Library")
         } footer: {
-            Text("Your library syncs automatically across your devices via iCloud.")
+            Text("Everything stays on this device. Older articles are removed automatically; starred articles are kept.")
         }
     }
 }

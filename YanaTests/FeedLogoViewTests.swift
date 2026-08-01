@@ -11,7 +11,7 @@ struct FeedLogoViewTests {
         return ImageStore(directory: dir, fetch: { _ in (png, "image/png") })
     }
 
-    @Test func loadsStoredImageByHash() async {
+    @Test func loadsCachedImageByHash() async {
         let store = tempStore()
         let hash = await store.store(remoteURL: URL(string: "https://e.com/logo.png")!, isHeader: false)
         let image = await FeedLogo.image(forHash: hash, in: store)

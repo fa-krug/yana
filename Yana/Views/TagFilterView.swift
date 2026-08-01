@@ -20,11 +20,9 @@ struct TagFilterView: View {
     var body: some View {
         NavigationStack {
             List {
-                // The `@Query`s live on `TagFilterListContent`, re-identified by `.id()` on a
-                // CloudKit remote-change bump (see `LibraryRevision`) so they re-fetch — `@Query`
-                // never sees `.NSPersistentStoreRemoteChange` on its own. The local mirrors
-                // (disabledTags/disabledFeeds/includeUntagged) stay on this parent so a bump while
-                // the sheet is open loses none of the user's in-progress toggles — the same trap
+                // The `@Query`s live on `TagFilterListContent`. The local mirrors
+                // (disabledTags/disabledFeeds/includeUntagged) stay on this parent so recreating
+                // the content view loses none of the user's in-progress toggles — the same trap
                 // `.searchable()` hit on `ManagedList` (see its doc comment).
                 TagFilterListContent(
                     disabledTags: $disabledTags,
@@ -32,7 +30,6 @@ struct TagFilterView: View {
                     includeUntagged: $includeUntagged,
                     settings: settings
                 )
-                .id(LibraryRevision.shared.token)
             }
             .navigationTitle("Filter")
             .toolbar {
@@ -61,7 +58,7 @@ struct TagFilterView: View {
     }
 }
 
-/// The `@Query`-owning half of `TagFilterView`, split out so a CloudKit remote-change `.id()` reset
+/// The `@Query`-owning half of `TagFilterView`, split out so an identity reset of this subview
 /// only recreates this content (and its `@Query`s), not the parent's local toggle mirrors.
 private struct TagFilterListContent: View {
     @Query(sort: \Tag.sortOrder) private var tags: [Tag]

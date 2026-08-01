@@ -78,7 +78,7 @@ final class ReaderImageCache: @unchecked Sendable {
     }
 
     /// Reads and decodes the image for a `yana-img://<hash>` ref from the local `ImageStore`, or a
-    /// remote URL fallback. Runs entirely off the main thread.
+    /// remote URL fallback. Runs off the main thread.
     private static func load(_ ref: String) async -> UIImage? {
         // Hold a decode slot for the whole read+decode so only a few images allocate their bitmaps
         // at the same time (the rest queue on the gate).
@@ -88,11 +88,6 @@ final class ReaderImageCache: @unchecked Sendable {
         let prefix = "\(ReaderWeb.imageScheme)://"
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
-            // Hops to main actor for the materialize call (holds decodeGate briefly), but the fast
-            // path — file already on disk — returns immediately, so the slot is released quickly.
-            _ = await Task { @MainActor in
-                await ImageSync.materialize(hash: hash, context: AppContainer.shared.mainContext, imageStore: .shared)
-            }.value
             let url = await ImageStore.shared.fileURL(forHash: hash)
             return await Task.detached { decodedImage(at: url) }.value
         }

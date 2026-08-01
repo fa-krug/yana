@@ -10,7 +10,7 @@ struct SummaryIndexMergeTests {
     /// on them, so synthesised values would not exercise the real path.
     private static func rows(_ count: Int) throws -> (ModelContainer, [Article], [ArticleSummary]) {
         let container = try ModelContainer(
-            for: Feed.self, Tag.self, Article.self, StoredImage.self,
+            for: Feed.self, Tag.self, Article.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         let context = ModelContext(container)

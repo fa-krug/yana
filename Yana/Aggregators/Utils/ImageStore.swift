@@ -70,7 +70,7 @@ actor ImageStore {
         FileManager.default.fileExists(atPath: fileURL(forHash: hash).path)
     }
 
-    /// Raw bytes for a stored hash, or nil when absent. Used by article sync to upload the blob.
+    /// Raw bytes for a stored hash, or nil when absent.
     func rawData(forHash hash: String) -> Data? {
         let url = fileURL(forHash: hash)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
@@ -85,7 +85,7 @@ actor ImageStore {
 
     /// Deletes the on-disk blob for `hash`, if any, and drops it from the extension map so a
     /// later `fileURL(forHash:)` doesn't resolve a stale extension. Returns whether a file existed
-    /// to remove (used by `ImagePrunePlan`'s caller to distinguish a real deletion from a no-op).
+    /// to remove.
     @discardableResult
     func remove(forHash hash: String) -> Bool {
         let url = fileURL(forHash: hash)

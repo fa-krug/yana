@@ -7,8 +7,8 @@ import Testing
 @Suite("AggregationRetentionGate")
 struct AggregationRetentionGateTests {
     private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, StoredImage.self,
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self,
                                            configurations: config)
         let seed = ModelContext(container)
         seed.insert(Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true))
@@ -28,7 +28,6 @@ struct AggregationRetentionGateTests {
             credentials: .resolved(),
             now: .now,
             starredIdentifiers: { _, _ in [] },
-            canonicalCreatedAt: [:],
             isSourceEnabled: { _ in true },
             retentionDays: retentionDays,
             skipRetention: skipRetention,

@@ -152,7 +152,6 @@ final class AggregationService {
     /// main actor and the resulting `Set<AggregatorType>` is captured by the `@Sendable` closure.
     private func makeRunInputs() -> AggregationRunInputs {
         let marks = starredRegistry.snapshotMarks()
-        let canonical: [String: Date] = [:]
         let enabledSources = Set(AggregatorType.allCases.filter { settings.isSourceEnabled($0) })
         return AggregationRunInputs(
             makeAggregator: makeAggregator,
@@ -166,7 +165,6 @@ final class AggregationService {
                         ? $0.articleIdentifier : nil
                 })
             },
-            canonicalCreatedAt: canonical,
             isSourceEnabled: { enabledSources.contains($0) },
             retentionDays: settings.retentionDays,
             skipRetention: settings.updateInterval == .off,
@@ -211,12 +209,6 @@ final class AggregationService {
         let result = await runOffMain { await $0.runUpdateAll($1) }
         refreshFromStore()
         lastRunFailures = result.failures
-        SyncLog.shared.info(
-            "updateAll inserted \(result.inserted) article(s); \(result.failures.count) feed failure(s)",
-            category: "Aggregation"
-        )
-        let snapshot = await syncReferencedImages()
-        await pruneOrphanedImages(snapshot: snapshot)
         return result.inserted
     }
 
@@ -232,12 +224,6 @@ final class AggregationService {
         let result = await runOffMain { await $0.runUpdate(feedID: feedID, $1) }
         refreshFromStore()
         lastRunFailures = result.failures
-        SyncLog.shared.info(
-            "update(\(feed.name)) inserted \(result.inserted) article(s); \(result.failures.count) failure(s)",
-            category: "Aggregation"
-        )
-        let snapshot = await syncReferencedImages()
-        await pruneOrphanedImages(snapshot: snapshot)
         return result.inserted
     }
 
@@ -255,7 +241,6 @@ final class AggregationService {
         let result = await runOffMain { await $0.runForceReloadFeed(feedID: feedID, $1) }
         refreshFromStore()
         lastRunFailures = result.failures
-        await syncReferencedImages()   // registration only — forceReload skips retention, so it skips prune too
         return result.inserted
     }
 
@@ -280,7 +265,6 @@ final class AggregationService {
         let articleID = article.persistentModelID
         let result = await runOffMain { await $0.runForceReloadArticle(articleID: articleID, $1) }
         reconcileArticle(articleID)
-        await syncReferencedImages()   // registration only — forceReload skips retention, so it skips prune too
         return result.inserted
     }
 
@@ -299,85 +283,6 @@ final class AggregationService {
     }
 
     // MARK: - Helpers
-
-    /// Register `StoredImage` rows for every image the current library references, so CloudKit
-    /// mirrors the blobs. `ensureStored` skips hashes that already have a row. Returns the
-    /// snapshot it computed (`nil` if the underlying fetch failed) so `pruneOrphanedImages(snapshot:)`
-    /// can reuse the *same* scan instead of re-fetching every `Feed`/`Article` a second time —
-    /// the two used to each run their own full pass, doubling this method's own documented cost.
-    ///
-    /// **Both halves run off the main actor, and must keep doing so.** The scan fetches every
-    /// article and JSON-decodes every body to walk its blocks; done on the main context that was a
-    /// 222 ms freeze on a 4 000-article library, after *every* update — including the reader's
-    /// pull-to-refresh and every scheduled background refresh with the app on screen.
-    @discardableResult
-    private func syncReferencedImages() async -> ReferencedImageSnapshot? {
-        let container = context.container
-        guard let snapshot = await OffMainActor.run({
-            await AggregationWriter(modelContainer: container).referencedImageSnapshotForPruning()
-        }) else {
-            SyncLog.shared.error(
-                "Image sync skipped this pass: could not read the referenced-image snapshot",
-                category: "ImageSync"
-            )
-            return nil
-        }
-        await ImageSync.ensureStored(hashes: snapshot.hashes, container: container, imageStore: .shared)
-        return snapshot
-    }
-
-    /// Prune `StoredImage` rows (and matching `ImageStore` disk blobs) that nothing references any
-    /// more. Runs right after retention on the same two entry points that run retention
-    /// (`updateAll`/`update(feed:)`) — not on `forceReload`, which also skips retention — and is
-    /// gated on the same `UpdateInterval == .off` condition retention already uses, so it never
-    /// runs when the device is a pure-mirror. See `ImagePrunePlan` for the two-phase quarantine and
-    /// the safety bail-outs that make this safe against an incomplete local article set.
-    ///
-    /// `snapshot` is the one `syncReferencedImages()` already computed this run (`nil` when that
-    /// scan failed) — reused, not re-fetched, and a `nil` snapshot means "skip pruning too": a
-    /// failed fetch must never be read as "confirmed nothing is referenced".
-    private func pruneOrphanedImages(snapshot: ReferencedImageSnapshot?) async {
-        guard settings.updateInterval != .off else { return }
-        guard let snapshot else { return }   // syncReferencedImages() already logged the failure
-        let container = context.container
-        let currentTime = now()
-
-        let storedRowHashes = await OffMainActor.run {
-            await ImagePruneRunner(modelContainer: container).storedHashes()
-        }
-        let diskHashes = await ImageStore.shared.allHashes()
-
-        // decide()/load()/save() off the main actor too: on the reporting library (15k+ images)
-        // the candidate map is tens of thousands of entries, and both the decision loop and the
-        // UserDefaults encode/decode are O(that), not the cheap O(1) they look like at a glance.
-        let plan = await OffMainActor.run {
-            let decided = ImagePrunePlan.decide(
-                referenced: snapshot.hashes,
-                stored: storedRowHashes.union(diskHashes),
-                candidates: ImagePruneCandidateStore.load(),
-                now: currentTime,
-                hasArticles: snapshot.hasArticles,
-                hasUnmigratedLegacyContent: snapshot.hasUnmigratedLegacyContent,
-                hasUndecodableBlocks: snapshot.hasUndecodableBlocks
-            )
-            ImagePruneCandidateStore.save(decided.candidates)
-            return decided
-        }
-        guard !plan.toDelete.isEmpty else { return }
-
-        let rowsDeleted = await OffMainActor.run {
-            await ImagePruneRunner(modelContainer: container).deleteRows(hashes: plan.toDelete)
-        }
-        var diskOnlyDeleted = 0
-        for hash in plan.toDelete {
-            let hadFile = await ImageStore.shared.remove(forHash: hash)
-            if hadFile, !storedRowHashes.contains(hash) { diskOnlyDeleted += 1 }
-        }
-        SyncLog.shared.info(
-            "Pruned \(rowsDeleted) orphaned image(s), \(diskOnlyDeleted) disk file(s)",
-            category: "ImagePrune"
-        )
-    }
 
     /// Refresh this (main) context's registered `Feed` objects from the store after the background
     /// writer committed on a sibling context. `context.model(for:)` returns a cached registered

@@ -10,7 +10,6 @@ struct AggregationRunInputs: Sendable {
     let credentials: AggregatorCredentials
     let now: Date
     let starredIdentifiers: @Sendable (_ feedIdentifier: String, _ aggregatorType: String) -> Set<String>
-    let canonicalCreatedAt: [String: Date]
     let isSourceEnabled: @Sendable (AggregatorType) -> Bool
     let retentionDays: Int
     let skipRetention: Bool
@@ -24,28 +23,6 @@ struct AggregationRunResult: Sendable {
     var deletedUIDs: [String] = []
 }
 
-/// Everything the image-sync/prune paths need, derived from a single `Article`/`Feed` fetch — see
-/// `AggregationWriter.referencedImageSnapshotForPruning()`.
-struct ReferencedImageSnapshot: Sendable {
-    /// Feed logos plus every lead image and in-body image/embed poster across all articles.
-    let hashes: Set<String>
-    /// Whether the library has any `Article` row at all.
-    let hasArticles: Bool
-    /// Whether any article still holds un-migrated legacy HTML (`Article.content`). Such an
-    /// article's `blocks` are empty until `BlockMigrator` sweeps it, so its in-body images are
-    /// invisible to `hashes` — enrolling them as "unreferenced" would be wrong.
-    let hasUnmigratedLegacyContent: Bool
-    /// Whether any article's `blockData` is non-empty but failed to decode as `[Block]`.
-    /// `Article.blocks`'s getter (`(try? JSONDecoder().decode(...)) ?? []`) silently reports zero
-    /// in-body images for such an article — the same blind spot `hasUnmigratedLegacyContent` guards
-    /// against, with a different cause: `Block`/`Embed.Kind` use synthesized enum `Codable`, so an
-    /// older build decoding an article a newer build wrote (a case it doesn't know) throws
-    /// `dataCorrupted`. With always-on CloudKit mirroring, mixed app versions across a user's
-    /// devices is the normal state. Must be derived from an explicit decode attempt, never from
-    /// `article.blocks.isEmpty` — a legitimately empty body also decodes to `[]`.
-    let hasUndecodableBlocks: Bool
-}
-
 /// Runs the aggregation write path off the main actor in its own `ModelContext`. Everything the
 /// old `AggregationService.aggregate(feed:)` did on the main context happens here instead; only
 /// `Sendable` values cross the boundary (see `AggregationRunInputs`/`AggregationRunResult`).
@@ -55,55 +32,6 @@ actor AggregationWriter {
     private struct CapReached: Error {}
 
     // MARK: Public run entry points
-
-    /// Every `yana-img://` content hash the library currently references — feed logos plus every
-    /// image and embed poster in every article body — plus the safety facts `ImagePrunePlan.decide`
-    /// needs, all derived from the same transaction as the hash scan.
-    ///
-    /// Lives here, on the writer's background context, because the scan fetches all articles and
-    /// JSON-decodes each body; on the main context it stalled the UI for hundreds of milliseconds
-    /// after every update.
-    ///
-    /// Surfaces a fetch failure as `nil` rather than swallowing it to an empty set: this method has
-    /// two callers — `ImageSync`'s registration pass and the image-prune decision — and only the
-    /// former could tolerate a miss reading as "confirmed empty" (a delayed sync-upload,
-    /// self-correcting next run). For prune, an empty referenced set is read as "nothing is
-    /// referenced, everything stored is a delete candidate" — a miss there would be account-wide
-    /// destructive (a `StoredImage` delete propagates via CloudKit to every device). So both callers
-    /// share the stricter contract: `nil` means "unknown this pass", skip pruning (and registration)
-    /// entirely rather than falling back to an empty set.
-    func referencedImageSnapshotForPruning() -> ReferencedImageSnapshot? {
-        try? computeReferencedImageSnapshot()
-    }
-
-    private func computeReferencedImageSnapshot() throws -> ReferencedImageSnapshot {
-        var hashes = Set<String>()
-        for feed in try modelContext.fetch(FetchDescriptor<Feed>()) {
-            if let logo = feed.logoHash, !logo.isEmpty { hashes.insert(logo) }
-        }
-        let articles = try modelContext.fetch(FetchDescriptor<Article>())
-        var hasUnmigratedLegacyContent = false
-        var hasUndecodableBlocks = false
-        for article in articles {
-            if let lead = ArticleImageRefs.hash(from: article.leadImageRef) { hashes.insert(lead) }
-            if !article.content.isEmpty { hasUnmigratedLegacyContent = true }
-            // Single explicit decode (not `article.blocks`, which would decode the same bytes a
-            // second time) feeds both the hash scan and the undecodable check. Not
-            // `article.blocks.isEmpty` — a legitimately empty body also decodes to `[]`, and keying
-            // off that would disable the prune permanently.
-            if let decoded = try? JSONDecoder().decode([Block].self, from: article.blockData) {
-                hashes.formUnion(ArticleImageRefs.hashes(in: decoded))
-            } else if !article.blockData.isEmpty {
-                hasUndecodableBlocks = true
-            }
-        }
-        return ReferencedImageSnapshot(
-            hashes: hashes,
-            hasArticles: !articles.isEmpty,
-            hasUnmigratedLegacyContent: hasUnmigratedLegacyContent,
-            hasUndecodableBlocks: hasUndecodableBlocks
-        )
-    }
 
     func runUpdateAll(_ inputs: AggregationRunInputs) async -> AggregationRunResult {
         pendingTouched.removeAll()
@@ -175,7 +103,6 @@ actor AggregationWriter {
             processed, to: feed, starredTag: starredTag(),
             starredIdentifiers: inputs.starredIdentifiers(feed.identifier, feed.aggregatorType),
             context: modelContext, now: inputs.now,
-            canonicalCreatedAt: { inputs.canonicalCreatedAt[$0] },
             onUpsert: { self.pendingTouched.insert($0) })
         try? modelContext.save()
         result.touchedUIDs.formUnion(pendingTouched); pendingTouched.removeAll()
@@ -265,7 +192,6 @@ actor AggregationWriter {
             starredIdentifiers: inputs.starredIdentifiers(feed.identifier, feed.aggregatorType),
             context: modelContext, now: now,
             blocksFor: { blocks[$0.identifier] ?? ArticleUpsert.defaultBlocks(for: $0) },
-            canonicalCreatedAt: { inputs.canonicalCreatedAt[$0] },
             onUpsert: { self.pendingTouched.insert($0) })
     }
 

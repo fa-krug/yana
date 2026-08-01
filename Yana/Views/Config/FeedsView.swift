@@ -8,9 +8,8 @@ import UniformTypeIdentifiers
 /// Owns the state a user can be mid-interaction with — search text, the create/export sheets, the
 /// delete confirmation, an in-flight OPML import, the toast — plus every modifier that
 /// *presents* something (`.sheet`, `.fileImporter`, `.alert`, `.toast`). `FeedsListContent` owns
-/// the `@Query` and everything that only needs to *display* feed data; it's re-identified by
-/// `.id()` on a CloudKit remote-change bump (see `LibraryRevision`), since `@Query` never sees
-/// `.NSPersistentStoreRemoteChange` on its own. Keeping the presentation modifiers on this stable
+/// the `@Query` and everything that only needs to *display* feed data. Keeping the presentation
+/// modifiers on this stable
 /// outer view means a merge landing while, say, the create-feed sheet is open never dismisses it —
 /// only a view's presentation host, not the thing it presents, would be affected by the child's
 /// identity reset.
@@ -35,9 +34,8 @@ struct FeedsView: View {
             toast: $toast,
             onExportOPML: exportOPML
         )
-        .id(LibraryRevision.shared.token)
-        // `.searchable()` lives here, on the stable parent, not inside the `.id()`'d
-        // `FeedsListContent` — `.id()` tears down and recreates everything under it, including the
+        // `.searchable()` lives here, on the stable parent, not inside `FeedsListContent` — a
+        // subview identity reset tears down everything under it, including the
         // search field's backing controller. The `searchText` *value* would survive (it's a
         // `@Binding` into this view's own `@State`), but first-responder status/cursor/keyboard
         // would not, silently kicking focus out of the field mid-typing. See `ManagedList`'s doc

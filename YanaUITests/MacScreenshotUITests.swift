@@ -43,9 +43,6 @@ final class MacScreenshotUITests: XCTestCase {
             // Force the app locale; there is no simulator language setting to lean on.
             "-AppleLanguages", "(\(languageCode))",
             "-AppleLocale", localeIdentifier,
-            // Suppress iCloud sync so it cannot interfere with seeded state.
-            // Uses the argument domain — nothing persists to the real UserDefaults store.
-            "-settings.iCloudSyncEnabled", "0",
             // Force the active AI provider to OpenAI so the AI pane shows a deterministic
             // set of fields (API key + URL + model) regardless of any prior user config.
             // Key: AppSettings.Key.activeAIProvider ("settings.activeAIProvider", line 118 in

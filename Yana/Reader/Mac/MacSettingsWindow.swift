@@ -9,30 +9,10 @@ struct MacSettingsWindow: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @State private var selection: SettingsPane? = .general
-    @State private var settings = AppSettings()
-    /// Set by `onRevealDiagnostics` the moment the version row's five-tap gesture unlocks
-    /// diagnostics. `AboutSettingsSection` flips `diagnosticsUnlocked` on its *own* `AppSettings`
-    /// instance, so this window's separate instance is never told to re-observe that change — only
-    /// a mutation to this window's own `@State` is guaranteed to trigger a re-render here. Gating
-    /// `visiblePanes` on this in addition to `settings.diagnosticsUnlocked` makes the reveal take
-    /// effect immediately by construction, not by relying on the `selection` assignment happening
-    /// to re-render the body for the right reason.
-    @State private var diagnosticsRevealed = false
-
-    /// Diagnostics is hidden until the version row in About is tapped five times, so the sidebar is
-    /// built from this rather than `allCases`. The rule itself lives in `DiagnosticsReveal` so both
-    /// settings hosts share one tested implementation.
-    private var visiblePanes: [SettingsPane] {
-        DiagnosticsReveal.visiblePanes(
-            unlocked: settings.diagnosticsUnlocked,
-            revealed: diagnosticsRevealed
-        )
-    }
-
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                ForEach(visiblePanes) { pane in
+                ForEach(SettingsPane.allCases) { pane in
                     Label(pane.title, systemImage: pane.systemImage)
                         .tag(pane)
                         // Merge the icon and text into ONE accessibility element before applying
@@ -87,19 +67,9 @@ struct MacSettingsWindow: View {
                     onRestartOnboarding: {
                         openWindow(id: WindowID.welcome, value: true)
                         dismiss()
-                    },
-                    onRevealDiagnostics: {
-                        diagnosticsRevealed = true
-                        selection = .diagnostics
                     }
                 )
             }
-        case .diagnostics:
-            SyncLogView(onHideDiagnostics: {
-                settings.diagnosticsUnlocked = false
-                diagnosticsRevealed = false
-                selection = .about
-            })
         }
     }
 }

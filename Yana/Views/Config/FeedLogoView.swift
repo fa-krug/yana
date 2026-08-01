@@ -3,13 +3,11 @@ import SwiftUI
 import UIKit
 
 /// Loads a cached logo image by content hash from an `ImageStore`. Returns nil for a nil/missing
-/// hash or unreadable file. `@MainActor` — always called from a SwiftUI `.task {}`, which runs on
-/// the main actor — so it can access `AppContainer.shared.mainContext` and `ImageSync.materialize` directly.
+/// hash or unreadable file.
 enum FeedLogo {
     @MainActor
     static func image(forHash hash: String?, in store: ImageStore = .shared) async -> UIImage? {
         guard let hash else { return nil }
-        _ = await ImageSync.materialize(hash: hash, context: AppContainer.shared.mainContext, imageStore: store)
         let url = await store.fileURL(forHash: hash)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return UIImage(data: data)

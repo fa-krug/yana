@@ -6,8 +6,8 @@ import SwiftData
 /// `ModelContext.didSave` carries `inserted` / `updated` / `deleted` arrays of
 /// `PersistentIdentifier`, which is what lets `ArticleStore` refresh only the rows that changed
 /// instead of re-reading the whole library. Everything not an `Article` is dropped here: feed-logo
-/// resolution, tag edits, and `StoredImage` registration all save, and none of them change the
-/// timeline, so they must not cost a re-index.
+/// resolution and tag edits all save, and none of them change the timeline, so they must not cost
+/// a re-index.
 ///
 /// Pure and `Sendable`, so the parsing is unit-tested without SwiftData or a live store.
 struct LibraryChangeSet: Sendable, Equatable {

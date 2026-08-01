@@ -31,7 +31,6 @@ enum ArticleUpsert {
         now: Date,
         jitter: () -> TimeInterval = { .random(in: 0..<importJitterWindow) },
         blocksFor: (AggregatedArticle) -> [Block] = ArticleUpsert.defaultBlocks,
-        canonicalCreatedAt: (String) -> Date? = { _ in nil },
         onUpsert: (String) -> Void = { _ in }
     ) -> Int {
         // Build the dedup index once (O(n)) instead of scanning the relationship per item.
@@ -87,11 +86,9 @@ enum ArticleUpsert {
                     summary: item.summary
                 )
                 article.blocks = blocks           // sets blockData + plainText
-                // Adopt a canonical createdAt if supplied by the caller (e.g. a dedup pass
-                // resolved earliest-wins across devices). canonicalCreatedAt is always nil in the
-                // current live path — cross-device ordering is reconciled by LibraryDedup, not here.
-                // Otherwise back-date by jitter as usual.
-                article.createdAt = canonicalCreatedAt(uid) ?? now.addingTimeInterval(-jitter())
+                // Back-date by a small random offset so a run's inserts scatter across a few
+                // minutes and feeds interleave instead of clustering into per-feed blocks.
+                article.createdAt = now.addingTimeInterval(-jitter())
                 article.feed = feed
                 article.syncFeedIdentifier = feed.identifier
                 article.syncAggregatorType = feed.aggregatorType

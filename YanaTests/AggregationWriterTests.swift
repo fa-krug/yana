@@ -7,7 +7,7 @@ import Testing
 @Suite("AggregationWriter")
 struct AggregationWriterTests {
     private func makeContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
         let seed = ModelContext(container)
         seed.insert(Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true))
@@ -30,7 +30,7 @@ struct AggregationWriterTests {
         AggregationRunInputs(
             makeAggregator: makeAggregator, processor: IdentityAI(),
             logoResolver: { _, _ in nil }, credentials: .resolved(), now: .now,
-            starredIdentifiers: { _, _ in [] }, canonicalCreatedAt: [:],
+            starredIdentifiers: { _, _ in [] },
             isSourceEnabled: { _ in true }, retentionDays: 30, skipRetention: false,
             progress: progress)
     }
@@ -84,7 +84,7 @@ struct AggregationWriterTests {
         ins = AggregationRunInputs(
             makeAggregator: ins.makeAggregator, processor: ins.processor, logoResolver: ins.logoResolver,
             credentials: ins.credentials, now: ins.now, starredIdentifiers: ins.starredIdentifiers,
-            canonicalCreatedAt: ins.canonicalCreatedAt, isSourceEnabled: { $0 != .reddit },
+            isSourceEnabled: { $0 != .reddit },
             retentionDays: ins.retentionDays, skipRetention: ins.skipRetention, progress: ins.progress)
         let result = await writer.runUpdate(feedID: feedID, ins)
 
