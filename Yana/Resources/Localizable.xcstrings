@@ -3307,7 +3307,7 @@
         }
       }
     },
-    "Would rather not switch? Yana 1.1.0 — the last fully self-contained, server-free release — remains open source.": {
+    "Would you rather not switch? Yana 1.1.0 — the last fully self-contained, server-free release — remains open source.": {
       "localizations": {
         "de": {
           "stringUnit": {
@@ -3327,7 +3327,7 @@
         }
       }
     },
-    "Don't want to use Yana anymore?": {
+    "Don’t want to use Yana anymore?": {
       "localizations": {
         "de": {
           "stringUnit": {

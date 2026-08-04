@@ -26,12 +26,12 @@ struct ServerMigrationNoticeView: View {
                             Text("Learn more about the Yana Server")
                         }
 
-                        Text("Would rather not switch? Yana 1.1.0 — the last fully self-contained, server-free release — remains open source.")
+                        Text("Would you rather not switch? Yana 1.1.0 — the last fully self-contained, server-free release — remains open source.")
                         Link(destination: URL(string: "https://github.com/fa-krug/yana/releases/tag/v1.1.0")!) {
                             Text("Build Yana 1.1.0 from Source")
                         }
 
-                        Text("Don't want to use Yana anymore?")
+                        Text("Don’t want to use Yana anymore?")
                         Link(destination: URL(string: "mailto:info@fa-krug.de")!) {
                             Text("Email info@fa-krug.de for a Refund")
                         }
@@ -41,6 +41,7 @@ struct ServerMigrationNoticeView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 32)
+                .padding(.bottom, 24)
             }
             footer
         }
