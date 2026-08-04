@@ -131,7 +131,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   `docs/superpowers/specs/2026-07-06-github-pages-site-design.md`.
 - Plain HTML/CSS/JS, **no build step** (served as-is) and **no external requests** (system font stack,
   no CDN/trackers — mirrors the app's privacy posture). Pages: `index.html` (landing) plus
-  `privacy.html`, `impressum.html`, `terms.html`. Copy is reused from the README and
+  `privacy.html`, `impressum.html`, `terms.html`, `server.html`. Copy is reused from the README and
   `docs/app-store/description-{en,de}.md`.
 - **Bilingual** EN/DE from one set of pages: every translatable element carries a `lang-en`/`lang-de`
   class, `<html data-lang>` drives visibility via CSS, and `assets/app.js` runs the header toggle
@@ -409,7 +409,9 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
   `YanaApp` declares two extra value-based `WindowGroup`s keyed by the stable identifiers in
   `WindowID`, each opened via `openWindow(id:value:)`: `WindowID.settings` and `WindowID.welcome`
   bind `for: Bool.self` and always pass the constant `true` so SwiftUI dedupes to one window
-  instead of opening a new one per call. The **feed editor is deliberately not a window**: editing a
+  instead of opening a new one per call. `WindowID.serverNotice`/`ServerMigrationNoticeWindowRoot`
+  (the pre-server-migration notice) follows the same singleton-window pattern as `.welcome`/
+  `WelcomeWindowRoot`. The **feed editor is deliberately not a window**: editing a
   feed pushes in place inside the Settings window's `NavigationStack` (like the Tags pane) and
   creating one presents a sheet (like Add Tag), so `FeedsView` now takes the same path on both
   platforms and `WindowID.feedEditor`/`FeedEditorTarget`/`FeedEditorWindowRoot` are gone.
@@ -472,7 +474,7 @@ open source under the MIT license (`LICENSE`); the source and issue board live a
 - `Yana/Utilities/Constants.swift` — app constants
 - `LICENSE` — MIT license
 - `docs/app-store/` — App Store listing copy: English + German descriptions (`description-*.md`, ≤4000 chars each) and keyword lines (`keywords-*.txt`, ≤100 chars each), plus a `README.md` documenting the field format
-- `docs/site/` — the GitHub Pages marketing + legal site (`index.html` + `privacy`/`impressum`/`terms`, `assets/`), deployed to `yana.fa-krug.de` by `.github/workflows/pages.yml` (see **Website** under Commands)
+- `docs/site/` — the GitHub Pages marketing + legal site (`index.html` + `privacy`/`impressum`/`terms`/`server`, `assets/`), deployed to `yana.fa-krug.de` by `.github/workflows/pages.yml` (see **Website** under Commands)
 
 ### Key patterns
 
