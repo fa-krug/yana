@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en" data-lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yana Server — Yana</title>
+    <meta name="description" content="Yana Server: a free, self-hosted, open-source RSS/YouTube/Reddit/podcast aggregator that powers the Yana app." />
+    <link rel="icon" href="assets/img/app-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/img/app-icon.svg" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script>
+      (function () {
+        try {
+          var l = localStorage.getItem("yana-lang") || navigator.language;
+          l = (l || "en").toLowerCase().slice(0, 2);
+          if (l !== "de") l = "en";
+          document.documentElement.setAttribute("data-lang", l);
+          document.documentElement.setAttribute("lang", l);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href="index.html"><img class="brand-mark" src="assets/img/app-icon.svg" alt="Yana app icon" /> Yana</a>
+        <div class="header-tools" style="margin-left: auto;">
+          <div class="lang-switch" role="group" aria-label="Language">
+            <button type="button" data-set="en">EN</button>
+            <button type="button" data-set="de">DE</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="legal">
+      <div class="wrap">
+        <a class="back-link" href="index.html">← <span class="lang-en">Back to home</span><span class="lang-de">Zurück zur Startseite</span></a>
+
+        <!-- English -->
+        <div class="lang-en">
+          <h1>Yana Server</h1>
+          <p>Starting with Yana 2.0, the app needs a Yana Server to fetch and manage feeds and articles. The server is free, open source, and self-hosted — there is no hosted/managed plan and no pricing.</p>
+
+          <h2>What it is</h2>
+          <p>A self-hosted RSS, YouTube, Reddit, and podcast aggregator that powers the Yana iOS/Mac client's feed sync. It's a single process — Next.js, React, TypeScript, and a local SQLite database — with no Redis and no separate worker container.</p>
+
+          <h2>Accounts</h2>
+          <p>Sign-in uses passkeys. An administrator account is created the first time the server starts; there is no public self-service sign-up — an administrator provisions each user.</p>
+
+          <h2>Install with npm</h2>
+          <pre><code>npm install
+npm run dev</code></pre>
+          <p>Then open <code>http://localhost:3000</code>.</p>
+
+          <h2>Install with Docker</h2>
+          <pre><code>mkdir -p data media &amp;&amp; chown -R 1001:1001 data media
+docker compose up --build</code></pre>
+          <p>Then open <code>http://localhost:3000</code>.</p>
+
+          <h2>Configuration</h2>
+          <p>Copy <code>.env.example</code> to <code>.env</code>. Set <code>BETTER_AUTH_SECRET</code> before any real deployment (for example with <code>openssl rand -base64 32</code>) — it signs session cookies. Optional variables include <code>DATABASE_PATH</code>, <code>MEDIA_PATH</code>, <code>PASSKEY_RP_ID</code>, <code>PUBLIC_URL</code>, <code>TZ</code>, and <code>PORT</code>. Change the default admin account (<code>admin@admin.com</code> / <code>admin</code>) immediately after first login.</p>
+
+          <h2>License</h2>
+          <p>MIT-licensed, like the Yana app itself. Source: <a href="https://github.com/fa-krug/yana-server">github.com/fa-krug/yana-server</a>.</p>
+        </div>
+
+        <!-- German -->
+        <div class="lang-de">
+          <h1>Yana-Server</h1>
+          <p>Ab Yana 2.0 benötigt die App einen Yana-Server, um Feeds und Artikel abzurufen und zu verwalten. Der Server ist kostenlos, Open Source und wird selbst gehostet — es gibt kein gehostetes Angebot und keine Preise.</p>
+
+          <h2>Was er ist</h2>
+          <p>Ein selbst gehosteter RSS-, YouTube-, Reddit- und Podcast-Aggregator, der die Feed-Synchronisierung des Yana-Clients für iOS/Mac antreibt. Ein einziger Prozess — Next.js, React, TypeScript und eine lokale SQLite-Datenbank — ohne Redis und ohne separaten Worker-Container.</p>
+
+          <h2>Konten</h2>
+          <p>Die Anmeldung erfolgt per Passkey. Beim ersten Start wird ein Administratorkonto angelegt; eine öffentliche Selbstregistrierung gibt es nicht — ein Administrator legt jedes Konto an.</p>
+
+          <h2>Installation mit npm</h2>
+          <pre><code>npm install
+npm run dev</code></pre>
+          <p>Anschließend <code>http://localhost:3000</code> öffnen.</p>
+
+          <h2>Installation mit Docker</h2>
+          <pre><code>mkdir -p data media &amp;&amp; chown -R 1001:1001 data media
+docker compose up --build</code></pre>
+          <p>Anschließend <code>http://localhost:3000</code> öffnen.</p>
+
+          <h2>Konfiguration</h2>
+          <p><code>.env.example</code> nach <code>.env</code> kopieren. Vor jedem echten Einsatz <code>BETTER_AUTH_SECRET</code> setzen (zum Beispiel mit <code>openssl rand -base64 32</code>) — es signiert die Sitzungs-Cookies. Optionale Variablen sind <code>DATABASE_PATH</code>, <code>MEDIA_PATH</code>, <code>PASSKEY_RP_ID</code>, <code>PUBLIC_URL</code>, <code>TZ</code> und <code>PORT</code>. Das Standard-Administratorkonto (<code>admin@admin.com</code> / <code>admin</code>) direkt nach der ersten Anmeldung ändern.</p>
+
+          <h2>Lizenz</h2>
+          <p>MIT-lizenziert, wie die Yana-App selbst. Quellcode: <a href="https://github.com/fa-krug/yana-server">github.com/fa-krug/yana-server</a>.</p>
+        </div>
+      </div>
+    </main>
+
+    <script src="assets/app.js"></script>
+  </body>
+</html>
