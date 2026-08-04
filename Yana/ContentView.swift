@@ -62,7 +62,11 @@ struct ContentView: View {
                 isPreServerMigrationUser: settings.isPreServerMigrationUser,
                 hasDismissedNotice: settings.hasDismissedServerMigrationNotice
             ) {
-                appState.showServerMigrationNotice = true
+                if isMac {
+                    openWindow(id: WindowID.serverNotice, value: true)
+                } else {
+                    appState.showServerMigrationNotice = true
+                }
             }
             if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
                 if isMac {

@@ -7,6 +7,7 @@ import SwiftUI
 enum WindowID {
     static let settings = "settings"
     static let welcome = "welcome"
+    static let serverNotice = "serverNotice"
 }
 
 /// The panes of the Mac two-pane Settings window sidebar, in display order.
