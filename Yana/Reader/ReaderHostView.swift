@@ -116,6 +116,8 @@ struct ReaderScreen: View {
     /// Set by the Settings "Show Welcome Screen Again" row; consumed once the Settings sheet has
     /// fully dismissed so the welcome cover presents cleanly (no stacked-presentation race).
     @State private var restartOnboardingPending = false
+    /// Same pattern as `restartOnboardingPending`, for the Settings "Server Update Notice" row.
+    @State private var showServerNoticePending = false
 
     @State private var filteredArticles: [ArticleSummary] = []
 
@@ -204,9 +206,16 @@ struct ReaderScreen: View {
                 restartOnboardingPending = false
                 appState.showWelcome = true
             }
+            if showServerNoticePending {
+                showServerNoticePending = false
+                appState.showServerMigrationNotice = true
+            }
         }) {
             NavigationStack {
-                SettingsScreenView(onRestartOnboarding: { restartOnboardingPending = true })
+                SettingsScreenView(
+                    onRestartOnboarding: { restartOnboardingPending = true },
+                    onShowServerNotice: { showServerNoticePending = true }
+                )
             }
         }
         .sheet(isPresented: $showingCreateFeed) {

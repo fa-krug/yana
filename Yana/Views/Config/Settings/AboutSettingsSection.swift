@@ -4,6 +4,7 @@ import SwiftUI
 /// restart action.
 struct AboutSettingsSection: View {
     var onRestartOnboarding: () -> Void = {}
+    var onShowServerNotice: () -> Void = {}
     /// Called when the version row's five-tap gesture reveals the diagnostics log, so the presenting
     /// settings surface can show its Diagnostics entry. Each settings screen owns its own
     /// `AppSettings` instance, so the change has to be handed back rather than observed.
@@ -38,6 +39,16 @@ struct AboutSettingsSection: View {
                     .labelStyle(.tintedIcon(.orange))
             }
             .accessibilityIdentifier("settings.showWelcome")
+            if ServerMigrationEligibility.canRestore(isPreServerMigrationUser: settings.isPreServerMigrationUser) {
+                Button {
+                    settings.hasDismissedServerMigrationNotice = false
+                    onShowServerNotice()
+                } label: {
+                    Label("Server Update Notice", systemImage: "server.rack")
+                        .labelStyle(.tintedIcon(.blue))
+                }
+                .accessibilityIdentifier("settings.showServerNotice")
+            }
         } header: {
             Text("About")
         } footer: {

@@ -88,6 +88,10 @@ struct MacSettingsWindow: View {
                         openWindow(id: WindowID.welcome, value: true)
                         dismiss()
                     },
+                    onShowServerNotice: {
+                        openWindow(id: WindowID.serverNotice, value: true)
+                        dismiss()
+                    },
                     onRevealDiagnostics: {
                         diagnosticsRevealed = true
                         selection = .diagnostics

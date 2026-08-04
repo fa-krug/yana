@@ -4,6 +4,7 @@ import SwiftUI
 /// reusable section view shared with the Mac two-pane settings window.
 struct SettingsScreenView: View {
     var onRestartOnboarding: () -> Void = {}
+    var onShowServerNotice: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var settings = AppSettings()
@@ -22,6 +23,10 @@ struct SettingsScreenView: View {
             AboutSettingsSection(
                 onRestartOnboarding: {
                     onRestartOnboarding()
+                    dismiss()
+                },
+                onShowServerNotice: {
+                    onShowServerNotice()
                     dismiss()
                 },
                 onRevealDiagnostics: {
