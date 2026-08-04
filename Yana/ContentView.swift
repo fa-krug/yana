@@ -33,12 +33,36 @@ struct ContentView: View {
                         })
                         .interactiveDismissDisabled()
                     }
+                    .fullScreenCover(isPresented: $appState.showServerMigrationNotice) {
+                        ServerMigrationNoticeView(onDismiss: {
+                            settings.hasDismissedServerMigrationNotice = true
+                            appState.showServerMigrationNotice = false
+                        })
+                        .interactiveDismissDisabled()
+                    }
             }
         }
         .onAppear {
             // Test hook: force the first-launch flow regardless of persisted state.
             if ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_ONBOARDING") {
                 settings.hasCompletedOnboarding = false
+            }
+            if !settings.hasEvaluatedServerMigrationEligibility {
+                let evaluated = ServerMigrationEligibility.evaluate(
+                    .init(
+                        hasEvaluated: settings.hasEvaluatedServerMigrationEligibility,
+                        isPreServerMigrationUser: settings.isPreServerMigrationUser
+                    ),
+                    hasCompletedOnboarding: settings.hasCompletedOnboarding
+                )
+                settings.hasEvaluatedServerMigrationEligibility = evaluated.hasEvaluated
+                settings.isPreServerMigrationUser = evaluated.isPreServerMigrationUser
+            }
+            if ServerMigrationEligibility.shouldAutoShow(
+                isPreServerMigrationUser: settings.isPreServerMigrationUser,
+                hasDismissedNotice: settings.hasDismissedServerMigrationNotice
+            ) {
+                appState.showServerMigrationNotice = true
             }
             if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
                 if isMac {

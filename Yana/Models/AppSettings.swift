@@ -151,6 +151,10 @@ final class AppSettings {
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
         // Onboarding
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
+        // Server migration notice
+        static let hasEvaluatedServerMigrationEligibility = "settings.hasEvaluatedServerMigrationEligibility"
+        static let isPreServerMigrationUser = "settings.isPreServerMigrationUser"
+        static let hasDismissedServerMigrationNotice = "settings.hasDismissedServerMigrationNotice"
         // Migration
         static let hasMigratedToNativeCloudKit = "settings.hasMigratedToNativeCloudKit"
         static let hasCleanedLegacyCloudKit = "settings.hasCleanedLegacyCloudKit"
@@ -415,6 +419,23 @@ final class AppSettings {
     var hasCompletedOnboarding: Bool {
         get { access(keyPath: \.hasCompletedOnboarding); return defaults.bool(forKey: Key.hasCompletedOnboarding) }
         set { withMutation(keyPath: \.hasCompletedOnboarding) { defaults.set(newValue, forKey: Key.hasCompletedOnboarding) } }
+    }
+
+    // MARK: Server Migration Notice
+    /// One-time flag: whether this device's pre-server-migration eligibility has been evaluated.
+    var hasEvaluatedServerMigrationEligibility: Bool {
+        get { access(keyPath: \.hasEvaluatedServerMigrationEligibility); return defaults.bool(forKey: Key.hasEvaluatedServerMigrationEligibility) }
+        set { withMutation(keyPath: \.hasEvaluatedServerMigrationEligibility) { defaults.set(newValue, forKey: Key.hasEvaluatedServerMigrationEligibility) } }
+    }
+    /// Whether this device had already completed onboarding before Yana required a server.
+    var isPreServerMigrationUser: Bool {
+        get { access(keyPath: \.isPreServerMigrationUser); return defaults.bool(forKey: Key.isPreServerMigrationUser) }
+        set { withMutation(keyPath: \.isPreServerMigrationUser) { defaults.set(newValue, forKey: Key.isPreServerMigrationUser) } }
+    }
+    /// Whether the "Yana now requires a server" notice has been dismissed.
+    var hasDismissedServerMigrationNotice: Bool {
+        get { access(keyPath: \.hasDismissedServerMigrationNotice); return defaults.bool(forKey: Key.hasDismissedServerMigrationNotice) }
+        set { withMutation(keyPath: \.hasDismissedServerMigrationNotice) { defaults.set(newValue, forKey: Key.hasDismissedServerMigrationNotice) } }
     }
 
     // MARK: Timeline position
