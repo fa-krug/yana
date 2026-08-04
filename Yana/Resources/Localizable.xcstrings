@@ -3277,6 +3277,86 @@
         }
       }
     },
+    "Yana Now Requires a Server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yana benötigt jetzt einen Server"
+          }
+        }
+      }
+    },
+    "Starting with this version, Yana needs to connect to a Yana Server to fetch and manage your feeds and articles.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ab dieser Version benötigt Yana eine Verbindung zu einem Yana-Server, um Feeds und Artikel abzurufen und zu verwalten."
+          }
+        }
+      }
+    },
+    "Learn more about the Yana Server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mehr über den Yana-Server erfahren"
+          }
+        }
+      }
+    },
+    "Would rather not switch? Yana 1.1.0 — the last fully self-contained, server-free release — remains open source.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Wechsel gewünscht? Yana 1.1.0 – die letzte vollständig eigenständige, serverlose Version – bleibt Open Source."
+          }
+        }
+      }
+    },
+    "Build Yana 1.1.0 from Source": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yana 1.1.0 aus dem Quellcode selbst bauen"
+          }
+        }
+      }
+    },
+    "Don't want to use Yana anymore?": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yana nicht mehr nutzen?"
+          }
+        }
+      }
+    },
+    "Email info@fa-krug.de for a Refund": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für eine Rückerstattung an info@fa-krug.de schreiben"
+          }
+        }
+      }
+    },
+    "Got It": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verstanden"
+          }
+        }
+      }
+    },
     "Show Welcome Screen Again": {
       "localizations": {
         "de": {
