@@ -74,8 +74,11 @@ final class SyncEngine {
 
             settings.syncCursor = page.nextCursor
 
-            // A page with fewer than the full limit means we've caught up to head.
-            let fullPage = (newSummaries.count + updatedSummaries.count) >= pageLimit
+            // A page with fewer than the full limit means we've caught up to head. Counts
+            // `removed` too, not just `new`/`updated` -- a page consisting mostly or entirely of
+            // deletions would otherwise look short and stop the loop early even though the
+            // server may have more pages queued.
+            let fullPage = (newSummaries.count + updatedSummaries.count + removed.count) >= pageLimit
             if !fullPage { break }
         }
 
