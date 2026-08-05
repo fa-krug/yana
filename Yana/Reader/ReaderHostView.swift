@@ -163,7 +163,7 @@ struct ReaderScreen: View {
 
 
 
-    private var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
+    private var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
 
     var body: some View {
         let articles = filteredArticles
@@ -291,11 +291,22 @@ struct ReaderScreen: View {
 
     private func summarize(_ article: Article) {
         guard !isSummarizing else { return }
+        let provider: AISummaryProvider
+        if settings.aiMode == .appleIntelligence {
+            provider = AppleIntelligenceSummaryProvider()
+        } else if let client = AuthenticatedClient.current() {
+            provider = ServerAISummaryProvider(client: client)
+        } else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         isSummarizing = true
         Task {
-            let ok = await AggregationService(context: modelContext).summarize(article)
+            let summary = await provider.summarize(content: article.plainText, title: article.title)
             isSummarizing = false
-            if ok {
+            if let summary {
+                article.summary = summary
+                try? modelContext.save()
                 reloadToken += 1
             } else {
                 toast = ToastMessage(

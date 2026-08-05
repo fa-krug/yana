@@ -124,7 +124,7 @@ final class TimelineModel {
         scrollTarget = SidebarScrollRequest(id: id, token: (scrollTarget?.token ?? 0) + 1)
     }
 
-    var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
+    var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
 
     // MARK: - Filtering / anchor (mirrors ReaderScreen)
 
@@ -235,14 +235,25 @@ final class TimelineModel {
 
     func summarize(_ article: Article) {
         guard let modelContext, !isSummarizing else { return }
+        let provider: AISummaryProvider
+        if settings.aiMode == .appleIntelligence {
+            provider = AppleIntelligenceSummaryProvider()
+        } else if let client = AuthenticatedClient.current() {
+            provider = ServerAISummaryProvider(client: client)
+        } else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         isSummarizing = true
         Task {
-            let ok = await AggregationService(context: modelContext).summarize(article)
+            let summary = await provider.summarize(content: article.plainText, title: article.title)
             isSummarizing = false
-            if ok {
-                reloadToken += 1
+            if let summary {
+                article.summary = summary
+                try? modelContext.save()
+                self.reloadToken += 1
             } else {
-                toast = ToastMessage(
+                self.toast = ToastMessage(
                     text: String(localized: "Could not summarize this article. Please try again."),
                     style: .error
                 )
