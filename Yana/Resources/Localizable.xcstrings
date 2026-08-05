@@ -2463,6 +2463,16 @@
         }
       }
     },
+    "Unread": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ungelesen"
+          }
+        }
+      }
+    },
     "Unstar": {
       "localizations": {
         "de": {

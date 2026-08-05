@@ -214,7 +214,15 @@ struct ArticleListView: View {
                 .frame(width: 3)
             FeedLogoView(hash: summary.feedLogoHash)
             VStack(alignment: .leading, spacing: rowLineSpacing) {
-                Text(summary.title).font(.headline).lineLimit(2)
+                HStack(spacing: 6) {
+                    if !summary.isRead {
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 6, height: 6)
+                            .accessibilityLabel(Text("Unread"))
+                    }
+                    Text(summary.title).font(.headline).lineLimit(2)
+                }
                 HStack(spacing: 6) {
                     if !summary.feedName.isEmpty {
                         Text(summary.feedName)
