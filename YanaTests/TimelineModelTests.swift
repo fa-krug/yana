@@ -81,6 +81,29 @@ struct TimelineModelTests {
         #expect(settings.timelineAnchorIdentifier == "b")
     }
 
+    @Test func settingSelectionMarksTheNewArticleRead() async throws {
+        let settings = freshSettings()
+        let (model, store) = try makeConfiguredModel(settings: settings)
+        await store.refreshNow()
+        model.applyTimeline()   // parks on "a" per the helper's 3-article a/b/c fixture
+
+        model.selection = "b"
+        let article = model.resolve(model.selectedSummary!)
+        #expect(article?.read == true)
+    }
+
+    @Test func moveSelectionMarksTheNewArticleRead() async throws {
+        let settings = freshSettings()
+        let (model, store) = try makeConfiguredModel(settings: settings)
+        await store.refreshNow()
+        model.applyTimeline()
+        model.currentIndex = 0
+
+        model.moveSelection(by: 1)
+        let article = model.resolve(model.selectedSummary!)
+        #expect(article?.read == true)
+    }
+
     // MARK: - Sidebar scroll requests (Task 5)
 
     /// Pins "macOS also doesn't focus the article list on the current selected article": every

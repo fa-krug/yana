@@ -14,6 +14,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
     /// programmatic index updates that restore/reanchor perform. The host uses this to persist
     /// the reading position, so a transient reanchor fallback can never overwrite the saved anchor.
     var onUserNavigate: ((Int) -> Void)?
+    var onArticleDisplayed: ((Article) -> Void)?
     let isRefreshing: Bool
     let isFilterActive: Bool
     var onRefresh: (() -> Void)?
@@ -37,6 +38,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         context.coordinator.reader = reader
         reader.resolveArticle = resolveArticle
         reader.onIndexChange = { i in currentIndex = i; onUserNavigate?(i) }
+        reader.onArticleDisplayed = onArticleDisplayed
         reader.onShowFilter = onShowFilter
         reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
@@ -62,6 +64,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         guard let reader = context.coordinator.reader else { return }
         reader.resolveArticle = resolveArticle
         reader.onIndexChange = { i in currentIndex = i; onUserNavigate?(i) }
+        reader.onArticleDisplayed = onArticleDisplayed
         reader.onShowFilter = onShowFilter
         reader.onShowArticleList = onShowArticleList
         reader.onShowSettings = onShowSettings
@@ -182,6 +185,7 @@ struct ReaderScreen: View {
                     resolveArticle: { ArticleResolution.resolve($0, in: modelContext) },
                     currentIndex: $appState.currentIndex,
                     onUserNavigate: { saveAnchor(at: $0) },
+                    onArticleDisplayed: { markRead($0) },
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: triggerRefresh,
@@ -261,6 +265,10 @@ struct ReaderScreen: View {
         Haptics.impact(.light)
     }
 
+    private func markRead(_ article: Article) {
+        ArticleWrites.markRead(article, modelContext: modelContext)
+    }
+
     private func copyLink(_ article: Article) {
         UIPasteboard.general.string = article.url
     }
@@ -272,6 +280,9 @@ struct ReaderScreen: View {
         if let i = TimelinePageIndex.index(of: summary.identifier, in: filteredArticles) {
             appState.currentIndex = i
             anchorController.recordOpenedArticle(summary)
+            if let article = ArticleResolution.resolve(summary, in: modelContext) {
+                markRead(article)
+            }
         }
         appState.showArticleList = false
     }

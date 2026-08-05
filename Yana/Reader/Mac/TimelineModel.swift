@@ -89,6 +89,9 @@ final class TimelineModel {
             else { return }
             currentIndex = i
             anchorWriter.record(filteredArticles[i])
+            if let modelContext, let article = resolve(filteredArticles[i]) {
+                ArticleWrites.markRead(article, modelContext: modelContext)
+            }
         }
     }
 
@@ -115,6 +118,9 @@ final class TimelineModel {
         guard next != currentIndex else { return }
         currentIndex = next
         anchorWriter.record(filteredArticles[next])
+        if let modelContext, let article = resolve(filteredArticles[next]) {
+            ArticleWrites.markRead(article, modelContext: modelContext)
+        }
         requestScroll(to: filteredArticles[next].identifier)
     }
 

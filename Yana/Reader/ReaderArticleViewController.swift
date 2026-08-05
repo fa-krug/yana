@@ -28,6 +28,7 @@ final class ReaderArticleViewController: UIViewController,
     UIPageViewControllerDataSource, UIPageViewControllerDelegate {
 
     var onIndexChange: ((Int) -> Void)?
+    var onArticleDisplayed: ((Article) -> Void)?
     var onShowFilter: (() -> Void)?
     var onShowArticleList: (() -> Void)?
     var onShowSettings: (() -> Void)?
@@ -723,6 +724,7 @@ final class ReaderArticleViewController: UIViewController,
         recordWiredNeighbors()
         updateStarItem()
         onIndexChange?(i)
+        onArticleDisplayed?(vc.article)
         prewarmNeighbors(around: i)
     }
 
