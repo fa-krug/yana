@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Yana
 
-@Suite("YanaAPIClient")
+@Suite("YanaAPIClient", .serialized)
 struct YanaAPIClientTests {
     private func mockClient(status: Int, body: Data, session: URLSession? = nil) -> YanaAPIClient {
         let config = URLSessionConfiguration.ephemeral

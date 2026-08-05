@@ -7,10 +7,6 @@ struct YanaAPIError: Error, Equatable, Decodable {
     let message: String
 }
 
-private struct YanaAPIErrorEnvelope: Decodable {
-    let error: YanaAPIError
-}
-
 enum YanaAPIClientError: Error, Equatable {
     case transport
     case decoding
