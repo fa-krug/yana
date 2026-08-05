@@ -8,7 +8,7 @@ struct SummaryIndexMergeTests {
 
     /// Builds a container once so the summaries carry real `PersistentIdentifier`s — the merge keys
     /// on them, so synthesised values would not exercise the real path.
-    private static func rows(_ count: Int) throws -> (ModelContainer, [Article], [ArticleSummary]) {
+    private static func rows(_ count: Int, read: Bool = false) throws -> (ModelContainer, [Article], [ArticleSummary]) {
         let container = try ModelContainer(
             for: Feed.self, Tag.self, Article.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
@@ -21,6 +21,7 @@ struct SummaryIndexMergeTests {
             let a = Article(title: "A\(i)", identifier: "a\(i)", url: "u\(i)",
                             date: Date(timeIntervalSince1970: Double(i)))
             a.createdAt = Date(timeIntervalSince1970: Double(i) * 10)
+            a.setRead(read)
             a.feed = feed
             context.insert(a)
             articles.append(a)
@@ -83,5 +84,32 @@ struct SummaryIndexMergeTests {
 
     @Test func emptyIndexIsSpliceable() {
         #expect(SummaryIndexMerge.isSpliceable([]))
+    }
+
+    @Test func mergeOrdersReadBeforeUnreadRegardlessOfCreatedAt() throws {
+        let (container, _, _) = try Self.rows(0)
+        let context = ModelContext(container)
+        let feed = try context.fetch(FetchDescriptor<Feed>()).first!
+
+        let unreadOld = Article(title: "UnreadOld", identifier: "uo", url: "u",
+                                date: Date(timeIntervalSince1970: 0))
+        unreadOld.createdAt = Date(timeIntervalSince1970: 0)
+        unreadOld.feed = feed
+        context.insert(unreadOld)
+
+        let readNew = Article(title: "ReadNew", identifier: "rn", url: "u",
+                              date: Date(timeIntervalSince1970: 100))
+        readNew.createdAt = Date(timeIntervalSince1970: 100)
+        readNew.setRead(true)
+        readNew.feed = feed
+        context.insert(readNew)
+        try context.save()
+
+        let merged = SummaryIndexMerge.apply(
+            to: [], changed: [ArticleSummary(unreadOld), ArticleSummary(readNew)], removed: []
+        )
+        // readNew is read (rank 0) and unreadOld is unread (rank 1) -- read must come first even
+        // though unreadOld's createdAt is earlier.
+        #expect(merged.map(\.identifier) == ["rn", "uo"])
     }
 }

@@ -7,11 +7,11 @@ import SwiftData
 actor ArticleSummaryLoader {
     func load() throws -> [ArticleSummary] {
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            sortBy: [SortDescriptor(\.readRank, order: .forward), SortDescriptor(\.createdAt, order: .forward)]
         )
         // Only the light columns; the heavy body fields (`blockData`/`plainText`/`summary`) and the
         // legacy `content` stay unfetched.
-        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
+        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.readRank]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         let rows = try StartupTrace.measure("fullLoad.fetch") { try modelContext.fetch(descriptor) }
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
@@ -87,9 +87,10 @@ actor ArticleSummaryLoader {
         predicate: Predicate<Article>?, order: SortOrder
     ) -> FetchDescriptor<Article> {
         var d = FetchDescriptor<Article>(
-            predicate: predicate, sortBy: [SortDescriptor(\.createdAt, order: order)]
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.readRank, order: order), SortDescriptor(\.createdAt, order: order)]
         )
-        d.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
+        d.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.readRank]
         d.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         return d
     }

@@ -3,12 +3,10 @@ import SwiftData
 import Testing
 @testable import Yana
 
-/// Timeline ordering: `ArticleSummaryLoader` (used by `ArticleStore`) fetches articles in
-/// ascending `createdAt` order (oldest → new), which is the canonical display order for both
-/// the reader pager and the article list view that reads `store.summaries` directly.
-///
-/// (The old `ArticleListView.timelineDescriptor` windowed-descriptor tests were removed when
-/// Task 6 migrated the list to read from `ArticleStore` instead of a per-view `@Query`.)
+/// Timeline ordering: `ArticleSummaryLoader` (used by `ArticleStore`) fetches articles read-first
+/// (oldest→newest), then unread (oldest→newest) — see `Article.readRank`'s doc comment. This is
+/// the canonical display order for both the reader pager and the article list view that reads
+/// `store.summaries` directly.
 @MainActor
 @Suite("Timeline ordering")
 struct TimelineOrderingTests {
@@ -18,29 +16,35 @@ struct TimelineOrderingTests {
         return ModelContext(container)
     }
 
-    private func insertArticle(_ id: String, createdAt: Date, into context: ModelContext) {
+    private func insertArticle(_ id: String, createdAt: Date, read: Bool, into context: ModelContext) {
         let a = Article(title: id, identifier: id, url: "https://x.com/\(id)")
         a.createdAt = createdAt
+        a.setRead(read)
         context.insert(a)
     }
 
     private func seed(_ context: ModelContext) {
         let base = Date(timeIntervalSince1970: 1_000_000)
-        insertArticle("new", createdAt: base.addingTimeInterval(200), into: context)
-        insertArticle("old", createdAt: base, into: context)
-        insertArticle("mid", createdAt: base.addingTimeInterval(100), into: context)
+        // Unread, newest by date -- must still sort AFTER every read article.
+        insertArticle("unread-new", createdAt: base.addingTimeInterval(300), read: false, into: context)
+        // Read, oldest by date -- must sort first overall.
+        insertArticle("read-old", createdAt: base, read: true, into: context)
+        // Unread, oldest unread -- must sort right after the read block.
+        insertArticle("unread-old", createdAt: base.addingTimeInterval(100), read: false, into: context)
+        // Read, newest read -- must sort right before the unread block.
+        insertArticle("read-new", createdAt: base.addingTimeInterval(200), read: true, into: context)
     }
 
-    @Test func articleStoreFetchDescriptorIsAscendingCreatedAt() throws {
+    @Test func articleStoreFetchDescriptorIsReadThenUnreadByCreatedAt() throws {
         let context = try makeContext()
         seed(context)
 
-        // The ArticleSummaryLoader descriptor: ascending createdAt (oldest first).
+        // The ArticleSummaryLoader descriptor: readRank ascending, then createdAt ascending.
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            sortBy: [SortDescriptor(\.readRank, order: .forward), SortDescriptor(\.createdAt, order: .forward)]
         )
-        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
+        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.readRank]
         let fetched = try context.fetch(descriptor)
-        #expect(fetched.map(\.identifier) == ["old", "mid", "new"])
+        #expect(fetched.map(\.identifier) == ["read-old", "read-new", "unread-old", "unread-new"])
     }
 }
