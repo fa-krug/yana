@@ -28,7 +28,6 @@ final class AppSettings {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: [
-            Key.retentionDays: 30,
             Key.updateInterval: UpdateInterval.min60.rawValue,
             Key.aiMode: AIMode.server.rawValue,
             Key.includeUntagged: true,
@@ -38,7 +37,6 @@ final class AppSettings {
     }
 
     private enum Key {
-        static let retentionDays = "settings.retentionDays"
         static let updateInterval = "settings.updateInterval"
         static let notificationsEnabled = "settings.notificationsEnabled"
         // AI
@@ -112,12 +110,6 @@ final class AppSettings {
     var diagnosticsUnlocked: Bool {
         get { access(keyPath: \.diagnosticsUnlocked); return defaults.bool(forKey: Key.diagnosticsUnlocked) }
         set { withMutation(keyPath: \.diagnosticsUnlocked) { defaults.set(newValue, forKey: Key.diagnosticsUnlocked) } }
-    }
-
-
-    var retentionDays: Int {
-        get { access(keyPath: \.retentionDays); return defaults.integer(forKey: Key.retentionDays) }
-        set { withMutation(keyPath: \.retentionDays) { defaults.set(newValue, forKey: Key.retentionDays) } }
     }
 
     /// Per-device background aggregation cadence. Device-local — never synced. `.off` = pure mirror.

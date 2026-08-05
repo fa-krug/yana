@@ -67,20 +67,12 @@ struct MacSettingsWindow: View {
             }
         case .reader:
             Form { ReaderSettingsSection() }
-        case .feeds:
-            NavigationStack { FeedsView() }
-        case .tags:
-            NavigationStack { TagsView() }
-        case .integrations:
-            Form {
-                RedditSettingsSection()
-                YouTubeSettingsSection()
+        case .manage:
+            NavigationStack {
+                ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
             }
         case .ai:
-            Form {
-                AIProviderSettingsSection()
-                AITuningSettingsSection()
-            }
+            Form { AIModeSettingsSection() }
         case .about:
             Form {
                 AboutSettingsSection(
