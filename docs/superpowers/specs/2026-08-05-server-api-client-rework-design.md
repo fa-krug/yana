@@ -32,11 +32,12 @@ cloud-AI-provider code is deleted, not kept as a fallback.
 | Feed/tag/settings management | In-app WebView hosting the server's existing web UI (reuses the pairing session's cookies). No new native CRUD screens, no new server write endpoints. |
 | AI processing | Exactly two app-wide modes: **Server** (per-feed summarize/improve/translate run automatically server-side, edited via the WebView; iOS renders the result as-is) and **Apple Intelligence** (on-device, kept from the existing implementation, re-sourced from server-synced raw content). The 6 cloud bring-your-own-key providers (OpenAI/Anthropic/Gemini/Mistral/Qwen/DeepSeek) are removed from iOS entirely. |
 | AI summary block (Server mode) | Implemented via `POST /api/v1/ai/prompt` (now shipped — generic free-form prompt run against the user's server-configured provider, JSON response, rate-limited). Both modes produce the summary block; only the execution path differs (network call vs on-device Foundation Model). |
-| Local persistence | Kept. SwiftData remains a local mirror, now populated by a sync engine reading `/api/v1/articles/sync` instead of by on-device aggregation. Preserves `ArticleStore`, the endless timeline, and the reader's lazy block-loading largely as-is. |
+| Local persistence | Kept, and **offline-first**: SwiftData remains a full local mirror — not just article summaries but every article's full `[Block]` content and every referenced image/logo, eagerly pulled during sync rather than fetched lazily on render. Preserves `ArticleStore` and the endless timeline as-is; the reader never needs network for anything already synced. |
+| Search | Unaffected. `ArticleSearch` keeps matching title/content/author/feed name exactly as today — safe only because content is eagerly synced (see Local persistence); this would have silently regressed under a lazy-fetch design. |
 | Starred | Becomes a plain `Article.starred: Bool`, synced via `PATCH /articles/:id`, replacing the built-in "Starred" tag / `StarredRegistry`. UI (a Starred filter chip) is unchanged in appearance. |
 | Tag filtering | Becomes live (joined from `Feed.tagIds` at display time each sync) instead of snapshotted onto each article at import. Accepted behavior change — matches the server's live many-to-many model. |
 | `read` field | Present on the wire, intentionally unused. Preserves the existing "no read/unread state" product decision; the field is decoded but never acted on or written. |
-| Images and feed logos | Both fetched by content hash via `GET /api/v1/images/:hash` into a reworked `ImageStore` disk cache. The CloudKit-era `StoredImage`/`ImageSync`/`StoredImageRegistrar` bridge (already dead weight since CloudKit's removal) is deleted outright, not adapted. Client-side recompression/background-removal (`ImageCompressor`, `LogoBackgroundRemover`) is deleted — the server already stores final, processed bytes. |
+| Images and feed logos | Both eagerly downloaded by content hash via `GET /api/v1/images/:hash` as part of the sync pass (not fetched lazily on render — see Local persistence), into a reworked `ImageStore` disk cache. The CloudKit-era `StoredImage`/`ImageSync`/`StoredImageRegistrar` bridge (already dead weight since CloudKit's removal) is deleted outright, not adapted. Client-side recompression/background-removal (`ImageCompressor`, `LogoBackgroundRemover`) is deleted — the server already stores final, processed bytes. The existing 64 MB response cap (`HTTPClient.maxImageResponseBytes`, raised specifically for large Reddit GIFs) carries over into the new fetch path — the server doesn't enforce an equivalent cap itself. |
 | OPML import/export | Dropped entirely (`FeedPortability`, `OPMLCodec`). No server equivalent exists; feed management no longer happens natively. |
 | Reddit/YouTube credentials | Dropped from iOS Keychain/Settings/`CredentialTester`. Configured server-side via the WebView. |
 | Retention | Server-side only (`user_settings.articleRetentionDays`). Local retention job and `ImagePrune`'s quarantine logic are removed; the local cache instead mirrors whatever the server's tombstones say to remove. |
@@ -66,6 +67,13 @@ around:
    Reddit/YouTube keys are deleted from it in the same pass).
 6. Every `/api/v1/**` request thereafter carries `Authorization: Bearer <token>`.
 
+**Net-new requirement, not something to assume already exists**: the app registers no custom URL
+scheme today (checked `project.yml`/Info.plist — no `CFBundleURLTypes` at all). Handling
+`yana://auth-callback` requires adding a URL type to `project.yml` and, since it's intercepted
+inside the pairing `WKWebView`'s navigation delegate rather than via system `onOpenURL`, that
+registration exists mainly so the OS never treats an accidental top-level navigation to `yana://`
+as "no app can open this."
+
 The server's base URL is a new per-device setting (this is self-hosted software — there is no
 fixed host), entered during onboarding's server-configuration step and editable later in Settings.
 The same persistent `WKWebView`/cookie store is reused for the management WebView (see below), so a
@@ -80,19 +88,42 @@ New `Yana/Networking/` module:
   /articles/:id/reload`, `POST /aggregate`, `GET /runs/:id`, `GET /jobs/events` (SSE), `GET
   /feeds`, `GET /tags`, `GET /images/:hash`. Attaches the Bearer token; surfaces the server's
   `{ error: { code, message } }` envelope as a typed error.
-- `SyncEngine` — replaces `AggregationService`'s write path. Holds the opaque sync cursor
-  (persisted device-locally, not synced — it's per-device network state, same tier as
-  `UpdateInterval`), calls `/articles/sync`, and:
-  - Upserts `new`/`updated` article summaries into SwiftData (`createdAt` preserved on update,
-    matching today's "re-fetched articles keep their original `createdAt`" rule).
-  - Hard-deletes rows named in `removed`.
-  - On `{ resyncRequired: true }`, drops the stored cursor and re-pulls from scratch (equivalent to
-    today's full re-read fallback in `SummaryIndexMerge`).
-  - Article bodies stay lazy: `ArticleBlockView`'s page resolves `[Block]` content on render via
-    `GET /articles/:id/content`, mirroring the current lazy-resolve-by-`persistentID` pattern —
-    just fetched over the network instead of read from a local `blockData` column that's already
-    fully populated. (Blocks are still cached locally in SwiftData once fetched, so re-opening an
-    article already read doesn't re-fetch.)
+- `SyncEngine` — replaces `AggregationService`'s write path, and is **offline-first**: a sync pass
+  fully replicates the server's article set — summaries, full block content, and every referenced
+  image — into the local store, not just metadata. Holds the opaque sync cursor (persisted
+  device-locally, not synced — it's per-device network state, same tier as `UpdateInterval`). One
+  pass:
+  1. Calls `/articles/sync?cursor=...`, looping (using the `limit` param, 1-500) until a response's
+     `new`/`updated` no longer fills a full page — i.e. catches all the way up to head in one pass.
+     This matters most on the **first sync after pairing**, which can return the account's entire
+     retained history (default 60 days) rather than a small delta.
+  2. Upserts each `new`/`updated` article's summary into SwiftData (`createdAt` preserved on
+     update, matching today's "re-fetched articles keep their original `createdAt`" rule), then
+     fetches its full content (`GET /articles/:id/content`) at bounded concurrency (a handful of
+     concurrent requests via a task group, not one-at-a-time and not unbounded) and writes the
+     decoded `[Block]`s alongside it.
+  3. Parses each fetched article's blocks (plus every `Feed.logoImageHash`) for `yana-img://<hash>`
+     refs, and fetches (`GET /images/:hash`, same bounded-concurrency pattern) any hash not already
+     on disk.
+  4. Applies `removed` deletions.
+  5. On `{ resyncRequired: true }`, drops the stored cursor and re-pulls from scratch (equivalent to
+     today's full re-read fallback in `SummaryIndexMerge`).
+  - **Partial-failure bookkeeping**: the sync cursor advances once a page's summaries are applied,
+    independent of whether every content/image fetch in that page succeeded — a dropped connection
+    mid-sync must not block progress or re-fetch things already obtained. An article whose content
+    (or an image it references) failed to download is marked with a local-only
+    `needsContentBackfill`/`needsImageBackfill` flag, retried opportunistically on the next sync or
+    app-foreground event (not by re-calling `/articles/sync`, which won't re-list an article the
+    cursor has already passed).
+  - `ArticleBlockView`'s `yana-img://` resolution and the reader's content lookup still check the
+    disk cache / local `[Block]` column first, exactly as before; a network fetch-on-miss stays as a
+    safety net for a not-yet-completed backfill item, not the primary path.
+
+**First-sync UX**: since a fresh pairing's initial pass can be sizeable (full retained history,
+every article's content and images), the app shows a "Syncing your library…" progress state
+(counts, not just a spinner) after pairing succeeds, rather than dropping straight into the
+timeline. Background refresh (`BGAppRefreshTask`) runs the same pass under the OS's time budget;
+whatever it can't finish in that window is left for the backfill queue rather than blocking.
 
 `ArticleStore` keeps its role (in-memory `ArticleSummary` index, incremental splice on save) — only
 what feeds it changes, from `AggregationWriter`'s upserts to `SyncEngine`'s upserts. `Feed`/`Tag`
@@ -125,6 +156,14 @@ enabled feed" anyway, so no native replacement is needed.
   because the column already exists conceptually) but nothing reads or writes it — no unread UI,
   no PATCH call ever sends it.
 - `Feed.logoImageHash` replaces the old file-path `logo` column, synced from `/feeds`.
+  `Feed.aggregator` becomes a plain, unvalidated `String` (display-only — nothing client-side
+  branches on aggregator type anymore, since there's no native feed creation/editing left to
+  special-case). The `AggregatorType` enum is deleted.
+- `ArticleUID` and `ArticleSummary.uid` are deleted, not ported. They already only serve
+  `AggregationWriter`/`ArticleUpsert`/`RetentionCleanup`/`LibraryDedup` — all removed in this rework
+  — plus a `uid` computed property nothing outside `ArticleSummary` itself reads (checked directly:
+  zero call sites). The server's own integer `article.id` is the natural identity for sync upserts;
+  there's no cross-device-identity problem left to solve locally.
 - `StoredImage` (SwiftData model), `ImageSync`, `StoredImageRegistrar` — deleted. `ImageStore`
   reworked: `store(remoteURL:isHeader:removeWhiteBackground:)` (download + client-side compress +
   self-computed hash) is replaced by `fetchIfNeeded(hash:) async -> Bool` (network `GET
@@ -134,14 +173,49 @@ enabled feed" anyway, so no native replacement is needed.
   `FeedLogoResolver`, `ImageCompressor`, `LogoBackgroundRemover` are deleted (server already stores
   final processed bytes for both article images and feed logos).
 
-### Removed wholesale
+### `Yana/Aggregators/` disposition (file by file)
 
-`Yana/Aggregators/` (all site-specific scrapers, `AggregatorRegistry`, `Aggregator` protocol,
-`AggregatedArticle` DTO), `AggregationService`, `AggregationWriter`, `AIClient`/`AIProcessor` (for
-the 6 removed cloud providers — Apple Intelligence's own on-device implementation is kept),
-`CredentialTester` paths for Reddit/YouTube and the removed AI providers, `FeedPortability`,
-`OPMLCodec`, `LibraryDedup` (no CloudKit merges left to dedupe), the local retention job, `ImagePrune`
-and its candidate-quarantine store.
+The folder itself goes away, but it currently holds a few files that aren't aggregation-specific
+and must survive — calling them out explicitly rather than leaving "delete `Aggregators/`" ambiguous:
+
+**Survives, relocated** (e.g. into `Yana/Services/` or `Yana/Reader/` as fits):
+- `ArticleSearch.swift` — the title/content/author/feed-name matcher `ArticleListView`'s search
+  uses. Nothing to do with aggregation; it happens to live here today. Stays correct as-is because
+  content is now eagerly synced (see Local persistence above) — a lazy-fetch design would have
+  quietly broken it.
+- `Utils/ArticleHeaderLogo.swift`, `Utils/ImageStore.swift` — reworked per the data-model changes
+  above, not deleted.
+- `Utils/ReaderWeb.swift` — `WKWebView` origin/scheme constants used by the reader's video-embed
+  player. Reader plumbing, not aggregation; unrelated to this rework.
+
+**Deleted** (aggregation/scraping-pipeline-specific, all now redundant with server-side work):
+`AggregatedArticle.swift`, `AggregationLogic.swift`, `Aggregator.swift`, `AggregatorRegistry.swift`,
+`AggregatorType.swift`, `ArticleUpsert.swift`, `FeedConfig.swift`, `FeedLogoResolver.swift`,
+`RetentionCleanup.swift`, all of `Concrete/` (16 site scrapers + Reddit/YouTube clients/models),
+and from `Utils/`: `BlockParser.swift`, `BlueskyEmbed.swift`, `ContentFormatter.swift`,
+`DomainImageOverrides.swift`, `EmbedRewriter.swift`, `FaviconResolver.swift`, `FeedDiscovery.swift`,
+`FeedParser.swift`, `FeedURLResolver.swift`, `HTMLUtils.swift`, `HeaderElementExtractor.swift`,
+`ImageCompressor.swift`, `LogoBackgroundRemover.swift`.
+
+**`BlockParser.swift` is worth calling out specifically**: it parses raw HTML into `[Block]` during
+on-device aggregation. The server's `/articles/:id/content` already returns structured `[Block]`
+JSON (the wire format was deliberately designed to match iOS's own `Block`/`InlineRun` model) — the
+client only needs to `Decode` it, never parse HTML. This eliminates an entire parsing pipeline, not
+just a call site.
+
+**`Utils/HTTPClient.swift` is a partial exception**: most of it (redirect-following scraping
+fetches) is dead with the rest of the pipeline, but its `maxImageResponseBytes` (64 MB) cap and
+`imageAccept` header — tuned specifically for large Reddit GIFs — are still relevant protections
+for the reworked `ImageStore`'s network fetch and should carry over into `Yana/Networking/`, not be
+deleted along with the rest of the file.
+
+### Removed wholesale (outside `Aggregators/`)
+
+`AggregationService`, `AggregationWriter`, `AIClient`/`AIProcessor` (for the 6 removed cloud
+providers — Apple Intelligence's own on-device implementation is kept), `CredentialTester` paths
+for Reddit/YouTube and the removed AI providers, `FeedPortability`, `OPMLCodec`, `LibraryDedup` (no
+CloudKit merges left to dedupe), the local retention job, `ImagePrune` and its candidate-quarantine
+store.
 
 ### AI settings
 
@@ -179,7 +253,9 @@ Native `FeedsView`, `TagsView`, `FeedEditorView`, `FeedTagsPicker`, and most of
 `SettingsScreenView`'s sections (Feeds, Tags, AI provider config, Integrations) are removed; what
 remains natively is Reader settings (text size/font/voice/system-browser — genuinely device-local
 prefs with no server equivalent), the AI mode picker, the server URL / device-pairing controls, and
-About/Diagnostics. On Mac, the same WebView replaces the corresponding `MacSettingsWindow` panes.
+About. (Diagnostics is already dead code independent of this rework — see the pre-existing-issues
+note at the end of this document — so it's omitted here rather than carried forward.) On Mac, the
+same WebView replaces the corresponding `MacSettingsWindow` panes.
 
 ### Onboarding (`WelcomeView`)
 
@@ -206,10 +282,13 @@ count.
 - `YanaAPIClientTests` — mocked `URLProtocol`, one test per route including error-envelope
   decoding and 404-as-not-found/not-mine (server's enumeration-avoidance convention).
 - `SyncEngineTests` — cursor persistence, `new`/`updated`/`removed` application against SwiftData,
-  `resyncRequired` handling, `createdAt` preservation on update — same spirit as today's
+  `resyncRequired` handling, `createdAt` preservation on update, pagination looping to head on a
+  large first sync, and the partial-failure backfill queue (a content/image fetch failing mid-pass
+  doesn't block the cursor and is retried on the next pass) — same spirit as today's
   `ArticleStoreIncrementalTests`.
 - `DevicePairingTests` — the state-generation/verification and callback-URL-parsing logic extracted
-  as a pure, SwiftUI-free function/struct (mirroring how `DiagnosticsReveal` is tested), covering:
+  as a pure, SwiftUI-free function/struct (the same "extract the state machine so it's testable
+  without SwiftUI" pattern `ReaderAnchorController`'s no-ping-pong tests already rely on), covering:
   matching state accepted, mismatched state rejected, malformed callback URL rejected.
 - `ImageStoreTests` — fetch-by-hash on miss, no re-fetch when already on disk, extension inferred
   from `Content-Type`.
@@ -227,3 +306,14 @@ count.
 - `POST /api/v1/ai/prompt`'s daily/monthly usage counter is shared with the server's own
   per-feed `applyAiOptions()` pipeline — worth keeping in mind that heavy on-demand summarizing
   from the app can exhaust the same quota the user set for automatic per-feed AI processing.
+- App Store screenshot fixtures (`fastlane screenshots`, `ScreenshotSeed`) need a content update,
+  not an architecture change: they seed `Feed`/`Article` rows directly into local SwiftData, which
+  still works unchanged as a fixture mechanism regardless of how real data normally arrives. But
+  the `05_AI` shot is explicitly captioned as "the AI bring-your-own-key section in Settings" —
+  that section no longer exists post-rework, so its caption/content needs to change to whatever the
+  new two-mode AI section looks like. Tracked here so it isn't forgotten, not solved in this spec.
+- Two pre-existing issues found while auditing for this rework, unrelated to it but worth knowing
+  about: the Mac Catalyst target currently fails to compile (`MacSettingsWindow.swift` references
+  the deleted `SyncLogView`), and the five-tap diagnostics-reveal gesture on iOS is now dead code
+  (its only consumer was removed in the same CloudKit-removal commit that broke the Mac build).
+  Flagged as a separate background task rather than folded in here.
