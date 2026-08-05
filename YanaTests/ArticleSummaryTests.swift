@@ -16,7 +16,7 @@ struct ArticleSummaryTests {
         let context = try makeContext()
         let starred = Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true)
         let news = Yana.Tag(name: "News")
-        let feed = Feed(name: "Acme", aggregatorType: .feedContent, identifier: "f")
+        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
         let article = Article(title: "Hello", identifier: "a1", url: "u",
                               date: .now, author: "Ada")
         article.feed = feed
@@ -38,7 +38,7 @@ struct ArticleSummaryTests {
 
     @Test func summaryConformsToFilterAndIdentityProtocols() throws {
         let context = try makeContext()
-        let feed = Feed(name: "Acme", aggregatorType: .feedContent, identifier: "f")
+        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
         let article = Article(title: "T", identifier: "a2", url: "u")
         article.feed = feed
         article.tags = [Yana.Tag(name: "Tech")]

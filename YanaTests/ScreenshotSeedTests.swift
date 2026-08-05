@@ -33,7 +33,7 @@ struct ScreenshotSeedTests {
 
         // Every feed got a generated logo.
         for feed in feeds {
-            #expect(feed.logoHash != nil, "feed \(feed.name) has no logoHash")
+            #expect(feed.logoImageHash != nil, "feed \(feed.name) has no logoImageHash")
         }
 
         // Every article got a generated lead image + authored body, so blocks are never empty.

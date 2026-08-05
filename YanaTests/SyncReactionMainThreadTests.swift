@@ -52,17 +52,10 @@ struct SyncReactionMainThreadTests {
                 "ArticleStore.publishFastDataset() blocked the main actor for \(Int(stall)) ms")
     }
 
-    @Test func dedupPassLeavesTheMainActorResponsive() async throws {
-        let fixture = try LibraryFixture.make(articleCount: 4000)
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
-
-        let stall = await MainActorResponsiveness.measuring {
-            await LibraryDedup.runAndWait(container: fixture.container)
-        }
-
-        #expect(stall < Self.maxAcceptableStallMS,
-                "LibraryDedup blocked the main actor for \(Int(stall)) ms")
-    }
+    // `dedupPassLeavesTheMainActorResponsive` removed: `LibraryDedup` no longer exists (Task 12 --
+    // CloudKit mirroring, and the merge-duplicate cleanup it needed, are gone now that the server
+    // is the single source of truth). Nothing of value lost: the main-thread-safety property this
+    // pinned belonged entirely to `LibraryDedup.runAndWait`'s three-table scan.
 
     // `referencedImageScanLeavesTheMainActorResponsive` (image-registration scan feeding the
     // CloudKit-mirrored `StoredImage` table) removed: `ImageSync`/`StoredImage` no longer exist

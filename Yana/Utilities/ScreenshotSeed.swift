@@ -176,10 +176,10 @@ enum ScreenshotSeed {
         var tagsByName: [String: Tag] = [:]
 
         for (feedIndex, spec) in feedSpecs.enumerated() {
-            let feed = Feed(name: spec.name, aggregatorType: .feedContent, identifier: spec.identifier)
+            let feed = Feed(name: spec.name, aggregator: "feedContent", identifier: spec.identifier)
 
             let logoData = ScreenshotLogoFactory.png(monogram: spec.monogram, colorHex: spec.tagColorHex)
-            feed.logoHash = await ImageStore.shared.storeData(logoData, ext: "png")
+            feed.logoImageHash = await ImageStore.shared.storeData(logoData, ext: "png")
             context.insert(feed)
 
             let tag: Tag
@@ -190,7 +190,10 @@ enum ScreenshotSeed {
                 context.insert(tag)
                 tagsByName[spec.tagName] = tag
             }
-            feed.tags = [tag]
+            // `Feed.tagIDs` is now the server's own tag ids, which a local-only fixture has none
+            // of -- there's no server round-trip to assign real ones, so feed-level tag membership
+            // is simply left empty here (mechanical compile fix only, not a fixture redesign; see
+            // task-12-brief.md). The per-article `tags` snapshot below is unaffected.
 
             for (articleIndex, articleSpec) in spec.articles.enumerated() {
                 let identifier = "screenshot://\(feedIndex)/\(articleIndex)"

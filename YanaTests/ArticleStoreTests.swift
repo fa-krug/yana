@@ -18,7 +18,7 @@ struct ArticleStoreTests {
     }
 
     private func insertArticle(_ id: String, into context: ModelContext, createdAt: Date) {
-        let feed = Feed(name: "Acme", aggregatorType: .feedContent, identifier: "f-\(id)")
+        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)")
         let article = Article(title: id, identifier: id, url: id)
         article.feed = feed
         article.createdAt = createdAt

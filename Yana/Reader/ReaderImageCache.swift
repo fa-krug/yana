@@ -87,10 +87,13 @@ final class ReaderImageCache: @unchecked Sendable {
         let prefix = "\(ReaderWeb.imageScheme)://"
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
-            // TODO(Task 12): source `client` from the app's authenticated YanaAPIClient once
-            // AuthenticatedClient wires it end-to-end. The fast path -- file already on disk --
-            // returns immediately without a network call, so the decode slot is released quickly.
-            _ = await ImageStore.shared.fetchIfNeeded(hash: hash, client: client)
+            // The fast path -- file already on disk -- returns immediately without a network
+            // call (guarded inside `fetchIfNeeded`), so a missing/not-yet-paired client only
+            // costs a cache-miss lookup, not a stall; the decode slot is released quickly either
+            // way.
+            if let client = await AuthenticatedClient.current() {
+                _ = await ImageStore.shared.fetchIfNeeded(hash: hash, client: client)
+            }
             let url = await ImageStore.shared.fileURL(forHash: hash)
             return await Task.detached { decodedImage(at: url) }.value
         }

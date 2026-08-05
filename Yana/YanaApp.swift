@@ -124,8 +124,6 @@ struct YanaApp: App {
                 .environment(articleStore)
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
-                    case .active:
-                        LibraryDedup.run(container: AppContainer.shared)
                     case .background:
                         // The timeline index cache is written on a delay (see
                         // `ArticleStore.cacheWriteDelay`); flush it before the app can be suspended
@@ -141,6 +139,14 @@ struct YanaApp: App {
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)
+                    // Pull the server's article/feed state on every foreground launch. `nil` from
+                    // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error;
+                    // a thrown sync error is likewise swallowed here (a spotty connection at
+                    // launch must never block first paint or crash the app -- see `SyncEngine`'s
+                    // own per-item error handling for the same philosophy).
+                    if let client = AuthenticatedClient.current() {
+                        _ = try? await SyncEngine(container: AppContainer.shared, client: client).sync()
+                    }
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).

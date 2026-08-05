@@ -1,16 +1,17 @@
 import Foundation
 import SwiftSoup
 
-/// Converts the aggregation pipeline's already-sanitized article HTML into a closed `[Block]`
-/// model for native rendering. This is the single HTML→blocks conversion point, run at import time
-/// (in `ArticleUpsert`) and by the one-time `BlockMigration` sweep for existing articles — never on
-/// the reader's render path.
+/// Converts already-sanitized article HTML into a closed `[Block]` model for native rendering.
+/// New content now arrives pre-rendered as `[Block]` JSON straight from the server (see
+/// `WireDocument`/`SyncWriter.applyContent`), so the HTML→blocks half below (`blocks(fromHTML:)`)
+/// only still runs for the one-time `BlockMigration` sweep over pre-existing legacy-HTML articles
+/// and DEBUG fixture seeding (`ScreenshotSeed`/`DebugSeed`) — never on the reader's render path.
+/// `plainText(_:)` is the other half: it flattens any `[Block]` body (server- or migration-sourced
+/// alike) to the search/read-aloud surface, and is load-bearing for every article — see
+/// `Article.blocks`'s setter.
 ///
-/// The walk maps known tags to blocks and **drops** everything else (tables, forms, leftover
+/// The HTML walk maps known tags to blocks and **drops** everything else (tables, forms, leftover
 /// chrome): unknown wrappers are recursed into for any known blocks they contain, then discarded.
-/// It runs on the HTML produced after `EmbedRewriter` + `HTMLUtils.finishSanitization`, so images
-/// are already `yana-img://` refs, classes are stashed in `data-sanitized-class`, and video embeds
-/// are normalized into recognizable facades.
 enum BlockParser {
 
     // MARK: - Entry points

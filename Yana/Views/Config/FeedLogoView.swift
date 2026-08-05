@@ -36,8 +36,7 @@ struct FeedLogoView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityLabel(Text("Feed logo"))
         .task(id: hash) {
-            // TODO(Task 12): source `client` from the app's authenticated YanaAPIClient once
-            // AuthenticatedClient wires it end-to-end.
+            guard let client = AuthenticatedClient.current() else { return }
             image = await FeedLogo.image(forHash: hash, client: client)
         }
     }
