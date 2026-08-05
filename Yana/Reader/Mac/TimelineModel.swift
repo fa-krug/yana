@@ -198,24 +198,11 @@ final class TimelineModel {
 
     // MARK: - Actions
 
-    /// Toggles locally right away (optimistic -- the new value is already known, unlike
-    /// reload/update-all whose results are fetched separately) and reverts if the server rejects
-    /// it. Silently local-only when not paired yet -- `AuthenticatedClient.current()` returning
-    /// `nil` means "nothing to do," not an error (see its doc comment).
+    /// Toggles locally right away (optimistic) via `ArticleWrites`; queued for retry rather than
+    /// rolled back on failure. Silently local-only when not paired.
     func toggleStar(_ article: Article) {
         guard let modelContext else { return }
-        let newValue = !article.starred
-        article.starred = newValue
-        try? modelContext.save()
-        guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
-        Task {
-            do {
-                try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
-            } catch {
-                article.starred = !newValue
-                try? modelContext.save()
-            }
-        }
+        ArticleWrites.toggleStar(article, modelContext: modelContext)
     }
 
     func copyLink(_ article: Article) {

@@ -89,21 +89,8 @@ struct ArticleListView: View {
             leadingActions: { summary in
                 Button {
                     guard let article = article(for: summary) else { return }
-                    let newValue = !article.starred
-                    article.starred = newValue
-                    try? modelContext.save()
+                    ArticleWrites.toggleStar(article, modelContext: modelContext)
                     Haptics.impact(.light)
-                    // Optimistic: the new value is already known locally, unlike reload's
-                    // separately-fetched result. Silently local-only when not paired yet.
-                    guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
-                    Task {
-                        do {
-                            try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
-                        } catch {
-                            article.starred = !newValue
-                            try? modelContext.save()
-                        }
-                    }
                 } label: {
                     Label(summary.isStarred ? "Unstar" : "Star",
                           systemImage: summary.isStarred ? "star.slash" : "star")
