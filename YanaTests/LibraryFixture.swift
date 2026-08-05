@@ -22,7 +22,7 @@ enum LibraryFixture {
             .appendingPathComponent("yana-fixture-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let container = try ModelContainer(
-            for: Feed.self, Tag.self, Article.self, StoredImage.self,
+            for: Feed.self, Tag.self, Article.self,
             configurations: ModelConfiguration(url: dir.appendingPathComponent("test.store"),
                                                cloudKitDatabase: cloudKit ? .automatic : .none)
         )

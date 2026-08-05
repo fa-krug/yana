@@ -85,8 +85,8 @@ struct ArticleStoreIncrementalTests {
         #expect(store.summaries.allSatisfy { !goneIDs.contains($0.identifier) })
     }
 
-    /// A save that touches no `Article` — a feed logo, a tag, a `StoredImage` row — must not
-    /// disturb the index at all. Before this, every such save cost a full-library re-read.
+    /// A save that touches no `Article` — a tag, a feed — must not disturb the index at all.
+    /// Before this, every such save cost a full-library re-read.
     @Test func savesThatTouchNoArticleDoNotRefreshTheIndex() async throws {
         let fixture = try LibraryFixture.make(articleCount: 200)
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
@@ -97,7 +97,6 @@ struct ArticleStoreIncrementalTests {
         await wait(for: store, toReach: 200)
         let before = store.summaries
 
-        context.insert(StoredImage(contentHash: "deadbeef", data: Data([1, 2, 3]), ext: "png"))
         context.insert(Tag(name: "Fresh Tag", sortOrder: 99))
         try context.save()
         try? await Task.sleep(for: .milliseconds(600))
@@ -181,7 +180,7 @@ struct ArticleStoreIncrementalTests {
         await wait(for: store, toReach: 100)
 
         let outside = try ModelContainer(
-            for: Feed.self, Tag.self, Article.self, StoredImage.self,
+            for: Feed.self, Tag.self, Article.self,
             configurations: ModelConfiguration(
                 url: fixture.directory.appendingPathComponent("test.store"), cloudKitDatabase: .none
             )

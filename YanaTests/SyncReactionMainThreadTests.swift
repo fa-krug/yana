@@ -64,24 +64,12 @@ struct SyncReactionMainThreadTests {
                 "LibraryDedup blocked the main actor for \(Int(stall)) ms")
     }
 
-    /// The image-registration scan that runs after every feed update: it fetches every article and
-    /// JSON-decodes every body, so it has to stay off the main context (222 ms on 4 000 articles).
-    @Test func referencedImageScanLeavesTheMainActorResponsive() async throws {
-        let fixture = try LibraryFixture.make(articleCount: 4000)
-        defer { try? FileManager.default.removeItem(at: fixture.directory) }
-        let imageStore = ImageStore(directory: fixture.directory.appendingPathComponent("images"))
-
-        let stall = await MainActorResponsiveness.measuring {
-            let snapshot = await OffMainActor.run {
-                await AggregationWriter(modelContainer: fixture.container).referencedImageSnapshotForPruning()
-            }
-            await ImageSync.ensureStored(hashes: snapshot?.hashes ?? [], container: fixture.container,
-                                         imageStore: imageStore)
-        }
-
-        #expect(stall < Self.maxAcceptableStallMS,
-                "the referenced-image scan blocked the main actor for \(Int(stall)) ms")
-    }
+    // `referencedImageScanLeavesTheMainActorResponsive` (image-registration scan feeding the
+    // CloudKit-mirrored `StoredImage` table) removed: `ImageSync`/`StoredImage` no longer exist
+    // (Task 11 -- server owns image storage, no local registration scan to keep off-main any
+    // more). Nothing of value lost: the main-thread-safety property this pinned belongs to
+    // `AggregationWriter.referencedImageSnapshotForPruning()`, which Task 12 deletes wholesale
+    // along with the rest of on-device aggregation.
 
     /// End-to-end: import batches landing while `ArticleStore` observes saves — the actual
     /// "sync is running and the reader is on screen" situation.

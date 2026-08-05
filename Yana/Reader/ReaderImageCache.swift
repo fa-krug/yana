@@ -1,6 +1,5 @@
 import UIKit
 import ImageIO
-import SwiftData
 import UniformTypeIdentifiers
 
 /// In-memory cache of decoded reader images, keyed by their `yana-img://<hash>` (or remote URL)
@@ -88,11 +87,10 @@ final class ReaderImageCache: @unchecked Sendable {
         let prefix = "\(ReaderWeb.imageScheme)://"
         if ref.hasPrefix(prefix) {
             let hash = String(ref.dropFirst(prefix.count))
-            // Hops to main actor for the materialize call (holds decodeGate briefly), but the fast
-            // path — file already on disk — returns immediately, so the slot is released quickly.
-            _ = await Task { @MainActor in
-                await ImageSync.materialize(hash: hash, context: AppContainer.shared.mainContext, imageStore: .shared)
-            }.value
+            // TODO(Task 12): source `client` from the app's authenticated YanaAPIClient once
+            // AuthenticatedClient wires it end-to-end. The fast path -- file already on disk --
+            // returns immediately without a network call, so the decode slot is released quickly.
+            _ = await ImageStore.shared.fetchIfNeeded(hash: hash, client: client)
             let url = await ImageStore.shared.fileURL(forHash: hash)
             return await Task.detached { decodedImage(at: url) }.value
         }

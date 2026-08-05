@@ -35,12 +35,12 @@ enum AppContainer {
                         try? FileManager.default.removeItem(at: sibling)
                     }
                     let config = ModelConfiguration(url: storeURL, cloudKitDatabase: .none)
-                    return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
+                    return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                              configurations: config)
                 }
                 #endif
                 let config = ModelConfiguration()
-                return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
+                return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                          configurations: config)
             }
         } catch {
