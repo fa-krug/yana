@@ -1783,6 +1783,17 @@
         }
       }
     },
+    "Manage": {
+      "comment": "Navigation title of the management WebView hosting the server's feed/tag/settings pages.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwalten"
+          }
+        }
+      }
+    },
     "Manage your feeds and the tags applied to articles.": {
       "localizations": {
         "de": {
