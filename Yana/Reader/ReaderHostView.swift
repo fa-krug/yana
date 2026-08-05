@@ -254,10 +254,24 @@ struct ReaderScreen: View {
 
     }
 
+    /// Toggles locally right away (optimistic -- the new value is already known, unlike
+    /// reload/update-all whose results are fetched separately) and reverts if the server rejects
+    /// it. Silently local-only when not paired yet -- `AuthenticatedClient.current()` returning
+    /// `nil` means "nothing to do," not an error (see its doc comment).
     private func toggleStar(_ article: Article) {
-        article.starred.toggle()
+        let newValue = !article.starred
+        article.starred = newValue
         try? modelContext.save()
         Haptics.impact(.light)
+        guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
+        Task {
+            do {
+                try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
+            } catch {
+                article.starred = !newValue
+                try? modelContext.save()
+            }
+        }
     }
 
     private func copyLink(_ article: Article) {
@@ -328,25 +342,39 @@ struct ReaderScreen: View {
 
     // MARK: - Refresh
 
-    /// Force-update only the current article: re-fetch and re-process the single article in place,
-    /// leaving the rest of the timeline untouched. Falls back to a forced reload of the owning
-    /// feed when the source cannot re-fetch a lone item (see `AggregationService.forceReload`).
+    /// Force-update only the current article: triggers the server's per-article reload, then
+    /// pulls the refreshed content back down. `ArticleActions.reload`'s response is just an ack
+    /// (the server does the re-fetch asynchronously), so this also clears `hasContent` locally
+    /// right away -- `SyncWriter.upsertSummaries` doesn't reset it on an ordinary summary update,
+    /// so without this the subsequent sync's content-backfill pass would never know to re-download
+    /// this article's body. See `UpdateAndSync` for why the follow-up is a bounded poll of
+    /// `SyncEngine.sync()` rather than a `/runs/:id` job-status check.
     private func forceUpdateArticle(_ article: Article) {
+        guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
         let feedName = article.feed?.name
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.forceReload(article: article)
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                toast = ToastMessage(text: failure, style: .error)
-            } else {
-                // Re-render the visible page: forceReload refreshed the article's content in
-                // place, but the WKWebView only re-renders when reloadToken changes (same as
-                // summarize). Without this bump, Reload silently updates the DB while the page
-                // keeps showing the stale content.
+            do {
+                try await ArticleActions(client: client).reload(articleServerID: serverID)
+                guard !Task.isCancelled else { return }
+                article.hasContent = false
+                try? modelContext.save()
+                let result = await UpdateAndSync.pollForFreshContent(
+                    container: modelContext.container, client: client, settings: settings
+                )
+                guard !Task.isCancelled else { return }
+                // Re-render the visible page: the reload refreshed the article's content, but the
+                // reader only re-renders when reloadToken changes (same as summarize). Without
+                // this bump, Reload silently updates the DB while the page keeps showing stale
+                // content.
                 reloadToken += 1
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feedName))
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: result.updatedCount, feedName: feedName))
                 Haptics.impact(.light)
+            } catch {
+                guard !Task.isCancelled else { return }
+                toast = ToastMessage(
+                    text: String(localized: "Could not reload this article. Please try again."),
+                    style: .error
+                )
             }
         }
     }
@@ -361,16 +389,30 @@ struct ReaderScreen: View {
         }
     }
 
+    /// "Update" only triggers the server's aggregation run (`ArticleActions.updateAll()`); the run
+    /// itself happens server-side and asynchronously, so this follows up with `UpdateAndSync`'s
+    /// bounded poll of `SyncEngine.sync()` to actually pull in whatever the run produced.
     private func triggerRefresh() {
+        guard let client = AuthenticatedClient.current() else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.updateAll()
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                toast = ToastMessage(text: failure, style: .error)
-            } else {
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: nil))
+            do {
+                try await ArticleActions(client: client).updateAll()
+                guard !Task.isCancelled else { return }
+                let result = await UpdateAndSync.pollForFreshContent(
+                    container: modelContext.container, client: client, settings: settings
+                )
+                guard !Task.isCancelled else { return }
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: result.newCount, feedName: nil))
                 Haptics.impact(.light)
+            } catch {
+                guard !Task.isCancelled else { return }
+                toast = ToastMessage(
+                    text: String(localized: "Could not check for updates. Please try again."),
+                    style: .error
+                )
             }
         }
     }

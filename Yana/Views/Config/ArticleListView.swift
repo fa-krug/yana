@@ -89,18 +89,46 @@ struct ArticleListView: View {
             leadingActions: { summary in
                 Button {
                     guard let article = article(for: summary) else { return }
-                    article.starred.toggle()
+                    let newValue = !article.starred
+                    article.starred = newValue
                     try? modelContext.save()
                     Haptics.impact(.light)
+                    // Optimistic: the new value is already known locally, unlike reload's
+                    // separately-fetched result. Silently local-only when not paired yet.
+                    guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
+                    Task {
+                        do {
+                            try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
+                        } catch {
+                            article.starred = !newValue
+                            try? modelContext.save()
+                        }
+                    }
                 } label: {
                     Label(summary.isStarred ? "Unstar" : "Star",
                           systemImage: summary.isStarred ? "star.slash" : "star")
                 }
                 .tint(.yellow)
                 Button {
-                    guard let article = article(for: summary) else { return }
+                    guard let article = article(for: summary),
+                          let client = AuthenticatedClient.current(),
+                          let serverID = article.serverID
+                    else { return }
                     UpdateActivity.shared.restart {
-                        await AggregationService(context: modelContext).forceReload(article: article)
+                        do {
+                            try await ArticleActions(client: client).reload(articleServerID: serverID)
+                            guard !Task.isCancelled else { return }
+                            article.hasContent = false
+                            try? modelContext.save()
+                            // See `UpdateAndSync`'s doc comment: `reload`'s ack doesn't itself
+                            // deliver the refreshed content, so this pulls it back down.
+                            await UpdateAndSync.pollForFreshContent(
+                                container: modelContext.container, client: client, settings: settings
+                            )
+                        } catch {
+                            // Matches the pre-server behavior of swallowing a failed reload
+                            // silently -- this swipe action has no toast/error surface.
+                        }
                     }
                 } label: {
                     Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")

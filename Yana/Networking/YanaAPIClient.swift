@@ -25,6 +25,17 @@ struct YanaAPIClient: Sendable {
         try await send(path: path, method: "POST", query: [:], body: body)
     }
 
+    /// Body-less overload. `post(_:body:)`'s `body` parameter is an opaque `some Encodable`
+    /// sugared generic -- calling it with no argument at all (as every current no-payload POST,
+    /// e.g. `/api/v1/articles/:id/reload` and `/api/v1/aggregate`, does) leaves the compiler no
+    /// argument to infer that generic's concrete type from, even though it defaults to `nil`:
+    /// "generic parameter 'some Encodable' could not be inferred." Confirmed by actually building
+    /// `ArticleActions` against this file rather than trusting the brief's sample call sites.
+    /// Mirrors `get`'s existing `Optional<NoBody>.none` pattern to sidestep the same inference gap.
+    func post<T: Decodable>(_ path: String) async throws -> T {
+        try await send(path: path, method: "POST", query: [:], body: Optional<NoBody>.none)
+    }
+
     /// Raw bytes for a binary response (used for `/images/:hash`), skipping JSON decode.
     func getRaw(_ path: String) async throws -> (Data, HTTPURLResponse) {
         let request = try makeRequest(path: path, method: "GET", query: [:])

@@ -32,7 +32,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         date = article.date
         createdAt = article.createdAt
         tagNames = Set((article.tags ?? []).map(\.name))
-        isStarred = article.isStarred
+        isStarred = article.starred
     }
 
     // Persist every field EXCEPT the runtime-only `persistentID`.

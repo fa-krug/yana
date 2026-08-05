@@ -2717,6 +2717,36 @@
         }
       }
     },
+    "Could not reload this article. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Artikel konnte nicht neu geladen werden. Bitte erneut versuchen."
+          }
+        }
+      }
+    },
+    "Could not check for updates. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es konnte nicht nach Aktualisierungen gesucht werden. Bitte erneut versuchen."
+          }
+        }
+      }
+    },
+    "Not connected to a server.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht mit einem Server verbunden."
+          }
+        }
+      }
+    },
     "More actions": {
       "localizations": {
         "de": {

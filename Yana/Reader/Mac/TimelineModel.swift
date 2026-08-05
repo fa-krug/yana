@@ -198,10 +198,24 @@ final class TimelineModel {
 
     // MARK: - Actions
 
+    /// Toggles locally right away (optimistic -- the new value is already known, unlike
+    /// reload/update-all whose results are fetched separately) and reverts if the server rejects
+    /// it. Silently local-only when not paired yet -- `AuthenticatedClient.current()` returning
+    /// `nil` means "nothing to do," not an error (see its doc comment).
     func toggleStar(_ article: Article) {
         guard let modelContext else { return }
-        article.starred.toggle()
+        let newValue = !article.starred
+        article.starred = newValue
         try? modelContext.save()
+        guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
+        Task {
+            do {
+                try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
+            } catch {
+                article.starred = !newValue
+                try? modelContext.save()
+            }
+        }
     }
 
     func copyLink(_ article: Article) {
@@ -236,32 +250,62 @@ final class TimelineModel {
         }
     }
 
+    /// Triggers the server's per-article reload, then pulls the refreshed content back down. See
+    /// `ReaderScreen.forceUpdateArticle` (iOS) and `UpdateAndSync`'s doc comment for why this
+    /// clears `hasContent` locally and follows up with a bounded `SyncEngine.sync()` poll rather
+    /// than a `/runs/:id` job-status check.
     func forceUpdateArticle(_ article: Article) {
-        guard let modelContext else { return }
+        guard let modelContext,
+              let client = AuthenticatedClient.current(),
+              let serverID = article.serverID
+        else { return }
         let feedName = article.feed?.name
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.forceReload(article: article)
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                self.toast = ToastMessage(text: failure, style: .error)
-            } else {
+            do {
+                try await ArticleActions(client: client).reload(articleServerID: serverID)
+                guard !Task.isCancelled else { return }
+                article.hasContent = false
+                try? modelContext.save()
+                let result = await UpdateAndSync.pollForFreshContent(
+                    container: modelContext.container, client: client, settings: self.settings
+                )
+                guard !Task.isCancelled else { return }
                 self.reloadToken += 1
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feedName))
+                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: result.updatedCount, feedName: feedName))
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.toast = ToastMessage(
+                    text: String(localized: "Could not reload this article. Please try again."),
+                    style: .error
+                )
             }
         }
     }
 
+    /// "Update" only triggers the server's aggregation run (`ArticleActions.updateAll()`); the run
+    /// itself happens server-side and asynchronously, so this follows up with `UpdateAndSync`'s
+    /// bounded poll of `SyncEngine.sync()` to actually pull in whatever the run produced.
     func triggerRefresh() {
         guard let modelContext else { return }
+        guard let client = AuthenticatedClient.current() else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.updateAll()
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                self.toast = ToastMessage(text: failure, style: .error)
-            } else {
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: nil))
+            do {
+                try await ArticleActions(client: client).updateAll()
+                guard !Task.isCancelled else { return }
+                let result = await UpdateAndSync.pollForFreshContent(
+                    container: modelContext.container, client: client, settings: self.settings
+                )
+                guard !Task.isCancelled else { return }
+                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: result.newCount, feedName: nil))
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.toast = ToastMessage(
+                    text: String(localized: "Could not check for updates. Please try again."),
+                    style: .error
+                )
             }
         }
     }
