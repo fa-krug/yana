@@ -16,6 +16,17 @@ private struct SyncPage: Decodable {
 }
 
 private struct FeedsResponse: Decodable { let feeds: [SyncFeedWire] }
+private struct TagsResponse: Decodable { let tags: [SyncTagWire] }
+
+enum SyncEngineError: Error, Equatable {
+    /// The server returned `resyncRequired` on `SyncEngine.maxConsecutiveResyncAttempts`
+    /// consecutive attempts within one `sync()` call. A single resync is the server telling us
+    /// our cursor expired or was compacted -- normal, and handled by starting over. Getting it
+    /// over and over inside the same call means something is persistently wrong (a server bug,
+    /// or an account stuck in a bad state); looping forever inside a `@MainActor` method is worse
+    /// than surfacing an error the caller can retry or report.
+    case persistentResyncRequired
+}
 
 /// Offline-first sync: a full pass replicates the server's article set -- summaries, full block
 /// content, and every referenced image -- into the local SwiftData mirror, not just metadata.
@@ -32,6 +43,12 @@ final class SyncEngine {
     /// server has caught up to head -- see the loop's termination check in `sync()`.
     private let pageLimit = 200
 
+    /// Bounds the `resyncRequired` retry loop below. A single resync (cursor expired/compacted)
+    /// is normal; this many *consecutive* ones inside one `sync()` call means something is
+    /// persistently wrong server-side, and the loop must surface an error instead of spinning
+    /// forever on the main actor.
+    private static let maxConsecutiveResyncAttempts = 3
+
     init(container: ModelContainer, client: YanaAPIClient, settings: AppSettings = AppSettings()) {
         self.container = container
         self.client = client
@@ -40,9 +57,26 @@ final class SyncEngine {
 
     @discardableResult
     func sync() async throws -> SyncResult {
+        do {
+            return try await performSync()
+        } catch YanaAPIClientError.unauthorized {
+            // A session revoked from another device, or the token otherwise expired -- the
+            // stored device token is now dead weight, and leaving it in Keychain would make sync
+            // fail silently forever with no recovery path. Deleting it is enough on its own:
+            // `AuthenticatedClient.current()` returns `nil` once the token is gone, and
+            // `ContentView`'s existing re-pairing gate (`AuthenticatedClient.current() == nil`)
+            // picks that up on the next app-foreground/launch check -- no new UI needed here.
+            KeychainService.deleteDeviceToken()
+            throw YanaAPIClientError.unauthorized
+        }
+    }
+
+    private func performSync() async throws -> SyncResult {
         var totalNew = 0, totalUpdated = 0, totalRemoved = 0
+        var resyncAttempts = 0
 
         try await syncFeeds()
+        try await syncTags()
 
         while true {
             let page: SyncPage = try await client.get(
@@ -51,6 +85,10 @@ final class SyncEngine {
             )
 
             if page.resyncRequired == true {
+                resyncAttempts += 1
+                guard resyncAttempts <= Self.maxConsecutiveResyncAttempts else {
+                    throw SyncEngineError.persistentResyncRequired
+                }
                 // The server no longer recognizes our cursor (e.g. it expired, or the export it
                 // pointed into was compacted). Clearing it and looping starts a fresh full sync
                 // from the beginning rather than giving up -- this is the one case where the loop
@@ -58,6 +96,7 @@ final class SyncEngine {
                 settings.syncCursor = nil
                 continue
             }
+            resyncAttempts = 0
 
             let newSummaries = page.new ?? []
             let updatedSummaries = page.updated ?? []
@@ -72,7 +111,14 @@ final class SyncEngine {
             totalUpdated += updatedSummaries.count
             totalRemoved += removed.count
 
-            settings.syncCursor = page.nextCursor
+            // Only advance the cursor when the server actually provided one -- a `nil`
+            // `nextCursor` on a normal (non-`resyncRequired`) page must leave the existing
+            // cursor alone, not wipe it. Clearing it is `resyncRequired`'s job exclusively
+            // (explicit `= nil` above); wiping it here too would force a full historical
+            // re-download on the next sync for no reason.
+            if let next = page.nextCursor {
+                settings.syncCursor = next
+            }
 
             // A page with fewer than the full limit means we've caught up to head. Counts
             // `removed` too, not just `new`/`updated` -- a page consisting mostly or entirely of
@@ -91,6 +137,16 @@ final class SyncEngine {
         let response: FeedsResponse = try await client.get("/api/v1/feeds")
         let writer = SyncWriter(modelContainer: container)
         _ = await OffMainActor.run { await writer.replaceFeeds(response.feeds) }
+    }
+
+    /// Sibling to `syncFeeds()`: `/tags` is small and unpaginated the same way, and populating
+    /// the `Tag` table is what makes `Feed.tagIDs` resolvable into display names at all (see
+    /// `ArticleSummary.tagNameLookup`/`Article.filterTagNames`). Without this call the `Tag`
+    /// table stays permanently empty and every article reads as "untagged."
+    private func syncTags() async throws {
+        let response: TagsResponse = try await client.get("/api/v1/tags")
+        let writer = SyncWriter(modelContainer: container)
+        _ = await OffMainActor.run { await writer.syncTags(response.tags) }
     }
 
     /// Fetches full content for every locally-known article that doesn't have it yet, at
@@ -120,6 +176,15 @@ final class SyncEngine {
                 let document: WireDocument = try await client.get("/api/v1/articles/\(serverID)/content")
                 let writer = SyncWriter(modelContainer: container)
                 _ = await writer.applyContent(articleServerID: serverID, document: document)
+            } catch YanaAPIClientError.unauthorized {
+                // This loop swallows every other failure by design (see the doc comment above),
+                // so a revoked/expired session would otherwise never reach anything that clears
+                // the stored token -- `sync()`'s top-level catch only sees errors thrown out of
+                // `syncFeeds()`/`syncTags()`/the summary pagination loop, not this backfill's
+                // per-item fetches. Same recovery, no rethrow: the other in-flight fetches still
+                // get their chance, and the next sync attempt will fail fast on `syncFeeds()`
+                // once the token is gone.
+                KeychainService.deleteDeviceToken()
             } catch {
                 // Leave hasContent == false; picked up again on the next sync pass.
             }

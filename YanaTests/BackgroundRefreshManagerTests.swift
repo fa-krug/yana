@@ -53,6 +53,8 @@ struct BackgroundRefreshManagerTests {
             let (data, status): (Data, Int)
             if path == "/api/v1/feeds" {
                 (data, status) = (feedsResponse, 200)
+            } else if path == "/api/v1/tags" {
+                (data, status) = (#"{"tags":[]}"#.data(using: .utf8)!, 200)
             } else if path == "/api/v1/articles/sync" {
                 (data, status) = (syncResponse, 200)
             } else if path.hasSuffix("/content") {
