@@ -40,8 +40,11 @@ struct SyncTagWire: Decodable, Sendable {
 @ModelActor
 actor SyncWriter {
     /// Upserts by `Article.serverID`. Preserves `createdAt` on update (matches the existing
-    /// "an article's timeline position never jumps on re-fetch" rule). Returns the touched rows'
-    /// `PersistentIdentifier`s so the caller can report progress without a second fetch.
+    /// "an article's timeline position never jumps on re-fetch" rule). `read` follows an
+    /// upgrade-only rule on update -- the wire can flip local unread->read but never read->unread,
+    /// so a stale/racing sync page can't undo a read the user just made (see `Article.setRead`).
+    /// Returns the touched rows' `PersistentIdentifier`s so the caller can report progress without a
+    /// second fetch.
     @discardableResult
     func upsertSummaries(_ summaries: [SyncArticleSummaryWire]) -> [PersistentIdentifier] {
         var touched: [PersistentIdentifier] = []
@@ -74,6 +77,9 @@ actor SyncWriter {
                 // There is no separate `url` field on `ArticleSummaryWire`.
                 article.url = summary.identifier
                 article.starred = summary.starred
+                if summary.read {
+                    article.setRead(true)
+                }
                 article.feed = feed
                 // A content update on the server (title/body edit, or just a re-fetch that
                 // changed something) must be re-pulled -- reset unconditionally on every update
@@ -89,6 +95,7 @@ actor SyncWriter {
                 )
                 article.serverID = summary.id
                 article.starred = summary.starred
+                article.setRead(summary.read)
                 article.createdAt = summary.createdAt
                 article.feed = feed
                 modelContext.insert(article)

@@ -224,4 +224,60 @@ struct SyncWriterTests {
         #expect(missing.count == 1)
         #expect(missing.first?.serverID == 101)
     }
+
+    /// "Local wins" rule: a sync pass can upgrade unread→read (the server says another device read
+    /// it), but must never downgrade an already-locally-read article back to unread.
+    @Test func upsertNeverDowngradesALocallyReadArticle() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
+                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    createdAt: now, updatedAt: now)
+        ])
+        let article = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
+        article.setRead(true)
+        try container.mainContext.save()
+
+        // A later sync page reports this article as unread (e.g. a stale cache on the server, or a
+        // race with another client) -- the local read state must survive.
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
+                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    createdAt: now, updatedAt: now.addingTimeInterval(60))
+        ])
+        #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
+    }
+
+    /// The server can upgrade unread -> read (e.g. read from another device).
+    @Test func upsertAppliesServerReadTrueOnUpdate() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
+                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    createdAt: now, updatedAt: now)
+        ])
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
+                                    date: now, author: "", icon: nil, read: true, starred: false,
+                                    createdAt: now, updatedAt: now.addingTimeInterval(60))
+        ])
+        #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
+    }
+
+    /// Insert always takes the wire's `read` value unconditionally -- no local state exists yet to protect.
+    @Test func upsertInsertTakesWireReadValue() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
+                                    date: now, author: "", icon: nil, read: true, starred: false,
+                                    createdAt: now, updatedAt: now)
+        ])
+        #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
+    }
 }
