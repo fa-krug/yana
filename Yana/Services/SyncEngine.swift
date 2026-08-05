@@ -72,6 +72,8 @@ final class SyncEngine {
     }
 
     private func performSync() async throws -> SyncResult {
+        await PendingWriteQueue.flush(using: ArticleActions(client: client), settings: settings)
+
         var totalNew = 0, totalUpdated = 0, totalRemoved = 0
         var resyncAttempts = 0
 

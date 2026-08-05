@@ -334,4 +334,38 @@ struct SyncEngineTests {
             #expect(KeychainService.loadDeviceToken() == nil)
         }
     }
+
+    @Test func syncFlushesPendingWritesBeforePulling() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+            settings.pendingWrites = [PendingWrite(articleServerID: 100, field: .read(true))]
+
+            var sawPatch = false
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                if request.httpMethod == "PATCH", request.url!.path == "/api/v1/articles/100" {
+                    sawPatch = true
+                    return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!,
+                            #"{"id":100,"read":true}"#.data(using: .utf8)!)
+                }
+                let responses: [String: (Data, Int)] = [
+                    "/api/v1/articles/sync": (#"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#.data(using: .utf8)!, 200),
+                    "/api/v1/feeds": (#"{"feeds":[]}"#.data(using: .utf8)!, 200),
+                    "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                ]
+                let (data, status) = responses[request.url!.path] ?? (Data(), 404)
+                return (HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, data)
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            _ = try await engine.sync()
+
+            #expect(sawPatch)
+            #expect(settings.pendingWrites.isEmpty)
+        }
+    }
 }
