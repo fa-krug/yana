@@ -342,9 +342,6 @@ private struct MacSidebarView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            // Re-identified by `.id()` on a CloudKit remote-change bump (see `LibraryRevision`) so
-            // its `@Query` re-fetches — `@Query` never sees `.NSPersistentStoreRemoteChange` on its
-            // own. No local `@State` here to lose: `settings` is passed in and owned elsewhere.
             MacFilterBar(settings: settings)
         }
         .task(id: searchText) {

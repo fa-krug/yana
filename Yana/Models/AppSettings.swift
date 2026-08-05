@@ -64,36 +64,9 @@ final class AppSettings {
         static let hasEvaluatedServerMigrationEligibility = "settings.hasEvaluatedServerMigrationEligibility"
         static let isPreServerMigrationUser = "settings.isPreServerMigrationUser"
         static let hasDismissedServerMigrationNotice = "settings.hasDismissedServerMigrationNotice"
-        // Migration
-        static let hasMigratedToNativeCloudKit = "settings.hasMigratedToNativeCloudKit"
-        static let hasCleanedLegacyCloudKit = "settings.hasCleanedLegacyCloudKit"
         // Mac window layout (device-local, never synced)
         static let macSidebarWidth = "settings.macSidebarWidth"
     }
-
-    // MARK: Migration
-
-    /// One-time: whether the native SwiftData+CloudKit migration has run. Device-local.
-    var hasMigratedToNativeCloudKit: Bool {
-        get { access(keyPath: \.hasMigratedToNativeCloudKit); return defaults.bool(forKey: Key.hasMigratedToNativeCloudKit) }
-        set { withMutation(keyPath: \.hasMigratedToNativeCloudKit) { defaults.set(newValue, forKey: Key.hasMigratedToNativeCloudKit) } }
-    }
-
-    /// One-time: whether the legacy hand-built CloudKit artifacts have been cleaned up. Device-local.
-    /// Stays false (retried next launch) until the deletion succeeds.
-    var hasCleanedLegacyCloudKit: Bool {
-        get { access(keyPath: \.hasCleanedLegacyCloudKit); return defaults.bool(forKey: Key.hasCleanedLegacyCloudKit) }
-        set { withMutation(keyPath: \.hasCleanedLegacyCloudKit) { defaults.set(newValue, forKey: Key.hasCleanedLegacyCloudKit) } }
-    }
-
-    // MARK: Legacy helpers (used by NativeCloudKitMigration to read old keys)
-
-    /// Reads a bool value for a raw UserDefaults key from this settings instance's store.
-    func legacyBool(_ key: String) -> Bool { defaults.bool(forKey: key) }
-    /// Reads a double value for a raw UserDefaults key from this settings instance's store.
-    func legacyDouble(_ key: String) -> Double { defaults.double(forKey: key) }
-    /// Returns true if a value exists for the raw key in this settings instance's store.
-    func legacyHas(_ key: String) -> Bool { defaults.object(forKey: key) != nil }
 
     /// The Mac window's remembered sidebar column width (device-local, never synced — window layout
     /// is per-device). 0 means "unset → use the ideal default".

@@ -40,15 +40,11 @@ source and issue board live at
   the AI summary block) → `02_Timeline` → `03_Feeds` (multi-source proof) → `04_Search` → `05_AI` (the
   Settings AI section). Keep these keys in sync across `ScreenshotUITests.swift`, `Framefile.json`'s
   implied filter, and the `{en-US,de-DE}` caption files.
-  **Known stale debt (pre-existing, not this plan's scope, do not fix casually):** the server-API
-  client rework deleted the native Feeds screen and the per-provider AI section these captures used
-  to navigate through, so `ScreenshotUITests.swift`'s lookups for the old `"settings.feeds"`
-  accessibility identifier (replaced by `SettingsScreenView`'s `"settings.manage"`, which pushes
-  `ManagementWebView` instead of a native list) and the AI section's old `"settings.aiSection"`
-  identifier (the new `AIModeSettingsSection` sets no identifier at all) no longer resolve, and the
-  `05_AI` caption strings (`title.strings`/`keyword.strings` in both locales) still describe the
-  deleted "bring your own key" flow. This is exactly why `xcodebuild test`'s `ScreenshotUITests` run
-  fails at "Feeds link missing" — see **Tests** below.
+  `ScreenshotUITests.swift`'s identifier lookups match the server-API client rework
+  (`"settings.manage"` for the manage row, `"settings.aiSection"` set by `AIModeSettingsSection`)
+  and the capture test passes; the `05_AI` caption strings (`title.strings`/`keyword.strings` in
+  both locales) describe the current two-mode AI story (Apple Intelligence or your server's
+  configured provider), not the deleted "bring your own key" flow.
 - Content is a DEBUG-only offline fixture (`ScreenshotSeed`, `Yana/Utilities/ScreenshotSeed.swift`)
   triggered by the `-UITEST_SCREENSHOTS` launch argument that the `ScreenshotUITests` capture flow
   passes — no network, no committed binaries, fully reproducible. `ScreenshotSeed` authors a small
@@ -96,7 +92,7 @@ source and issue board live at
   in the Fastfile. **Same known stale-identifier debt as the iPhone lane:** the test still selects
   the Settings sidebar pane by its old raw value `"feeds"` (`mac.settings.pane.feeds`), but
   `SettingsPane` (`Yana/Reader/Mac/WindowID.swift`) no longer has a `.feeds` case — the pane set is
-  now `general, reader, manage, ai, about, diagnostics`. Not fixed by this plan; see **Tests**.
+  now `general, reader, manage, ai, about`. Not fixed by this plan; see **Tests**.
 - Shots are **plain captures — no device frame, no gradient, no captions** (the Mac App Store
   convention). Localization comes from the app chrome itself, forced via `-AppleLanguages` /
   `-AppleLocale` launch arguments.
@@ -362,14 +358,10 @@ source and issue board live at
   unchanged: full-text search over title/plainText/author/feed name, swipe-to-star/reload (star is
   optimistic-local + `ArticleActions.setStarred`; reload calls `ArticleActions.reload` then
   `UpdateAndSync.pollForReloadedContent`), swipe-to-delete (local-only), and the same `TagFilterView`
-  filter sheet. A hidden **Diagnostics** entry point still exists in principle — `DiagnosticsReveal`
-  (tap the About → Version row five times within three seconds) is a pure, still-tested state
-  machine, and `AppSettings.diagnosticsUnlocked` still persists the reveal — but the screen it used to
-  unlock (`SyncLogView`, the CloudKit-era sync log) was deleted when CloudKit sync was removed;
-  `MacSettingsWindow`'s `.diagnostics` pane still references the now-deleted `SyncLogView` type. This
-  is a **pre-existing, separately-tracked bug**, Mac-Catalyst-only (the type reference only compiles
-  under `#if targetEnvironment(macCatalyst)`, so it doesn't affect the iOS Simulator build/test run —
-  see **Tests**) — do not fix it incidentally while touching nearby code; it has its own tracked fix.
+  filter sheet. The hidden **Diagnostics** entry point (`DiagnosticsReveal`, the About → Version
+  five-tap gesture, and the `SyncLogView` screen it used to unlock) is gone entirely — removed along
+  with `SettingsPane.diagnostics` once CloudKit sync was removed, since there was no longer a
+  diagnostics screen for it to reveal.
 - **Pre-server-migration notice** (`Yana/Models/ServerMigrationEligibility.swift`,
   `Yana/Views/ServerMigrationNoticeView.swift`, `Yana/Reader/Mac/ServerMigrationNoticeWindowRoot.swift`):
   a one-time classification + notice for devices that completed onboarding before this rework ever
@@ -397,9 +389,9 @@ source and issue board live at
   Welcome/Settings/the pre-server-migration notice as separate singleton `WindowGroup`s
   (`WindowID.welcome`/`.settings`/`.serverNotice`, each bound `for: Bool.self` and always opened with
   the constant `true` so SwiftUI dedupes to one window). What changed is **content, not structure**:
-  `MacSettingsWindow`'s sidebar panes are now `SettingsPane.general/reader/manage/ai/about/diagnostics`
-  (no more `.feeds`/`.tags`/`.integrations` — `.manage` pushes the same `ManagementWebView` iOS uses),
-  gated by the same `DiagnosticsReveal.visiblePanes` hidden-until-unlocked rule as iOS. Creating a
+  `MacSettingsWindow`'s sidebar panes are now `SettingsPane.general/reader/manage/ai/about` (no more
+  `.feeds`/`.tags`/`.integrations`/`.diagnostics` — `.manage` pushes the same `ManagementWebView` iOS
+  uses; the hidden-diagnostics reveal was removed entirely, see **Views**). Creating a
   feed is a sheet presenting `ManagementWebView(path: "/feeds/new")`, not the deleted
   `FeedEditorView`/`WindowID.feedEditor`. Everything else — the Mail-style two-pane keyboard focus
   model (`MacFocusPane`), the sidebar's programmatic-scroll-follow (`SidebarScrollRequest`,
@@ -480,7 +472,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  rework's completion, 294 tests across 78 suites, all passing.
+  rework's completion, 289 tests across 77 suites, all passing.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap
@@ -492,20 +484,18 @@ source and issue board live at
   chain; the latter's comments explicitly note what this rework removed (`ImageSync`/`StoredImage`,
   `AggregationWriter.referencedImageSnapshotForPruning()`) so a reader isn't left hunting for types
   that no longer exist.
-- `YanaTests/ServerMigrationEligibilityTests.swift`/`DiagnosticsRevealTests.swift` — pure state-machine
-  tests for the pre-migration notice and the hidden-diagnostics reveal gesture.
+- `YanaTests/ServerMigrationEligibilityTests.swift` — pure state-machine tests for the pre-migration
+  notice. (The hidden-diagnostics reveal gesture this used to sit alongside,
+  `DiagnosticsRevealTests.swift`, was deleted with the feature it tested — see **Views**.)
 - `YanaUITests/YanaUITests.swift` / `ScreenshotUITests.swift` / `MacScreenshotUITests.swift` — UI
-  tests using XCTest. **Known, currently-failing, out-of-scope-for-this-plan area:** these three
-  files still reference accessibility identifiers/panes this rework deleted —
-  `"settings.feeds"` (now `"settings.manage"`), `"settings.aiSection"` (the new
-  `AIModeSettingsSection` sets no identifier), and the Mac settings sidebar's `"feeds"` pane raw
-  value (now `general/reader/manage/ai/about/diagnostics`) — plus the `05_AI` screenshot caption
-  strings still describing the deleted bring-your-own-key AI section. Running the full suite
-  currently fails exactly `ScreenshotUITests.testCaptureScreenshots` ("Feeds link missing") and
-  `YanaUITests.testSettingsRestoreShowsWelcomeAgain`, both on the stale `"settings.feeds"` lookup;
-  `testLaunch` and `testOnboardingStepsAndFinish` pass. This is a follow-up flagged by the design
-  spec, not a regression — do not "fix" it by guessing at new identifiers without also checking
-  what `ScreenshotUITests`'s whole capture flow and caption set need updating to.
+  tests using XCTest. The iPhone-side identifier lookups (`"settings.manage"`, `"settings.aiSection"`)
+  were fixed to match the server-API client rework and the full iOS Simulator suite passes, including
+  `ScreenshotUITests.testCaptureScreenshots` and `YanaUITests.testSettingsRestoreShowsWelcomeAgain`.
+  **Still-open, out-of-scope-for-this-plan area:** `MacScreenshotUITests.swift` still selects the
+  Settings sidebar pane by the old raw value `"feeds"` (`mac.settings.pane.feeds`), but
+  `SettingsPane` (`Yana/Reader/Mac/WindowID.swift`) no longer has a `.feeds` case — the pane set is
+  now `general/reader/manage/ai/about`. Mac Catalyst tests aren't part of the iOS Simulator
+  `xcodebuild test` run above, so this doesn't show up there.
 - Run tests: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
 - All tests use `@MainActor` for safe concurrency
 - **UI-test isolation:** XCTest reuses **one** simulator app container across test classes and runs

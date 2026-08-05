@@ -131,9 +131,9 @@ enum ScreenshotSeed {
                     bodyParagraphs: [genericBodyParagraph]
                 ),
                 ArticleSpec(
-                    title: "OPML import makes switching readers painless",
-                    author: "switcher",
-                    summary: "Move every subscription over in a single file.",
+                    title: "The case for reading things in the order they arrived",
+                    author: "chronologist",
+                    summary: "Algorithmic feeds optimize for engagement. A plain timeline optimizes for actually reading.",
                     bodyParagraphs: [genericBodyParagraph]
                 )
             ]

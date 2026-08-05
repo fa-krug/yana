@@ -18,23 +18,22 @@ enum ManagedListSearch {
     }
 }
 
-/// Reusable editable list used by the config hub's Feeds, Tags, and Articles screens. Owns the
-/// common chrome — trailing delete (swipe + edit-mode), an optional leading-edge swipe action per
-/// row, optional reorder, and a search-aware empty state. Each screen keeps its own `@Query`,
-/// computes the filtered `items`, and passes a row builder plus edit closures. Callers that need no
-/// leading action use the `EmptyView` convenience initializer.
+/// Reusable editable list, currently used only by `ArticleListView`. Owns the common chrome —
+/// trailing delete (swipe + edit-mode), an optional leading-edge swipe action per row, optional
+/// reorder, and a search-aware empty state. The caller computes the filtered `items` and passes a
+/// row builder plus edit closures. Callers that need no leading action use the `EmptyView`
+/// convenience initializer.
 ///
 /// Reorder and search don't compose (moving rows within a filtered subset is ambiguous), so
 /// `onMove` is suppressed while a search is active.
 ///
 /// **Callers attach `.searchable()` themselves, outside this view** — it is deliberately not
-/// applied here. `TagsView`/`FeedsView` wrap the `ManagedList`-hosting subview in `.id()` so it
-/// re-fetches its `@Query` on a CloudKit remote-change bump (see `LibraryRevision`); `.id()` forces
-/// full identity teardown of everything inside it, and `.searchable()`'s backing search
-/// controller is no exception — the *text* survives (it's a `@Binding` into the stable parent's
-/// `@State`), but first-responder status/cursor/keyboard do not, silently dropping focus out of the
-/// search field mid-typing. Keeping `.searchable()` on the stable parent avoids that; `searchText`
-/// is still threaded through here for the empty-state copy and to gate reorder.
+/// applied here, so a caller that resets this view's identity (e.g. via `.id()`) can keep
+/// `.searchable()` on a stable ancestor instead; `.id()` forces full identity teardown of
+/// everything inside it, and `.searchable()`'s backing search controller is no exception — the
+/// *text* survives (it's a `@Binding` into the stable parent's `@State`), but first-responder
+/// status/cursor/keyboard do not, silently dropping focus out of the search field mid-typing.
+/// `searchText` is still threaded through here for the empty-state copy and to gate reorder.
 struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
     let items: [Item]
     @Binding var searchText: String

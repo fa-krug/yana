@@ -58,8 +58,8 @@ targets:
         # Ship a real Mac app via Mac Catalyst (not the "Designed for iPad" runtime).
         # The Mac build mirrors the iOS 26 deployment target -> macOS 26. Keeping the same
         # PRODUCT_BUNDLE_IDENTIFIER across platforms (DERIVE = NO) means the Mac build shares the
-        # Keychain. macOS-only entitlements (App Sandbox, network client,
-        # user-selected files) live in the shared entitlements file and are ignored on iOS.
+        # Keychain. macOS-only entitlements (App Sandbox, network client) live in the
+        # shared entitlements file and are ignored on iOS.
         SUPPORTS_MACCATALYST: true
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: false
@@ -68,15 +68,6 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.news
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Yana uses Face ID to protect your reading data."
-      configs:
-        # APNs environment for the Push Notifications capability (aps-environment
-        # entitlement). Required for CloudKit's CKDatabaseSubscription silent pushes
-        # to wake the app and pull config changes across devices. Debug builds use the
-        # development APNs sandbox; archived/TestFlight/App Store builds use production.
-        Debug:
-          APS_ENVIRONMENT: development
-        Release:
-          APS_ENVIRONMENT: production
 
   YanaTests:
     type: bundle.unit-test

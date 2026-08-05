@@ -139,11 +139,10 @@ final class ScreenshotUITests: XCTestCase {
         // Frame the shot on the AI block deterministically across locales. `frame.minY` on the
         // menu-style Picker is not a reliable position proxy (row heights differ EN vs DE, so any
         // fixed threshold overshoots one locale), so instead of tuning a stop position we reveal
-        // the row FROM THE TOP: first scroll up until the "Active Provider" row is pushed just
+        // the row FROM THE TOP: first scroll up until the "AI Mode" picker row is pushed just
         // above the viewport, then drag back down in small steps until it re-enters and becomes
         // hittable. A row entering from the top edge lands near the top of the screen regardless
-        // of locale, so its own fields (API key, URL, model) — the "bring your own key" evidence
-        // — fill the frame below it.
+        // of locale, so the picker and its footer/status text fill the frame below it.
         scrollAttempts = 0
         while aiSection.isHittable && scrollAttempts < 8 {
             app.swipeUp(velocity: .slow)
