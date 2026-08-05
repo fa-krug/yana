@@ -27,6 +27,7 @@ struct AIModeSettingsSection: View {
         } footer: {
             Text("Server mode uses whatever AI provider you've configured on the server. Apple Intelligence runs entirely on this device.")
         }
+        .accessibilityIdentifier("settings.aiSection")
         .task { appleIntelligenceStatus = AppleIntelligenceClient().availability }
     }
 

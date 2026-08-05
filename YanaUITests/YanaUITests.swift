@@ -109,7 +109,7 @@ final class YanaUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(settingsButton.waitForExistence(timeout: Self.uiTimeout))
         settingsButton.tap()
-        XCTAssertTrue(app.buttons["settings.feeds"].waitForExistence(timeout: Self.uiTimeout))   // Settings opened
+        XCTAssertTrue(app.buttons["settings.manage"].waitForExistence(timeout: Self.uiTimeout))   // Settings opened
 
         // Scroll to the restore row (About section, bottom of the form) and tap it.
         let restore = app.buttons["settings.showWelcome"]
