@@ -14,7 +14,10 @@ actor ArticleSummaryLoader {
         descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         let rows = try StartupTrace.measure("fullLoad.fetch") { try modelContext.fetch(descriptor) }
-        return StartupTrace.measure("fullLoad.map") { rows.map(ArticleSummary.init) }
+        let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
+        return StartupTrace.measure("fullLoad.map") {
+            rows.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
+        }
     }
 
     /// Anchor-centered slice for the cold-cache fast path: the ~`2*radius+1` articles around the
@@ -25,6 +28,8 @@ actor ArticleSummaryLoader {
         // exact-timestamp ties the anchor may not land in the truncated window; that is acceptable
         // and self-healing — this is only the transient cold-cache first-paint set, and the full
         // load (ms later) plus reanchor-by-identifier resolves the true position regardless.
+        let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
+
         if let anchorID, let anchorDate = try anchorCreatedAt(for: anchorID) {
             var newerD = lightDescriptor(
                 predicate: #Predicate { $0.createdAt >= anchorDate }, order: .forward
@@ -38,12 +43,12 @@ actor ArticleSummaryLoader {
             olderD.fetchLimit = radius
             let older = try modelContext.fetch(olderD)
 
-            return (Array(older.reversed()) + newer).map(ArticleSummary.init)
+            return (Array(older.reversed()) + newer).map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
         }
 
         var newestD = lightDescriptor(predicate: nil, order: .reverse)
         newestD.fetchLimit = 2 * radius + 1
-        return try modelContext.fetch(newestD).reversed().map(ArticleSummary.init)
+        return try modelContext.fetch(newestD).reversed().map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 
     /// How many `Article` rows the store holds. A single SQL aggregate — cheap enough to run as a
@@ -62,7 +67,8 @@ actor ArticleSummaryLoader {
             predicate: #Predicate { wanted.contains($0.persistentModelID) }, order: .forward
         )
         descriptor.fetchLimit = wanted.count
-        return try modelContext.fetch(descriptor).map(ArticleSummary.init)
+        let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
+        return try modelContext.fetch(descriptor).map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 
     private func anchorCreatedAt(for identifier: String) throws -> Date? {

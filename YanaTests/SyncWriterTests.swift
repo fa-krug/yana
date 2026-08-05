@@ -46,6 +46,112 @@ struct SyncWriterTests {
         _ = feedID
     }
 
+    /// Critical 2 fix: `ArticleSummaryWire` has no separate `url` field -- the server's own
+    /// aggregators set `identifier` to the article's URL/permalink directly (confirmed against
+    /// yana-server's `website`/`reddit`/`youtube` aggregators). Without this, Share/Open in
+    /// Browser/Copy Link are permanently inert on every synced article.
+    @Test func upsertSetsArticleURLFromIdentifierOnInsertAndUpdate() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "https://example.com/a",
+                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    createdAt: now, updatedAt: now)
+        ])
+        let inserted = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
+        #expect(inserted.url == "https://example.com/a")
+
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "https://example.com/a-moved",
+                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    createdAt: now, updatedAt: now.addingTimeInterval(60))
+        ])
+        let updated = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
+        #expect(updated.url == "https://example.com/a-moved")
+    }
+
+    /// Critical 3 fix: a server-side content update must be re-pulled. `upsertSummaries`'s
+    /// update branch didn't reset `hasContent`, so `SyncEngine.backfillMissingContent()`'s
+    /// `hasContent == false` scan never re-fetched an updated article's body.
+    @Test func upsertResetsHasContentOnUpdateSoStaleBodyGetsBackfilled() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Original", identifier: "art-100",
+                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    createdAt: now, updatedAt: now)
+        ])
+        let doc = try JSONDecoder().decode(WireDocument.self, from: #"{"version":1,"blocks":[]}"#.data(using: .utf8)!)
+        _ = await writer.applyContent(articleServerID: 100, document: doc)
+        #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.hasContent == true)
+
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Updated Title", identifier: "art-100",
+                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    createdAt: now, updatedAt: now.addingTimeInterval(60))
+        ])
+        #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.hasContent == false)
+
+        let missing = await writer.articlesMissingContent(limit: 10)
+        #expect(missing.map(\.serverID) == [100])
+    }
+
+    /// Important 7 fix: `replaceFeeds` is upsert-only despite its name -- a feed the server stops
+    /// returning must be deleted locally too, or it keeps showing in `TagFilterView`'s Feeds
+    /// section forever.
+    @Test func replaceFeedsRemovesLocalFeedsTheServerNoLongerReturns() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        _ = await writer.replaceFeeds([
+            SyncFeedWire(id: 1, name: "Feed One", aggregator: "feed_content", identifier: "f1",
+                         enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now),
+            SyncFeedWire(id: 2, name: "Feed Two", aggregator: "feed_content", identifier: "f2",
+                         enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now),
+        ])
+        _ = await writer.replaceFeeds([
+            SyncFeedWire(id: 1, name: "Feed One", aggregator: "feed_content", identifier: "f1",
+                         enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+        ])
+        let feeds = try container.mainContext.fetch(FetchDescriptor<Feed>())
+        #expect(feeds.map(\.name) == ["Feed One"])
+    }
+
+    /// Critical 1 fix: `SyncWriter` never populated any `Tag` row, so `TagFilterView`'s Tags
+    /// section was always empty and every article read as "untagged." `syncTags` upserts by
+    /// `Tag.serverID`, mirroring `replaceFeeds`.
+    @Test func syncTagsUpsertsByServerID() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let ids = await writer.syncTags([SyncTagWire(id: 1, name: "News", color: "#ff0000")])
+        #expect(ids.count == 1)
+
+        var tags = try container.mainContext.fetch(FetchDescriptor<Yana.Tag>())
+        #expect(tags.count == 1)
+        #expect(tags.first?.name == "News")
+        #expect(tags.first?.colorHex == "#ff0000")
+        #expect(tags.first?.serverID == 1)
+
+        _ = await writer.syncTags([SyncTagWire(id: 1, name: "News Renamed", color: "#00ff00")])
+        tags = try container.mainContext.fetch(FetchDescriptor<Yana.Tag>())
+        #expect(tags.count == 1)
+        #expect(tags.first?.name == "News Renamed")
+        #expect(tags.first?.colorHex == "#00ff00")
+    }
+
+    @Test func syncTagsRemovesLocalTagsTheServerNoLongerReturns() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        _ = await writer.syncTags([
+            SyncTagWire(id: 1, name: "News", color: "#ff0000"),
+            SyncTagWire(id: 2, name: "Fun", color: "#00ff00"),
+        ])
+        _ = await writer.syncTags([SyncTagWire(id: 1, name: "News", color: "#ff0000")])
+        let tags = try container.mainContext.fetch(FetchDescriptor<Yana.Tag>())
+        #expect(tags.map(\.name) == ["News"])
+    }
+
     @Test func upsertUpdatesExistingArticleByServerIDPreservingCreatedAt() async throws {
         let container = try makeContainer()
         let writer = SyncWriter(modelContainer: container)

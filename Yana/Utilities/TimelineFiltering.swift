@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// Items the timeline filters operate on. Both the full `Article` and the lightweight
 /// `ArticleSummary` conform, so the same filter pipeline serves the reader and the list.
@@ -14,7 +15,25 @@ protocol TimelineIdentifiable {
 }
 
 extension Article: TimelineFilterable {
-    var filterTagNames: [String] { (tags ?? []).map(\.name) }
+    /// Tag membership is a live join, not the old per-article snapshot: `Article.tags` is never
+    /// populated by `SyncWriter` any more (tag membership lives on `Feed.tagIDs`, refreshed from
+    /// `/feeds` each sync). Resolves `feed?.tagIDs` against every synced `Tag` row's `serverID`,
+    /// matching `ArticleSummary.tagNameLookup`'s derivation exactly. Production filtering only
+    /// ever runs over `[ArticleSummary]` (which precomputes this at construction, once per
+    /// index build); this conformance exists for API completeness and direct-`Article` tests, so
+    /// a per-call fetch here -- rather than plumbing a lookup map through a parameterless
+    /// protocol requirement -- is an acceptable, deliberately un-optimized trade.
+    var filterTagNames: [String] {
+        guard let tagIDs = feed?.tagIDs, !tagIDs.isEmpty else { return [] }
+        guard let context = modelContext else { return [] }
+        let tags = (try? context.fetch(FetchDescriptor<Tag>())) ?? []
+        var namesByID: [Int: String] = [:]
+        for tag in tags {
+            guard let serverID = tag.serverID else { continue }
+            namesByID[serverID] = tag.name
+        }
+        return tagIDs.compactMap { namesByID[$0] }
+    }
     var filterFeedName: String? { feed?.name }
     var filterStarred: Bool { starred }
 }

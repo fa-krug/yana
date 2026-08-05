@@ -22,7 +22,14 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
 
     var id: String { identifier }
 
-    init(_ article: Article) {
+    /// `tagNamesByID` is the server-id -> name lookup built by `tagNameLookup(in:)`. Tag
+    /// membership is no longer a per-article snapshot (`Article.tags` is never populated by
+    /// `SyncWriter`) -- it's a live join from the owning feed's current `tagIDs` against
+    /// whatever `SyncWriter.syncTags` last wrote to the `Tag` table, per the design spec's
+    /// "Tag filtering... becomes live" decision. Defaults to an empty map so every existing call
+    /// site that doesn't have a lookup handy (mostly tests) still compiles; those callers just
+    /// get an untagged summary, matching what happened before this join existed.
+    init(_ article: Article, tagNamesByID: [Int: String] = [:]) {
         persistentID = article.persistentModelID
         identifier = article.identifier
         title = article.title
@@ -31,7 +38,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         author = article.author
         date = article.date
         createdAt = article.createdAt
-        tagNames = Set((article.tags ?? []).map(\.name))
+        tagNames = Set((article.feed?.tagIDs ?? []).compactMap { tagNamesByID[$0] })
         isStarred = article.starred
     }
 
@@ -65,5 +72,23 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(tagNames, forKey: .tagNames)
         try c.encode(isStarred, forKey: .isStarred)
+    }
+}
+
+extension ArticleSummary {
+    /// Server-id -> name lookup for every synced `Tag`, for resolving a `Feed.tagIDs` list into
+    /// display names at construction time. `/tags` is small and unpaginated (mirrors `/feeds`),
+    /// so fetching every row per call is cheap; built with a plain loop rather than
+    /// `Dictionary(uniqueKeysWithValues:)` because that traps on a duplicate key, and nothing
+    /// here can prove two `Tag` rows never share a `serverID` (a bug in `SyncWriter.syncTags`, or
+    /// a stray legacy row) -- last-write-wins here degrades to a wrong tag name, not a crash.
+    static func tagNameLookup(in context: ModelContext) -> [Int: String] {
+        let tags = (try? context.fetch(FetchDescriptor<Tag>())) ?? []
+        var map: [Int: String] = [:]
+        for tag in tags {
+            guard let serverID = tag.serverID else { continue }
+            map[serverID] = tag.name
+        }
+        return map
     }
 }

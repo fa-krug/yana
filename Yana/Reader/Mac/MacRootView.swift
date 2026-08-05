@@ -396,7 +396,8 @@ private struct MacSidebarView: View {
         descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         let matches = (try? modelContext.fetch(descriptor)) ?? []
-        searchResults = matches.map(ArticleSummary.init)
+        let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
+        searchResults = matches.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 }
 

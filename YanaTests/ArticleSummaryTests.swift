@@ -12,19 +12,25 @@ struct ArticleSummaryTests {
         return ModelContext(container)
     }
 
+    /// Tag membership is a live join now, not a per-article snapshot: `Article.tags` (still on
+    /// the model, but never populated by `SyncWriter`) is not read at all -- the name comes from
+    /// resolving the feed's current `tagIDs` against a synced `Tag`'s `serverID`, exactly what
+    /// `SyncWriter.syncTags`/`replaceFeeds` populate.
     @Test func mapsArticleFieldsTagsAndStar() throws {
         let context = try makeContext()
         let news = Yana.Tag(name: "News")
+        news.serverID = 1
         let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
+        feed.tagIDs = [1]
         let article = Article(title: "Hello", identifier: "a1", url: "u",
                               date: .now, author: "Ada")
         article.feed = feed
-        article.tags = [news]
         article.starred = true
-        context.insert(feed); context.insert(article)
+        context.insert(feed); context.insert(news); context.insert(article)
         try context.save()
 
-        let summary = ArticleSummary(article)
+        let tagMap = ArticleSummary.tagNameLookup(in: context)
+        let summary = ArticleSummary(article, tagNamesByID: tagMap)
 
         #expect(summary.identifier == "a1")
         #expect(summary.title == "Hello")
@@ -38,12 +44,16 @@ struct ArticleSummaryTests {
 
     @Test func summaryConformsToFilterAndIdentityProtocols() throws {
         let context = try makeContext()
+        let tech = Yana.Tag(name: "Tech")
+        tech.serverID = 1
         let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
+        feed.tagIDs = [1]
         let article = Article(title: "T", identifier: "a2", url: "u")
         article.feed = feed
-        article.tags = [Yana.Tag(name: "Tech")]
-        context.insert(feed); context.insert(article)
-        let summary = ArticleSummary(article)
+        context.insert(feed); context.insert(tech); context.insert(article)
+
+        let tagMap = ArticleSummary.tagNameLookup(in: context)
+        let summary = ArticleSummary(article, tagNamesByID: tagMap)
 
         #expect(summary.filterFeedName == "Acme")
         #expect(summary.filterTagNames == ["Tech"])

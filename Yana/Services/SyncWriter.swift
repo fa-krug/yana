@@ -27,6 +27,13 @@ struct SyncFeedWire: Decodable, Sendable {
     let updatedAt: Date
 }
 
+/// The server's `TagWire` shape (`GET /api/v1/tags`): `{ id, name, color }`.
+struct SyncTagWire: Decodable, Sendable {
+    let id: Int
+    let name: String
+    let color: String
+}
+
 /// The `SyncEngine`'s write path. Mirrors `AggregationWriter`'s role exactly -- everything it
 /// does is a plain `ModelContext` write, so `ArticleStore`'s `ModelContext.didSave` observer
 /// picks up every change with no changes needed on that side (see `ArticleStore.swift`).
@@ -134,8 +141,10 @@ actor SyncWriter {
     @discardableResult
     func replaceFeeds(_ feeds: [SyncFeedWire]) -> [PersistentIdentifier] {
         var touched: [PersistentIdentifier] = []
+        var seenIdentifiers = Set<String>()
         for wire in feeds {
             let idString = String(wire.id)
+            seenIdentifiers.insert(idString)
             let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.identifier == idString })
             if let feed = try? modelContext.fetch(descriptor).first {
                 feed.name = wire.name
@@ -154,6 +163,56 @@ actor SyncWriter {
                 feed.updatedAt = wire.updatedAt
                 modelContext.insert(feed)
                 touched.append(feed.persistentModelID)
+            }
+        }
+        // `/feeds` is a full, unpaginated snapshot -- a feed missing from this response was
+        // deleted server-side, so its local mirror (and, via the model's cascade delete rule,
+        // its articles) must go too. Without this, a deleted feed keeps showing in
+        // `TagFilterView`'s Feeds section forever, since this method is otherwise upsert-only.
+        if let existing = try? modelContext.fetch(FetchDescriptor<Feed>()) {
+            for feed in existing where !seenIdentifiers.contains(feed.identifier) {
+                modelContext.delete(feed)
+            }
+        }
+        try? modelContext.save()
+        return touched
+    }
+
+    /// Full replace-by-upsert of every tag the server returned, mirroring `replaceFeeds`'s shape
+    /// exactly (`/tags` is small and unpaginated too). Populates `Tag.serverID`, which
+    /// `ArticleSummary.tagNameLookup`/`Article.filterTagNames` (`TimelineFiltering.swift`) join
+    /// against `Feed.tagIDs` to resolve an article's tag names -- tag membership is a live join
+    /// now, not a per-article snapshot, so this is the one write path that keeps the `Tag` table
+    /// itself current. Without it `TagFilterView`'s Tags section stays permanently empty and
+    /// every article reads as "untagged."
+    @discardableResult
+    func syncTags(_ tags: [SyncTagWire]) -> [PersistentIdentifier] {
+        var touched: [PersistentIdentifier] = []
+        var seenServerIDs = Set<Int>()
+        for wire in tags {
+            seenServerIDs.insert(wire.id)
+            let targetServerID = wire.id
+            let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.serverID == targetServerID })
+            if let tag = try? modelContext.fetch(descriptor).first {
+                tag.name = wire.name
+                tag.colorHex = wire.color
+                touched.append(tag.persistentModelID)
+            } else {
+                let tag = Tag(name: wire.name, colorHex: wire.color)
+                tag.serverID = wire.id
+                modelContext.insert(tag)
+                touched.append(tag.persistentModelID)
+            }
+        }
+        // Same full-replace rule `replaceFeeds` follows: drop any local `Tag` the server no
+        // longer returns (deleted server-side, or a leftover from before this rework ever wrote
+        // a `serverID` at all).
+        if let existing = try? modelContext.fetch(FetchDescriptor<Tag>()) {
+            for tag in existing {
+                guard let serverID = tag.serverID, seenServerIDs.contains(serverID) else {
+                    modelContext.delete(tag)
+                    continue
+                }
             }
         }
         try? modelContext.save()

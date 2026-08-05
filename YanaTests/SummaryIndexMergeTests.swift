@@ -26,7 +26,7 @@ struct SummaryIndexMergeTests {
             articles.append(a)
         }
         try context.save()
-        return (container, articles, articles.map(ArticleSummary.init))
+        return (container, articles, articles.map { ArticleSummary($0) })
     }
 
     @Test func insertLandsInCreatedAtOrder() throws {

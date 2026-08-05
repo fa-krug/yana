@@ -1,21 +1,44 @@
 import Foundation
+import SwiftData
 import Testing
 @testable import Yana
 
 @MainActor
 @Suite("ArticleListFiltering")
 struct ArticleListFilteringTests {
-    private func article(title: String, tagName: String?) -> Article {
+    private func makeContext() throws -> ModelContext {
+        let container = try ModelContainer(
+            for: Article.self, Feed.self, Tag.self,
+            configurations: .init(isStoredInMemoryOnly: true)
+        )
+        return ModelContext(container)
+    }
+
+    /// Tag membership is a live join from `feed?.tagIDs` against synced `Tag.serverID`s (not the
+    /// old per-article `Article.tags` snapshot), so an untagged article just gets its own
+    /// feed with no tag ids -- no `Tag` row needed for that case.
+    private func article(title: String, feed: Feed, in context: ModelContext) -> Article {
         let a = Article(title: title, identifier: UUID().uuidString, url: "u")
-        if let tagName { a.tags = [Tag(name: tagName)] }
+        a.feed = feed
+        context.insert(a)
         return a
     }
 
-    @Test func searchThenTagFilterCompose() {
+    @Test func searchThenTagFilterCompose() throws {
+        let context = try makeContext()
+        let techFeed = Feed(name: "Tech Feed", aggregator: "feedContent", identifier: "tech")
+        techFeed.tagIDs = [1]
+        let foodFeed = Feed(name: "Food Feed", aggregator: "feedContent", identifier: "food")
+        foodFeed.tagIDs = [2]
+        let techTag = Tag(name: "Tech"); techTag.serverID = 1
+        let foodTag = Tag(name: "Food"); foodTag.serverID = 2
+        context.insert(techFeed); context.insert(foodFeed)
+        context.insert(techTag); context.insert(foodTag)
+
         let articles = [
-            article(title: "Swift news", tagName: "Tech"),
-            article(title: "Swift cooking", tagName: "Food"),
-            article(title: "Rust news", tagName: "Tech"),
+            article(title: "Swift news", feed: techFeed, in: context),
+            article(title: "Swift cooking", feed: foodFeed, in: context),
+            article(title: "Rust news", feed: techFeed, in: context),
         ]
         let searched = ArticleSearch.filter(articles, query: "swift") // -> 2 articles
         let filtered = TagFilter.apply(to: searched, disabledTagNames: ["Food"], includeUntagged: true)
@@ -23,8 +46,11 @@ struct ArticleListFilteringTests {
         #expect(filtered.first?.title == "Swift news")
     }
 
-    @Test func untaggedExcludedWhenFlagOff() {
-        let articles = [article(title: "Swift", tagName: nil)]
+    @Test func untaggedExcludedWhenFlagOff() throws {
+        let context = try makeContext()
+        let feed = Feed(name: "Feed", aggregator: "feedContent", identifier: "f")
+        context.insert(feed)
+        let articles = [article(title: "Swift", feed: feed, in: context)]
         let searched = ArticleSearch.filter(articles, query: "swift")
         #expect(TagFilter.apply(to: searched, disabledTagNames: [], includeUntagged: false).isEmpty)
     }
