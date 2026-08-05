@@ -7,8 +7,7 @@ import UIKit
 /// refresh) and the SwiftUI scene.
 ///
 /// `ModelContainer` is `Sendable`, so the static let is safe to access from any
-/// isolation domain. The tag bootstrap (`ensureBuiltIns` + conditional save) runs in a
-/// post-launch main-actor task so it does not block `didFinishLaunchingWithOptions`.
+/// isolation domain.
 enum AppContainer {
     static let shared: ModelContainer = {
         do {
@@ -72,18 +71,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
 
-        // Tag bootstrap is idempotent and not needed before first paint (the Starred tag is only
-        // consulted on a user star action, by the tag-filter list, and on upsert — all reached
-        // well after this task runs), so move its fetch + save off the synchronous launch path.
-        // Save only when an insert actually happened — no per-launch context flush.
-        Task { @MainActor in
-            StartupTrace.measure("Tag.ensureBuiltIns") {
-                let context = AppContainer.shared.mainContext
-                if Tag.ensureBuiltIns(in: context) {
-                    try? context.save()
-                }
-            }
-        }
         StartupTrace.event("didFinishLaunching.end")
         return true
     }

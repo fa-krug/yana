@@ -20,8 +20,7 @@ enum UITestReset {
         // Articles first: they reference feeds and tags.
         for article in (try? context.fetch(FetchDescriptor<Article>())) ?? [] { context.delete(article) }
         for feed in (try? context.fetch(FetchDescriptor<Feed>())) ?? [] { context.delete(feed) }
-        // Built-in tags are re-created by the post-launch `ensureBuiltIns` bootstrap; seeded user
-        // tags would otherwise linger in the tag filter and lengthen the Settings form.
+        // Seeded user tags would otherwise linger in the tag filter and lengthen the Settings form.
         for tag in (try? context.fetch(FetchDescriptor<Tag>())) ?? [] { context.delete(tag) }
         do {
             try context.save()
