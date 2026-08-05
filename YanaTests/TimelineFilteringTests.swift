@@ -28,6 +28,14 @@ struct TimelineFilteringTests {
         #expect(TagFilter.apply(to: [a], disabledTagNames: ["Tech", "Fun"], includeUntagged: true).isEmpty)
     }
 
+    @Test func starredOnlyFiltersOutUnstarred() {
+        let starred = article("a", tags: [])
+        starred.starred = true
+        let unstarred = article("b", tags: [])
+        #expect(StarredFilter.apply(to: [starred, unstarred], starredOnly: false).count == 2)
+        #expect(StarredFilter.apply(to: [starred, unstarred], starredOnly: true).map(\.identifier) == ["a"])
+    }
+
     @Test func anchorResolvesToIndexOrNewest() {
         let a = article("a", tags: [])
         let b = article("b", tags: [])

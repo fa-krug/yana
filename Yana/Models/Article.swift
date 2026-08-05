@@ -38,7 +38,13 @@ final class Article {
     var summary: String = ""
     var createdAt: Date = Date.now
 
-    /// Snapshot of the feed's tags at import, plus the built-in Starred tag when starred.
+    var starred: Bool = false
+    /// Whether this article's content has been synced yet (`false` right after its summary
+    /// arrives from `/articles/sync`, `true` once `/articles/:id/content` succeeds). Drives the
+    /// sync engine's content-backfill retry, not just a display flag.
+    var hasContent: Bool = false
+
+    /// Snapshot of the feed's tags at import.
     var tags: [Tag]?
 
     var feed: Feed?
@@ -77,24 +83,6 @@ final class Article {
             blockData = (try? JSONEncoder().encode(newValue)) ?? Data()
             plainText = BlockParser.plainText(newValue)
             if case let .image(ref, _)? = newValue.first { leadImageRef = ref } else { leadImageRef = "" }
-        }
-    }
-
-    /// Starred state is expressed purely as membership of the built-in tag.
-    var isStarred: Bool { (tags ?? []).contains { $0.isBuiltIn } }
-
-    /// Add or remove the built-in Starred tag.
-    func setStarred(_ starred: Bool, using starredTag: Tag) {
-        if starred {
-            var t = tags ?? []
-            guard !t.contains(where: { $0.id == starredTag.id }) else { return }
-            t.append(starredTag)
-            tags = t
-        } else {
-            let current = tags ?? []
-            let filtered = current.filter { !$0.isBuiltIn }
-            guard filtered.count != current.count else { return }
-            tags = filtered
         }
     }
 }

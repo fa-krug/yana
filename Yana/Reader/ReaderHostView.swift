@@ -135,7 +135,8 @@ struct ReaderScreen: View {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
-        filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        filteredArticles = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
@@ -151,6 +152,7 @@ struct ReaderScreen: View {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
+            starredOnly: settings.starredOnly,
             anchorIdentifier: settings.timelineAnchorIdentifier
         )
         filteredArticles = resolved.articles
@@ -251,6 +253,7 @@ struct ReaderScreen: View {
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
+        .onChange(of: settings.starredOnly) { _, _ in recomputeFilter() }
 
     }
 

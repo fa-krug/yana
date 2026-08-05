@@ -90,6 +90,7 @@ struct MacRootView: View {
         .onChange(of: settings.disabledTagNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.includeUntagged) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.disabledFeedNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
+        .onChange(of: settings.starredOnly) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onDisappear {
             spinnerHoldTask?.cancel()
             spinnerHoldTask = nil
@@ -313,6 +314,7 @@ private struct MacSidebarView: View {
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeDisplayed() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.starredOnly) { _, _ in recomputeDisplayed() }
         .scrollPosition(id: $scrollAnchorID, anchor: .center)
         .onChange(of: model.scrollTarget) { _, target in
             guard let target, target.token != lastAppliedScrollToken else { return }
@@ -385,7 +387,8 @@ private struct MacSidebarView: View {
         let byTag = TagFilter.apply(to: searchResults,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
-        displayed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        displayed = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     private func runSearch() async {
@@ -413,6 +416,9 @@ private struct MacFilterBar: View {
 
     var body: some View {
         Menu {
+            toggle(String(localized: "Starred Only"), isOn: settings.starredOnly) {
+                settings.starredOnly = $0
+            }
             Section("Tags") {
                 ForEach(tags) { tag in
                     toggle(tag.name, isOn: !settings.disabledTagNames.contains(tag.name)) { active in
@@ -442,6 +448,7 @@ private struct MacFilterBar: View {
                     settings.disabledTagNames = []
                     settings.disabledFeedNames = []
                     settings.includeUntagged = true
+                    settings.starredOnly = false
                 }
             }
         } label: {

@@ -64,7 +64,8 @@ struct ArticleListView: View {
         let byTag = TagFilter.apply(to: base,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
-        return FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }

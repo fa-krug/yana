@@ -135,7 +135,8 @@ final class TimelineModel {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
-        filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        filteredArticles = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     /// First load: filter + park on the saved anchor in one pass. Subsequent deliveries refilter and
@@ -152,6 +153,7 @@ final class TimelineModel {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
+            starredOnly: settings.starredOnly,
             anchorIdentifier: settings.timelineAnchorIdentifier
         )
         filteredArticles = resolved.articles

@@ -5,6 +5,7 @@ import Foundation
 protocol TimelineFilterable {
     var filterTagNames: [String] { get }
     var filterFeedName: String? { get }
+    var filterStarred: Bool { get }
 }
 
 /// Items addressable by their stable `identifier` (the timeline anchor key).
@@ -15,6 +16,7 @@ protocol TimelineIdentifiable {
 extension Article: TimelineFilterable {
     var filterTagNames: [String] { (tags ?? []).map(\.name) }
     var filterFeedName: String? { feed?.name }
+    var filterStarred: Bool { starred }
 }
 
 extension Article: TimelineIdentifiable {}
@@ -22,6 +24,7 @@ extension Article: TimelineIdentifiable {}
 extension ArticleSummary: TimelineFilterable {
     var filterTagNames: [String] { Array(tagNames) }
     var filterFeedName: String? { feedName.isEmpty ? nil : feedName }
+    var filterStarred: Bool { isStarred }
 }
 
 extension ArticleSummary: TimelineIdentifiable {}
@@ -50,6 +53,15 @@ enum FeedFilter {
             guard let name = item.filterFeedName else { return true }
             return !disabledFeedNames.contains(name)
         }
+    }
+}
+
+/// Filters the timeline to starred items only, when the "Starred Only" quick-filter is on. A
+/// no-op (returns `items` unchanged) when `starredOnly` is false.
+enum StarredFilter {
+    static func apply<T: TimelineFilterable>(to items: [T], starredOnly: Bool) -> [T] {
+        guard starredOnly else { return items }
+        return items.filter { $0.filterStarred }
     }
 }
 

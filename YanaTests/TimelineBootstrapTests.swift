@@ -6,8 +6,9 @@ struct TimelineBootstrapTests {
         let identifier: String
         let filterTagNames: [String]
         let filterFeedName: String?
-        init(_ id: String, tags: [String] = ["t"], feed: String? = "f") {
-            identifier = id; filterTagNames = tags; filterFeedName = feed
+        let filterStarred: Bool
+        init(_ id: String, tags: [String] = ["t"], feed: String? = "f", starred: Bool = false) {
+            identifier = id; filterTagNames = tags; filterFeedName = feed; filterStarred = starred
         }
     }
 
@@ -15,7 +16,7 @@ struct TimelineBootstrapTests {
         let items = [Item("a"), Item("b"), Item("c")]
         let r = TimelineBootstrap.resolve(
             summaries: items, disabledTagNames: [], includeUntagged: true,
-            disabledFeedNames: [], anchorIdentifier: "b"
+            disabledFeedNames: [], starredOnly: false, anchorIdentifier: "b"
         )
         #expect(r.articles.map(\.identifier) == ["a", "b", "c"])
         #expect(r.anchorIndex == 1)
@@ -25,7 +26,7 @@ struct TimelineBootstrapTests {
         let items = [Item("a"), Item("b")]
         let r = TimelineBootstrap.resolve(
             summaries: items, disabledTagNames: [], includeUntagged: true,
-            disabledFeedNames: [], anchorIdentifier: "ghost"
+            disabledFeedNames: [], starredOnly: false, anchorIdentifier: "ghost"
         )
         #expect(r.anchorIndex == 1)   // newest = last index
     }
@@ -35,7 +36,7 @@ struct TimelineBootstrapTests {
         let items = [Item("a", tags: ["hidden"]), Item("b"), Item("c")]
         let r = TimelineBootstrap.resolve(
             summaries: items, disabledTagNames: ["hidden"], includeUntagged: false,
-            disabledFeedNames: [], anchorIdentifier: "c"
+            disabledFeedNames: [], starredOnly: false, anchorIdentifier: "c"
         )
         #expect(r.articles.map(\.identifier) == ["b", "c"])
         #expect(r.anchorIndex == 1)
@@ -44,9 +45,19 @@ struct TimelineBootstrapTests {
     @Test func emptyInputYieldsZeroIndex() {
         let r = TimelineBootstrap.resolve(
             summaries: [Item](), disabledTagNames: [], includeUntagged: true,
-            disabledFeedNames: [], anchorIdentifier: "x"
+            disabledFeedNames: [], starredOnly: false, anchorIdentifier: "x"
         )
         #expect(r.articles.isEmpty)
+        #expect(r.anchorIndex == 0)
+    }
+
+    @Test func starredOnlyFiltersToStarredItems() {
+        let items = [Item("a", starred: false), Item("b", starred: true), Item("c", starred: false)]
+        let r = TimelineBootstrap.resolve(
+            summaries: items, disabledTagNames: [], includeUntagged: true,
+            disabledFeedNames: [], starredOnly: true, anchorIdentifier: "b"
+        )
+        #expect(r.articles.map(\.identifier) == ["b"])
         #expect(r.anchorIndex == 0)
     }
 }

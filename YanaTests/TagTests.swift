@@ -12,25 +12,6 @@ struct TagTests {
         return ModelContext(container)
     }
 
-    @Test func seedsStarredOnceAndIsIdempotent() throws {
-        let context = try makeContext()
-        Yana.Tag.ensureBuiltIns(in: context)
-        Yana.Tag.ensureBuiltIns(in: context)
-        try context.save()
-
-        let starred = try context.fetch(FetchDescriptor<Yana.Tag>(predicate: #Predicate { $0.isBuiltIn }))
-        #expect(starred.count == 1)
-        #expect(starred.first?.name == Yana.Tag.starredName)
-    }
-
-    @Test func ensureBuiltInsReportsWhetherInserted() throws {
-        let context = try makeContext()
-        #expect(Yana.Tag.ensureBuiltIns(in: context) == true)   // first call inserts
-        #expect(Yana.Tag.ensureBuiltIns(in: context) == false)  // already present
-        let starred = try context.fetch(FetchDescriptor<Yana.Tag>(predicate: #Predicate { $0.isBuiltIn }))
-        #expect(starred.count == 1)
-    }
-
     @Test func feedTagsAreSnapshotIntoArticleTags() throws {
         let context = try makeContext()
         let tag = Yana.Tag(name: "Tech")

@@ -182,7 +182,7 @@ final class AppSettings {
     /// True when the timeline filter would hide some articles (a tag or feed is off, or untagged
     /// articles are excluded). Drives the reader's filter-button active state.
     var isTimelineFilterActive: Bool {
-        !disabledTagNames.isEmpty || !includeUntagged || !disabledFeedNames.isEmpty
+        !disabledTagNames.isEmpty || !includeUntagged || !disabledFeedNames.isEmpty || starredOnly
     }
     /// Timeline quick-filter: show only starred articles. Replaces the old built-in "Starred" tag
     /// row now that starring is a plain boolean, not tag membership.
