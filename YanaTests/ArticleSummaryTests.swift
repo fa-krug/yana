@@ -59,4 +59,28 @@ struct ArticleSummaryTests {
         #expect(summary.filterTagNames == ["Tech"])
         #expect((summary as TimelineIdentifiable).identifier == "a2")
     }
+
+    @Test func isReadMirrorsArticleRead() throws {
+        let context = try makeContext()
+        let article = Article(title: "T", identifier: "id-1", url: "https://x.com/1")
+        article.setRead(true)
+        context.insert(article)
+        try context.save()
+
+        let summary = ArticleSummary(article)
+        #expect(summary.isRead == true)
+    }
+
+    @Test func isReadRoundTripsThroughCoding() throws {
+        let context = try makeContext()
+        let article = Article(title: "T", identifier: "id-2", url: "https://x.com/2")
+        article.setRead(true)
+        context.insert(article)
+        try context.save()
+
+        let summary = ArticleSummary(article)
+        let data = try JSONEncoder().encode(summary)
+        let decoded = try JSONDecoder().decode(ArticleSummary.self, from: data)
+        #expect(decoded.isRead == true)
+    }
 }

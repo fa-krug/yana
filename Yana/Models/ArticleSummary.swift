@@ -19,6 +19,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
     let createdAt: Date
     let tagNames: Set<String>
     let isStarred: Bool
+    let isRead: Bool
 
     var id: String { identifier }
 
@@ -40,11 +41,12 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         createdAt = article.createdAt
         tagNames = Set((article.feed?.tagIDs ?? []).compactMap { tagNamesByID[$0] })
         isStarred = article.starred
+        isRead = article.read
     }
 
     // Persist every field EXCEPT the runtime-only `persistentID`.
     private enum CodingKeys: String, CodingKey {
-        case identifier, title, feedName, feedLogoHash, author, date, createdAt, tagNames, isStarred
+        case identifier, title, feedName, feedLogoHash, author, date, createdAt, tagNames, isStarred, isRead
     }
 
     init(from decoder: any Decoder) throws {
@@ -59,6 +61,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         tagNames = try c.decode(Set<String>.self, forKey: .tagNames)
         isStarred = try c.decode(Bool.self, forKey: .isStarred)
+        isRead = try c.decode(Bool.self, forKey: .isRead)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -72,6 +75,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(tagNames, forKey: .tagNames)
         try c.encode(isStarred, forKey: .isStarred)
+        try c.encode(isRead, forKey: .isRead)
     }
 }
 
