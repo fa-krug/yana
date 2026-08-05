@@ -19,7 +19,7 @@ struct ReaderArticle: Equatable {
         feedName = article.feed?.name ?? ""
         author = article.author
         date = article.createdAt
-        logoHash = article.feed?.logoHash
+        logoHash = article.feed?.logoImageHash
         url = article.url
         summary = article.summary
         blocks = article.blocks

@@ -40,14 +40,14 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         identifier = article.identifier
         title = article.title
         feedName = article.feed?.name ?? ""
-        feedLogoHash = article.feed?.logoHash
+        feedLogoHash = article.feed?.logoImageHash
         author = article.author
         date = article.date
         createdAt = article.createdAt
         tagNames = Set((article.tags ?? []).map(\.name))
         isStarred = article.isStarred
         feedIdentifier = article.feed?.identifier ?? article.syncFeedIdentifier
-        aggregatorType = article.feed?.aggregatorType ?? article.syncAggregatorType
+        aggregatorType = article.feed?.aggregator ?? article.syncAggregatorType
     }
 
     // Persist every field EXCEPT the runtime-only `persistentID`.

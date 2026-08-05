@@ -8,9 +8,6 @@ final class Tag {
     var sortOrder: Int = 0
     var createdAt: Date = Date.now
 
-    @Relationship(inverse: \Feed.tags)
-    var feeds: [Feed]?
-
     @Relationship(inverse: \Article.tags)
     var articles: [Article]?
 
