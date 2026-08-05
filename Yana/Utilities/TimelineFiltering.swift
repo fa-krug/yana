@@ -7,6 +7,7 @@ protocol TimelineFilterable {
     var filterTagNames: [String] { get }
     var filterFeedName: String? { get }
     var filterStarred: Bool { get }
+    var filterRead: Bool { get }
 }
 
 /// Items addressable by their stable `identifier` (the timeline anchor key).
@@ -36,6 +37,7 @@ extension Article: TimelineFilterable {
     }
     var filterFeedName: String? { feed?.name }
     var filterStarred: Bool { starred }
+    var filterRead: Bool { read }
 }
 
 extension Article: TimelineIdentifiable {}
@@ -44,6 +46,7 @@ extension ArticleSummary: TimelineFilterable {
     var filterTagNames: [String] { Array(tagNames) }
     var filterFeedName: String? { feedName.isEmpty ? nil : feedName }
     var filterStarred: Bool { isStarred }
+    var filterRead: Bool { isRead }
 }
 
 extension ArticleSummary: TimelineIdentifiable {}
@@ -94,7 +97,8 @@ enum TimelinePageIndex {
 }
 
 /// Resolves the persisted timeline anchor to an index in the displayed list, falling back
-/// to the newest item (last index in the ascending timeline) when missing.
+/// to the last item (the newest unread article, or the newest read article if none are unread)
+/// when missing.
 enum TimelineAnchor {
     static func index<T: TimelineIdentifiable>(for identifier: String?, in items: [T]) -> Int {
         TimelinePageIndex.index(of: identifier, in: items) ?? max(0, items.count - 1)

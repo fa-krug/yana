@@ -59,6 +59,17 @@ struct TimelineFilteringTests {
         #expect(StarredFilter.apply(to: [starred, unstarred], starredOnly: true).map(\.identifier) == ["a"])
     }
 
+    @Test func filterReadMirrorsReadOnArticleAndSummary() throws {
+        let context = try makeContext()
+        let a = article("a", tagIDs: [], in: context)
+        a.setRead(true)
+        #expect(a.filterRead == true)
+
+        let summary = ArticleSummary(a)
+        #expect(summary.filterRead == true)
+        #expect(summary.filterRead == summary.isRead)
+    }
+
     @Test func anchorResolvesToIndexOrNewest() throws {
         let context = try makeContext()
         let a = article("a", tagIDs: [], in: context)

@@ -7,8 +7,9 @@ struct TimelineBootstrapTests {
         let filterTagNames: [String]
         let filterFeedName: String?
         let filterStarred: Bool
-        init(_ id: String, tags: [String] = ["t"], feed: String? = "f", starred: Bool = false) {
-            identifier = id; filterTagNames = tags; filterFeedName = feed; filterStarred = starred
+        let filterRead: Bool
+        init(_ id: String, tags: [String] = ["t"], feed: String? = "f", starred: Bool = false, read: Bool = false) {
+            identifier = id; filterTagNames = tags; filterFeedName = feed; filterStarred = starred; filterRead = read
         }
     }
 
