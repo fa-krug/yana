@@ -30,6 +30,14 @@ struct PendingWriteQueueTests {
         #expect(settings.pendingWrites.count == 2)
     }
 
+    @Test func enqueueReplacesSameKindWithDifferentValue() {
+        let settings = freshSettings()
+        PendingWriteQueue.enqueue(PendingWrite(articleServerID: 1, field: .starred(true)), settings: settings)
+        PendingWriteQueue.enqueue(PendingWrite(articleServerID: 1, field: .starred(false)), settings: settings)
+        #expect(settings.pendingWrites.count == 1)
+        #expect(settings.pendingWrites.first?.field == .starred(false))
+    }
+
     @Test func flushRemovesSuccessfulWritesAndKeepsFailedOnes() async throws {
         try await MockURLProtocol.lock.withLock {
             let settings = freshSettings()
