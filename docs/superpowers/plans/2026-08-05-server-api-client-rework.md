@@ -1224,21 +1224,26 @@ git commit -m "Simplify Feed to a plain server mirror; delete AggregatorType/Agg
 
 ---
 
-### Task 8: Delete `ArticleUID`, remove `ArticleSummary.uid`
+### Task 8: Remove `ArticleSummary.uid` (defer deleting `ArticleUID.swift` itself to Task 12)
+
+**Correction discovered during this task's own execution**: `ArticleUID.swift`'s *computed-property-style* consumer (`ArticleSummary.uid`) is indeed dead, but its **static method** `ArticleUID.make(...)` is not — it's still called from `Yana/Aggregators/RetentionCleanup.swift:18`, `Yana/Aggregators/ArticleUpsert.swift:52`, `Yana/Services/AggregationWriter.swift:195`, and `Yana/Services/LibraryDedup.swift:73` (a `.make(...)` call is a different syntax shape than `\.uid\b`, so the original confirmation grep below never caught it). All four of those call sites are already on Task 12's deletion list, so `ArticleUID.swift` itself only becomes safe to delete once Task 12 removes them — not now. `ArticleUID.swift` also bundles an unrelated `ArticleImageRefs` enum that `AggregationWriter.swift` uses for image pruning; that goes with the rest of the file's deletion in Task 12 too, not here.
 
 **Files:**
-- Delete: `Yana/Services/ArticleUID.swift`
 - Modify: `Yana/Models/ArticleSummary.swift`
+- (`Yana/Services/ArticleUID.swift` itself is NOT deleted in this task — see Task 12's Files list, which now includes it)
 
 **Interfaces:**
 - Produces: `ArticleSummary` unchanged except `uid` removed.
 
-No test needed — this is a pure removal of a computed property confirmed (via `grep -rn "\.uid\b" Yana` returning zero hits outside `ArticleSummary.swift` itself) to have no consumer.
+No test needed for the removal itself — this is a pure removal of a computed property. But its own direct test companion needs to go too (see Step 1).
 
-- [ ] **Step 1: Confirm no consumer exists (guard against having missed one)**
+- [ ] **Step 1: Confirm the only consumer of `.uid` (property syntax) is its own test, and handle it**
 
-Run: `grep -rn "\.uid\b" Yana --include="*.swift" | grep -v ArticleSummary.swift`
-Expected: no output. If this prints anything, stop and investigate before deleting — do not delete `ArticleUID` if something unexpected depends on it.
+Run: `grep -rn "\.uid\b" Yana YanaTests --include="*.swift" | grep -v ArticleSummary.swift`
+
+This surfaces exactly one hit: `YanaTests/ArticleSummaryTests.swift`'s `uidIsCollisionFreeAcrossFeeds` test, which exists solely to test the property being removed here (same category as Task 6 deleting `StarredRegistryTests.swift` alongside `StarredRegistry`). Remove only that test method; if `ArticleSummaryTests.swift` has other tests unrelated to `uid`, keep them.
+
+If this grep turns up anything else, stop and investigate before proceeding — do not assume it's another test-of-the-thing-being-deleted without checking.
 
 - [ ] **Step 2: Remove `uid` from `ArticleSummary.swift`**
 
@@ -1251,21 +1256,16 @@ var uid: String {
 ```
 Also remove `feedIdentifier`/`aggregatorType` fields and their `init(_ article:)`/`Codable` plumbing **only if** nothing else in `ArticleSummary` still needs them after Task 7's `Feed` rework — check with `grep -n "feedIdentifier\|aggregatorType" Yana/Models/ArticleSummary.swift` and delete each reference that existed solely to feed `uid`.
 
-- [ ] **Step 3: Delete `ArticleUID.swift`**
+- [ ] **Step 3: Verify `ArticleUID.swift` itself is untouched and still has its (expected, deferred) 4 real consumers**
 
-Run: `git rm Yana/Services/ArticleUID.swift`
+Run: `xcodegen generate && grep -rn "\.uid\b" Yana YanaTests --include="*.swift"` — expect zero output now (the property-syntax consumer is gone). `ArticleUID.make(...)`'s 4 call sites in `RetentionCleanup.swift`/`ArticleUpsert.swift`/`AggregationWriter.swift`/`LibraryDedup.swift` are expected to remain — do not touch them, they're deleted alongside those files in Task 12.
 
-- [ ] **Step 4: Verify no build reference remains**
-
-Run: `xcodegen generate && grep -rn "ArticleUID" Yana --include="*.swift"`
-Expected: no output.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add Yana/Models/ArticleSummary.swift
-git rm Yana/Services/ArticleUID.swift
-git commit -m "Delete ArticleUID and ArticleSummary.uid (dead since CloudKit removal, zero call sites)"
+git add -u YanaTests
+git commit -m "Remove ArticleSummary.uid (dead computed property); defer ArticleUID.swift's own deletion to Task 12, where its remaining real call sites (RetentionCleanup/ArticleUpsert/AggregationWriter/LibraryDedup) also go"
 ```
 
 ---
@@ -2102,6 +2102,7 @@ git commit -m "Rework ImageStore to fetch-by-hash; delete the CloudKit-era Store
 - Create: `Yana/Services/AuthenticatedClient.swift` (small app-wide holder resolving the current `YanaAPIClient` from `AppSettings.serverBaseURL` + `KeychainService.loadDeviceToken()`)
 - Modify: `Yana/YanaApp.swift`, `Yana/ContentView.swift`, `Yana/Views/Config/FeedLogoView.swift`, `Yana/Reader/ReaderImageCache.swift` (resolve the `// TODO(Task 12)` from Task 11)
 - Delete: `Yana/Services/AggregationService.swift`, `AggregationWriter.swift`
+- Delete: `Yana/Services/ArticleUID.swift` (deferred here from Task 8 — its `.make(...)` static method has 4 real consumers, `RetentionCleanup.swift`/`ArticleUpsert.swift`/`AggregationWriter.swift`/`LibraryDedup.swift`, all deleted in this same task, so this is the first point it's actually safe to remove; also bundles the `ArticleImageRefs` enum `AggregationWriter.swift` uses for image pruning, going with it)
 - Delete: `Yana/Aggregators/AggregatedArticle.swift`, `AggregationLogic.swift`, `Aggregator.swift`, `AggregatorRegistry.swift`, `ArticleUpsert.swift`, `FeedConfig.swift`, `RetentionCleanup.swift`
 - Delete: `Yana/Aggregators/Concrete/` (entire directory)
 - Delete: `Yana/Aggregators/Utils/BlockParser.swift`, `BlueskyEmbed.swift`, `ContentFormatter.swift`, `DomainImageOverrides.swift`, `EmbedRewriter.swift`, `FaviconResolver.swift`, `FeedDiscovery.swift`, `FeedParser.swift`, `FeedURLResolver.swift`, `HTMLUtils.swift`, `HeaderElementExtractor.swift`, `HTTPClient.swift`
