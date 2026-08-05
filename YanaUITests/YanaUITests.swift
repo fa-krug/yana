@@ -53,38 +53,37 @@ final class YanaUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["emptyArticlesTitle"].waitForExistence(timeout: Self.launchTimeout))
     }
 
-    /// Onboarding: the feeds step shows Add/Import/Finish with no sheet auto-opening; the create
-    /// editor opens only via the Add button; and only Finish completes onboarding.
+    /// Onboarding: welcome → server pairing → AI mode via the footer Continue button; the server
+    /// step shows its address field with no sheet auto-opening (pairing only starts via its own
+    /// "Sign In" button, which this test deliberately doesn't tap -- that opens a WebView against
+    /// a real Yana Server, out of scope for this offline UI test); and only Finish (on the final
+    /// AI-mode step) completes onboarding.
     @MainActor
-    func testOnboardingFeedsStepAndFinish() throws {
+    func testOnboardingStepsAndFinish() throws {
         let app = XCUIApplication()
         app.launchArguments += ["-UITEST_RESET_ONBOARDING", Self.resetLibrary]
         app.launch()
 
-        // Welcome → AI → Feeds via the footer Continue button.
+        // Welcome → Server via the footer Continue button.
         let continueButton = app.buttons["onboardingContinueButton"]
         XCTAssertTrue(continueButton.waitForExistence(timeout: Self.launchTimeout))
-        continueButton.tap()                       // welcome → ai
-        XCTAssertTrue(continueButton.waitForExistence(timeout: Self.uiTimeout))
-        continueButton.tap()                       // ai → feeds
+        continueButton.tap()                       // welcome → server
 
-        // The feeds page is shown with its Finish button and no sheet is auto-presented
-        // (the create editor has text fields; the feeds page itself has none).
+        // The server page shows its address field and no sheet is auto-presented.
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: Self.uiTimeout),
+                      "The server step should show its address text field")
+        XCTAssertFalse(app.webViews.firstMatch.exists,
+                       "No pairing sheet should open automatically on the server step")
+
+        // Server → AI mode via Continue (without pairing -- the re-pairing gate is what catches
+        // an unpaired device on the next launch; see ContentView).
+        continueButton.tap()
+
+        // The AI-mode page is shown with its Finish button.
         let finish = app.buttons["onboardingFinishButton"]
         XCTAssertTrue(finish.waitForExistence(timeout: Self.uiTimeout))
-        XCTAssertFalse(app.textFields.firstMatch.exists,
-                       "No create sheet should open automatically on the feeds step")
-
-        // The create editor opens only via the Add button.
-        app.buttons["onboardingAddFeedButton"].tap()
-        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: Self.uiTimeout),
-                      "The Add button should open the create-feed editor")
-        app.navigationBars.buttons.element(boundBy: 0).tap()   // Cancel
 
         // Finish completes onboarding and reveals the reader (empty state here).
-        XCTAssertTrue(finish.waitForExistence(timeout: Self.uiTimeout))
-        var tries = 0
-        while !finish.isHittable, tries < 8 { app.swipeUp(); tries += 1 }
         finish.tap()
         XCTAssertTrue(app.staticTexts["emptyArticlesTitle"].waitForExistence(timeout: Self.launchTimeout))
     }

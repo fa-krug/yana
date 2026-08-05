@@ -203,6 +203,7 @@ struct ReaderScreen: View {
         .sheet(isPresented: $appState.showSettings, onDismiss: {
             if restartOnboardingPending {
                 restartOnboardingPending = false
+                appState.welcomeInitialStep = .welcome
                 appState.showWelcome = true
             }
             if showServerNoticePending {

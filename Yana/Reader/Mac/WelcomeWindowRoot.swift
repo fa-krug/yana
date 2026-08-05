@@ -13,7 +13,7 @@ struct WelcomeWindowRoot: View {
             settings.hasCompletedOnboarding = true
             appState.showWelcome = false
             dismiss()
-        })
+        }, initialStep: appState.welcomeInitialStep)
         // Match the Settings window: switches, not the AppKit checkboxes a Catalyst `Form` picks by
         // default. This window is its own SwiftUI hierarchy, so the style does not carry over.
         .toggleStyle(.switch)

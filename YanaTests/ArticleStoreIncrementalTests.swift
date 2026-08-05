@@ -104,7 +104,8 @@ struct ArticleStoreIncrementalTests {
         #expect(store.summaries == before, "a non-article save must leave the index untouched")
     }
 
-    /// Starring writes a tag onto one article; the index must pick that up without a full re-read.
+    /// Starring flips one article's `starred` boolean; the index must pick that up without a full
+    /// re-read.
     @Test func updatingOneArticleRefreshesJustThatRow() async throws {
         let fixture = try LibraryFixture.make(articleCount: 150)
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
@@ -114,13 +115,11 @@ struct ArticleStoreIncrementalTests {
         store.start()
         await wait(for: store, toReach: 150)
 
-        let starred = Tag(name: Tag.starredName, isBuiltIn: true, sortOrder: -1)
-        context.insert(starred)
         var descriptor = FetchDescriptor<Article>(sortBy: [SortDescriptor(\.createdAt)])
         descriptor.fetchLimit = 1
         let article = try #require(try context.fetch(descriptor).first)
         let target = article.identifier
-        article.setStarred(true, using: starred)
+        article.starred = true
         try context.save()
 
         for _ in 0..<80 where store.summaries.first(where: { $0.identifier == target })?.isStarred != true {
