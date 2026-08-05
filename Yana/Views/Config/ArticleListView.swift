@@ -46,7 +46,6 @@ struct ArticleListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
 
-    @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
     @State private var searchText = ""
     @State private var debouncedSearch = ""
@@ -54,7 +53,6 @@ struct ArticleListView: View {
     @State private var showFilter = false
     @State private var summaryToDelete: ArticleSummary?
 
-    private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
     /// Browsing reads the in-memory index; a search swaps in predicate-fetched results. Both run
@@ -90,8 +88,8 @@ struct ArticleListView: View {
             scrollToID: currentItemID,
             leadingActions: { summary in
                 Button {
-                    guard let starredTag, let article = article(for: summary) else { return }
-                    article.setStarred(!article.isStarred, using: starredTag)
+                    guard let article = article(for: summary) else { return }
+                    article.starred.toggle()
                     try? modelContext.save()
                     Haptics.impact(.light)
                 } label: {

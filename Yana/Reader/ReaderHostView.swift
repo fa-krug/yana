@@ -105,7 +105,6 @@ struct ReaderScreen: View {
         self.appState = appState
     }
 
-    @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
@@ -163,8 +162,6 @@ struct ReaderScreen: View {
     }
 
 
-
-    private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
 
     private var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
 
@@ -258,8 +255,7 @@ struct ReaderScreen: View {
     }
 
     private func toggleStar(_ article: Article) {
-        guard let starredTag else { return }
-        article.setStarred(!article.isStarred, using: starredTag)
+        article.starred.toggle()
         try? modelContext.save()
         Haptics.impact(.light)
     }

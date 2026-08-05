@@ -198,15 +198,9 @@ final class TimelineModel {
 
     // MARK: - Actions
 
-    private var starredTag: Tag? {
-        guard let modelContext else { return nil }
-        let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.isBuiltIn })
-        return (try? modelContext.fetch(descriptor))?.first { $0.name == Tag.starredName }
-    }
-
     func toggleStar(_ article: Article) {
-        guard let modelContext, let starredTag else { return }
-        article.setStarred(!article.isStarred, using: starredTag)
+        guard let modelContext else { return }
+        article.starred.toggle()
         try? modelContext.save()
     }
 
