@@ -12,7 +12,7 @@ enum WindowID {
 
 /// The panes of the Mac two-pane Settings window sidebar, in display order.
 enum SettingsPane: String, CaseIterable, Identifiable {
-    case general, reader, manage, ai, about, diagnostics
+    case general, reader, manage, ai, about
 
     var id: String { rawValue }
 
@@ -23,7 +23,6 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .manage: "Manage Feeds & Tags"
         case .ai: "AI"
         case .about: "About"
-        case .diagnostics: "Diagnostics"
         }
     }
 
@@ -34,7 +33,6 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         case .manage: "list.bullet.rectangle"
         case .ai: "sparkles"
         case .about: "info.circle"
-        case .diagnostics: "stethoscope"
         }
     }
 }
