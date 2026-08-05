@@ -9,7 +9,7 @@ final class Article {
     // full table scan over the retained library. Single-column (no query filters on both
     // together). Additive metadata — SwiftData handles it via lightweight migration.
     // Only one #Index macro is allowed per @Model, so every indexed keypath group lives here.
-    #Index<Article>([\.createdAt], [\.identifier], [\.serverID])
+    #Index<Article>([\.createdAt], [\.identifier], [\.serverID], [\.readRank])
     var title: String = ""
     /// URL or external id; dedup key within a feed.
     var identifier: String = ""
@@ -41,6 +41,19 @@ final class Article {
     var createdAt: Date = Date.now
 
     var starred: Bool = false
+    /// Whether the server (or a local mark-as-read) considers this article read. Drives the
+    /// timeline's primary sort key via `readRank` — see that property's doc comment. Never assign
+    /// this directly; always go through `setRead(_:)` so `readRank` stays in sync (SwiftData's
+    /// `@Model` macro fully owns this property's accessors, so a `didSet` here is not an option —
+    /// same reason `blocks` below is a separate plain computed property rather than an observer on
+    /// `blockData`).
+    var read: Bool = false
+    /// Mirrors `read` as a `SortDescriptor`-sortable key: `0` when read, `1` when unread. Exists only
+    /// because `Bool` does not conform to `Comparable`, so `SortDescriptor(\.read)` cannot compile —
+    /// every fetch that orders the timeline sorts by this ascending, then by `createdAt` ascending,
+    /// giving "read (oldest→newest), then unread (oldest→newest)". Kept in sync with `read`
+    /// exclusively by `setRead(_:)`.
+    var readRank: Int = 1
     /// Whether this article's content has been synced yet (`false` right after its summary
     /// arrives from `/articles/sync`, `true` once `/articles/:id/content` succeeds). Drives the
     /// sync engine's content-backfill retry, not just a display flag.
@@ -81,6 +94,13 @@ final class Article {
         self.iconURL = iconURL
         self.summary = summary
         self.createdAt = .now
+    }
+
+    /// The only supported way to change `read` — keeps `readRank` in sync. See `readRank`'s doc
+    /// comment for why a property observer isn't used instead.
+    func setRead(_ value: Bool) {
+        read = value
+        readRank = value ? 0 : 1
     }
 
     /// The decoded native body blocks. Decoding is cheap (JSON), so the reader resolves these on
