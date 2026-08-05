@@ -2,6 +2,8 @@ import Foundation
 
 private struct StarredBody: Encodable { let starred: Bool }
 private struct StarredResponse: Decodable { let id: Int; let starred: Bool }
+private struct ReadBody: Encodable { let read: Bool }
+private struct ReadResponse: Decodable { let id: Int; let read: Bool }
 private struct ReloadResponse: Decodable { let jobId: Int }
 private struct AggregateResponse: Decodable { let runId: Int }
 
@@ -24,6 +26,10 @@ final class ArticleActions {
 
     func setStarred(_ starred: Bool, articleServerID: Int) async throws {
         let _: StarredResponse = try await client.patch("/api/v1/articles/\(articleServerID)", body: StarredBody(starred: starred))
+    }
+
+    func setRead(_ read: Bool, articleServerID: Int) async throws {
+        let _: ReadResponse = try await client.patch("/api/v1/articles/\(articleServerID)", body: ReadBody(read: read))
     }
 
     func reload(articleServerID: Int) async throws {

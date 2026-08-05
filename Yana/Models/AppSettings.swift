@@ -44,6 +44,7 @@ final class AppSettings {
         static let serverBaseURL = "settings.serverBaseURL"
         // Sync
         static let syncCursor = "settings.syncCursor"
+        static let pendingWrites = "settings.pendingWrites"
         // Timeline filter
         static let disabledTagNames = "settings.disabledTagNames"
         static let includeUntagged = "settings.includeUntagged"
@@ -144,6 +145,23 @@ final class AppSettings {
     var syncCursor: String? {
         get { access(keyPath: \.syncCursor); return defaults.string(forKey: Key.syncCursor) }
         set { withMutation(keyPath: \.syncCursor) { defaults.set(newValue, forKey: Key.syncCursor) } }
+    }
+
+    /// Not-yet-acknowledged star/read writes, retried opportunistically on the next sync. See
+    /// `PendingWriteQueue`. Device-local network state -- never synced.
+    var pendingWrites: [PendingWrite] {
+        get {
+            access(keyPath: \.pendingWrites)
+            guard let data = defaults.data(forKey: Key.pendingWrites),
+                  let decoded = try? JSONDecoder().decode([PendingWrite].self, from: data) else { return [] }
+            return decoded
+        }
+        set {
+            withMutation(keyPath: \.pendingWrites) {
+                let data = try? JSONEncoder().encode(newValue)
+                defaults.set(data, forKey: Key.pendingWrites)
+            }
+        }
     }
 
     // MARK: Timeline filter
