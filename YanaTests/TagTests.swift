@@ -6,43 +6,12 @@ import Testing
 @MainActor
 @Suite("Tag")
 struct TagTests {
-    private func makeContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
-        return ModelContext(container)
-    }
-
-    @Test func seedsStarredOnceAndIsIdempotent() throws {
-        let context = try makeContext()
-        Yana.Tag.ensureBuiltIns(in: context)
-        Yana.Tag.ensureBuiltIns(in: context)
-        try context.save()
-
-        let starred = try context.fetch(FetchDescriptor<Yana.Tag>(predicate: #Predicate { $0.isBuiltIn }))
-        #expect(starred.count == 1)
-        #expect(starred.first?.name == Yana.Tag.starredName)
-    }
-
-    @Test func ensureBuiltInsReportsWhetherInserted() throws {
-        let context = try makeContext()
-        #expect(Yana.Tag.ensureBuiltIns(in: context) == true)   // first call inserts
-        #expect(Yana.Tag.ensureBuiltIns(in: context) == false)  // already present
-        let starred = try context.fetch(FetchDescriptor<Yana.Tag>(predicate: #Predicate { $0.isBuiltIn }))
-        #expect(starred.count == 1)
-    }
-
-    @Test func feedTagsAreSnapshotIntoArticleTags() throws {
-        let context = try makeContext()
-        let tag = Yana.Tag(name: "Tech")
-        let feed = Feed(name: "Heise", aggregatorType: .heise, identifier: "https://heise.de")
-        feed.tags = [tag]
-        let article = Article(title: "P", identifier: "p1", url: "https://heise.de/1")
-        article.feed = feed
-        article.tags = feed.tags ?? []
-        context.insert(tag); context.insert(feed); context.insert(article)
-        try context.save()
-
-        let reloaded = try context.fetch(FetchDescriptor<Article>()).first
-        #expect(reloaded?.tags?.map(\.name) == ["Tech"])
-    }
+    // `feedTagsAreSnapshotIntoArticleTags` (last remaining test in this suite) removed: it asserted
+    // the on-device import-time snapshot from `Feed.tags` (a `[Tag]?` relationship) onto
+    // `Article.tags`. `Feed` no longer carries a live `[Tag]` relationship at all (replaced by
+    // `tagIDs: [Int]`, a plain server-mirrored id list -- see Task 7 brief), so there is nothing left
+    // to snapshot from at this layer; the concept the test verified no longer exists here. Nothing of
+    // value is lost: `Article.tags` itself is untouched and still exercised elsewhere (e.g.
+    // `LibraryFixture`), and how tag membership reaches an `Article` going forward is `SyncWriter`'s
+    // concern (Task 9), not `Tag`'s.
 }

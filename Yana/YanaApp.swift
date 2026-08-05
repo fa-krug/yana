@@ -7,8 +7,7 @@ import UIKit
 /// refresh) and the SwiftUI scene.
 ///
 /// `ModelContainer` is `Sendable`, so the static let is safe to access from any
-/// isolation domain. The tag bootstrap (`ensureBuiltIns` + conditional save) runs in a
-/// post-launch main-actor task so it does not block `didFinishLaunchingWithOptions`.
+/// isolation domain.
 enum AppContainer {
     static let shared: ModelContainer = {
         do {
@@ -35,12 +34,12 @@ enum AppContainer {
                         try? FileManager.default.removeItem(at: sibling)
                     }
                     let config = ModelConfiguration(url: storeURL, cloudKitDatabase: .none)
-                    return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
+                    return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                              configurations: config)
                 }
                 #endif
                 let config = ModelConfiguration()
-                return try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
+                return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                          configurations: config)
             }
         } catch {
@@ -72,18 +71,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         StartupTrace.measure("backgroundRefresh.register") { backgroundRefresh.register() }
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
 
-        // Tag bootstrap is idempotent and not needed before first paint (the Starred tag is only
-        // consulted on a user star action, by the tag-filter list, and on upsert — all reached
-        // well after this task runs), so move its fetch + save off the synchronous launch path.
-        // Save only when an insert actually happened — no per-launch context flush.
-        Task { @MainActor in
-            StartupTrace.measure("Tag.ensureBuiltIns") {
-                let context = AppContainer.shared.mainContext
-                if Tag.ensureBuiltIns(in: context) {
-                    try? context.save()
-                }
-            }
-        }
         StartupTrace.event("didFinishLaunching.end")
         return true
     }
@@ -124,8 +111,6 @@ struct YanaApp: App {
                 .environment(articleStore)
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
-                    case .active:
-                        LibraryDedup.run(container: AppContainer.shared)
                     case .background:
                         // The timeline index cache is written on a delay (see
                         // `ArticleStore.cacheWriteDelay`); flush it before the app can be suspended
@@ -141,6 +126,14 @@ struct YanaApp: App {
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)
+                    // Pull the server's article/feed state on every foreground launch. `nil` from
+                    // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error;
+                    // a thrown sync error is likewise swallowed here (a spotty connection at
+                    // launch must never block first paint or crash the app -- see `SyncEngine`'s
+                    // own per-item error handling for the same philosophy).
+                    if let client = AuthenticatedClient.current() {
+                        _ = try? await SyncEngine(container: AppContainer.shared, client: client).sync()
+                    }
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
@@ -171,7 +164,7 @@ struct YanaApp: App {
         // constant (`true`) — SwiftUI matches on that value and refocuses the existing window
         // instead of creating a duplicate.
         WindowGroup(id: WindowID.settings, for: Bool.self) { _ in
-            MacSettingsWindow()
+            MacSettingsWindow(appState: appState)
                 .environment(articleStore)
         }
         .modelContainer(AppContainer.shared)

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// iOS settings: a single scrolling Form. Feeds/Tags push detail screens; every other group is a
-/// reusable section view shared with the Mac two-pane settings window.
+/// iOS settings: a single scrolling Form. "Manage Feeds & Tags" pushes the server's own web UI;
+/// every other group is a reusable section view shared with the Mac two-pane settings window.
 struct SettingsScreenView: View {
     var onRestartOnboarding: () -> Void = {}
     var onShowServerNotice: () -> Void = {}
@@ -12,13 +12,10 @@ struct SettingsScreenView: View {
 
     var body: some View {
         Form {
-            organizeSection
+            manageSection
             ReaderSettingsSection()
-            RedditSettingsSection()
-            YouTubeSettingsSection()
+            AIModeSettingsSection()
             NotificationsSettingsSection()
-            AIProviderSettingsSection()
-            AITuningSettingsSection()
             LibrarySettingsSection()
             AboutSettingsSection(
                 onRestartOnboarding: {
@@ -45,23 +42,17 @@ struct SettingsScreenView: View {
         .toast($toast)
     }
 
-    private var organizeSection: some View {
+    private var manageSection: some View {
         Section {
             NavigationLink {
-                FeedsView()
+                ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
             } label: {
-                Label("Feeds", systemImage: "list.bullet.rectangle")
+                Label("Manage Feeds & Tags", systemImage: "list.bullet.rectangle")
                     .labelStyle(.tintedIcon(.orange))
             }
-            .accessibilityIdentifier("settings.feeds")
-            NavigationLink {
-                TagsView()
-            } label: {
-                Label("Tags", systemImage: "tag")
-                    .labelStyle(.tintedIcon(.pink))
-            }
+            .accessibilityIdentifier("settings.manage")
         } footer: {
-            Text("Manage your feeds and the tags applied to articles.")
+            Text("Add, edit, and organize your feeds and tags on the server.")
         }
     }
 }

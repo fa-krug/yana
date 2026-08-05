@@ -46,7 +46,6 @@ struct ArticleListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
 
-    @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
     @State private var searchText = ""
     @State private var debouncedSearch = ""
@@ -54,7 +53,6 @@ struct ArticleListView: View {
     @State private var showFilter = false
     @State private var summaryToDelete: ArticleSummary?
 
-    private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
     /// Browsing reads the in-memory index; a search swaps in predicate-fetched results. Both run
@@ -64,7 +62,8 @@ struct ArticleListView: View {
         let byTag = TagFilter.apply(to: base,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
-        return FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }
@@ -89,19 +88,48 @@ struct ArticleListView: View {
             scrollToID: currentItemID,
             leadingActions: { summary in
                 Button {
-                    guard let starredTag, let article = article(for: summary) else { return }
-                    article.setStarred(!article.isStarred, using: starredTag)
+                    guard let article = article(for: summary) else { return }
+                    let newValue = !article.starred
+                    article.starred = newValue
                     try? modelContext.save()
                     Haptics.impact(.light)
+                    // Optimistic: the new value is already known locally, unlike reload's
+                    // separately-fetched result. Silently local-only when not paired yet.
+                    guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
+                    Task {
+                        do {
+                            try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
+                        } catch {
+                            article.starred = !newValue
+                            try? modelContext.save()
+                        }
+                    }
                 } label: {
                     Label(summary.isStarred ? "Unstar" : "Star",
                           systemImage: summary.isStarred ? "star.slash" : "star")
                 }
                 .tint(.yellow)
                 Button {
-                    guard let article = article(for: summary) else { return }
+                    guard let article = article(for: summary),
+                          let client = AuthenticatedClient.current(),
+                          let serverID = article.serverID
+                    else { return }
                     UpdateActivity.shared.restart {
-                        await AggregationService(context: modelContext).forceReload(article: article)
+                        do {
+                            try await ArticleActions(client: client).reload(articleServerID: serverID)
+                            guard !Task.isCancelled else { return }
+                            // See `UpdateAndSync.pollForReloadedContent`'s doc comment: this
+                            // deliberately re-fetches this one article's content directly rather
+                            // than going through `SyncEngine`'s generic `hasContent`-gated
+                            // backfill, which a premature fetch during the poll window could
+                            // permanently lock out of any later retry.
+                            await UpdateAndSync.pollForReloadedContent(
+                                articleServerID: serverID, container: modelContext.container, client: client
+                            )
+                        } catch {
+                            // Matches the pre-server behavior of swallowing a failed reload
+                            // silently -- this swipe action has no toast/error surface.
+                        }
                     }
                 } label: {
                     Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")
@@ -177,7 +205,8 @@ struct ArticleListView: View {
         descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         let matches = (try? modelContext.fetch(descriptor)) ?? []
-        searchResults = matches.map(ArticleSummary.init)
+        let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
+        searchResults = matches.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 
     /// The Mac's roomier rows read better with a touch more space between title and subline;

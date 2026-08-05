@@ -341,8 +341,8 @@ final class ReaderArticleViewController: UIViewController,
 
     private func updateStarItem() {
         guard let article = currentArticle() else { return }
-        starItem.image = UIImage(systemName: article.isStarred ? "star.fill" : "star")
-        starItem.accessibilityLabel = article.isStarred
+        starItem.image = UIImage(systemName: article.starred ? "star.fill" : "star")
+        starItem.accessibilityLabel = article.starred
             ? String(localized: "Unstar article") : String(localized: "Star article")
     }
 

@@ -124,7 +124,7 @@ final class TimelineModel {
         scrollTarget = SidebarScrollRequest(id: id, token: (scrollTarget?.token ?? 0) + 1)
     }
 
-    var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
+    var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
 
     // MARK: - Filtering / anchor (mirrors ReaderScreen)
 
@@ -135,7 +135,8 @@ final class TimelineModel {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
-        filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        filteredArticles = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     /// First load: filter + park on the saved anchor in one pass. Subsequent deliveries refilter and
@@ -152,6 +153,7 @@ final class TimelineModel {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
+            starredOnly: settings.starredOnly,
             anchorIdentifier: settings.timelineAnchorIdentifier
         )
         filteredArticles = resolved.articles
@@ -196,16 +198,24 @@ final class TimelineModel {
 
     // MARK: - Actions
 
-    private var starredTag: Tag? {
-        guard let modelContext else { return nil }
-        let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.isBuiltIn })
-        return (try? modelContext.fetch(descriptor))?.first { $0.name == Tag.starredName }
-    }
-
+    /// Toggles locally right away (optimistic -- the new value is already known, unlike
+    /// reload/update-all whose results are fetched separately) and reverts if the server rejects
+    /// it. Silently local-only when not paired yet -- `AuthenticatedClient.current()` returning
+    /// `nil` means "nothing to do," not an error (see its doc comment).
     func toggleStar(_ article: Article) {
-        guard let modelContext, let starredTag else { return }
-        article.setStarred(!article.isStarred, using: starredTag)
+        guard let modelContext else { return }
+        let newValue = !article.starred
+        article.starred = newValue
         try? modelContext.save()
+        guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
+        Task {
+            do {
+                try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
+            } catch {
+                article.starred = !newValue
+                try? modelContext.save()
+            }
+        }
     }
 
     func copyLink(_ article: Article) {
@@ -225,14 +235,25 @@ final class TimelineModel {
 
     func summarize(_ article: Article) {
         guard let modelContext, !isSummarizing else { return }
+        let provider: AISummaryProvider
+        if settings.aiMode == .appleIntelligence {
+            provider = AppleIntelligenceSummaryProvider()
+        } else if let client = AuthenticatedClient.current() {
+            provider = ServerAISummaryProvider(client: client)
+        } else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         isSummarizing = true
         Task {
-            let ok = await AggregationService(context: modelContext).summarize(article)
+            let summary = await provider.summarize(content: article.plainText, title: article.title)
             isSummarizing = false
-            if ok {
-                reloadToken += 1
+            if let summary {
+                article.summary = summary
+                try? modelContext.save()
+                self.reloadToken += 1
             } else {
-                toast = ToastMessage(
+                self.toast = ToastMessage(
                     text: String(localized: "Could not summarize this article. Please try again."),
                     style: .error
                 )
@@ -240,32 +261,68 @@ final class TimelineModel {
         }
     }
 
+    /// Triggers the server's per-article reload, then re-fetches its content directly via
+    /// `UpdateAndSync.pollForReloadedContent`. See `ReaderScreen.forceUpdateArticle` (iOS) and that
+    /// method's doc comment for why this deliberately does NOT go through `SyncEngine`'s generic
+    /// `hasContent`-gated backfill (an earlier version of this code did, and a premature backfill
+    /// fetch during the poll window could permanently lock out any later retry of this article).
     func forceUpdateArticle(_ article: Article) {
-        guard let modelContext else { return }
+        guard let modelContext,
+              let client = AuthenticatedClient.current(),
+              let serverID = article.serverID
+        else { return }
         let feedName = article.feed?.name
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.forceReload(article: article)
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                self.toast = ToastMessage(text: failure, style: .error)
-            } else {
-                self.reloadToken += 1
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feedName))
+            do {
+                try await ArticleActions(client: client).reload(articleServerID: serverID)
+                guard !Task.isCancelled else { return }
+                let applied = await UpdateAndSync.pollForReloadedContent(
+                    articleServerID: serverID, container: modelContext.container, client: client
+                )
+                guard !Task.isCancelled else { return }
+                if applied {
+                    self.reloadToken += 1
+                    self.toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+                } else {
+                    self.toast = ToastMessage(
+                        text: String(localized: "Could not reload this article. Please try again."),
+                        style: .error
+                    )
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.toast = ToastMessage(
+                    text: String(localized: "Could not reload this article. Please try again."),
+                    style: .error
+                )
             }
         }
     }
 
+    /// "Update" only triggers the server's aggregation run (`ArticleActions.updateAll()`); the run
+    /// itself happens server-side and asynchronously, so this follows up with `UpdateAndSync`'s
+    /// bounded poll of `SyncEngine.sync()` to actually pull in whatever the run produced.
     func triggerRefresh() {
         guard let modelContext else { return }
+        guard let client = AuthenticatedClient.current() else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.updateAll()
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                self.toast = ToastMessage(text: failure, style: .error)
-            } else {
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: nil))
+            do {
+                try await ArticleActions(client: client).updateAll()
+                guard !Task.isCancelled else { return }
+                let result = await UpdateAndSync.pollForFreshContent(
+                    container: modelContext.container, client: client, settings: self.settings
+                )
+                guard !Task.isCancelled else { return }
+                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: result.newCount, feedName: nil))
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.toast = ToastMessage(
+                    text: String(localized: "Could not check for updates. Please try again."),
+                    style: .error
+                )
             }
         }
     }

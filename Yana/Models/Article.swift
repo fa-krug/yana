@@ -4,10 +4,12 @@ import SwiftData
 @Model
 final class Article {
     // Cold-path fetches sort/filter by these: createdAt drives the anchor window, full index
-    // load, and fetchNewest; identifier drives the one-row fetchByIdentifier lookup. Without an
-    // index each is a full table scan over the retained library. Single-column (no query filters
-    // on both together). Additive metadata — SwiftData handles it via lightweight migration.
-    #Index<Article>([\.createdAt], [\.identifier])
+    // load, and fetchNewest; identifier drives the one-row fetchByIdentifier lookup; serverID
+    // drives SyncWriter's upsert/removal/content-backfill lookups. Without an index each is a
+    // full table scan over the retained library. Single-column (no query filters on both
+    // together). Additive metadata — SwiftData handles it via lightweight migration.
+    // Only one #Index macro is allowed per @Model, so every indexed keypath group lives here.
+    #Index<Article>([\.createdAt], [\.identifier], [\.serverID])
     var title: String = ""
     /// URL or external id; dedup key within a feed.
     var identifier: String = ""
@@ -38,7 +40,13 @@ final class Article {
     var summary: String = ""
     var createdAt: Date = Date.now
 
-    /// Snapshot of the feed's tags at import, plus the built-in Starred tag when starred.
+    var starred: Bool = false
+    /// Whether this article's content has been synced yet (`false` right after its summary
+    /// arrives from `/articles/sync`, `true` once `/articles/:id/content` succeeds). Drives the
+    /// sync engine's content-backfill retry, not just a display flag.
+    var hasContent: Bool = false
+
+    /// Snapshot of the feed's tags at import.
     var tags: [Tag]?
 
     var feed: Feed?
@@ -49,6 +57,12 @@ final class Article {
     /// for articles imported before this column existed. Defaulted for lightweight SwiftData migration.
     var syncFeedIdentifier: String = ""
     var syncAggregatorType: String = ""
+
+    /// This article's id on the paired server -- the identity `SyncWriter` upserts/removes by.
+    /// `nil` only ever transiently (never persisted that way in practice, since every article now
+    /// originates from a sync response) -- kept optional rather than defaulted to `0` so a bug that
+    /// forgets to set it is a visible `nil`, not a silently-wrong `0` matching a real server id.
+    var serverID: Int?
 
     init(
         title: String,
@@ -77,24 +91,6 @@ final class Article {
             blockData = (try? JSONEncoder().encode(newValue)) ?? Data()
             plainText = BlockParser.plainText(newValue)
             if case let .image(ref, _)? = newValue.first { leadImageRef = ref } else { leadImageRef = "" }
-        }
-    }
-
-    /// Starred state is expressed purely as membership of the built-in tag.
-    var isStarred: Bool { (tags ?? []).contains { $0.isBuiltIn } }
-
-    /// Add or remove the built-in Starred tag.
-    func setStarred(_ starred: Bool, using starredTag: Tag) {
-        if starred {
-            var t = tags ?? []
-            guard !t.contains(where: { $0.id == starredTag.id }) else { return }
-            t.append(starredTag)
-            tags = t
-        } else {
-            let current = tags ?? []
-            let filtered = current.filter { !$0.isBuiltIn }
-            guard filtered.count != current.count else { return }
-            tags = filtered
         }
     }
 }

@@ -105,7 +105,6 @@ struct ReaderScreen: View {
         self.appState = appState
     }
 
-    @Query(filter: #Predicate<Tag> { $0.isBuiltIn }) private var builtInTags: [Tag]
     @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
@@ -135,7 +134,8 @@ struct ReaderScreen: View {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
-        filteredArticles = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        filteredArticles = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
@@ -151,6 +151,7 @@ struct ReaderScreen: View {
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
+            starredOnly: settings.starredOnly,
             anchorIdentifier: settings.timelineAnchorIdentifier
         )
         filteredArticles = resolved.articles
@@ -162,9 +163,7 @@ struct ReaderScreen: View {
 
 
 
-    private var starredTag: Tag? { builtInTags.first { $0.name == Tag.starredName } }
-
-    private var aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }
+    private var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
 
     var body: some View {
         let articles = filteredArticles
@@ -204,6 +203,7 @@ struct ReaderScreen: View {
         .sheet(isPresented: $appState.showSettings, onDismiss: {
             if restartOnboardingPending {
                 restartOnboardingPending = false
+                appState.welcomeInitialStep = .welcome
                 appState.showWelcome = true
             }
             if showServerNoticePending {
@@ -220,11 +220,10 @@ struct ReaderScreen: View {
         }
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
-                FeedEditorView(feed: nil) { newFeed in
-                    // Fetch the just-added feed right away, unless it was created disabled.
-                    guard newFeed.enabled else { return }
-                    createFeed(newFeed)
-                }
+                ManagementWebView(
+                    serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
+                    path: "/feeds/new"
+                )
             }
         }
         .sheet(isPresented: $appState.showArticleList) {
@@ -251,14 +250,28 @@ struct ReaderScreen: View {
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
+        .onChange(of: settings.starredOnly) { _, _ in recomputeFilter() }
 
     }
 
+    /// Toggles locally right away (optimistic -- the new value is already known, unlike
+    /// reload/update-all whose results are fetched separately) and reverts if the server rejects
+    /// it. Silently local-only when not paired yet -- `AuthenticatedClient.current()` returning
+    /// `nil` means "nothing to do," not an error (see its doc comment).
     private func toggleStar(_ article: Article) {
-        guard let starredTag else { return }
-        article.setStarred(!article.isStarred, using: starredTag)
+        let newValue = !article.starred
+        article.starred = newValue
         try? modelContext.save()
         Haptics.impact(.light)
+        guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
+        Task {
+            do {
+                try await ArticleActions(client: client).setStarred(newValue, articleServerID: serverID)
+            } catch {
+                article.starred = !newValue
+                try? modelContext.save()
+            }
+        }
     }
 
     private func copyLink(_ article: Article) {
@@ -278,11 +291,22 @@ struct ReaderScreen: View {
 
     private func summarize(_ article: Article) {
         guard !isSummarizing else { return }
+        let provider: AISummaryProvider
+        if settings.aiMode == .appleIntelligence {
+            provider = AppleIntelligenceSummaryProvider()
+        } else if let client = AuthenticatedClient.current() {
+            provider = ServerAISummaryProvider(client: client)
+        } else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         isSummarizing = true
         Task {
-            let ok = await AggregationService(context: modelContext).summarize(article)
+            let summary = await provider.summarize(content: article.plainText, title: article.title)
             isSummarizing = false
-            if ok {
+            if let summary {
+                article.summary = summary
+                try? modelContext.save()
                 reloadToken += 1
             } else {
                 toast = ToastMessage(
@@ -329,49 +353,72 @@ struct ReaderScreen: View {
 
     // MARK: - Refresh
 
-    /// Force-update only the current article: re-fetch and re-process the single article in place,
-    /// leaving the rest of the timeline untouched. Falls back to a forced reload of the owning
-    /// feed when the source cannot re-fetch a lone item (see `AggregationService.forceReload`).
+    /// Force-update only the current article: triggers the server's per-article reload, then
+    /// re-fetches its content directly via `UpdateAndSync.pollForReloadedContent`.
+    /// `ArticleActions.reload`'s response is just an ack (the server does the re-fetch
+    /// asynchronously) -- see that method's doc comment for why this deliberately does NOT go
+    /// through `SyncEngine`'s generic `hasContent`-gated backfill (an earlier version of this code
+    /// did, and a premature backfill fetch during the poll window could permanently lock out any
+    /// later retry of this exact article).
     private func forceUpdateArticle(_ article: Article) {
+        guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
         let feedName = article.feed?.name
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.forceReload(article: article)
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                toast = ToastMessage(text: failure, style: .error)
-            } else {
-                // Re-render the visible page: forceReload refreshed the article's content in
-                // place, but the WKWebView only re-renders when reloadToken changes (same as
-                // summarize). Without this bump, Reload silently updates the DB while the page
-                // keeps showing the stale content.
-                reloadToken += 1
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feedName))
-                Haptics.impact(.light)
+            do {
+                try await ArticleActions(client: client).reload(articleServerID: serverID)
+                guard !Task.isCancelled else { return }
+                let applied = await UpdateAndSync.pollForReloadedContent(
+                    articleServerID: serverID, container: modelContext.container, client: client
+                )
+                guard !Task.isCancelled else { return }
+                if applied {
+                    // Re-render the visible page: the reload refreshed the article's content, but
+                    // the reader only re-renders when reloadToken changes (same as summarize).
+                    // Without this bump, Reload silently updates the DB while the page keeps
+                    // showing stale content.
+                    reloadToken += 1
+                    toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+                    Haptics.impact(.light)
+                } else {
+                    toast = ToastMessage(
+                        text: String(localized: "Could not reload this article. Please try again."),
+                        style: .error
+                    )
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                toast = ToastMessage(
+                    text: String(localized: "Could not reload this article. Please try again."),
+                    style: .error
+                )
             }
         }
     }
 
-    /// Fetch a freshly created feed right away so its articles replace the empty state
-    /// (mirrors the Feeds screen's create path).
-    private func createFeed(_ feed: Feed) {
-        UpdateActivity.shared.restart {
-            let count = await AggregationService(context: modelContext).update(feed: feed)
-            guard !Task.isCancelled else { return }
-            toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
-        }
-    }
-
+    /// "Update" only triggers the server's aggregation run (`ArticleActions.updateAll()`); the run
+    /// itself happens server-side and asynchronously, so this follows up with `UpdateAndSync`'s
+    /// bounded poll of `SyncEngine.sync()` to actually pull in whatever the run produced.
     private func triggerRefresh() {
+        guard let client = AuthenticatedClient.current() else {
+            toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
+            return
+        }
         UpdateActivity.shared.restart {
-            let service = AggregationService(context: modelContext)
-            let count = await service.updateAll()
-            guard !Task.isCancelled else { return }
-            if let failure = SyncFailureSummary.message(for: service.lastRunFailures) {
-                toast = ToastMessage(text: failure, style: .error)
-            } else {
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: nil))
+            do {
+                try await ArticleActions(client: client).updateAll()
+                guard !Task.isCancelled else { return }
+                let result = await UpdateAndSync.pollForFreshContent(
+                    container: modelContext.container, client: client, settings: settings
+                )
+                guard !Task.isCancelled else { return }
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: result.newCount, feedName: nil))
                 Haptics.impact(.light)
+            } catch {
+                guard !Task.isCancelled else { return }
+                toast = ToastMessage(
+                    text: String(localized: "Could not check for updates. Please try again."),
+                    style: .error
+                )
             }
         }
     }

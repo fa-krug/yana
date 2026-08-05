@@ -18,8 +18,8 @@ struct ArticleListFilterTests {
 
     @Test func listResultsAreSubsetAndJumpResolves() throws {
         let ctx = try makeContext()
-        let feedA = Feed(name: "Alpha", aggregatorType: .feedContent, identifier: "a")
-        let feedB = Feed(name: "Beta", aggregatorType: .feedContent, identifier: "b")
+        let feedA = Feed(name: "Alpha", aggregator: "feedContent", identifier: "a")
+        let feedB = Feed(name: "Beta", aggregator: "feedContent", identifier: "b")
         ctx.insert(feedA); ctx.insert(feedB)
         let a1 = Article(title: "Alpha one", identifier: "a1", url: "https://a/1")
         let a2 = Article(title: "Beta two", identifier: "b2", url: "https://b/2")

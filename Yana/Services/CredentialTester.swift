@@ -19,38 +19,3 @@ enum CredentialTestError: Error, Equatable {
     }
 }
 
-/// Builds a client from raw field values (live-network default fetch) and runs its verify
-/// method. Pure composition over the per-client `verify*` methods, which carry the logic.
-enum CredentialTester {
-    static func reddit(clientID: String, clientSecret: String, userAgent: String) async -> CredentialTestError? {
-        await RedditClient(clientID: clientID, clientSecret: clientSecret, userAgent: userAgent)
-            .verifyCredentials()
-    }
-
-    static func youtube(apiKey: String) async -> CredentialTestError? {
-        await YouTubeClient(apiKey: apiKey).verifyKey()
-    }
-
-    /// Resolve the chat-completions base URL for an AI probe: the user-overridable URL for
-    /// OpenAI, the provider's fixed base for the other OpenAI-compatible providers, otherwise
-    /// the provider base (unused by Anthropic/Gemini, which target hardcoded endpoints).
-    static func aiBaseURL(provider: AIProvider, openaiAPIURL: String) -> String {
-        provider == .openai ? openaiAPIURL : provider.baseURL
-    }
-
-    static func ai(provider: AIProvider, apiKey: String, model: String, openaiAPIURL: String) async -> CredentialTestError? {
-        let config = AIConfig(
-            provider: provider,
-            model: model,
-            apiKey: apiKey,
-            apiBaseURL: aiBaseURL(provider: provider, openaiAPIURL: openaiAPIURL),
-            temperature: 0.0,
-            maxTokens: 16,       // tiny probe — keep the test cheap
-            requestTimeout: 30,
-            maxRetries: 0,
-            retryDelay: 0,
-            maxRetryTime: 10
-        )
-        return await AIClient(config: config).verify()
-    }
-}

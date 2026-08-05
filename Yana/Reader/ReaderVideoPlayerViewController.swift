@@ -7,9 +7,9 @@ import WebKit
 /// a `WKWebView` that fills the screen (autoplay enabled, native fullscreen controls available).
 ///
 /// Playback uses the provider's privacy-mode embed player (`youtube-nocookie` / Dailymotion's geo
-/// player) — the same players `EmbedRewriter` targets — loaded into a black, edge-to-edge web view
-/// with a single close button overlaid. Only providers we can map to an embeddable player are
-/// handled here; anything else falls back to opening externally (see `EmbedCardView`).
+/// player), loaded into a black, edge-to-edge web view with a single close button overlaid. Only
+/// providers we can map to an embeddable player are handled here; anything else falls back to
+/// opening externally (see `EmbedCardView`).
 ///
 /// **How the player is loaded differs per provider** — see `requiresEmbedderContext(_:)`. Dailymotion
 /// is loaded as the top-level document, which makes it first-party: WebKit blocks third-party cookies
@@ -62,7 +62,7 @@ final class ReaderVideoPlayerViewController: UIViewController {
     static func playerURL(for embed: Embed) -> URL? {
         switch embed.provider {
         case .youtube:
-            guard let id = EmbedRewriter.extractYouTubeID(from: embed.externalURL) else { return nil }
+            guard let id = extractYouTubeID(from: embed.externalURL) else { return nil }
             // `origin=` names the embedder of the iframe this player is loaded into, and must match
             // the base URL of the wrapper page (see `html(embedURL:)`). It is not optional here:
             // without an embedder the `/embed/` endpoint refuses to configure the player (error 153).
@@ -134,6 +134,29 @@ final class ReaderVideoPlayerViewController: UIViewController {
     private static func dailymotionID(from url: String) -> String? {
         guard let range = url.range(of: #"video/([A-Za-z0-9]+)"#, options: .regularExpression) else { return nil }
         return String(url[range]).replacingOccurrences(of: "video/", with: "")
+    }
+
+    // Compiled once and reused instead of recompiling 5 patterns per call. Relocated from the
+    // (now-deleted) aggregation-time `EmbedRewriter` -- this is the only half of that file still
+    // needed post-rework, since embed HTML rewriting itself now happens server-side.
+    private static let youTubePatterns: [NSRegularExpression] = {
+        [
+            #"youtu\.be/([A-Za-z0-9_-]{11,})"#,
+            #"youtube\.com/watch\?\S*?[?&]?v=([A-Za-z0-9_-]{11,})"#,
+            #"youtube\.com/embed/([A-Za-z0-9_-]{11,})"#,
+            #"youtube\.com/v/([A-Za-z0-9_-]{11,})"#,
+            #"youtube\.com/shorts/([A-Za-z0-9_-]{11,})"#,
+        ].compactMap { try? NSRegularExpression(pattern: $0) }
+    }()
+
+    private static func extractYouTubeID(from url: String) -> String? {
+        let range = NSRange(url.startIndex..<url.endIndex, in: url)
+        for regex in youTubePatterns {
+            guard let match = regex.firstMatch(in: url, range: range), match.numberOfRanges >= 2,
+                  let captured = Range(match.range(at: 1), in: url) else { continue }
+            return String(url[captured])
+        }
+        return nil
     }
 
     private init(embedURL: URL) {

@@ -15,7 +15,7 @@ struct OffMainActorTests {
 
     private static func container() throws -> ModelContainer {
         try ModelContainer(
-            for: Feed.self, Tag.self, Article.self, StoredImage.self,
+            for: Feed.self, Tag.self, Article.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
     }

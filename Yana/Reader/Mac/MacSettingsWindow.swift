@@ -6,6 +6,7 @@ import SwiftUI
 /// `SettingsPane`s; the detail shows the selected pane. Each pane reuses the same section views as
 /// the iOS Form, regrouped for the desktop.
 struct MacSettingsWindow: View {
+    @Bindable var appState: AppState
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @State private var selection: SettingsPane? = .general
@@ -49,24 +50,21 @@ struct MacSettingsWindow: View {
             }
         case .reader:
             Form { ReaderSettingsSection() }
-        case .feeds:
-            NavigationStack { FeedsView() }
-        case .tags:
-            NavigationStack { TagsView() }
-        case .integrations:
-            Form {
-                RedditSettingsSection()
-                YouTubeSettingsSection()
+        case .manage:
+            NavigationStack {
+                ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
             }
         case .ai:
-            Form {
-                AIProviderSettingsSection()
-                AITuningSettingsSection()
-            }
+            Form { AIModeSettingsSection() }
         case .about:
             Form {
                 AboutSettingsSection(
                     onRestartOnboarding: {
+                        // Reset explicitly: a stale `.server` value from an earlier re-pairing
+                        // trigger this session must not carry into a deliberate "Restart
+                        // Onboarding" click and skip straight past the welcome/feature pages.
+                        // Mirrors the iOS reset in ReaderHostView.swift.
+                        appState.welcomeInitialStep = .welcome
                         openWindow(id: WindowID.welcome, value: true)
                         dismiss()
                     },

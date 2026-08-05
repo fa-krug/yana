@@ -3,8 +3,12 @@ import SwiftData
 import Testing
 @testable import Yana
 
+// See `YanaTests/Support/MockURLProtocol.swift`: every test that stubs a `YanaAPIClient` must
+// wrap its whole body in `MockURLProtocol.lock.withLock`, and the suite must be `.serialized` --
+// this shared static stub races with every other suite (e.g. `SyncEngineTests`) that Swift
+// Testing otherwise schedules concurrently.
 @MainActor
-@Suite("BackgroundRefreshManager")
+@Suite("BackgroundRefreshManager", .serialized)
 struct BackgroundRefreshManagerTests {
     @Test func nextBeginDateAddsIntervalToReference() {
         let now = Date(timeIntervalSince1970: 1_000_000_000)
@@ -21,38 +25,68 @@ struct BackgroundRefreshManagerTests {
                 == now.addingTimeInterval(BackgroundRefreshManager.minimumInterval))
     }
 
-    private func makeContext() throws -> ModelContext {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
-        let context = ModelContext(container)
-        context.insert(Yana.Tag(name: Yana.Tag.starredName, isBuiltIn: true))
-        return context
+    private func makeContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: Feed.self, Yana.Tag.self, Article.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none))
     }
 
-    /// Fake aggregator returning one canned article (no network).
-    private struct FakeAggregator: Aggregator {
-        let articles: [AggregatedArticle]
-        func validate() throws {}
-        func aggregate() async throws -> [AggregatedArticle] { articles }
-    }
+    /// Stubs a `YanaAPIClient` that reports one feed and, on `/api/v1/articles/sync`, one new
+    /// article summary (no `updated`/`removed`) with a matching `/content` response -- mirrors
+    /// `SyncEngineTests.stubClient`, which this manager's `runRefresh` now drives instead of
+    /// `AggregationService`.
+    private func stubClient(newArticleCount: Int) -> YanaAPIClient {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
 
-    @Test func runRefreshAwaitsUpdateAllAndImports() async throws {
-        let context = try makeContext()
-        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
-        context.insert(feed)
+        let newSummaries = (0..<newArticleCount).map { i in
+            #"{"id":\#(100 + i),"feedId":1,"name":"x\#(i)","identifier":"x\#(i)","date":"2026-01-01T00:00:00Z","author":"","icon":null,"read":false,"starred":false,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}"#
+        }.joined(separator: ",")
+        let syncResponse = #"{"new":[\#(newSummaries)],"updated":[],"removed":[],"nextCursor":null}"#
+            .data(using: .utf8)!
+        let contentResponse = #"{"version":1,"blocks":[]}"#.data(using: .utf8)!
+        let feedsResponse = #"{"feeds":[{"id":1,"name":"A","aggregator":"feed_content","identifier":"a","enabled":true,"dailyLimit":20,"tagIds":[],"logoImageHash":null,"updatedAt":"2026-01-01T00:00:00Z"}]}"#
+            .data(using: .utf8)!
 
-        let article = AggregatedArticle(
-            title: "x1", identifier: "x1", url: "x1",
-            rawContent: "", content: "c", date: .now, author: "", iconURL: nil
-        )
-        let service = AggregationService(context: context) { _, _ in
-            FakeAggregator(articles: [article])
+        MockURLProtocol.stub = { request in
+            let path = request.url!.path
+            let (data, status): (Data, Int)
+            if path == "/api/v1/feeds" {
+                (data, status) = (feedsResponse, 200)
+            } else if path == "/api/v1/tags" {
+                (data, status) = (#"{"tags":[]}"#.data(using: .utf8)!, 200)
+            } else if path == "/api/v1/articles/sync" {
+                (data, status) = (syncResponse, 200)
+            } else if path.hasSuffix("/content") {
+                (data, status) = (contentResponse, 200)
+            } else {
+                (data, status) = (#"{"error":{"code":"not_found","message":"unhandled path in test"}}"#.data(using: .utf8)!, 404)
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+            return (response, data)
         }
+        return YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+    }
 
-        await BackgroundRefreshManager.runRefresh(service: service)
+    private func freshSettings(notificationsEnabled: Bool) -> AppSettings {
+        let defaults = UserDefaults(suiteName: "BGRefreshTests.\(UUID().uuidString)")!
+        let s = AppSettings(defaults: defaults)
+        s.notificationsEnabled = notificationsEnabled
+        return s
+    }
 
-        #expect(service.isUpdating == false)
-        #expect((feed.articles ?? []).count == 1)
+    @Test func runRefreshAwaitsSyncAndImports() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let client = stubClient(newArticleCount: 1)
+            let settings = freshSettings(notificationsEnabled: false)
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+
+            await BackgroundRefreshManager.runRefresh(engine: engine, settings: settings)
+
+            let articles = try container.mainContext.fetch(FetchDescriptor<Article>())
+            #expect(articles.count == 1)
+        }
     }
 
     private final class FakeNotifier: Notifying, @unchecked Sendable {
@@ -64,51 +98,48 @@ struct BackgroundRefreshManagerTests {
         func postNewArticles(count: Int) async { postedCounts.append(count) }
     }
 
-    private func freshSettings(notificationsEnabled: Bool) -> AppSettings {
-        let defaults = UserDefaults(suiteName: "BGRefreshTests.\(UUID().uuidString)")!
-        let s = AppSettings(defaults: defaults)
-        s.notificationsEnabled = notificationsEnabled
-        return s
-    }
-
     @Test func postsNotificationWhenEnabledAuthorizedAndNewArticles() async throws {
-        let context = try makeContext()
-        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
-        context.insert(feed)
-        let article = AggregatedArticle(title: "x1", identifier: "x1", url: "x1", rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
-        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: [article]) }
-        let notifier = FakeNotifier(authorized: true)
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let client = stubClient(newArticleCount: 1)
+            let settings = freshSettings(notificationsEnabled: true)
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            let notifier = FakeNotifier(authorized: true)
 
-        await BackgroundRefreshManager.runRefresh(service: service, notifier: notifier, settings: freshSettings(notificationsEnabled: true))
+            await BackgroundRefreshManager.runRefresh(engine: engine, notifier: notifier, settings: settings)
 
-        #expect(notifier.postedCounts == [1])
+            #expect(notifier.postedCounts == [1])
+        }
     }
 
     @Test func doesNotNotifyWhenDisabled() async throws {
-        let context = try makeContext()
-        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
-        context.insert(feed)
-        let article = AggregatedArticle(title: "x1", identifier: "x1", url: "x1", rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
-        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: [article]) }
-        let notifier = FakeNotifier(authorized: true)
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let client = stubClient(newArticleCount: 1)
+            let settings = freshSettings(notificationsEnabled: false)
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            let notifier = FakeNotifier(authorized: true)
 
-        await BackgroundRefreshManager.runRefresh(service: service, notifier: notifier, settings: freshSettings(notificationsEnabled: false))
+            await BackgroundRefreshManager.runRefresh(engine: engine, notifier: notifier, settings: settings)
 
-        #expect(notifier.postedCounts.isEmpty)
-        #expect((feed.articles ?? []).count == 1)
+            #expect(notifier.postedCounts.isEmpty)
+            let articles = try container.mainContext.fetch(FetchDescriptor<Article>())
+            #expect(articles.count == 1)
+        }
     }
 
     @Test func doesNotNotifyWhenNotAuthorized() async throws {
-        let context = try makeContext()
-        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
-        context.insert(feed)
-        let article = AggregatedArticle(title: "x1", identifier: "x1", url: "x1", rawContent: "", content: "c", date: .now, author: "", iconURL: nil)
-        let service = AggregationService(context: context) { _, _ in FakeAggregator(articles: [article]) }
-        let notifier = FakeNotifier(authorized: false)
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let client = stubClient(newArticleCount: 1)
+            let settings = freshSettings(notificationsEnabled: true)
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            let notifier = FakeNotifier(authorized: false)
 
-        await BackgroundRefreshManager.runRefresh(service: service, notifier: notifier, settings: freshSettings(notificationsEnabled: true))
+            await BackgroundRefreshManager.runRefresh(engine: engine, notifier: notifier, settings: settings)
 
-        #expect(notifier.postedCounts.isEmpty)
+            #expect(notifier.postedCounts.isEmpty)
+        }
     }
 
     @Test("schedule() no-ops when secondsProvider returns nil (.off)")

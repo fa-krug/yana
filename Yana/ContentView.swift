@@ -45,7 +45,7 @@ struct ContentView: View {
                         WelcomeView(onFinish: {
                             settings.hasCompletedOnboarding = true
                             appState.showWelcome = false
-                        })
+                        }, initialStep: appState.welcomeInitialStep)
                         .interactiveDismissDisabled()
                     }
                     .fullScreenCover(isPresented: $appState.showServerMigrationNotice) {
@@ -87,7 +87,18 @@ struct ContentView: View {
                     }
                 }
             }
+            // A device that completed onboarding once but has no valid session any more (session
+            // revoked from another device, or the user cleared the app's Keychain data) re-enters
+            // `WelcomeView` starting at `.server` rather than restarting from `.welcome`.
             if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
+                appState.welcomeInitialStep = .welcome
+                if isMac {
+                    openWindow(id: WindowID.welcome, value: true)
+                } else {
+                    appState.showWelcome = true
+                }
+            } else if settings.hasCompletedOnboarding, AuthenticatedClient.current() == nil, !Self.skipOnboarding {
+                appState.welcomeInitialStep = .server
                 if isMac {
                     openWindow(id: WindowID.welcome, value: true)
                 } else {

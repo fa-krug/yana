@@ -1,22 +1,27 @@
-import SwiftData
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// First-launch onboarding, shown once (gated by `AppSettings.hasCompletedOnboarding`). A small
-/// paged coordinator over three steps — Welcome, optional AI setup, and a first feed — with a
-/// shared footer (Back / page dots / primary button) and a Skip affordance on the optional steps.
+/// paged coordinator over three steps — Welcome, server pairing, and AI mode — with a shared
+/// footer (Back / page dots / primary button). Also reused as the re-pairing flow (see
+/// `ContentView`'s `.onAppear` gate) for a device that completed onboarding once but no longer
+/// has a valid session — that flow starts at `.server` via `initialStep`, not `.welcome`.
 struct WelcomeView: View {
-    /// Called when onboarding finishes (primary button on the last page, or Skip). The host flips
+    /// Called when onboarding finishes (primary button on the last page). The host flips
     /// `hasCompletedOnboarding` and dismisses.
     var onFinish: () -> Void
 
-    private enum Step: Int, CaseIterable {
-        case welcome, ai, feeds
+    /// Not `private` — `AppState.welcomeInitialStep` (used by `ContentView`'s re-pairing gate)
+    /// needs to reference this type.
+    enum Step: Int, CaseIterable {
+        case welcome, server, aiMode
     }
 
-    @Environment(\.modelContext) private var modelContext
-    @State private var step: Step = .welcome
-    @State private var settings = AppSettings()
+    @State private var step: Step
+
+    init(onFinish: @escaping () -> Void, initialStep: Step = .welcome) {
+        self.onFinish = onFinish
+        self._step = State(initialValue: initialStep)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,8 +29,8 @@ struct WelcomeView: View {
             Group {
                 switch step {
                 case .welcome: WelcomeIntroPage()
-                case .ai: OnboardingAIPage(settings: settings)
-                case .feeds: OnboardingFeedsPage()
+                case .server: OnboardingServerPage(onPaired: { step = .aiMode })
+                case .aiMode: OnboardingAIModePage()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -66,7 +71,7 @@ struct WelcomeView: View {
                     .accessibilityIdentifier("onboardingBackButton")
                 }
                 // The final step completes onboarding via "Finish"; earlier steps advance the pager.
-                if step == .feeds {
+                if step == .aiMode {
                     Button(action: finish) {
                         Text("Finish")
                             .font(.headline)
@@ -117,10 +122,11 @@ struct WelcomeView: View {
         step = next
     }
 
-    /// Completes onboarding and kicks off a full aggregation for the feeds just added.
+    /// Completes onboarding and kicks off a first foreground sync now that pairing is complete.
     private func finish() {
-        UpdateActivity.shared.restart {
-            _ = await AggregationService(context: modelContext).updateAll()
+        Task {
+            guard let client = AuthenticatedClient.current() else { return }
+            _ = try? await SyncEngine(container: AppContainer.shared, client: client).sync()
         }
         onFinish()
     }
@@ -151,16 +157,16 @@ private struct WelcomeIntroPage: View {
             detail: "Tag your feeds to filter the timeline, and star articles to keep them around."
         ),
         Feature(
-            icon: "lock.shield",
+            icon: "server.rack",
             tint: .green,
-            title: "Private by Design",
-            detail: "Everything is fetched and stored on your device. No account, no server, no tracking."
+            title: "Your Own Server",
+            detail: "Yana pairs with a Yana Server you control, which aggregates your feeds and syncs them to every device."
         ),
         Feature(
             icon: "sparkles",
             tint: .purple,
             title: "Optional AI",
-            detail: "Bring your own key to summarize, improve, or translate articles — entirely opt-in."
+            detail: "Summarize, improve, or translate articles — via your server's AI provider, or entirely on-device with Apple Intelligence."
         ),
     ]
 
@@ -175,7 +181,7 @@ private struct WelcomeIntroPage: View {
                     Text("Welcome to Yana")
                         .font(.largeTitle.bold())
                         .multilineTextAlignment(.center)
-                    Text("Your own private feed reader — all your sources, gathered on your device.")
+                    Text("Your own private feed reader — all your sources, gathered on your server.")
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -212,264 +218,6 @@ private struct WelcomeIntroPage: View {
             }
             Spacer(minLength: 0)
         }
-    }
-}
-
-// MARK: - Page 2: AI configuration (basics only)
-
-private struct OnboardingAIPage: View {
-    @Bindable var settings: AppSettings
-
-    @State private var apiKey = ""
-    @State private var status: TestStatus = .idle
-
-    private var provider: AIProvider { settings.activeAIProvider }
-
-    private var modelBinding: Binding<String> {
-        Binding(
-            get: { settings.aiModel(for: provider) },
-            set: { settings.setAIModel($0, for: provider) }
-        )
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Picker(selection: $settings.activeAIProvider) {
-                    ForEach(AIProvider.allCases) { Text($0.displayName).tag($0) }
-                } label: {
-                    Label("Active Provider", systemImage: "sparkles")
-                        .labelStyle(.tintedIcon(.purple))
-                }
-                providerConfig
-            } header: {
-                Text("AI Provider")
-            } footer: {
-                Text("Optional. Bring your own key to summarize, improve, or translate articles. You can change this anytime in Settings.")
-            }
-        }
-        .accessibilityIdentifier("onboardingAIScreen")
-        .onAppear(perform: loadKey)
-        .onChange(of: provider) { _, _ in loadKey() }
-    }
-
-    @ViewBuilder
-    private var providerConfig: some View {
-        switch provider {
-        case .none:
-            Text("Set this up later in Settings.")
-                .foregroundStyle(.secondary)
-        case .appleIntelligence:
-            LabeledContent("Status", value: appleIntelligenceStatus)
-            testButton(disabled: false) {
-                let available = AppleIntelligenceClient().availability == .available
-                status = available ? .valid : .invalid(appleIntelligenceStatus)
-            }
-        default:
-            SecureField("API Key", text: $apiKey)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .disabled(status == .testing)
-                .onChange(of: apiKey) { _, value in
-                    if let item = provider.apiKeyItem {
-                        KeychainService.saveAPIKey(value, for: item)
-                    }
-                    status = .idle
-                }
-            if provider == .openai {
-                TextField("API URL", text: $settings.openaiAPIURL)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .disabled(status == .testing)
-            }
-            Picker("Model", selection: modelBinding) {
-                ForEach(provider.models, id: \.self) { Text($0).tag($0) }
-            }
-            testButton(disabled: apiKey.isEmpty) {
-                runTest {
-                    await CredentialTester.ai(
-                        provider: provider,
-                        apiKey: apiKey,
-                        model: settings.aiModel(for: provider),
-                        openaiAPIURL: settings.openaiAPIURL
-                    )
-                }
-            }
-        }
-    }
-
-    /// A "Test" button plus its inline status row (mirrors the Settings pattern, minus the shared
-    /// private helpers, which are scoped to `SettingsScreenView`).
-    @ViewBuilder
-    private func testButton(disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                Text("Test")
-                if status == .testing {
-                    Spacer()
-                    Text("Testing…").foregroundStyle(.secondary)
-                    ProgressView()
-                }
-            }
-        }
-        .disabled(disabled || status == .testing)
-
-        switch status {
-        case .idle, .testing:
-            EmptyView()
-        case .valid:
-            Label("Credentials valid", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        case .invalid(let message):
-            Label(message, systemImage: "xmark.circle.fill")
-                .foregroundStyle(.red)
-        }
-    }
-
-    private func runTest(_ op: @escaping () async -> CredentialTestError?) {
-        status = .testing
-        Task {
-            let error = await op()
-            status = error.map { .invalid($0.localizedMessage) } ?? .valid
-        }
-    }
-
-    private func loadKey() {
-        status = .idle
-        apiKey = provider.apiKeyItem.flatMap { KeychainService.loadAPIKey(for: $0) } ?? ""
-    }
-
-    private var appleIntelligenceStatus: String {
-        switch AppleIntelligenceClient().availability {
-        case .available: String(localized: "Available")
-        case .deviceNotEligible: String(localized: "Not available on this device")
-        case .notEnabled: String(localized: "Turn on Apple Intelligence in Settings")
-        case .modelNotReady: String(localized: "Model downloading…")
-        }
-    }
-}
-
-// MARK: - Page 3: First feed (add or import)
-
-private struct OnboardingFeedsPage: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Feed.createdAt) private var feeds: [Feed]
-
-    @State private var showCreateFeed = false
-    @State private var isImporting = false
-    @State private var toast: ToastMessage?
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                VStack(spacing: 12) {
-                    Image(systemName: "text.badge.plus")
-                        .font(.system(size: 52, weight: .semibold))
-                        .foregroundStyle(.tint)
-                        .accessibilityHidden(true)
-                    Text("Add Your Feeds")
-                        .font(.largeTitle.bold())
-                        .multilineTextAlignment(.center)
-                    Text("Add as many feeds as you like, or import an OPML file to get started. You can always add more later.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-
-                VStack(spacing: 12) {
-                    Button {
-                        showCreateFeed = true
-                    } label: {
-                        Label("Add a Feed", systemImage: "plus.circle.fill")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .accessibilityIdentifier("onboardingAddFeedButton")
-
-                    Button {
-                        isImporting = true
-                    } label: {
-                        Label("Import Feeds", systemImage: "square.and.arrow.down")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                    .accessibilityIdentifier("onboardingImportButton")
-                }
-
-                if !feeds.isEmpty {
-                    addedFeedsList
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 32)
-            .padding(.bottom, 24)
-            .frame(maxWidth: .infinity)
-        }
-        .accessibilityIdentifier("onboardingFeedsScreen")
-        .animation(.easeInOut, value: feeds.count)
-        .sheet(isPresented: $showCreateFeed) {
-            NavigationStack {
-                // The editor inserts & saves the feed; the list below updates via @Query.
-                // Aggregation is deferred to the Finish button.
-                FeedEditorView(feed: nil) { _ in }
-            }
-        }
-        .fileImporter(
-            isPresented: $isImporting,
-            allowedContentTypes: [UTType(filenameExtension: "opml") ?? .xml, .xml],
-            allowsMultipleSelection: false
-        ) { result in
-            handleImport(result)
-        }
-        .toast($toast)
-    }
-
-    /// The feeds added so far (created or imported), shown so the user can see their progress
-    /// before finishing.
-    private var addedFeedsList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Your Feeds")
-                .font(.headline)
-            ForEach(feeds) { feed in
-                HStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(feed.name.isEmpty ? feed.identifier : feed.name)
-                            .font(.body)
-                        Text(feed.type.displayName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(.secondarySystemBackground),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityIdentifier("onboardingAddedFeeds")
-    }
-
-    private func handleImport(_ result: Result<[URL], Error>) {
-        guard case let .success(urls) = result, let url = urls.first else { return }
-        let needsStop = url.startAccessingSecurityScopedResource()
-        defer { if needsStop { url.stopAccessingSecurityScopedResource() } }
-        guard let xml = try? String(contentsOf: url, encoding: .utf8) else {
-            toast = ToastMessage(text: String(localized: "Could not read the file."), style: .error)
-            return
-        }
-        let r = FeedPortability.importOPML(xml, context: modelContext)
-        toast = ToastMessage(text: String(localized: "Imported \(r.imported) feeds, skipped \(r.skipped)."))
-        // Aggregation is deferred to the Finish button.
     }
 }
 

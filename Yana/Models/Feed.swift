@@ -4,45 +4,30 @@ import SwiftData
 @Model
 final class Feed {
     var name: String = ""
-    /// Raw value of `AggregatorType`. Use the `type` computed property for typed access.
-    var aggregatorType: String = AggregatorType.feedContent.rawValue
+    /// Server's aggregator key (e.g. "reddit", "heise"), display-only. Nothing client-side
+    /// branches on it any more -- there's no native feed creation/editing left to special-case,
+    /// since feed management moved to the server's own web UI.
+    var aggregator: String = ""
     var identifier: String = ""
     var dailyLimit: Int = 20
     var enabled: Bool = true
-    var options: AggregatorOptions = AggregatorOptions.feedContent(FeedContentOptions())
-    var lastFetchedAt: Date?
-    var lastError: String?
-    /// Content hash of the feed's cached logo image (served via `yana-img://`), or nil until resolved.
-    var logoHash: String?
-    var createdAt: Date = Date.now
+    var logoImageHash: String?
     var updatedAt: Date = Date.now
 
-    /// Template tags applied (as a snapshot) to this feed's articles at import time.
-    var tags: [Tag]?
+    /// Server-side tag ids this feed currently belongs to (`GET /api/v1/feeds`'s `tagIds`).
+    /// A **live** join, refreshed on every `/feeds` fetch -- unlike the old per-article tag
+    /// snapshot this replaces, tag membership here always reflects the feed's current state.
+    var tagIDs: [Int] = []
 
     @Relationship(deleteRule: .cascade, inverse: \Article.feed)
     var articles: [Article]?
 
-    var type: AggregatorType {
-        get { AggregatorType(rawValue: aggregatorType) ?? .feedContent }
-        set { aggregatorType = newValue.rawValue }
-    }
-
-    init(
-        name: String,
-        aggregatorType: AggregatorType,
-        identifier: String,
-        dailyLimit: Int = 20,
-        enabled: Bool = true,
-        options: AggregatorOptions? = nil
-    ) {
+    init(name: String, aggregator: String, identifier: String, dailyLimit: Int = 20, enabled: Bool = true) {
         self.name = name
-        self.aggregatorType = aggregatorType.rawValue
+        self.aggregator = aggregator
         self.identifier = identifier
         self.dailyLimit = dailyLimit
         self.enabled = enabled
-        self.options = options ?? aggregatorType.defaultOptions
-        self.createdAt = .now
         self.updatedAt = .now
     }
 }

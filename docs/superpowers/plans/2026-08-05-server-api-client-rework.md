@@ -63,12 +63,16 @@ Modified (existing files whose responsibilities change):
 Deleted outright (verified redundant against the new architecture — exact list, not "the rest of the folder"):
 - `Yana/Aggregators/AggregatedArticle.swift`, `AggregationLogic.swift`, `Aggregator.swift`, `AggregatorRegistry.swift`, `AggregatorType.swift`, `ArticleUpsert.swift`, `FeedConfig.swift`, `FeedLogoResolver.swift`, `RetentionCleanup.swift`
 - `Yana/Aggregators/Concrete/` (entire directory — 16 scrapers + Reddit/YouTube clients/models/markdown)
-- `Yana/Aggregators/Utils/BlockParser.swift`, `BlueskyEmbed.swift`, `ContentFormatter.swift`, `DomainImageOverrides.swift`, `EmbedRewriter.swift`, `FaviconResolver.swift`, `FeedDiscovery.swift`, `FeedParser.swift`, `FeedURLResolver.swift`, `HTMLUtils.swift`, `HeaderElementExtractor.swift`, `ImageCompressor.swift`, `LogoBackgroundRemover.swift`
+- `Yana/Aggregators/Utils/BlueskyEmbed.swift`, `ContentFormatter.swift`, `DomainImageOverrides.swift`, `FaviconResolver.swift`, `FeedDiscovery.swift`, `FeedParser.swift`, `FeedURLResolver.swift`, `HTMLUtils.swift`, `HeaderElementExtractor.swift`, `ImageCompressor.swift`, `LogoBackgroundRemover.swift`
 - `Yana/Aggregators/Utils/HTTPClient.swift` (its two constants — `maxImageResponseBytes`, `imageAccept` — move into `Yana/Networking/YanaAPIClient.swift`, Task 11; the rest, generic scraping-fetch code, is deleted)
+- **Correction found during Task 12's execution — NOT deleted, relocated (would have broken the build otherwise):** `Yana/Aggregators/Utils/BlockParser.swift` → `Yana/Reader/BlockParser.swift`. `BlockParser.plainText(_:)` is called directly from `Article.blocks`'s setter (`Yana/Models/Article.swift`) — the load-bearing `[Block]`→search/read-aloud-plain-text conversion used by every article regardless of where its content came from, including `SyncWriter.applyContent`'s writes. `blocks(fromHTML:)` is still used by `BlockMigration` (one-time legacy-HTML sweep) and `ScreenshotSeed`/`DebugSeed` fixtures. The original plan text calling this "fully redundant since the server delivers structured Block JSON directly" was wrong — that's true for the *aggregation* half (HTML→blocks), not for `plainText(_:)`, which nothing else in the codebase provides.
+- **Same correction, `EmbedRewriter.swift`:** its `extractYouTubeID(from:)` relocated as a private static func into `Yana/Reader/ReaderVideoPlayerViewController.swift` (the reader's in-app YouTube player calls it to resolve a video id before building the embed URL). The rest of the file (SwiftSoup-based HTML rewriting, tweet-embed fetch) really is aggregation-only and was deleted with the rest of `Utils/`.
 - `Yana/Services/AggregationService.swift`, `AggregationWriter.swift`, `StarredRegistry.swift`, `ArticleUID.swift`, `LibraryDedup.swift`, `ImageSync.swift`, `ImagePrune.swift` (+ its candidate-quarantine store file), `AIClient.swift`, `AIProcessor.swift`, `FeedPortability.swift`, `OPMLCodec.swift`
+- **Found during Task 12's execution, added to its scope:** `Yana/Utilities/SyncFailureSummary.swift` — its only method's signature names `AggregationService.FeedFailure`, a type deleted in the same task; no successor "feed failure" concept exists yet. Deleted without inventing a replacement; **Task 13 should design one if the reload/update-all UI still needs to surface per-feed failures** (its old callers were `ReaderHostView`/`TimelineModel`/`MacRootView`/`FeedsView`, all already being rewired in Task 13).
 - `Yana/Models/AggregatorOptions.swift`
 - `Yana/Views/Config/FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, `FeedTagsPicker.swift` (if a separate file), `TagEditorView.swift`, `AggregatorOptionsForm.swift`
 - `Yana/Views/Config/Settings/RedditSettingsSection.swift`, `YouTubeSettingsSection.swift`, `AIProviderSettingsSection.swift`, `AITuningSettingsSection.swift`
+- `Yana/Services/AIReadiness.swift`, `Yana/Views/Config/SelectorListView.swift`, `Yana/Services/SelectorSuggester.swift` (+ their test files — found during Task 3's execution, not the original inventory; see Tasks 15/19's Files lists for why each is dead)
 
 ---
 
@@ -1223,21 +1227,26 @@ git commit -m "Simplify Feed to a plain server mirror; delete AggregatorType/Agg
 
 ---
 
-### Task 8: Delete `ArticleUID`, remove `ArticleSummary.uid`
+### Task 8: Remove `ArticleSummary.uid` (defer deleting `ArticleUID.swift` itself to Task 12)
+
+**Correction discovered during this task's own execution**: `ArticleUID.swift`'s *computed-property-style* consumer (`ArticleSummary.uid`) is indeed dead, but its **static method** `ArticleUID.make(...)` is not — it's still called from `Yana/Aggregators/RetentionCleanup.swift:18`, `Yana/Aggregators/ArticleUpsert.swift:52`, `Yana/Services/AggregationWriter.swift:195`, and `Yana/Services/LibraryDedup.swift:73` (a `.make(...)` call is a different syntax shape than `\.uid\b`, so the original confirmation grep below never caught it). All four of those call sites are already on Task 12's deletion list, so `ArticleUID.swift` itself only becomes safe to delete once Task 12 removes them — not now. `ArticleUID.swift` also bundles an unrelated `ArticleImageRefs` enum that `AggregationWriter.swift` uses for image pruning; that goes with the rest of the file's deletion in Task 12 too, not here.
 
 **Files:**
-- Delete: `Yana/Services/ArticleUID.swift`
 - Modify: `Yana/Models/ArticleSummary.swift`
+- (`Yana/Services/ArticleUID.swift` itself is NOT deleted in this task — see Task 12's Files list, which now includes it)
 
 **Interfaces:**
 - Produces: `ArticleSummary` unchanged except `uid` removed.
 
-No test needed — this is a pure removal of a computed property confirmed (via `grep -rn "\.uid\b" Yana` returning zero hits outside `ArticleSummary.swift` itself) to have no consumer.
+No test needed for the removal itself — this is a pure removal of a computed property. But its own direct test companion needs to go too (see Step 1).
 
-- [ ] **Step 1: Confirm no consumer exists (guard against having missed one)**
+- [ ] **Step 1: Confirm the only consumer of `.uid` (property syntax) is its own test, and handle it**
 
-Run: `grep -rn "\.uid\b" Yana --include="*.swift" | grep -v ArticleSummary.swift`
-Expected: no output. If this prints anything, stop and investigate before deleting — do not delete `ArticleUID` if something unexpected depends on it.
+Run: `grep -rn "\.uid\b" Yana YanaTests --include="*.swift" | grep -v ArticleSummary.swift`
+
+This surfaces exactly one hit: `YanaTests/ArticleSummaryTests.swift`'s `uidIsCollisionFreeAcrossFeeds` test, which exists solely to test the property being removed here (same category as Task 6 deleting `StarredRegistryTests.swift` alongside `StarredRegistry`). Remove only that test method; if `ArticleSummaryTests.swift` has other tests unrelated to `uid`, keep them.
+
+If this grep turns up anything else, stop and investigate before proceeding — do not assume it's another test-of-the-thing-being-deleted without checking.
 
 - [ ] **Step 2: Remove `uid` from `ArticleSummary.swift`**
 
@@ -1250,21 +1259,16 @@ var uid: String {
 ```
 Also remove `feedIdentifier`/`aggregatorType` fields and their `init(_ article:)`/`Codable` plumbing **only if** nothing else in `ArticleSummary` still needs them after Task 7's `Feed` rework — check with `grep -n "feedIdentifier\|aggregatorType" Yana/Models/ArticleSummary.swift` and delete each reference that existed solely to feed `uid`.
 
-- [ ] **Step 3: Delete `ArticleUID.swift`**
+- [ ] **Step 3: Verify `ArticleUID.swift` itself is untouched and still has its (expected, deferred) 4 real consumers**
 
-Run: `git rm Yana/Services/ArticleUID.swift`
+Run: `xcodegen generate && grep -rn "\.uid\b" Yana YanaTests --include="*.swift"` — expect zero output now (the property-syntax consumer is gone). `ArticleUID.make(...)`'s 4 call sites in `RetentionCleanup.swift`/`ArticleUpsert.swift`/`AggregationWriter.swift`/`LibraryDedup.swift` are expected to remain — do not touch them, they're deleted alongside those files in Task 12.
 
-- [ ] **Step 4: Verify no build reference remains**
-
-Run: `xcodegen generate && grep -rn "ArticleUID" Yana --include="*.swift"`
-Expected: no output.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add Yana/Models/ArticleSummary.swift
-git rm Yana/Services/ArticleUID.swift
-git commit -m "Delete ArticleUID and ArticleSummary.uid (dead since CloudKit removal, zero call sites)"
+git add -u YanaTests
+git commit -m "Remove ArticleSummary.uid (dead computed property); defer ArticleUID.swift's own deletion to Task 12, where its remaining real call sites (RetentionCleanup/ArticleUpsert/AggregationWriter/LibraryDedup) also go"
 ```
 
 ---
@@ -2101,12 +2105,17 @@ git commit -m "Rework ImageStore to fetch-by-hash; delete the CloudKit-era Store
 - Create: `Yana/Services/AuthenticatedClient.swift` (small app-wide holder resolving the current `YanaAPIClient` from `AppSettings.serverBaseURL` + `KeychainService.loadDeviceToken()`)
 - Modify: `Yana/YanaApp.swift`, `Yana/ContentView.swift`, `Yana/Views/Config/FeedLogoView.swift`, `Yana/Reader/ReaderImageCache.swift` (resolve the `// TODO(Task 12)` from Task 11)
 - Delete: `Yana/Services/AggregationService.swift`, `AggregationWriter.swift`
+- Delete: `Yana/Services/ArticleUID.swift` (deferred here from Task 8 — its `.make(...)` static method has 4 real consumers, `RetentionCleanup.swift`/`ArticleUpsert.swift`/`AggregationWriter.swift`/`LibraryDedup.swift`, all deleted in this same task, so this is the first point it's actually safe to remove; also bundles the `ArticleImageRefs` enum `AggregationWriter.swift` uses for image pruning, going with it)
 - Delete: `Yana/Aggregators/AggregatedArticle.swift`, `AggregationLogic.swift`, `Aggregator.swift`, `AggregatorRegistry.swift`, `ArticleUpsert.swift`, `FeedConfig.swift`, `RetentionCleanup.swift`
 - Delete: `Yana/Aggregators/Concrete/` (entire directory)
 - Delete: `Yana/Aggregators/Utils/BlockParser.swift`, `BlueskyEmbed.swift`, `ContentFormatter.swift`, `DomainImageOverrides.swift`, `EmbedRewriter.swift`, `FaviconResolver.swift`, `FeedDiscovery.swift`, `FeedParser.swift`, `FeedURLResolver.swift`, `HTMLUtils.swift`, `HeaderElementExtractor.swift`, `HTTPClient.swift`
 - Delete: `Yana/Services/ImagePrune.swift` (+ its candidate-store file — `grep -rln "ImagePruneCandidateStore" Yana` to find it), `LibraryDedup.swift`
 - Move: `Yana/Aggregators/ArticleSearch.swift` → `Yana/Services/ArticleSearch.swift`
 - Delete the (now-empty) `Yana/Aggregators/` directory.
+- Fix: `YanaTests/SyncReactionMainThreadTests.swift`'s `dedupPassLeavesTheMainActorResponsive` test (discovered during Task 11's execution: this file is a real, CLAUDE.md-documented main-actor-responsiveness regression guard that appears on no task's file list at all; Task 11 already removed its `ImageSync`-dependent sibling test, but this one calls `LibraryDedup.runAndWait` directly and breaks the moment `LibraryDedup.swift` is deleted here — remove or adapt this one test, leaving the file's other `ArticleStore`/`LibraryFixture`-based tests untouched)
+
+**Completion correction (found during this task's own execution, see the top-level File Structure section above for the authoritative version): `BlockParser.swift` and `EmbedRewriter.extractYouTubeID` are NOT deleted — both are load-bearing outside aggregation (`Article.blocks`'s setter; the reader's YouTube player) and were relocated instead. `SyncFailureSummary.swift` was additionally deleted (its only signature named a type gone in this task) and is flagged for Task 13. The "known-pending" bucket this task's Step 8 gestures at turned out much larger than the three named examples — every remaining build error after this task traces to Tasks 13/14/15/16/17/19/20/22 by file, verified exhaustively; see the Task 12 ledger entry for the full table.**
+- Fix: `Yana/Utilities/ScreenshotSeed.swift` (discovered during Task 7's execution: constructs `Feed`/`Article` directly with the old pre-Task-7 shape — `Feed(name:aggregatorType:...)`, `feed.logoHash =`, `feed.tags =`/`article.tags =` — and has been broken since Task 7 landed; nothing in this plan owns fixing it otherwise, and it's needed for `fastlane screenshots` to run again). Get it compiling with **mechanical** adaptation only, matching the pattern Task 7 already used for `YanaTests/LibraryFixture.swift`: update the `Feed(...)` construction to the new `init(name:aggregator:identifier:...)`, rename `logoHash` → `logoImageHash`, and replace any `feed.tags =`/`article.tags =` assignment with whatever `Feed.tagIDs`/`Article.starred` now actually needs (a fixture doesn't need real server tag ids — dropping tag assignment entirely, or assigning a placeholder `tagIDs`, is fine; do not attempt to redesign the fixture's tag/starred *behavior*, only make it compile against the new shapes). A full review of what the screenshot fixtures should show post-rework (e.g. the `05_AI` shot's caption referencing the deleted bring-your-own-key AI section) is tracked separately in the design spec's "Out of scope / follow-ups" — this step is scoped to "compiles and runs," not "still produces meaningful screenshots."
 - Modify: `Yana/Services/ArticleStore.swift` (remove the inert `.NSPersistentStoreRemoteChange` observer)
 - Test: `YanaTests/AuthenticatedClientTests.swift`
 
@@ -2453,6 +2462,7 @@ git commit -m "BackgroundRefreshManager: sync via SyncEngine instead of Aggregat
 - Delete: `Yana/Views/Config/Settings/AIProviderSettingsSection.swift`, `Yana/Views/Config/Settings/AITuningSettingsSection.swift`
 - Delete: `Yana/Views/Config/Settings/RedditSettingsSection.swift`, `Yana/Views/Config/Settings/YouTubeSettingsSection.swift`
 - Modify: `Yana/Services/CredentialTester.swift`
+- Delete: `Yana/Services/AIReadiness.swift`, `YanaTests/AIReadinessTests.swift` (discovered during Task 3's build-verification pass, not in the original file inventory: `AIReadiness.isReady(provider:)` branches on the now-deleted `AIProvider` and `KeychainService.APIKeyItem` — it has no remaining purpose once there are only two AI modes, and Apple Intelligence availability is just `AppleIntelligenceClient().availability == .available` directly, no per-provider branching needed)
 
 **Interfaces:** none new — pure deletion + one file trimmed to its still-useful part.
 
@@ -2462,7 +2472,10 @@ git commit -m "BackgroundRefreshManager: sync via SyncEngine instead of Aggregat
 git rm Yana/Services/AIClient.swift Yana/Services/AIProcessor.swift
 git rm Yana/Views/Config/Settings/AIProviderSettingsSection.swift Yana/Views/Config/Settings/AITuningSettingsSection.swift
 git rm Yana/Views/Config/Settings/RedditSettingsSection.swift Yana/Views/Config/Settings/YouTubeSettingsSection.swift
+git rm Yana/Services/AIReadiness.swift YanaTests/AIReadinessTests.swift
 ```
+
+**Do not yet touch `Yana/Reader/ReaderHostView.swift`/`Yana/Reader/Mac/TimelineModel.swift`**, even though both currently call the `AIReadiness.isReady(provider: settings.activeAIProvider)` you're deleting here (each via a private `aiReady: Bool` computed property gating the reader's "Summarize" toolbar button) — leaving them broken at this point is expected; Task 17 replaces both call sites with the new two-mode check when it wires `AISummaryProvider` into the same trigger point.
 
 Note: `RedditClient.swift`/`YouTubeClient.swift`/`RedditModels.swift`/`YouTubeModels.swift`/`RedditMarkdown.swift` were already deleted in Task 12 (they lived under `Yana/Aggregators/Concrete/`). If any of those four Settings-section files still reference something not yet deleted, `grep -n "RedditClient\|YouTubeClient" Yana/Views/Config/Settings/*.swift` first to confirm — expected to find nothing left referencing them once this step's deletions land.
 
@@ -2497,8 +2510,8 @@ Expected: PASS (2 tests, unchanged).
 
 ```bash
 git add Yana/Services/CredentialTester.swift
-git rm Yana/Services/AIClient.swift Yana/Services/AIProcessor.swift Yana/Views/Config/Settings/AIProviderSettingsSection.swift Yana/Views/Config/Settings/AITuningSettingsSection.swift Yana/Views/Config/Settings/RedditSettingsSection.swift Yana/Views/Config/Settings/YouTubeSettingsSection.swift
-git commit -m "Delete the 6-provider network AI stack and Reddit/YouTube settings UI"
+git rm Yana/Services/AIClient.swift Yana/Services/AIProcessor.swift Yana/Views/Config/Settings/AIProviderSettingsSection.swift Yana/Views/Config/Settings/AITuningSettingsSection.swift Yana/Views/Config/Settings/RedditSettingsSection.swift Yana/Views/Config/Settings/YouTubeSettingsSection.swift Yana/Services/AIReadiness.swift YanaTests/AIReadinessTests.swift
+git commit -m "Delete the 6-provider network AI stack, Reddit/YouTube settings UI, and AIReadiness"
 ```
 
 ---
@@ -2518,6 +2531,7 @@ protocol AISummaryProvider: Sendable {
 }
 struct ServerAISummaryProvider: AISummaryProvider { init(client: YanaAPIClient) }
 struct AppleIntelligenceSummaryProvider: AISummaryProvider { init(generator: ArticleGenerating = AppleIntelligenceClient()) }
+enum AISummaryReadiness { static func isReady(mode: AIMode) -> Bool }
 ```
 
 - [ ] **Step 1: Write the failing tests**
@@ -2583,6 +2597,22 @@ import Foundation
 /// configured, model unavailable), never a user-facing error.
 protocol AISummaryProvider: Sendable {
     func summarize(content: String, title: String) async -> String?
+}
+
+/// Whether the reader's "Summarize" action should be offered at all, for a given mode.
+/// `.server` is always considered ready -- `ServerAISummaryProvider` degrades to `nil` on its
+/// own if the server has no provider configured, which is a fine outcome for a button that was
+/// visible; `.appleIntelligence` needs an actual on-device-model availability check, since
+/// showing the button with no usable model is a worse experience than hiding it. Shared here so
+/// `ReaderHostView`/`TimelineModel`'s toolbar-visibility checks (Task 17) don't duplicate the
+/// same three-line switch in two files.
+enum AISummaryReadiness {
+    static func isReady(mode: AIMode) -> Bool {
+        switch mode {
+        case .server: true
+        case .appleIntelligence: AppleIntelligenceClient().availability == .available
+        }
+    }
 }
 
 private struct AIPromptBody: Encodable { let prompt: String }
@@ -2658,6 +2688,7 @@ git commit -m "Add AISummaryProvider: server-mediated (/ai/prompt) and Apple Int
 **Files:**
 - Create: `Yana/Views/Config/Settings/AIModeSettingsSection.swift`
 - Modify: the reader's summary-generation trigger point (locate with `grep -rn "runSummarize\|\.summarize(" Yana --include="*.swift"` — the old trigger was `AggregationService.summarize(_:)`, already deleted in Task 12; find whatever reader/toolbar action called it)
+- Modify: `Yana/Reader/ReaderHostView.swift:167` and `Yana/Reader/Mac/TimelineModel.swift:127` — both currently have a private/internal `aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }` computed property gating the "Summarize" toolbar button's visibility (broken since Task 15 deleted `AIReadiness`/`AIProvider`/`activeAIProvider`; discovered during Task 3's build-verification pass, not in the original plan). Replace both with `AISummaryReadiness.isReady(mode: settings.aiMode)` — the shared helper Task 16 adds to `Yana/Services/AISummaryProvider.swift` for exactly this, so the two-mode check isn't duplicated across `ReaderHostView`/`TimelineModel`.
 
 **Interfaces:**
 - Produces: `struct AIModeSettingsSection: View`.
@@ -2801,7 +2832,8 @@ git commit -m "Add ManagementWebView: hosts the server's feed/tag/settings web U
 ### Task 19: Delete native feed/tag management; redirect the reader's "add feed" quick action
 
 **Files:**
-- Delete: `Yana/Views/Config/FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, and any separate `FeedTagsPicker.swift`/`TagEditorView.swift`/`AggregatorOptionsForm.swift` files (`grep -rln "struct FeedTagsPicker\|struct TagEditorView\|struct AggregatorOptionsForm" Yana` to find exact file names — some of these were private types inside `FeedsView.swift`/`TagsView.swift`/`FeedEditorView.swift` per the earlier research and are deleted along with those files, not separately)
+- Delete: `Yana/Views/Config/FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, `AggregatorOptionsForm.swift`, `Yana/Views/Config/FeedEditorModel.swift` (+ `YanaTests/FeedEditorModelTests.swift` — discovered during Task 7's execution: this is `FeedEditorView`'s view model, a separate file, not a private type, tightly coupled to the deleted `AggregatorType`/`AggregatorOptions` and left broken since Task 7; not on the original inventory), and any separate `FeedTagsPicker.swift`/`TagEditorView.swift` files (`grep -rln "struct FeedTagsPicker\|struct TagEditorView" Yana` to find exact file names — some of these were private types inside `FeedsView.swift`/`TagsView.swift`/`FeedEditorView.swift` per the earlier research and are deleted along with those files, not separately)
+- Delete: `Yana/Views/Config/SelectorListView.swift`, `Yana/Services/SelectorSuggester.swift`, `YanaTests/SelectorSuggesterTests.swift` (discovered during Task 3's build-verification pass, not in the original file inventory: `SelectorListView` is the CSS-selector editor for the on-device full-website scraper's content/ignore lists, used only from `AggregatorOptionsForm.swift` — confirmed via `grep -rn "SelectorListView(" Yana`, one call site, both inside the file being deleted here. `SelectorSuggester` is its "auto-generate with AI" helper, with no other caller.)
 - Modify: `Yana/Reader/ReaderHostView.swift`, `Yana/Reader/Mac/MacRootView.swift` (the two "add feed" quick-action sheets found in prior research, at `ReaderHostView.swift:221-227` and `MacRootView.swift:44-51`)
 
 **Interfaces:** none new.
@@ -2814,7 +2846,8 @@ grep -rln "struct FeedTagsPicker\|struct TagEditorView\|struct AggregatorOptions
 `git rm` `FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, and any additional files that search surfaces beyond those three (if `FeedTagsPicker`/`TagEditorView`/`AggregatorOptionsForm` are private types *inside* those three files, as the earlier research suggests, there's nothing extra to remove here).
 
 ```bash
-git rm Yana/Views/Config/FeedsView.swift Yana/Views/Config/TagsView.swift Yana/Views/Config/FeedEditorView.swift
+git rm Yana/Views/Config/FeedsView.swift Yana/Views/Config/TagsView.swift Yana/Views/Config/FeedEditorView.swift Yana/Views/Config/AggregatorOptionsForm.swift
+git rm Yana/Views/Config/SelectorListView.swift Yana/Services/SelectorSuggester.swift YanaTests/SelectorSuggesterTests.swift
 ```
 
 - [ ] **Step 2: Redirect `ReaderHostView.swift`'s quick action**

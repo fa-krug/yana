@@ -10,12 +10,14 @@ enum TimelineBootstrap {
         disabledTagNames: Set<String>,
         includeUntagged: Bool,
         disabledFeedNames: Set<String>,
+        starredOnly: Bool,
         anchorIdentifier: String?
     ) -> (articles: [T], anchorIndex: Int) {
         let byTag = TagFilter.apply(
             to: summaries, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged
         )
-        let filtered = FeedFilter.apply(to: byTag, disabledFeedNames: disabledFeedNames)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: disabledFeedNames)
+        let filtered = StarredFilter.apply(to: byFeed, starredOnly: starredOnly)
         let index = TimelineAnchor.index(for: anchorIdentifier, in: filtered)
         return (filtered, index)
     }

@@ -14,7 +14,7 @@ enum DebugSeed {
         guard let raw = ProcessInfo.processInfo.environment["YANA_SEED_ARTICLES"],
               let count = Int(raw), count > 0 else { return }
 
-        let feed = Feed(name: "Seed Feed", aggregatorType: .feedContent, identifier: "seed://feed")
+        let feed = Feed(name: "Seed Feed", aggregator: "feedContent", identifier: "seed://feed")
         context.insert(feed)
 
         var anchorIdentifier: String?

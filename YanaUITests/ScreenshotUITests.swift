@@ -51,7 +51,10 @@ final class ScreenshotUITests: XCTestCase {
         // unreliable to XCUITest mid-transition (hit point resolves to {-1, -1}).
         Thread.sleep(forTimeInterval: 1.0)
 
-        // Shot 3 — Feeds. Open overflow menu -> Settings -> Feeds.
+        // Shot 3 — Settings, showing the "Manage Feeds & Tags" row. Feed/tag management now
+        // lives in the server's own web UI (ManagementWebView); drilling into it would load a
+        // live network page, which the offline fixture can't do deterministically, so the shot
+        // is the Settings screen itself with that row visible.
         let menu = app.buttons["reader.menu"]
         XCTAssertTrue(menu.waitForExistence(timeout: 10), "reader menu missing after dismiss")
         if !menu.isHittable {
@@ -64,21 +67,12 @@ final class ScreenshotUITests: XCTestCase {
         let settingsItem = button(in: app, labeledAnyOf: ["Settings", "Einstellungen"])
         XCTAssertTrue(settingsItem.waitForExistence(timeout: 10), "Settings menu item missing")
         settingsItem.tap()
-        let feeds = app.otherElements["settings.feeds"].exists
-            ? app.otherElements["settings.feeds"]
-            : app.buttons["settings.feeds"]
-        XCTAssertTrue(feeds.waitForExistence(timeout: 10), "Feeds link missing")
-        feeds.tap()
-        // Feeds screen title confirms navigation.
-        XCTAssertTrue(app.navigationBars["Feeds"].waitForExistence(timeout: 10), "Feeds screen missing")
-        Thread.sleep(forTimeInterval: 2.0)   // let per-row feed logos load
+        let manage = app.buttons["settings.manage"]
+        XCTAssertTrue(manage.waitForExistence(timeout: 10), "Manage Feeds & Tags row missing")
+        Thread.sleep(forTimeInterval: 1.0)
         snapshot("03_Feeds")
 
-        // Shot 4 — Search. Navigate back to the article list from Settings.
-        // Back out of Feeds → back to Settings root, then dismiss Settings to reach the reader.
-        let navBacks = app.navigationBars.buttons.element(boundBy: 0)
-        if navBacks.waitForExistence(timeout: 5) { navBacks.tap() }
-        // Dismiss the Settings sheet (swipe down or tap Done/close button).
+        // Shot 4 — Search. Dismiss Settings to reach the reader.
         let doneButton = button(in: app, labeledAnyOf: ["Done", "Fertig"])
         if doneButton.waitForExistence(timeout: 5) {
             doneButton.tap()

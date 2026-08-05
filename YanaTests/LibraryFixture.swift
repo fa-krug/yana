@@ -22,7 +22,7 @@ enum LibraryFixture {
             .appendingPathComponent("yana-fixture-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let container = try ModelContainer(
-            for: Feed.self, Tag.self, Article.self, StoredImage.self,
+            for: Feed.self, Tag.self, Article.self,
             configurations: ModelConfiguration(url: dir.appendingPathComponent("test.store"),
                                                cloudKitDatabase: cloudKit ? .automatic : .none)
         )
@@ -31,17 +31,22 @@ enum LibraryFixture {
         let tags = (0..<tagCount).map { Tag(name: "Tag\($0)", sortOrder: $0) }
         tags.forEach { context.insert($0) }
         let feeds: [Feed] = (0..<feedCount).map { i in
-            let feed = Feed(name: "Feed \(i)", aggregatorType: .feedContent,
+            let feed = Feed(name: "Feed \(i)", aggregator: "feedContent",
                             identifier: "https://example.com/feed\(i).xml")
-            feed.tags = [tags[i % tagCount], tags[(i + 1) % tagCount]]
             context.insert(feed)
             return feed
+        }
+        // Feed no longer owns a live `[Tag]` relationship (tag membership moved server-side),
+        // so the per-feed tag snapshot used to build each article's own `tags` is tracked locally.
+        let feedTagAssignments: [[Tag]] = (0..<feedCount).map { i in
+            [tags[i % tagCount], tags[(i + 1) % tagCount]]
         }
 
         // ~8 KB of body per article, so the store is the size a real library reaches.
         let body = String(repeating: "Lorem ipsum dolor sit amet. ", count: 300)
         for i in 0..<articleCount {
-            let feed = feeds[i % feeds.count]
+            let feedIndex = i % feeds.count
+            let feed = feeds[feedIndex]
             let article = Article(
                 title: "Article number \(i) with a fairly typical headline length",
                 identifier: "https://example.com/feed\(i % feeds.count)/post-\(i)",
@@ -51,9 +56,9 @@ enum LibraryFixture {
             )
             article.createdAt = article.date
             article.feed = feed
-            article.tags = feed.tags
+            article.tags = feedTagAssignments[feedIndex]
             article.syncFeedIdentifier = feed.identifier
-            article.syncAggregatorType = feed.aggregatorType
+            article.syncAggregatorType = feed.aggregator
             article.plainText = body
             article.blockData = Data(body.utf8)
             context.insert(article)
@@ -79,7 +84,6 @@ enum LibraryFixture {
                 )
                 article.createdAt = article.date
                 article.feed = feed
-                article.tags = feed?.tags
                 article.plainText = body
                 article.blockData = Data(body.utf8)
                 context.insert(article)

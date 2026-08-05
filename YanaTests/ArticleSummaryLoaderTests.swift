@@ -12,7 +12,7 @@ struct ArticleSummaryLoaderTests {
     }
 
     private func seed(_ count: Int, into context: ModelContext) {
-        let feed = Feed(name: "Acme", aggregatorType: .feedContent, identifier: "f")
+        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
         context.insert(feed)
         for i in 0..<count {
             let a = Article(title: "a\(i)", identifier: "a\(i)", url: "a\(i)")

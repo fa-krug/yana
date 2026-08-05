@@ -5,7 +5,7 @@ import SwiftData
 @MainActor
 struct BackgroundRefreshIntervalTests {
     private func container() throws -> ModelContainer {
-        try ModelContainer(for: Feed.self, Tag.self, Article.self, StoredImage.self,
+        try ModelContainer(for: Feed.self, Tag.self, Article.self,
                            configurations: ModelConfiguration(isStoredInMemoryOnly: true,
                                                               cloudKitDatabase: .none))
     }

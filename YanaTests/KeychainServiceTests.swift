@@ -5,36 +5,15 @@ import Testing
 @MainActor
 @Suite("KeychainService")
 struct KeychainServiceTests {
+    @Test func deviceTokenRoundTrip() {
+        KeychainService.deleteDeviceToken()
+        defer { KeychainService.deleteDeviceToken() }
 
-    // MARK: - Helpers
-
-    /// Ensure a clean state before each test by deleting the test key.
-    private func cleanup(item: KeychainService.APIKeyItem) {
-        KeychainService.deleteAPIKey(for: item)
-    }
-
-    // MARK: - Basic round-trip
-
-    @Test func roundTrip() {
-        let item = KeychainService.APIKeyItem.mistralAPIKey
-        cleanup(item: item)
-        defer { cleanup(item: item) }
-
-        let saved = KeychainService.saveAPIKey("test-secret-999", for: item)
+        let saved = KeychainService.saveDeviceToken("test-session-token")
         #expect(saved)
+        #expect(KeychainService.loadDeviceToken() == "test-session-token")
 
-        let loaded = KeychainService.loadAPIKey(for: item)
-        #expect(loaded == "test-secret-999")
-
-        KeychainService.deleteAPIKey(for: item)
-        #expect(KeychainService.loadAPIKey(for: item) == nil)
+        KeychainService.deleteDeviceToken()
+        #expect(KeychainService.loadDeviceToken() == nil)
     }
-
-    // MARK: - CaseIterable conformance
-
-    @Test func apiKeyItemIsCaseIterable() {
-        // All 9 cases must be reachable via allCases
-        #expect(KeychainService.APIKeyItem.allCases.count == 9)
-    }
-
 }

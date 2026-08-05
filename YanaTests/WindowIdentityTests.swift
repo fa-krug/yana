@@ -8,7 +8,7 @@ struct WindowIdentityTests {
     // `WindowGroup(for:)` value left to keep `Codable`/`Hashable`.
 
     @Test func settingsPanesAreStableAndOrdered() {
-        #expect(SettingsPane.allCases == [.general, .reader, .feeds, .tags, .integrations, .ai, .about])
+        #expect(SettingsPane.allCases == [.general, .reader, .manage, .ai, .about])
         #expect(SettingsPane.ai.rawValue == "ai")
     }
 }

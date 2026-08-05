@@ -14,7 +14,7 @@ struct TagFilterView: View {
     @State private var includeUntagged = true
 
     private var isFiltering: Bool {
-        !disabledTags.isEmpty || !disabledFeeds.isEmpty || !includeUntagged
+        !disabledTags.isEmpty || !disabledFeeds.isEmpty || !includeUntagged || settings.starredOnly
     }
 
     var body: some View {
@@ -57,6 +57,7 @@ struct TagFilterView: View {
         settings.disabledTagNames = []
         settings.disabledFeedNames = []
         settings.includeUntagged = true
+        settings.starredOnly = false
     }
 }
 
@@ -71,6 +72,15 @@ private struct TagFilterListContent: View {
     let settings: AppSettings
 
     var body: some View {
+        Section {
+            Toggle(isOn: Binding(
+                get: { settings.starredOnly },
+                set: { settings.starredOnly = $0 }
+            )) {
+                Label { Text("Starred Only") } icon: { Image(systemName: "star.fill").foregroundStyle(.yellow) }
+            }
+        }
+
         Section("Tags") {
             ForEach(tags) { tag in
                 Toggle(isOn: Binding(

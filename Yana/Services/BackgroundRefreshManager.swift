@@ -33,9 +33,9 @@ final class BackgroundRefreshManager {
     #endif
 
     /// Guards against the refresh and processing tasks both firing close together: the first to
-    /// run does the aggregation; the other just re-arms. Each handler builds its own
-    /// `AggregationService`, so that service's `isUpdating` flag can't coordinate the two — the
-    /// guard has to live on the (main-actor) manager.
+    /// run does the sync; the other just re-arms. Each handler builds its own `SyncEngine`, so
+    /// there's no shared state on that object to coordinate the two — the guard has to live on
+    /// the (main-actor) manager.
     private var isRunning = false
 
     init(
@@ -58,16 +58,18 @@ final class BackgroundRefreshManager {
     }
 
     /// The work performed for one background run, isolated from `BGTask` so it can be
-    /// unit-tested. Runs the aggregation, then posts a "new articles" notification when the
-    /// user has opted in, the system authorized it, and the run imported at least one article.
-    /// Errors are swallowed by the caller — a failed background run must never crash the app.
+    /// unit-tested. Runs the sync, then posts a "new articles" notification when the
+    /// user has opted in, the system authorized it, and the run pulled down at least one new
+    /// article summary. A failed sync (e.g. offline, expired pairing) is swallowed here — a
+    /// failed background run must never crash the app.
     @MainActor
     static func runRefresh(
-        service: AggregationService,
+        engine: SyncEngine,
         notifier: Notifying = NotificationService(),
         settings: AppSettings = AppSettings()
     ) async {
-        let inserted = await service.updateAll()
+        guard let result = try? await engine.sync() else { return }
+        let inserted = result.newCount
         guard settings.notificationsEnabled, inserted > 0 else { return }
         let authorized = await notifier.isAuthorized()
         guard NewArticleNotification.shouldNotify(
@@ -103,8 +105,9 @@ final class BackgroundRefreshManager {
     func runNow() {
         guard secondsProvider() != nil else { return }
         Task { @MainActor in
-            let service = AggregationService(context: container.mainContext)
-            await Self.runRefresh(service: service)
+            guard let client = AuthenticatedClient.current() else { return }   // not paired yet
+            let engine = SyncEngine(container: container, client: client)
+            await Self.runRefresh(engine: engine)
         }
     }
 
@@ -168,8 +171,9 @@ final class BackgroundRefreshManager {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: nanos)
                 guard !Task.isCancelled, let self else { break }
-                let service = AggregationService(context: self.container.mainContext)
-                await Self.runRefresh(service: service)
+                guard let client = AuthenticatedClient.current() else { continue }   // not paired yet
+                let engine = SyncEngine(container: self.container, client: client)
+                await Self.runRefresh(engine: engine)
             }
         }
     }
@@ -182,7 +186,7 @@ final class BackgroundRefreshManager {
         schedule()
 
         // If the sibling task already kicked off a run, this one just re-arms and completes:
-        // a second concurrent `updateAll()` on the same context would be wasted (or racy) work.
+        // a second concurrent `sync()` against the same container would be wasted (or racy) work.
         guard !isRunning else {
             task.setTaskCompleted(success: true)
             return
@@ -191,8 +195,13 @@ final class BackgroundRefreshManager {
 
         let work = Task { @MainActor in
             defer { isRunning = false }
-            let service = AggregationService(context: container.mainContext)
-            await Self.runRefresh(service: service)
+            guard let client = AuthenticatedClient.current() else {
+                // Not paired yet — nothing to do, not an error.
+                task.setTaskCompleted(success: true)
+                return
+            }
+            let engine = SyncEngine(container: container, client: client)
+            await Self.runRefresh(engine: engine)
             task.setTaskCompleted(success: true)
         }
 

@@ -8,7 +8,7 @@ struct ArticleSearchTests {
     private func article(title: String = "", content: String = "", author: String = "", feedName: String = "") -> Article {
         let a = Article(title: title, identifier: UUID().uuidString, url: "u", author: author)
         a.plainText = content   // search now matches the body's flattened text
-        if !feedName.isEmpty { a.feed = Feed(name: feedName, aggregatorType: .feedContent, identifier: "f") }
+        if !feedName.isEmpty { a.feed = Feed(name: feedName, aggregator: "feedContent", identifier: "f") }
         return a
     }
 

@@ -1,15 +1,13 @@
-import SwiftData
 import SwiftUI
 import UIKit
 
-/// Loads a cached logo image by content hash from an `ImageStore`. Returns nil for a nil/missing
-/// hash or unreadable file. `@MainActor` — always called from a SwiftUI `.task {}`, which runs on
-/// the main actor — so it can access `AppContainer.shared.mainContext` and `ImageSync.materialize` directly.
+/// Loads a cached logo image by content hash from an `ImageStore`, fetching it from the server on
+/// a cache miss. Returns nil for a nil/missing hash or unreadable file.
 enum FeedLogo {
     @MainActor
-    static func image(forHash hash: String?, in store: ImageStore = .shared) async -> UIImage? {
+    static func image(forHash hash: String?, client: YanaAPIClient, in store: ImageStore = .shared) async -> UIImage? {
         guard let hash else { return nil }
-        _ = await ImageSync.materialize(hash: hash, context: AppContainer.shared.mainContext, imageStore: store)
+        _ = await store.fetchIfNeeded(hash: hash, client: client)
         let url = await store.fileURL(forHash: hash)
         guard let data = try? Data(contentsOf: url) else { return nil }
         return UIImage(data: data)
@@ -37,6 +35,9 @@ struct FeedLogoView: View {
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityLabel(Text("Feed logo"))
-        .task(id: hash) { image = await FeedLogo.image(forHash: hash) }
+        .task(id: hash) {
+            guard let client = AuthenticatedClient.current() else { return }
+            image = await FeedLogo.image(forHash: hash, client: client)
+        }
     }
 }

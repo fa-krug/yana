@@ -19,41 +19,32 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
     let createdAt: Date
     let tagNames: Set<String>
     let isStarred: Bool
-    /// The owning feed's stable identifier, used (with `aggregatorType`) to derive the collision-free
-    /// cross-device `uid`. Falls back to the article's own sync snapshot when the feed relationship
-    /// has been severed (deleted feed).
-    let feedIdentifier: String
-    /// The owning feed's `AggregatorType.rawValue`, used (with `feedIdentifier`) to derive `uid`.
-    let aggregatorType: String
 
     var id: String { identifier }
 
-    /// The canonical cross-device article UID (matches `ArticleUID.make`), used to resolve a synced
-    /// timeline anchor exactly, without the cross-feed collisions a bare `identifier` allows.
-    var uid: String {
-        ArticleUID.make(feedIdentifier: feedIdentifier, aggregatorType: aggregatorType,
-                         articleIdentifier: identifier, date: date, title: title)
-    }
-
-    init(_ article: Article) {
+    /// `tagNamesByID` is the server-id -> name lookup built by `tagNameLookup(in:)`. Tag
+    /// membership is no longer a per-article snapshot (`Article.tags` is never populated by
+    /// `SyncWriter`) -- it's a live join from the owning feed's current `tagIDs` against
+    /// whatever `SyncWriter.syncTags` last wrote to the `Tag` table, per the design spec's
+    /// "Tag filtering... becomes live" decision. Defaults to an empty map so every existing call
+    /// site that doesn't have a lookup handy (mostly tests) still compiles; those callers just
+    /// get an untagged summary, matching what happened before this join existed.
+    init(_ article: Article, tagNamesByID: [Int: String] = [:]) {
         persistentID = article.persistentModelID
         identifier = article.identifier
         title = article.title
         feedName = article.feed?.name ?? ""
-        feedLogoHash = article.feed?.logoHash
+        feedLogoHash = article.feed?.logoImageHash
         author = article.author
         date = article.date
         createdAt = article.createdAt
-        tagNames = Set((article.tags ?? []).map(\.name))
-        isStarred = article.isStarred
-        feedIdentifier = article.feed?.identifier ?? article.syncFeedIdentifier
-        aggregatorType = article.feed?.aggregatorType ?? article.syncAggregatorType
+        tagNames = Set((article.feed?.tagIDs ?? []).compactMap { tagNamesByID[$0] })
+        isStarred = article.starred
     }
 
     // Persist every field EXCEPT the runtime-only `persistentID`.
     private enum CodingKeys: String, CodingKey {
         case identifier, title, feedName, feedLogoHash, author, date, createdAt, tagNames, isStarred
-        case feedIdentifier, aggregatorType
     }
 
     init(from decoder: any Decoder) throws {
@@ -68,9 +59,6 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         tagNames = try c.decode(Set<String>.self, forKey: .tagNames)
         isStarred = try c.decode(Bool.self, forKey: .isStarred)
-        // Older disk-cached summaries predate these fields; default to "" so they still decode.
-        feedIdentifier = try c.decodeIfPresent(String.self, forKey: .feedIdentifier) ?? ""
-        aggregatorType = try c.decodeIfPresent(String.self, forKey: .aggregatorType) ?? ""
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -84,7 +72,23 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         try c.encode(createdAt, forKey: .createdAt)
         try c.encode(tagNames, forKey: .tagNames)
         try c.encode(isStarred, forKey: .isStarred)
-        try c.encode(feedIdentifier, forKey: .feedIdentifier)
-        try c.encode(aggregatorType, forKey: .aggregatorType)
+    }
+}
+
+extension ArticleSummary {
+    /// Server-id -> name lookup for every synced `Tag`, for resolving a `Feed.tagIDs` list into
+    /// display names at construction time. `/tags` is small and unpaginated (mirrors `/feeds`),
+    /// so fetching every row per call is cheap; built with a plain loop rather than
+    /// `Dictionary(uniqueKeysWithValues:)` because that traps on a duplicate key, and nothing
+    /// here can prove two `Tag` rows never share a `serverID` (a bug in `SyncWriter.syncTags`, or
+    /// a stray legacy row) -- last-write-wins here degrades to a wrong tag name, not a crash.
+    static func tagNameLookup(in context: ModelContext) -> [Int: String] {
+        let tags = (try? context.fetch(FetchDescriptor<Tag>())) ?? []
+        var map: [Int: String] = [:]
+        for tag in tags {
+            guard let serverID = tag.serverID else { continue }
+            map[serverID] = tag.name
+        }
+        return map
     }
 }

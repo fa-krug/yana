@@ -53,7 +53,7 @@ struct ArticleResolutionTests {
     @Test func resolveSeesBackgroundUpdatedBody() async throws {
         let container = try makeContainer()
         let main = ModelContext(container)
-        let feed = Feed(name: "A", aggregatorType: .feedContent, identifier: "a")
+        let feed = Feed(name: "A", aggregator: "feedContent", identifier: "a")
         main.insert(feed)
         let article = Article(title: "OLD", identifier: "id1", url: "u", date: .now, author: "", iconURL: nil)
         article.feed = feed
@@ -78,8 +78,8 @@ struct ArticleResolutionTests {
     @Test func resolveDisambiguatesCrossFeedIdentifierCollision() async throws {
         let context = try makeContext()
 
-        let feedA = Feed(name: "A", aggregatorType: .feedContent, identifier: "A")
-        let feedB = Feed(name: "B", aggregatorType: .feedContent, identifier: "B")
+        let feedA = Feed(name: "A", aggregator: "feedContent", identifier: "A")
+        let feedB = Feed(name: "B", aggregator: "feedContent", identifier: "B")
         context.insert(feedA); context.insert(feedB)
 
         let articleA = Article(title: "Title A", identifier: "shared-id", url: "uA")
