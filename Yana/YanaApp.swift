@@ -164,7 +164,7 @@ struct YanaApp: App {
         // constant (`true`) — SwiftUI matches on that value and refocuses the existing window
         // instead of creating a duplicate.
         WindowGroup(id: WindowID.settings, for: Bool.self) { _ in
-            MacSettingsWindow()
+            MacSettingsWindow(appState: appState)
                 .environment(articleStore)
         }
         .modelContainer(AppContainer.shared)
