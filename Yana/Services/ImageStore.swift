@@ -44,6 +44,7 @@ actor ImageStore {
     func fetchIfNeeded(hash: String, client: YanaAPIClient) async -> Bool {
         if fileExists(forHash: hash) { return true }
         guard let (data, response) = try? await client.getRaw("/api/v1/images/\(hash)"),
+              (200..<300).contains(response.statusCode),
               data.count <= Self.maxImageResponseBytes else {
             return false
         }

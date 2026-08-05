@@ -52,4 +52,26 @@ struct ImageStoreTests {
             #expect(requestCount == 0)
         }
     }
+
+    /// `getRaw` deliberately doesn't check the status code itself (its callers decide), so
+    /// `fetchIfNeeded` must -- a 404 for a stale/GC'd hash, or a transient 5xx, must not get
+    /// written to disk verbatim: that would permanently poison the cache, since every later
+    /// `fileExists(forHash:)` would then report true forever with no way to retry the real fetch.
+    @Test func nonSuccessStatusDoesNotCacheAndReturnsFalse() async throws {
+        await MockURLProtocol.lock.withLock {
+            let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let store = ImageStore(directory: tempDir)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, #"{"error":{"code":"not_found","message":"no such image"}}"#.data(using: .utf8)!)
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let fetched = await store.fetchIfNeeded(hash: "missing456", client: client)
+            #expect(fetched == false)
+            #expect(await store.fileExists(forHash: "missing456") == false)
+        }
+    }
 }
