@@ -61,12 +61,23 @@ actor SyncWriter {
             if let article = try? modelContext.fetch(existingDescriptor).first {
                 article.title = summary.name
                 article.author = summary.author
+                // The wire's `identifier` IS the article's URL/permalink for every aggregator type
+                // on the server (confirmed against yana-server's aggregators -- `website`/`reddit`
+                // set `identifier` to the scraped/post URL directly, `youtube` to the watch URL).
+                // There is no separate `url` field on `ArticleSummaryWire`.
+                article.url = summary.identifier
                 article.starred = summary.starred
                 article.feed = feed
+                // A content update on the server (title/body edit, or just a re-fetch that
+                // changed something) must be re-pulled -- reset unconditionally on every update
+                // hit so `SyncEngine.backfillMissingContent()`'s `hasContent == false` scan picks
+                // it up again. Idempotent and bounded, so doing this even when the update didn't
+                // touch the body is harmless: worst case is one redundant `/content` refetch.
+                article.hasContent = false
                 touched.append(article.persistentModelID)
             } else {
                 let article = Article(
-                    title: summary.name, identifier: summary.identifier, url: "",
+                    title: summary.name, identifier: summary.identifier, url: summary.identifier,
                     date: summary.date, author: summary.author, iconURL: summary.icon
                 )
                 article.serverID = summary.id
