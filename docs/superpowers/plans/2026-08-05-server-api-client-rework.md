@@ -69,6 +69,7 @@ Deleted outright (verified redundant against the new architecture — exact list
 - `Yana/Models/AggregatorOptions.swift`
 - `Yana/Views/Config/FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, `FeedTagsPicker.swift` (if a separate file), `TagEditorView.swift`, `AggregatorOptionsForm.swift`
 - `Yana/Views/Config/Settings/RedditSettingsSection.swift`, `YouTubeSettingsSection.swift`, `AIProviderSettingsSection.swift`, `AITuningSettingsSection.swift`
+- `Yana/Services/AIReadiness.swift`, `Yana/Views/Config/SelectorListView.swift`, `Yana/Services/SelectorSuggester.swift` (+ their test files — found during Task 3's execution, not the original inventory; see Tasks 15/19's Files lists for why each is dead)
 
 ---
 
@@ -2453,6 +2454,7 @@ git commit -m "BackgroundRefreshManager: sync via SyncEngine instead of Aggregat
 - Delete: `Yana/Views/Config/Settings/AIProviderSettingsSection.swift`, `Yana/Views/Config/Settings/AITuningSettingsSection.swift`
 - Delete: `Yana/Views/Config/Settings/RedditSettingsSection.swift`, `Yana/Views/Config/Settings/YouTubeSettingsSection.swift`
 - Modify: `Yana/Services/CredentialTester.swift`
+- Delete: `Yana/Services/AIReadiness.swift`, `YanaTests/AIReadinessTests.swift` (discovered during Task 3's build-verification pass, not in the original file inventory: `AIReadiness.isReady(provider:)` branches on the now-deleted `AIProvider` and `KeychainService.APIKeyItem` — it has no remaining purpose once there are only two AI modes, and Apple Intelligence availability is just `AppleIntelligenceClient().availability == .available` directly, no per-provider branching needed)
 
 **Interfaces:** none new — pure deletion + one file trimmed to its still-useful part.
 
@@ -2462,7 +2464,10 @@ git commit -m "BackgroundRefreshManager: sync via SyncEngine instead of Aggregat
 git rm Yana/Services/AIClient.swift Yana/Services/AIProcessor.swift
 git rm Yana/Views/Config/Settings/AIProviderSettingsSection.swift Yana/Views/Config/Settings/AITuningSettingsSection.swift
 git rm Yana/Views/Config/Settings/RedditSettingsSection.swift Yana/Views/Config/Settings/YouTubeSettingsSection.swift
+git rm Yana/Services/AIReadiness.swift YanaTests/AIReadinessTests.swift
 ```
+
+**Do not yet touch `Yana/Reader/ReaderHostView.swift`/`Yana/Reader/Mac/TimelineModel.swift`**, even though both currently call the `AIReadiness.isReady(provider: settings.activeAIProvider)` you're deleting here (each via a private `aiReady: Bool` computed property gating the reader's "Summarize" toolbar button) — leaving them broken at this point is expected; Task 17 replaces both call sites with the new two-mode check when it wires `AISummaryProvider` into the same trigger point.
 
 Note: `RedditClient.swift`/`YouTubeClient.swift`/`RedditModels.swift`/`YouTubeModels.swift`/`RedditMarkdown.swift` were already deleted in Task 12 (they lived under `Yana/Aggregators/Concrete/`). If any of those four Settings-section files still reference something not yet deleted, `grep -n "RedditClient\|YouTubeClient" Yana/Views/Config/Settings/*.swift` first to confirm — expected to find nothing left referencing them once this step's deletions land.
 
@@ -2497,8 +2502,8 @@ Expected: PASS (2 tests, unchanged).
 
 ```bash
 git add Yana/Services/CredentialTester.swift
-git rm Yana/Services/AIClient.swift Yana/Services/AIProcessor.swift Yana/Views/Config/Settings/AIProviderSettingsSection.swift Yana/Views/Config/Settings/AITuningSettingsSection.swift Yana/Views/Config/Settings/RedditSettingsSection.swift Yana/Views/Config/Settings/YouTubeSettingsSection.swift
-git commit -m "Delete the 6-provider network AI stack and Reddit/YouTube settings UI"
+git rm Yana/Services/AIClient.swift Yana/Services/AIProcessor.swift Yana/Views/Config/Settings/AIProviderSettingsSection.swift Yana/Views/Config/Settings/AITuningSettingsSection.swift Yana/Views/Config/Settings/RedditSettingsSection.swift Yana/Views/Config/Settings/YouTubeSettingsSection.swift Yana/Services/AIReadiness.swift YanaTests/AIReadinessTests.swift
+git commit -m "Delete the 6-provider network AI stack, Reddit/YouTube settings UI, and AIReadiness"
 ```
 
 ---
@@ -2518,6 +2523,7 @@ protocol AISummaryProvider: Sendable {
 }
 struct ServerAISummaryProvider: AISummaryProvider { init(client: YanaAPIClient) }
 struct AppleIntelligenceSummaryProvider: AISummaryProvider { init(generator: ArticleGenerating = AppleIntelligenceClient()) }
+enum AISummaryReadiness { static func isReady(mode: AIMode) -> Bool }
 ```
 
 - [ ] **Step 1: Write the failing tests**
@@ -2583,6 +2589,22 @@ import Foundation
 /// configured, model unavailable), never a user-facing error.
 protocol AISummaryProvider: Sendable {
     func summarize(content: String, title: String) async -> String?
+}
+
+/// Whether the reader's "Summarize" action should be offered at all, for a given mode.
+/// `.server` is always considered ready -- `ServerAISummaryProvider` degrades to `nil` on its
+/// own if the server has no provider configured, which is a fine outcome for a button that was
+/// visible; `.appleIntelligence` needs an actual on-device-model availability check, since
+/// showing the button with no usable model is a worse experience than hiding it. Shared here so
+/// `ReaderHostView`/`TimelineModel`'s toolbar-visibility checks (Task 17) don't duplicate the
+/// same three-line switch in two files.
+enum AISummaryReadiness {
+    static func isReady(mode: AIMode) -> Bool {
+        switch mode {
+        case .server: true
+        case .appleIntelligence: AppleIntelligenceClient().availability == .available
+        }
+    }
 }
 
 private struct AIPromptBody: Encodable { let prompt: String }
@@ -2658,6 +2680,7 @@ git commit -m "Add AISummaryProvider: server-mediated (/ai/prompt) and Apple Int
 **Files:**
 - Create: `Yana/Views/Config/Settings/AIModeSettingsSection.swift`
 - Modify: the reader's summary-generation trigger point (locate with `grep -rn "runSummarize\|\.summarize(" Yana --include="*.swift"` — the old trigger was `AggregationService.summarize(_:)`, already deleted in Task 12; find whatever reader/toolbar action called it)
+- Modify: `Yana/Reader/ReaderHostView.swift:167` and `Yana/Reader/Mac/TimelineModel.swift:127` — both currently have a private/internal `aiReady: Bool { AIReadiness.isReady(provider: settings.activeAIProvider) }` computed property gating the "Summarize" toolbar button's visibility (broken since Task 15 deleted `AIReadiness`/`AIProvider`/`activeAIProvider`; discovered during Task 3's build-verification pass, not in the original plan). Replace both with `AISummaryReadiness.isReady(mode: settings.aiMode)` — the shared helper Task 16 adds to `Yana/Services/AISummaryProvider.swift` for exactly this, so the two-mode check isn't duplicated across `ReaderHostView`/`TimelineModel`.
 
 **Interfaces:**
 - Produces: `struct AIModeSettingsSection: View`.
@@ -2801,7 +2824,8 @@ git commit -m "Add ManagementWebView: hosts the server's feed/tag/settings web U
 ### Task 19: Delete native feed/tag management; redirect the reader's "add feed" quick action
 
 **Files:**
-- Delete: `Yana/Views/Config/FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, and any separate `FeedTagsPicker.swift`/`TagEditorView.swift`/`AggregatorOptionsForm.swift` files (`grep -rln "struct FeedTagsPicker\|struct TagEditorView\|struct AggregatorOptionsForm" Yana` to find exact file names — some of these were private types inside `FeedsView.swift`/`TagsView.swift`/`FeedEditorView.swift` per the earlier research and are deleted along with those files, not separately)
+- Delete: `Yana/Views/Config/FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, `AggregatorOptionsForm.swift`, and any separate `FeedTagsPicker.swift`/`TagEditorView.swift` files (`grep -rln "struct FeedTagsPicker\|struct TagEditorView" Yana` to find exact file names — some of these were private types inside `FeedsView.swift`/`TagsView.swift`/`FeedEditorView.swift` per the earlier research and are deleted along with those files, not separately)
+- Delete: `Yana/Views/Config/SelectorListView.swift`, `Yana/Services/SelectorSuggester.swift`, `YanaTests/SelectorSuggesterTests.swift` (discovered during Task 3's build-verification pass, not in the original file inventory: `SelectorListView` is the CSS-selector editor for the on-device full-website scraper's content/ignore lists, used only from `AggregatorOptionsForm.swift` — confirmed via `grep -rn "SelectorListView(" Yana`, one call site, both inside the file being deleted here. `SelectorSuggester` is its "auto-generate with AI" helper, with no other caller.)
 - Modify: `Yana/Reader/ReaderHostView.swift`, `Yana/Reader/Mac/MacRootView.swift` (the two "add feed" quick-action sheets found in prior research, at `ReaderHostView.swift:221-227` and `MacRootView.swift:44-51`)
 
 **Interfaces:** none new.
@@ -2814,7 +2838,8 @@ grep -rln "struct FeedTagsPicker\|struct TagEditorView\|struct AggregatorOptions
 `git rm` `FeedsView.swift`, `TagsView.swift`, `FeedEditorView.swift`, and any additional files that search surfaces beyond those three (if `FeedTagsPicker`/`TagEditorView`/`AggregatorOptionsForm` are private types *inside* those three files, as the earlier research suggests, there's nothing extra to remove here).
 
 ```bash
-git rm Yana/Views/Config/FeedsView.swift Yana/Views/Config/TagsView.swift Yana/Views/Config/FeedEditorView.swift
+git rm Yana/Views/Config/FeedsView.swift Yana/Views/Config/TagsView.swift Yana/Views/Config/FeedEditorView.swift Yana/Views/Config/AggregatorOptionsForm.swift
+git rm Yana/Views/Config/SelectorListView.swift Yana/Services/SelectorSuggester.swift YanaTests/SelectorSuggesterTests.swift
 ```
 
 - [ ] **Step 2: Redirect `ReaderHostView.swift`'s quick action**
