@@ -28,8 +28,6 @@ struct SettingsScreenView: View {
                 onShowServerNotice: {
                     onShowServerNotice()
                     dismiss()
-                },
-                onRevealDiagnostics: {
                 }
             )
         }

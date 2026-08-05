@@ -160,8 +160,6 @@ final class AppSettings {
         static let hasCleanedLegacyCloudKit = "settings.hasCleanedLegacyCloudKit"
         // Mac window layout (device-local, never synced)
         static let macSidebarWidth = "settings.macSidebarWidth"
-        // Diagnostics (device-local, never synced)
-        static let diagnosticsUnlocked = "settings.diagnosticsUnlocked"
     }
 
     // MARK: Migration
@@ -194,15 +192,6 @@ final class AppSettings {
         get { access(keyPath: \.macSidebarWidth); return defaults.double(forKey: Key.macSidebarWidth) }
         set { withMutation(keyPath: \.macSidebarWidth) { defaults.set(newValue, forKey: Key.macSidebarWidth) } }
     }
-
-    /// Whether the Settings → Diagnostics log is revealed on this device. Device-local and never
-    /// synced: the log ships in release builds but stays hidden until the version row in About is
-    /// tapped five times, and that choice should not follow the user to another device.
-    var diagnosticsUnlocked: Bool {
-        get { access(keyPath: \.diagnosticsUnlocked); return defaults.bool(forKey: Key.diagnosticsUnlocked) }
-        set { withMutation(keyPath: \.diagnosticsUnlocked) { defaults.set(newValue, forKey: Key.diagnosticsUnlocked) } }
-    }
-
 
     var activeAIProvider: AIProvider {
         get {
