@@ -44,16 +44,11 @@ struct MacRootView: View {
         .accessibilityIdentifier("mac.window.root")
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
-                FeedEditorView(feed: nil) { newFeed in
-                    // Same post-create fetch the editor window used to do.
-                    guard newFeed.enabled else { return }
-                    UpdateActivity.shared.restart {
-                        _ = await AggregationService(context: AppContainer.shared.mainContext)
-                            .update(feed: newFeed)
-                    }
-                }
+                ManagementWebView(
+                    serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
+                    path: "/feeds/new"
+                )
             }
-            .toggleStyle(.switch)
         }
         .toast($model.toast)
         // Scene-wide (not tied to which view has focus) so ⌘↑/⌘↓ move the article even when the

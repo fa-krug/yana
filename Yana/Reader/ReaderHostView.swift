@@ -219,11 +219,10 @@ struct ReaderScreen: View {
         }
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
-                FeedEditorView(feed: nil) { newFeed in
-                    // Fetch the just-added feed right away, unless it was created disabled.
-                    guard newFeed.enabled else { return }
-                    createFeed(newFeed)
-                }
+                ManagementWebView(
+                    serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
+                    path: "/feeds/new"
+                )
             }
         }
         .sheet(isPresented: $appState.showArticleList) {
@@ -392,16 +391,6 @@ struct ReaderScreen: View {
                     style: .error
                 )
             }
-        }
-    }
-
-    /// Fetch a freshly created feed right away so its articles replace the empty state
-    /// (mirrors the Feeds screen's create path).
-    private func createFeed(_ feed: Feed) {
-        UpdateActivity.shared.restart {
-            let count = await AggregationService(context: modelContext).update(feed: feed)
-            guard !Task.isCancelled else { return }
-            toast = ToastMessage(text: RefreshOutcome.message(newCount: count, feedName: feed.name))
         }
     }
 
