@@ -250,10 +250,11 @@ final class TimelineModel {
         }
     }
 
-    /// Triggers the server's per-article reload, then pulls the refreshed content back down. See
-    /// `ReaderScreen.forceUpdateArticle` (iOS) and `UpdateAndSync`'s doc comment for why this
-    /// clears `hasContent` locally and follows up with a bounded `SyncEngine.sync()` poll rather
-    /// than a `/runs/:id` job-status check.
+    /// Triggers the server's per-article reload, then re-fetches its content directly via
+    /// `UpdateAndSync.pollForReloadedContent`. See `ReaderScreen.forceUpdateArticle` (iOS) and that
+    /// method's doc comment for why this deliberately does NOT go through `SyncEngine`'s generic
+    /// `hasContent`-gated backfill (an earlier version of this code did, and a premature backfill
+    /// fetch during the poll window could permanently lock out any later retry of this article).
     func forceUpdateArticle(_ article: Article) {
         guard let modelContext,
               let client = AuthenticatedClient.current(),
@@ -264,14 +265,19 @@ final class TimelineModel {
             do {
                 try await ArticleActions(client: client).reload(articleServerID: serverID)
                 guard !Task.isCancelled else { return }
-                article.hasContent = false
-                try? modelContext.save()
-                let result = await UpdateAndSync.pollForFreshContent(
-                    container: modelContext.container, client: client, settings: self.settings
+                let applied = await UpdateAndSync.pollForReloadedContent(
+                    articleServerID: serverID, container: modelContext.container, client: client
                 )
                 guard !Task.isCancelled else { return }
-                self.reloadToken += 1
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: result.updatedCount, feedName: feedName))
+                if applied {
+                    self.reloadToken += 1
+                    self.toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+                } else {
+                    self.toast = ToastMessage(
+                        text: String(localized: "Could not reload this article. Please try again."),
+                        style: .error
+                    )
+                }
             } catch {
                 guard !Task.isCancelled else { return }
                 self.toast = ToastMessage(

@@ -118,12 +118,13 @@ struct ArticleListView: View {
                         do {
                             try await ArticleActions(client: client).reload(articleServerID: serverID)
                             guard !Task.isCancelled else { return }
-                            article.hasContent = false
-                            try? modelContext.save()
-                            // See `UpdateAndSync`'s doc comment: `reload`'s ack doesn't itself
-                            // deliver the refreshed content, so this pulls it back down.
-                            await UpdateAndSync.pollForFreshContent(
-                                container: modelContext.container, client: client, settings: settings
+                            // See `UpdateAndSync.pollForReloadedContent`'s doc comment: this
+                            // deliberately re-fetches this one article's content directly rather
+                            // than going through `SyncEngine`'s generic `hasContent`-gated
+                            // backfill, which a premature fetch during the poll window could
+                            // permanently lock out of any later retry.
+                            await UpdateAndSync.pollForReloadedContent(
+                                articleServerID: serverID, container: modelContext.container, client: client
                             )
                         } catch {
                             // Matches the pre-server behavior of swallowing a failed reload

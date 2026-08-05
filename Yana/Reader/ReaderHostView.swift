@@ -343,12 +343,12 @@ struct ReaderScreen: View {
     // MARK: - Refresh
 
     /// Force-update only the current article: triggers the server's per-article reload, then
-    /// pulls the refreshed content back down. `ArticleActions.reload`'s response is just an ack
-    /// (the server does the re-fetch asynchronously), so this also clears `hasContent` locally
-    /// right away -- `SyncWriter.upsertSummaries` doesn't reset it on an ordinary summary update,
-    /// so without this the subsequent sync's content-backfill pass would never know to re-download
-    /// this article's body. See `UpdateAndSync` for why the follow-up is a bounded poll of
-    /// `SyncEngine.sync()` rather than a `/runs/:id` job-status check.
+    /// re-fetches its content directly via `UpdateAndSync.pollForReloadedContent`.
+    /// `ArticleActions.reload`'s response is just an ack (the server does the re-fetch
+    /// asynchronously) -- see that method's doc comment for why this deliberately does NOT go
+    /// through `SyncEngine`'s generic `hasContent`-gated backfill (an earlier version of this code
+    /// did, and a premature backfill fetch during the poll window could permanently lock out any
+    /// later retry of this exact article).
     private func forceUpdateArticle(_ article: Article) {
         guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
         let feedName = article.feed?.name
@@ -356,19 +356,24 @@ struct ReaderScreen: View {
             do {
                 try await ArticleActions(client: client).reload(articleServerID: serverID)
                 guard !Task.isCancelled else { return }
-                article.hasContent = false
-                try? modelContext.save()
-                let result = await UpdateAndSync.pollForFreshContent(
-                    container: modelContext.container, client: client, settings: settings
+                let applied = await UpdateAndSync.pollForReloadedContent(
+                    articleServerID: serverID, container: modelContext.container, client: client
                 )
                 guard !Task.isCancelled else { return }
-                // Re-render the visible page: the reload refreshed the article's content, but the
-                // reader only re-renders when reloadToken changes (same as summarize). Without
-                // this bump, Reload silently updates the DB while the page keeps showing stale
-                // content.
-                reloadToken += 1
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: result.updatedCount, feedName: feedName))
-                Haptics.impact(.light)
+                if applied {
+                    // Re-render the visible page: the reload refreshed the article's content, but
+                    // the reader only re-renders when reloadToken changes (same as summarize).
+                    // Without this bump, Reload silently updates the DB while the page keeps
+                    // showing stale content.
+                    reloadToken += 1
+                    toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+                    Haptics.impact(.light)
+                } else {
+                    toast = ToastMessage(
+                        text: String(localized: "Could not reload this article. Please try again."),
+                        style: .error
+                    )
+                }
             } catch {
                 guard !Task.isCancelled else { return }
                 toast = ToastMessage(
