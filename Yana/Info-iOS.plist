@@ -64,5 +64,16 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>de.fa-krug.Yana.pairing</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>yana</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

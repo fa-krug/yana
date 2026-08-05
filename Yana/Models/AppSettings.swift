@@ -1,71 +1,15 @@
 import Foundation
 
-enum AIProvider: String, CaseIterable, Sendable, Identifiable {
-    case none
-    case openai
-    case anthropic
-    case gemini
-    case mistral
-    case qwen
-    case deepseek
+enum AIMode: String, CaseIterable, Sendable, Identifiable {
+    case server
     case appleIntelligence
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .none: "Disabled"
-        case .openai: "OpenAI"
-        case .anthropic: "Anthropic"
-        case .gemini: "Gemini"
-        case .mistral: "Mistral"
-        case .qwen: "Qwen"
-        case .deepseek: "DeepSeek"
-        case .appleIntelligence: "Apple Intelligence"
-        }
-    }
-
-    /// iOS-maintained current model lists (the server's choice lists are stale).
-    /// Update these as providers ship new models.
-    var models: [String] {
-        switch self {
-        case .none: []
-        case .openai: ["gpt-4o-mini", "gpt-4o", "gpt-4.1", "gpt-4.1-mini", "o4-mini", "o3"]
-        case .anthropic: ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-8"]
-        case .gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash"]
-        case .mistral: ["mistral-small-latest", "mistral-large-latest", "mistral-medium-latest"]
-        case .qwen: ["qwen3.5-flash", "qwen3.5-plus", "qwen3-max"]
-        case .deepseek: ["deepseek-v4-flash", "deepseek-v4-pro"]
-        case .appleIntelligence: []
-        }
-    }
-
-    var defaultModel: String { models.first ?? "" }
-
-    /// Default chat-completions base URL for the OpenAI-compatible providers. For `.openai`
-    /// the user-overridable `AppSettings.openaiAPIURL` takes precedence (resolved by callers);
-    /// the other three use these fixed bases. Empty for providers that don't use this path.
-    var baseURL: String {
-        switch self {
-        case .openai: "https://api.openai.com/v1"
-        case .mistral: "https://api.mistral.ai/v1"
-        case .qwen: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-        case .deepseek: "https://api.deepseek.com/v1"
-        case .none, .anthropic, .gemini, .appleIntelligence: ""
-        }
-    }
-
-    /// Keychain item holding this provider's API key. `nil` for providers that need no key
-    /// (`.none`, on-device `.appleIntelligence`).
-    var apiKeyItem: KeychainService.APIKeyItem? {
-        switch self {
-        case .none, .appleIntelligence: return nil
-        case .openai: return .openaiAPIKey
-        case .anthropic: return .anthropicAPIKey
-        case .gemini: return .geminiAPIKey
-        case .mistral: return .mistralAPIKey
-        case .qwen: return .qwenAPIKey
-        case .deepseek: return .deepseekAPIKey
+        case .server: String(localized: "Server")
+        case .appleIntelligence: String(localized: "Apple Intelligence")
         }
     }
 }
@@ -86,23 +30,7 @@ final class AppSettings {
         defaults.register(defaults: [
             Key.retentionDays: 30,
             Key.updateInterval: UpdateInterval.min60.rawValue,
-            Key.redditUserAgent: "Yana/1.0",
-            Key.openaiAPIURL: "https://api.openai.com/v1",
-            Key.openaiModel: "gpt-4o-mini",
-            Key.anthropicModel: "claude-haiku-4-5-20251001",
-            Key.geminiModel: "gemini-2.5-flash",
-            Key.mistralModel: "mistral-small-latest",
-            Key.qwenModel: "qwen3.5-flash",
-            Key.deepseekModel: "deepseek-v4-flash",
-            Key.aiTemperature: 0.3,
-            Key.aiMaxTokens: 2000,
-            Key.aiMaxPromptLength: 500,
-            Key.aiDefaultDailyLimit: 200,
-            Key.aiDefaultMonthlyLimit: 2000,
-            Key.aiRequestTimeout: 120,
-            Key.aiMaxRetries: 3,
-            Key.aiRetryDelay: 2,
-            Key.aiRequestDelay: 2,
+            Key.aiMode: AIMode.server.rawValue,
             Key.includeUntagged: true,
             Key.articleTextSize: ArticleTextSize.medium.rawValue,
             Key.articleFont: ArticleFont.system.rawValue,
@@ -110,36 +38,19 @@ final class AppSettings {
     }
 
     private enum Key {
-        static let activeAIProvider = "settings.activeAIProvider"
         static let retentionDays = "settings.retentionDays"
         static let updateInterval = "settings.updateInterval"
-        // Sources
-        static let redditEnabled = "settings.redditEnabled"
-        static let redditUserAgent = "settings.redditUserAgent"
-        static let youtubeEnabled = "settings.youtubeEnabled"
         static let notificationsEnabled = "settings.notificationsEnabled"
-        // Providers
-        static let openaiAPIURL = "settings.openaiAPIURL"
-        static let openaiModel = "settings.openaiModel"
-        static let anthropicModel = "settings.anthropicModel"
-        static let geminiModel = "settings.geminiModel"
-        static let mistralModel = "settings.mistralModel"
-        static let qwenModel = "settings.qwenModel"
-        static let deepseekModel = "settings.deepseekModel"
-        // AI knobs
-        static let aiTemperature = "settings.aiTemperature"
-        static let aiMaxTokens = "settings.aiMaxTokens"
-        static let aiMaxPromptLength = "settings.aiMaxPromptLength"
-        static let aiDefaultDailyLimit = "settings.aiDefaultDailyLimit"
-        static let aiDefaultMonthlyLimit = "settings.aiDefaultMonthlyLimit"
-        static let aiRequestTimeout = "settings.aiRequestTimeout"
-        static let aiMaxRetries = "settings.aiMaxRetries"
-        static let aiRetryDelay = "settings.aiRetryDelay"
-        static let aiRequestDelay = "settings.aiRequestDelay"
+        // AI
+        static let aiMode = "settings.aiMode"
+        static let serverBaseURL = "settings.serverBaseURL"
+        // Sync
+        static let syncCursor = "settings.syncCursor"
         // Timeline filter
         static let disabledTagNames = "settings.disabledTagNames"
         static let includeUntagged = "settings.includeUntagged"
         static let disabledFeedNames = "settings.disabledFeedNames"
+        static let starredOnly = "settings.starredOnly"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
         // Reader
@@ -204,16 +115,6 @@ final class AppSettings {
     }
 
 
-    var activeAIProvider: AIProvider {
-        get {
-            access(keyPath: \.activeAIProvider)
-            guard let raw = defaults.string(forKey: Key.activeAIProvider),
-                  let provider = AIProvider(rawValue: raw) else { return .none }
-            return provider
-        }
-        set { withMutation(keyPath: \.activeAIProvider) { defaults.set(newValue.rawValue, forKey: Key.activeAIProvider) } }
-    }
-
     var retentionDays: Int {
         get { access(keyPath: \.retentionDays); return defaults.integer(forKey: Key.retentionDays) }
         set { withMutation(keyPath: \.retentionDays) { defaults.set(newValue, forKey: Key.retentionDays) } }
@@ -230,130 +131,37 @@ final class AppSettings {
         set { withMutation(keyPath: \.updateInterval) { defaults.set(newValue.rawValue, forKey: Key.updateInterval) } }
     }
 
-    // MARK: Sources
-    var redditEnabled: Bool {
-        get { access(keyPath: \.redditEnabled); return defaults.bool(forKey: Key.redditEnabled) }
-        set { withMutation(keyPath: \.redditEnabled) { defaults.set(newValue, forKey: Key.redditEnabled) } }
-    }
-    var redditUserAgent: String {
-        get { access(keyPath: \.redditUserAgent); return defaults.string(forKey: Key.redditUserAgent) ?? "Yana/1.0" }
-        set { withMutation(keyPath: \.redditUserAgent) { defaults.set(newValue, forKey: Key.redditUserAgent) } }
-    }
-    var youtubeEnabled: Bool {
-        get { access(keyPath: \.youtubeEnabled); return defaults.bool(forKey: Key.youtubeEnabled) }
-        set { withMutation(keyPath: \.youtubeEnabled) { defaults.set(newValue, forKey: Key.youtubeEnabled) } }
-    }
-
-    /// Whether the given aggregator type's content source is currently active.
-    /// Reddit / YouTube are gated by their per-source Enabled toggle; every other
-    /// type is always active.
-    func isSourceEnabled(_ type: AggregatorType) -> Bool {
-        switch type {
-        case .reddit: return redditEnabled
-        case .youtube: return youtubeEnabled
-        default: return true
-        }
-    }
-
     var notificationsEnabled: Bool {
         get { access(keyPath: \.notificationsEnabled); return defaults.bool(forKey: Key.notificationsEnabled) }
         set { withMutation(keyPath: \.notificationsEnabled) { defaults.set(newValue, forKey: Key.notificationsEnabled) } }
     }
 
-    // MARK: Providers
-    var openaiAPIURL: String {
-        get { access(keyPath: \.openaiAPIURL); return defaults.string(forKey: Key.openaiAPIURL) ?? "https://api.openai.com/v1" }
-        set { withMutation(keyPath: \.openaiAPIURL) { defaults.set(newValue, forKey: Key.openaiAPIURL) } }
-    }
-    var openaiModel: String {
-        get { access(keyPath: \.openaiModel); return defaults.string(forKey: Key.openaiModel) ?? "gpt-4o-mini" }
-        set { withMutation(keyPath: \.openaiModel) { defaults.set(newValue, forKey: Key.openaiModel) } }
-    }
-    var anthropicModel: String {
-        get { access(keyPath: \.anthropicModel); return defaults.string(forKey: Key.anthropicModel) ?? "claude-haiku-4-5-20251001" }
-        set { withMutation(keyPath: \.anthropicModel) { defaults.set(newValue, forKey: Key.anthropicModel) } }
-    }
-    var geminiModel: String {
-        get { access(keyPath: \.geminiModel); return defaults.string(forKey: Key.geminiModel) ?? "gemini-2.5-flash" }
-        set { withMutation(keyPath: \.geminiModel) { defaults.set(newValue, forKey: Key.geminiModel) } }
-    }
-    var mistralModel: String {
-        get { access(keyPath: \.mistralModel); return defaults.string(forKey: Key.mistralModel) ?? "mistral-small-latest" }
-        set { withMutation(keyPath: \.mistralModel) { defaults.set(newValue, forKey: Key.mistralModel) } }
-    }
-    var qwenModel: String {
-        get { access(keyPath: \.qwenModel); return defaults.string(forKey: Key.qwenModel) ?? "qwen3.5-flash" }
-        set { withMutation(keyPath: \.qwenModel) { defaults.set(newValue, forKey: Key.qwenModel) } }
-    }
-    var deepseekModel: String {
-        get { access(keyPath: \.deepseekModel); return defaults.string(forKey: Key.deepseekModel) ?? "deepseek-v4-flash" }
-        set { withMutation(keyPath: \.deepseekModel) { defaults.set(newValue, forKey: Key.deepseekModel) } }
-    }
-
-    // MARK: AI model (generic accessor)
-    /// Model currently selected for `provider`. Provides a single generic path over the
-    /// per-provider model properties (used by the onboarding AI step); `.none` /
-    /// `.appleIntelligence` have no model and return "".
-    func aiModel(for provider: AIProvider) -> String {
-        switch provider {
-        case .openai: openaiModel
-        case .anthropic: anthropicModel
-        case .gemini: geminiModel
-        case .mistral: mistralModel
-        case .qwen: qwenModel
-        case .deepseek: deepseekModel
-        case .none, .appleIntelligence: ""
+    // MARK: AI
+    /// Which AI path produces the reader's summary block. `.server` calls
+    /// `POST /api/v1/ai/prompt` against whatever provider the user configured server-side;
+    /// `.appleIntelligence` runs entirely on-device. Device-local — never synced (mirrors
+    /// `updateInterval`'s reasoning: this is a per-device capability choice, not a library setting).
+    var aiMode: AIMode {
+        get {
+            access(keyPath: \.aiMode)
+            guard let raw = defaults.string(forKey: Key.aiMode), let mode = AIMode(rawValue: raw) else { return .server }
+            return mode
         }
+        set { withMutation(keyPath: \.aiMode) { defaults.set(newValue.rawValue, forKey: Key.aiMode) } }
     }
 
-    func setAIModel(_ value: String, for provider: AIProvider) {
-        switch provider {
-        case .openai: openaiModel = value
-        case .anthropic: anthropicModel = value
-        case .gemini: geminiModel = value
-        case .mistral: mistralModel = value
-        case .qwen: qwenModel = value
-        case .deepseek: deepseekModel = value
-        case .none, .appleIntelligence: break
-        }
+    /// The paired yana-server's base URL (self-hosted software — there is no fixed host).
+    /// Entered during onboarding's server-configuration step, editable later in Settings.
+    var serverBaseURL: String {
+        get { access(keyPath: \.serverBaseURL); return defaults.string(forKey: Key.serverBaseURL) ?? "" }
+        set { withMutation(keyPath: \.serverBaseURL) { defaults.set(newValue, forKey: Key.serverBaseURL) } }
     }
 
-    // MARK: AI knobs
-    var aiTemperature: Double {
-        get { access(keyPath: \.aiTemperature); return defaults.double(forKey: Key.aiTemperature) }
-        set { withMutation(keyPath: \.aiTemperature) { defaults.set(newValue, forKey: Key.aiTemperature) } }
-    }
-    var aiMaxTokens: Int {
-        get { access(keyPath: \.aiMaxTokens); return defaults.integer(forKey: Key.aiMaxTokens) }
-        set { withMutation(keyPath: \.aiMaxTokens) { defaults.set(newValue, forKey: Key.aiMaxTokens) } }
-    }
-    var aiMaxPromptLength: Int {
-        get { access(keyPath: \.aiMaxPromptLength); return defaults.integer(forKey: Key.aiMaxPromptLength) }
-        set { withMutation(keyPath: \.aiMaxPromptLength) { defaults.set(newValue, forKey: Key.aiMaxPromptLength) } }
-    }
-    var aiDefaultDailyLimit: Int {
-        get { access(keyPath: \.aiDefaultDailyLimit); return defaults.integer(forKey: Key.aiDefaultDailyLimit) }
-        set { withMutation(keyPath: \.aiDefaultDailyLimit) { defaults.set(newValue, forKey: Key.aiDefaultDailyLimit) } }
-    }
-    var aiDefaultMonthlyLimit: Int {
-        get { access(keyPath: \.aiDefaultMonthlyLimit); return defaults.integer(forKey: Key.aiDefaultMonthlyLimit) }
-        set { withMutation(keyPath: \.aiDefaultMonthlyLimit) { defaults.set(newValue, forKey: Key.aiDefaultMonthlyLimit) } }
-    }
-    var aiRequestTimeout: Int {
-        get { access(keyPath: \.aiRequestTimeout); return defaults.integer(forKey: Key.aiRequestTimeout) }
-        set { withMutation(keyPath: \.aiRequestTimeout) { defaults.set(newValue, forKey: Key.aiRequestTimeout) } }
-    }
-    var aiMaxRetries: Int {
-        get { access(keyPath: \.aiMaxRetries); return defaults.integer(forKey: Key.aiMaxRetries) }
-        set { withMutation(keyPath: \.aiMaxRetries) { defaults.set(newValue, forKey: Key.aiMaxRetries) } }
-    }
-    var aiRetryDelay: Int {
-        get { access(keyPath: \.aiRetryDelay); return defaults.integer(forKey: Key.aiRetryDelay) }
-        set { withMutation(keyPath: \.aiRetryDelay) { defaults.set(newValue, forKey: Key.aiRetryDelay) } }
-    }
-    var aiRequestDelay: Int {
-        get { access(keyPath: \.aiRequestDelay); return defaults.integer(forKey: Key.aiRequestDelay) }
-        set { withMutation(keyPath: \.aiRequestDelay) { defaults.set(newValue, forKey: Key.aiRequestDelay) } }
+    /// Opaque cursor from the last successful `/api/v1/articles/sync` call. `nil` forces a full
+    /// resync from scratch. Device-local network state — never synced.
+    var syncCursor: String? {
+        get { access(keyPath: \.syncCursor); return defaults.string(forKey: Key.syncCursor) }
+        set { withMutation(keyPath: \.syncCursor) { defaults.set(newValue, forKey: Key.syncCursor) } }
     }
 
     // MARK: Timeline filter
@@ -375,6 +183,12 @@ final class AppSettings {
     /// articles are excluded). Drives the reader's filter-button active state.
     var isTimelineFilterActive: Bool {
         !disabledTagNames.isEmpty || !includeUntagged || !disabledFeedNames.isEmpty
+    }
+    /// Timeline quick-filter: show only starred articles. Replaces the old built-in "Starred" tag
+    /// row now that starring is a plain boolean, not tag membership.
+    var starredOnly: Bool {
+        get { access(keyPath: \.starredOnly); return defaults.bool(forKey: Key.starredOnly) }
+        set { withMutation(keyPath: \.starredOnly) { defaults.set(newValue, forKey: Key.starredOnly) } }
     }
 
     // MARK: Reader
