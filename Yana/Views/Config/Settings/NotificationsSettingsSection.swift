@@ -2,6 +2,7 @@ import SwiftUI
 
 /// New-article notification toggle, with a denied-permission alert.
 struct NotificationsSettingsSection: View {
+    @Environment(ArticleStore.self) private var store
     @State private var settings = AppSettings()
     @State private var showNotificationDeniedAlert = false
 
@@ -24,7 +25,22 @@ struct NotificationsSettingsSection: View {
                 Label("Notify about new articles", systemImage: "bell.badge.fill")
                     .labelStyle(.tintedIcon(.red))
             }
-            Toggle(isOn: $settings.showUnreadBadge) {
+            Toggle(isOn: Binding(
+                get: { settings.showUnreadBadge },
+                set: { newValue in
+                    if newValue {
+                        Task {
+                            let granted = await NotificationService().requestAuthorization()
+                            settings.showUnreadBadge = granted
+                            UnreadBadgeUpdater.refresh(summaries: store.summaries, settings: settings)
+                            if !granted { showNotificationDeniedAlert = true }
+                        }
+                    } else {
+                        settings.showUnreadBadge = false
+                        UnreadBadgeUpdater.refresh(summaries: store.summaries, settings: settings)
+                    }
+                }
+            )) {
                 Label("Show unread count on app icon", systemImage: "app.badge")
                     .labelStyle(.tintedIcon(.red))
             }

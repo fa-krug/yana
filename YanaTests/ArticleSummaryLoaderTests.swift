@@ -51,4 +51,39 @@ struct ArticleSummaryLoaderTests {
         let window = try await loader.loadWindow(around: nil, radius: 10)
         #expect(window.map(\.identifier) == ["a0","a1","a2","a3"])   // fewer than window: all, ascending
     }
+
+    /// Finding 4: the anchor-relative window splits its `newer`/`older` fetches on `createdAt`
+    /// alone while `lightDescriptor` sorts on the compound `(readRank, createdAt)` key, so a read
+    /// row with a later `createdAt` than the anchor can land in `newer` mixed with genuinely
+    /// unread rows, and the naive `older.reversed() + newer` concatenation doesn't restore
+    /// `(readRank, createdAt)` order. Mark a handful of the *newest* articles read (so they carry
+    /// late `createdAt`s but should sort to the FRONT, not the back) and assert the window comes
+    /// back read-block-then-unread-block, matching `SummaryIndexMerge`'s canonical ordering.
+    @Test func windowStaysInCanonicalReadThenUnreadOrderWithMixedReadState() async throws {
+        let container = try makeContainer()
+        seed(20, into: container.mainContext)
+        // Mark the newest few articles (by createdAt) as read -- they'll have late timestamps but
+        // must still sort ahead of unread rows in the assembled window.
+        let descriptor = FetchDescriptor<Article>(sortBy: [SortDescriptor(\.createdAt, order: .forward)])
+        let all = try container.mainContext.fetch(descriptor)
+        for article in all.suffix(3) {
+            article.setRead(true)
+        }
+        try container.mainContext.save()
+
+        let loader = ArticleSummaryLoader(modelContainer: container)
+        // Anchor near the middle so both the `newer` and `older` fetches are exercised.
+        let window = try await loader.loadWindow(around: "a10", radius: 8)
+
+        // The window must be internally sorted (readRank, createdAt) ascending: all read rows
+        // before all unread rows, each block ascending by createdAt.
+        for i in 1..<window.count {
+            let a = window[i - 1], b = window[i]
+            if a.isRead != b.isRead {
+                #expect(a.isRead && !b.isRead, "read rows must sort before unread rows")
+            } else {
+                #expect(a.createdAt <= b.createdAt, "same-read-state rows must stay createdAt-ascending")
+            }
+        }
+    }
 }

@@ -43,7 +43,15 @@ actor ArticleSummaryLoader {
             olderD.fetchLimit = radius
             let older = try modelContext.fetch(olderD)
 
-            return (Array(older.reversed()) + newer).map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
+            // `newer`/`older` are two separate fetches split on `createdAt` alone, so a read row
+            // with a later `createdAt` can land in `newer` alongside genuinely-adjacent unread
+            // rows (and vice versa for `older`) -- the naive concatenation below is not
+            // guaranteed to match `lightDescriptor`'s `(readRank, createdAt)` order. Re-sort with
+            // the same comparator `SummaryIndexMerge` uses so this transient cold-start window
+            // never visibly mis-orders read/unread blocks before the full reconcile lands.
+            return (Array(older.reversed()) + newer)
+                .map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
+                .sorted(by: SummaryIndexMerge.isOrderedBefore)
         }
 
         var newestD = lightDescriptor(predicate: nil, order: .reverse)

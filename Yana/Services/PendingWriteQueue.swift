@@ -43,10 +43,17 @@ enum PendingWriteQueue {
 
     /// Attempts every pending write's PATCH via `actions`. Entries that succeed are removed;
     /// entries that fail (still offline, or a real server error) stay queued for the next flush.
+    ///
+    /// Writes are attempted from a snapshot taken at the start, but the write-back does NOT
+    /// blindly replace `settings.pendingWrites` with what's left of that snapshot -- a concurrent
+    /// `enqueue` (e.g. a user star/read action firing while this flush's `await`s are in flight)
+    /// can land in `settings.pendingWrites` mid-flush, and a blind overwrite would silently drop
+    /// it. Instead this re-reads `settings.pendingWrites` fresh at write-back time and removes only
+    /// the entries that actually succeeded.
     static func flush(using actions: ArticleActions, settings: AppSettings) async {
         let pending = settings.pendingWrites
         guard !pending.isEmpty else { return }
-        var remaining: [PendingWrite] = []
+        var succeeded: [PendingWrite] = []
         for write in pending {
             do {
                 switch write.field {
@@ -55,10 +62,14 @@ enum PendingWriteQueue {
                 case .read(let value):
                     try await actions.setRead(value, articleServerID: write.articleServerID)
                 }
+                succeeded.append(write)
             } catch {
-                remaining.append(write)
+                // leave queued
             }
         }
-        settings.pendingWrites = remaining
+        guard !succeeded.isEmpty else { return }
+        settings.pendingWrites = settings.pendingWrites.filter { current in
+            !succeeded.contains { $0 == current }
+        }
     }
 }

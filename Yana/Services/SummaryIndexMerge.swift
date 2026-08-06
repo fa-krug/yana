@@ -49,8 +49,12 @@ enum SummaryIndexMerge {
     }
 
     /// The timeline's canonical ordering: read (oldest→newest) before unread (oldest→newest).
-    /// `Bool` has no `Comparable` conformance, so this can't be a tuple `<` -- written out explicitly.
-    private static func isOrderedBefore(_ a: ArticleSummary, _ b: ArticleSummary) -> Bool {
+    /// `Bool` has no `Comparable` conformance, so this can't be a tuple `<` -- written out
+    /// explicitly. Internal (not `private`) so other callers assembling a `(readRank, createdAt)`
+    /// window from multiple fetches -- e.g. `ArticleSummaryLoader.loadWindow`'s anchor-relative
+    /// older/newer split -- can re-sort against this same single source of truth instead of
+    /// re-deriving the rule.
+    static func isOrderedBefore(_ a: ArticleSummary, _ b: ArticleSummary) -> Bool {
         if a.isRead != b.isRead { return a.isRead && !b.isRead }
         return a.createdAt < b.createdAt
     }
