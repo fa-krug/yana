@@ -17,7 +17,8 @@ struct ServerMigrationNoticeWindowRoot: View {
             // Welcome/pairing opens, not alongside it.
             if let step = WelcomeGate.neededStep(
                 hasCompletedOnboarding: settings.hasCompletedOnboarding,
-                isPaired: AuthenticatedClient.current() != nil
+                isPaired: AuthenticatedClient.current() != nil,
+                hasSkippedServerPairing: settings.hasSkippedServerPairing
             ) {
                 appState.welcomeInitialStep = step
                 openWindow(id: WindowID.welcome, value: true)

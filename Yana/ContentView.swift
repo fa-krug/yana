@@ -108,7 +108,8 @@ struct ContentView: View {
         guard !Self.skipOnboarding else { return }
         guard let step = WelcomeGate.neededStep(
             hasCompletedOnboarding: settings.hasCompletedOnboarding,
-            isPaired: AuthenticatedClient.current() != nil
+            isPaired: AuthenticatedClient.current() != nil,
+            hasSkippedServerPairing: settings.hasSkippedServerPairing
         ) else { return }
         appState.welcomeInitialStep = step
         if isMac {
