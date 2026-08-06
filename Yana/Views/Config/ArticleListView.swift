@@ -129,9 +129,8 @@ struct ArticleListView: View {
                 .listRowBackground(summary.identifier == currentArticleID
                                    ? Color.accentColor.opacity(0.15) : nil)
         }
-        // `ManagedList` no longer owns `.searchable()` itself (see its doc comment — `TagsView`/
-        // `FeedsView` need it on a stable ancestor outside their `.id()`-reset subview); this view
-        // isn't `.id()`-wrapped, so there's nothing special here beyond attaching it directly.
+        // `ManagedList` doesn't own `.searchable()` itself (see its doc comment); this view isn't
+        // `.id()`-wrapped, so there's nothing special here beyond attaching it directly.
         .searchable(text: $searchText, placement: ManagedListSearch.placement, prompt: "Search articles")
         .task(id: searchText) {
             try? await Task.sleep(nanoseconds: 250_000_000)

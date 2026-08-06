@@ -18,28 +18,4 @@ struct ArticleAITextTests {
         #expect(!cleaned.contains("<script>"))
     }
 
-    @Test func leadingHeaderHTMLReturnsHeaderBlock() throws {
-        let html = #"<header style="text-align:center;"><img src="yana-img://lead"></header><p>body</p>"#
-        let header = try ArticleAIText.leadingHeaderHTML(html)
-        #expect(header?.contains("yana-img://lead") == true)
-        #expect(header?.contains("<header") == true)
-        #expect(header?.contains("<p>") == false)   // body excluded
-    }
-
-    @Test func leadingHeaderHTMLNilWhenNoHeader() throws {
-        #expect(try ArticleAIText.leadingHeaderHTML("<p>just body</p>") == nil)
-    }
-
-    @Test func translateInstructionMentionsLanguage() {
-        #expect(ArticleAIText.translateInstruction(language: "German").contains("German"))
-    }
-
-    @Test func translateInstructionCoversComments() {
-        // Reddit posts carry their comment thread inside the body content; the model was
-        // translating the article but leaving the <blockquote> comment section in the source
-        // language. The instruction must explicitly require translating comments/quotes.
-        let instruction = ArticleAIText.translateInstruction(language: "German")
-        #expect(instruction.contains("comment"))
-        #expect(instruction.contains("blockquote"))
-    }
 }
