@@ -1,81 +1,96 @@
+import AuthenticationServices
 import SwiftUI
-import WebKit
 
-/// Drives the device-pairing flow: loads the server's login page in a **persistent**
-/// (non-ephemeral) `WKWebView` so the resulting cookie session survives for the management
-/// WebView to reuse later, and intercepts the `yana://auth-callback` redirect before it becomes
-/// a network request.
+/// Drives the device-pairing flow via `ASWebAuthenticationSession` — a system-managed, Safari-
+/// context browser sheet — rather than an in-app `WKWebView`. This is required for iCloud
+/// Keychain passkey sign-in to work at all: WKWebView only surfaces platform-authenticator
+/// passkeys for a domain the app has declared in its `webcredentials:` Associated Domains
+/// entitlement, which is impossible here since the server address is arbitrary and self-hosted
+/// (unknown at build time, different per user). `ASWebAuthenticationSession` has no such
+/// restriction — it behaves like Safari itself for WebAuthn purposes. Its system-provided sheet
+/// also already renders as just a domain label, the web content, and a Cancel button, with no
+/// custom chrome for this app to add or remove.
+///
+/// The trade-off: this session's cookies land in Safari's shared cookie jar
+/// (`HTTPCookieStorage.shared`), not the `WKWebsiteDataStore` `ManagementWebView` reads from —
+/// the two are entirely separate on iOS, with no automatic sharing. `CookieMigration` copies the
+/// resulting session cookies over after a successful pairing so `ManagementWebView` still reuses
+/// the session without asking the user to sign in a second time.
 struct DevicePairingView: View {
     let serverBaseURL: URL
     let onPaired: (String) -> Void
     let onCancel: () -> Void
 
+    @State private var coordinator = DevicePairingCoordinator()
+
     var body: some View {
-        NavigationStack {
-            DevicePairingWebView(serverBaseURL: serverBaseURL, onPaired: onPaired, onFailed: onCancel)
-                .navigationTitle("Sign In")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel", action: onCancel)
-                    }
-                }
-        }
+        // The session itself renders as a system-presented sheet on top of this; there is
+        // nothing of our own to show underneath it.
+        Color.clear
+            .onAppear {
+                coordinator.start(serverBaseURL: serverBaseURL, onPaired: onPaired, onCancel: onCancel)
+            }
     }
 }
 
-private struct DevicePairingWebView: UIViewRepresentable {
-    let serverBaseURL: URL
-    let onPaired: (String) -> Void
-    let onFailed: () -> Void
+@MainActor
+private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private var session: ASWebAuthenticationSession?
+    private var pairingSession: DevicePairingSession?
+    private var serverBaseURL: URL?
+    private var onPaired: ((String) -> Void)?
+    private var onCancel: (() -> Void)?
 
-    func makeUIView(context: Context) -> WKWebView {
-        // Non-ephemeral `.default()` data store — cookies from this session persist across
-        // launches, and the management WebView (a later task) reuses the same store so a user
-        // who just paired doesn't have to log in again.
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
-        let session = DevicePairing.makeSession()
-        context.coordinator.session = session
+    func start(serverBaseURL: URL, onPaired: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        let pairingSession = DevicePairing.makeSession()
+        self.pairingSession = pairingSession
+        self.serverBaseURL = serverBaseURL
+        self.onPaired = onPaired
+        self.onCancel = onCancel
+
         let deviceName = UIDevice.current.name
-        webView.load(URLRequest(url: DevicePairing.pairingURL(
-            serverBaseURL: serverBaseURL, session: session, deviceName: deviceName
-        )))
-        return webView
+        let url = DevicePairing.pairingURL(serverBaseURL: serverBaseURL, session: pairingSession, deviceName: deviceName)
+
+        let authSession = ASWebAuthenticationSession(url: url, callbackURLScheme: "yana") { [weak self] callbackURL, _ in
+            Task { @MainActor in
+                self?.finish(callbackURL: callbackURL)
+            }
+        }
+        authSession.presentationContextProvider = self
+        // Non-ephemeral: the resulting session cookie is written to the shared cookie jar
+        // (`HTTPCookieStorage.shared`), which `CookieMigration` reads from on success.
+        authSession.prefersEphemeralWebBrowserSession = false
+        session = authSession
+        authSession.start()
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator(onPaired: onPaired, onFailed: onFailed) }
-
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        let onPaired: (String) -> Void
-        let onFailed: () -> Void
-        var session: DevicePairingSession?
-
-        init(onPaired: @escaping (String) -> Void, onFailed: @escaping () -> Void) {
-            self.onPaired = onPaired
-            self.onFailed = onFailed
+    private func finish(callbackURL: URL?) {
+        session = nil
+        guard let callbackURL, let pairingSession, let serverBaseURL else {
+            onCancel?()
+            return
         }
+        switch DevicePairing.handleCallback(callbackURL, session: pairingSession) {
+        case .success(let token):
+            Task {
+                await CookieMigration.copySharedCookies(for: serverBaseURL)
+                onPaired?(token)
+            }
+        case .stateMismatch, .malformedCallback:
+            onCancel?()
+        }
+    }
 
-        func webView(
-            _ webView: WKWebView,
-            decidePolicyFor navigationAction: WKNavigationAction,
-            decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
-        ) {
-            guard let url = navigationAction.request.url, url.scheme == "yana", let session else {
-                decisionHandler(.allow)
-                return
+    nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        MainActor.assumeIsolated {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            if let keyWindow = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
+                return keyWindow
             }
-            switch DevicePairing.handleCallback(url, session: session) {
-            case .success(let token):
-                decisionHandler(.cancel)
-                onPaired(token)
-            case .stateMismatch, .malformedCallback:
-                decisionHandler(.cancel)
-                onFailed()
-            }
+            // No key window yet — this method is only ever called while this view is already
+            // on screen, so some scene is guaranteed to be connected to anchor a fresh window
+            // to (avoiding the scene-less `UIWindow()` initializer, deprecated as of iOS 26).
+            return UIWindow(windowScene: scenes.first!)
         }
     }
 }
