@@ -45,6 +45,7 @@ struct MacSettingsWindow: View {
         switch selection ?? .general {
         case .general:
             Form {
+                ServerSettingsSection()
                 NotificationsSettingsSection()
                 LibrarySettingsSection()
             }
