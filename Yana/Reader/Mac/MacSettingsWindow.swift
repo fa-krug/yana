@@ -12,10 +12,18 @@ struct MacSettingsWindow: View {
     @State private var selection: SettingsPane? = .general
     @State private var settings = AppSettings()
 
+    /// The Manage pane hosts a WebView pointed at the paired server's own web UI — with no
+    /// paired server there's nothing to load and the pane renders a blank white rectangle
+    /// (see `ManagementWebView`), so hide it instead of showing that dead end.
+    private var availablePanes: [SettingsPane] {
+        let isPaired = AuthenticatedClient.current(settings: settings) != nil
+        return SettingsPane.allCases.filter { $0 != .manage || isPaired }
+    }
+
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                ForEach(SettingsPane.allCases) { pane in
+                ForEach(availablePanes) { pane in
                     Label(pane.title, systemImage: pane.systemImage)
                         .tag(pane)
                         // Merge the icon and text into ONE accessibility element before applying
@@ -39,6 +47,14 @@ struct MacSettingsWindow: View {
         .toggleStyle(.switch)
         .accessibilityIdentifier("mac.settings.window")
         .frame(minWidth: 700, minHeight: 560)
+        .onAppear { resetSelectionIfUnavailable() }
+        .onChange(of: settings.serverBaseURL) { resetSelectionIfUnavailable() }
+    }
+
+    private func resetSelectionIfUnavailable() {
+        if let selection, !availablePanes.contains(selection) {
+            self.selection = .general
+        }
     }
 
     @ViewBuilder private var detail: some View {
@@ -52,8 +68,12 @@ struct MacSettingsWindow: View {
         case .reader:
             Form { ReaderSettingsSection() }
         case .manage:
-            NavigationStack {
-                ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
+            if availablePanes.contains(.manage) {
+                NavigationStack {
+                    ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
+                }
+            } else {
+                Form { ServerSettingsSection() }
             }
         case .ai:
             Form { AIModeSettingsSection() }
