@@ -63,6 +63,7 @@ struct ContentView: View {
             if ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_ONBOARDING") {
                 settings.hasCompletedOnboarding = false
             }
+            autoSeedMacDemoLibraryIfNeeded()
             var migrationNoticeWillShow = false
             if !Self.skipServerMigrationAutomation {
                 // Skip the UserDefaults round-trip once evaluated — `evaluate` itself is what
@@ -97,6 +98,25 @@ struct ContentView: View {
             if !migrationNoticeWillShow {
                 presentWelcomeIfNeeded()
             }
+        }
+    }
+
+    /// The Mac window has no first-run "add a feed" flow of its own (feed management lives on the
+    /// server), so a fresh, unpaired Mac install would otherwise render the sidebar/detail empty
+    /// states before the user ever finishes onboarding. Seed the same demo library `ScreenshotSeed`
+    /// provides for a deliberate "Skip for now" (see `OnboardingServerPage`) automatically, once, so
+    /// the Mac window always has content to show at initial startup. Guarded exactly like
+    /// `presentWelcomeIfNeeded`'s launch-arg checks so UI/screenshot tests are unaffected, and only
+    /// runs before onboarding has ever completed — once a device pairs or finishes onboarding this
+    /// never fires again, so it can't stomp on a real paired library that's briefly unauthenticated.
+    private func autoSeedMacDemoLibraryIfNeeded() {
+        guard isMac, !Self.skipOnboarding,
+              !settings.hasCompletedOnboarding,
+              AuthenticatedClient.current() == nil
+        else { return }
+        Task { @MainActor in
+            await ScreenshotSeed.seed(into: AppContainer.shared.mainContext)
+            settings.hasSkippedServerPairing = true
         }
     }
 
