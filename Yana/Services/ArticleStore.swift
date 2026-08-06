@@ -312,6 +312,7 @@ final class ArticleStore {
     private func publish(_ next: [ArticleSummary]) {
         guard next != summaries else { return }
         summaries = next
+        UnreadBadgeUpdater.refresh(summaries: next)
         cacheCoalescer?.schedule()
     }
 
