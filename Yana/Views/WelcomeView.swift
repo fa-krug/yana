@@ -17,6 +17,7 @@ struct WelcomeView: View {
     }
 
     @State private var step: Step
+    @State private var serverState = OnboardingServerState()
 
     init(onFinish: @escaping () -> Void, initialStep: Step = .welcome) {
         self.onFinish = onFinish
@@ -29,7 +30,7 @@ struct WelcomeView: View {
             Group {
                 switch step {
                 case .welcome: WelcomeIntroPage()
-                case .server: OnboardingServerPage(onPaired: { step = .aiMode })
+                case .server: OnboardingServerPage(onPaired: { step = .aiMode }, state: serverState)
                 case .aiMode: OnboardingAIModePage()
                 }
             }
@@ -70,10 +71,10 @@ struct WelcomeView: View {
                     .controlSize(.large)
                     .accessibilityIdentifier("onboardingBackButton")
                 }
-                // The final step completes onboarding via "Finish"; the server step's own form
-                // supplies a single state-driven "Skip"/"Continue" button (see
-                // `OnboardingServerPage`), so this shared footer has nothing to add there; other
-                // steps advance the pager.
+                // The final step completes onboarding via "Finish"; the server step shows a
+                // single state-driven "Skip"/"Continue" button here, driven by `serverState` (see
+                // `OnboardingServerPage`), so it lines up with the Back button like every other
+                // step instead of floating inside the form; other steps just advance the pager.
                 if step == .aiMode {
                     Button(action: finish) {
                         Text("Finish")
@@ -83,7 +84,17 @@ struct WelcomeView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .accessibilityIdentifier("onboardingFinishButton")
-                } else if step != .server {
+                } else if step == .server {
+                    Button(action: serverState.primaryAction) {
+                        Text(serverState.isPaired ? "Continue" : "Skip for now")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(serverState.isSkipping)
+                    .accessibilityIdentifier(serverState.isPaired ? "onboardingServerContinueButton" : "onboardingSkipServerButton")
+                } else {
                     Button(action: goForward) {
                         Text("Continue")
                             .font(.headline)

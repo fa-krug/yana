@@ -4,10 +4,10 @@ import SwiftUI
 /// sign-in flow (the same one Settings uses to re-pair) — this is just the entry point that
 /// collects the server address and presents it as a sheet.
 ///
-/// In the onboarding flow, this page owns a single state-driven primary button rather than two
-/// separate "Skip"/"Continue" affordances: it reads "Skip for now" while unpaired and "Continue"
-/// once pairing succeeds, so the footer isn't asking the user to pick between two buttons that
-/// both just move forward. "Skip for now" seeds the demo library (`ScreenshotSeed`, see
+/// In the onboarding flow, the Skip/Continue button itself lives in `WelcomeView`'s shared
+/// bottom footer, not in this page's `Form` — it reads "Skip for now" while unpaired and
+/// "Continue" once pairing succeeds, driven by the shared `OnboardingServerState` both views
+/// hold. "Skip for now" seeds the demo library (`ScreenshotSeed`, see
 /// docs/superpowers/specs/2026-08-06-demo-data-seeding-design.md) and marks the device as
 /// demo-mode (`AppSettings.hasSkippedServerPairing`) instead of pairing. If the user pairs a real
 /// server later — either by returning here via "Show Welcome Screen Again" or via
@@ -19,11 +19,23 @@ struct OnboardingServerPage: View {
     /// than waiting for a second "Continue" tap, and there's no "Skip" affordance to show either.
     var isOnboardingFlow = true
 
+    @State private var state: OnboardingServerState
+
+    init(onPaired: @escaping () -> Void, isOnboardingFlow: Bool = true, state: OnboardingServerState = OnboardingServerState()) {
+        self.onPaired = onPaired
+        self.isOnboardingFlow = isOnboardingFlow
+        self._state = State(initialValue: state)
+    }
+
     @State private var settings = AppSettings()
     @State private var serverURLText = ""
+    /// The server address this device is actually paired against. Editing the field away from
+    /// this value resets `state.isPaired`, so changing the URL always reverts the form to "no
+    /// login happened" rather than showing a stale success state for a server the field no
+    /// longer points at.
+    @State private var pairedURLText: String?
     @State private var isPairing = false
-    @State private var isSkipping = false
-    @State private var isPaired = false
+    @FocusState private var isURLFieldFocused: Bool
 
     var body: some View {
         Form {
@@ -45,6 +57,7 @@ struct OnboardingServerPage: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($isURLFieldFocused)
                 }
             } header: {
                 Text("Server Address")
@@ -53,28 +66,31 @@ struct OnboardingServerPage: View {
             }
 
             Section {
-                Button("Sign In") { isPairing = true }
-                    .disabled(URL(string: serverURLText) == nil)
-            }
-
-            if isOnboardingFlow {
-                Section {
-                    Button(action: primaryAction) {
-                        Text(isPaired ? "Continue" : "Skip for now")
-                    }
-                    .disabled(isSkipping)
-                    .accessibilityIdentifier(isPaired ? "onboardingServerContinueButton" : "onboardingSkipServerButton")
-                } footer: {
-                    if !isPaired {
-                        Text("You'll see demo content until you pair a server. Pair anytime from Settings.")
-                    }
+                if state.isPaired {
+                    Label("Signed in", systemImage: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                } else {
+                    Button("Sign In") { isPairing = true }
+                        .disabled(URL(string: serverURLText) == nil)
+                }
+            } footer: {
+                if isOnboardingFlow, !state.isPaired {
+                    Text("You'll see demo content until you pair a server. Pair anytime from Settings.")
                 }
             }
         }
         .accessibilityIdentifier("onboardingServerScreen")
         .onAppear {
             serverURLText = settings.serverBaseURL
-            isPaired = AuthenticatedClient.current() != nil
+            state.isPaired = AuthenticatedClient.current() != nil
+            pairedURLText = state.isPaired ? serverURLText : nil
+            state.performPrimaryAction = primaryAction
+        }
+        .onChange(of: serverURLText) { _, newValue in
+            if let pairedURLText, newValue != pairedURLText {
+                state.isPaired = false
+                self.pairedURLText = nil
+            }
         }
         .sheet(isPresented: $isPairing) {
             if let url = URL(string: serverURLText) {
@@ -84,10 +100,12 @@ struct OnboardingServerPage: View {
                         settings.serverBaseURL = serverURLText
                         KeychainService.saveDeviceToken(token)
                         isPairing = false
+                        isURLFieldFocused = false
                         settings.hasSkippedServerPairing = false
                         if isOnboardingFlow {
                             // Deferred to the "Continue" tap (`primaryAction`) — see its comment.
-                            isPaired = true
+                            state.isPaired = true
+                            pairedURLText = serverURLText
                         } else {
                             // No separate "Continue" step in Settings' re-pair sheet: pairing
                             // success IS the completion point, so reset + resync right here.
@@ -105,16 +123,16 @@ struct OnboardingServerPage: View {
     /// this pairing (stale demo/prior-server data) and kick off a full resync against the newly
     /// paired server, then advance.
     private func primaryAction() {
-        if isPaired {
+        if state.isPaired {
             PairingSync.resetAndFullSync()
             onPaired()
             return
         }
-        isSkipping = true
+        state.isSkipping = true
         settings.hasSkippedServerPairing = true
         Task {
             await ScreenshotSeed.seed(into: AppContainer.shared.mainContext)
-            isSkipping = false
+            state.isSkipping = false
             onPaired()
         }
     }

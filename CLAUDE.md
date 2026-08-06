@@ -186,15 +186,25 @@ source and issue board live at
   enum. `Block` itself keeps its compiler-synthesized `Codable`, which encodes differently, so this
   is a separate decode path, not a `Block` extension).
 - **Auth / device pairing** (`Yana/Services/DevicePairing.swift`, `Yana/Views/DevicePairingView.swift`,
-  `Yana/Services/KeychainService.swift`, `Yana/Services/AuthenticatedClient.swift`): `DevicePairing`
+  `Yana/Services/CookieMigration.swift`, `Yana/Services/KeychainService.swift`,
+  `Yana/Services/AuthenticatedClient.swift`): `DevicePairing`
   is a pure state machine — `makeSession` mints a client-generated, never-persisted random `state`
   (the same anti-forgery pattern `gh auth login --web` uses), `pairingURL` builds the server's
   `/login?next=/device/pair&state=...&scheme=yana&deviceName=...` URL, and `handleCallback` validates
   a `yana://auth-callback?token=...&state=...` redirect against the session's `state`.
-  `DevicePairingView` drives this in a **persistent** (non-ephemeral, `WKWebsiteDataStore.default()`)
-  `WKWebView` so the resulting cookie session survives for `ManagementWebView` to reuse, and
-  intercepts the `yana://` navigation in its `WKNavigationDelegate` before it becomes a network
-  request. `yana://` is registered as a `CFBundleURLTypes` scheme in `Info-iOS.plist`. On success the
+  `DevicePairingView` drives this via `ASWebAuthenticationSession` — a system-managed, Safari-context
+  browser sheet — rather than an in-app `WKWebView`. This is required for iCloud Keychain passkey
+  sign-in to work at all: `WKWebView` only surfaces platform-authenticator passkeys for a domain the
+  app has declared in its `webcredentials:` Associated Domains entitlement, which is impossible here
+  since the server address is arbitrary and self-hosted (unknown at build time, different per user).
+  `ASWebAuthenticationSession` has no such restriction. `yana://` is registered as a
+  `CFBundleURLTypes` scheme in `Info-iOS.plist` (not required by `ASWebAuthenticationSession` itself,
+  which intercepts the callback scheme directly, but kept since it documents the scheme in use). The
+  trade-off: this session's cookies land in Safari's shared cookie jar (`HTTPCookieStorage.shared`),
+  not the `WKWebsiteDataStore` `ManagementWebView` reads from — the two are entirely separate on iOS
+  with no automatic sharing — so `CookieMigration.copySharedCookies(for:)` copies the resulting
+  session cookies into `WKWebsiteDataStore.default()`'s cookie store right after a successful
+  pairing, preserving the "no second login" behavior `ManagementWebView` depends on. On success the
   token is stored via `KeychainService.saveDeviceToken` — the Keychain service is now just
   `saveDeviceToken`/`loadDeviceToken`/`deleteDeviceToken` over one key, written with
   `kSecAttrSynchronizable: false` (device-local; no more per-provider API keys, no more iCloud
