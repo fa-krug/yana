@@ -168,6 +168,10 @@ struct ReaderScreen: View {
 
     private var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
 
+    private var showDemoBanner: Bool {
+        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner
+    }
+
     var body: some View {
         let articles = filteredArticles
         Group {
@@ -202,6 +206,17 @@ struct ReaderScreen: View {
                     reloadToken: reloadToken
                 )
                 .ignoresSafeArea()
+            }
+        }
+        .safeAreaInset(edge: .top) {
+            if showDemoBanner {
+                DemoModeBanner(
+                    onPairNow: {
+                        appState.welcomeInitialStep = .server
+                        appState.showWelcome = true
+                    },
+                    onDismiss: { settings.hasDismissedDemoBanner = true }
+                )
             }
         }
         .sheet(isPresented: $appState.showSettings, onDismiss: {
