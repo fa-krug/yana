@@ -57,6 +57,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        // Demo-mode banner dismissal is per-launch, not permanent — see `AppSettings.hasDismissedDemoBanner`.
+        AppSettings().hasDismissedDemoBanner = false
         #if DEBUG
         // Before any seeding: a UI test that asks for a clean library must not inherit fixture data
         // left behind by an earlier test class in the same simulator container.

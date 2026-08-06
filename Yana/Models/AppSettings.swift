@@ -62,6 +62,9 @@ final class AppSettings {
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
         // Onboarding
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
+        // Demo mode (skipped server pairing)
+        static let hasSkippedServerPairing = "settings.hasSkippedServerPairing"
+        static let hasDismissedDemoBanner = "settings.hasDismissedDemoBanner"
         // Server migration notice
         static let hasEvaluatedServerMigrationEligibility = "settings.hasEvaluatedServerMigrationEligibility"
         static let isPreServerMigrationUser = "settings.isPreServerMigrationUser"
@@ -240,6 +243,23 @@ final class AppSettings {
     var hasCompletedOnboarding: Bool {
         get { access(keyPath: \.hasCompletedOnboarding); return defaults.bool(forKey: Key.hasCompletedOnboarding) }
         set { withMutation(keyPath: \.hasCompletedOnboarding) { defaults.set(newValue, forKey: Key.hasCompletedOnboarding) } }
+    }
+
+    // MARK: Demo mode
+    /// True when the user chose "Skip for now" on the onboarding server step instead of pairing.
+    /// Cleared the moment a real pairing later succeeds (see `OnboardingServerPage`). Drives
+    /// `WelcomeGate` (skip the re-pairing prompt) and `DemoModeBanner` (show the "you're viewing
+    /// demo content" reminder).
+    var hasSkippedServerPairing: Bool {
+        get { access(keyPath: \.hasSkippedServerPairing); return defaults.bool(forKey: Key.hasSkippedServerPairing) }
+        set { withMutation(keyPath: \.hasSkippedServerPairing) { defaults.set(newValue, forKey: Key.hasSkippedServerPairing) } }
+    }
+    /// Per-launch dismissal of `DemoModeBanner`. Not read at launch — `YanaApp` resets it to `false`
+    /// on every launch — so the reminder reappears next time the app opens rather than being
+    /// silenced forever.
+    var hasDismissedDemoBanner: Bool {
+        get { access(keyPath: \.hasDismissedDemoBanner); return defaults.bool(forKey: Key.hasDismissedDemoBanner) }
+        set { withMutation(keyPath: \.hasDismissedDemoBanner) { defaults.set(newValue, forKey: Key.hasDismissedDemoBanner) } }
     }
 
     // MARK: Server Migration Notice
