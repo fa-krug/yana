@@ -187,7 +187,7 @@ struct YanaApp: App {
             ServerMigrationNoticeWindowRoot(appState: appState)
         }
         .modelContainer(AppContainer.shared)
-        .defaultSize(width: 640, height: 560)
+        .defaultSize(width: 680, height: 640)
         #endif
     }
 }
