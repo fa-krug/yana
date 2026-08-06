@@ -21,4 +21,18 @@ struct AppSettingsTests {
         settings.showUnreadBadge = true
         #expect(settings.showUnreadBadge == true)
     }
+
+    @Test func hasSkippedServerPairingDefaultsToFalseAndRoundTrips() {
+        let settings = freshSettings()
+        #expect(settings.hasSkippedServerPairing == false)
+        settings.hasSkippedServerPairing = true
+        #expect(settings.hasSkippedServerPairing == true)
+    }
+
+    @Test func hasDismissedDemoBannerDefaultsToFalseAndRoundTrips() {
+        let settings = freshSettings()
+        #expect(settings.hasDismissedDemoBanner == false)
+        settings.hasDismissedDemoBanner = true
+        #expect(settings.hasDismissedDemoBanner == true)
+    }
 }

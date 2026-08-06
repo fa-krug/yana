@@ -9,6 +9,7 @@ enum MacFocusPane: Hashable { case sidebar, reader }
 /// from iOS — where the list is a sheet over a full-screen swipe pager — while everything below the
 /// UI (aggregation, sync, the block reader) is shared.
 struct MacRootView: View {
+    @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
     @Environment(\.openWindow) private var openWindow
@@ -42,6 +43,17 @@ struct MacRootView: View {
                 .toolbar { toolbar }
         }
         .accessibilityIdentifier("mac.window.root")
+        .safeAreaInset(edge: .top) {
+            if showDemoBanner {
+                DemoModeBanner(
+                    onPairNow: {
+                        appState.welcomeInitialStep = .server
+                        openWindow(id: WindowID.welcome, value: true)
+                    },
+                    onDismiss: { settings.hasDismissedDemoBanner = true }
+                )
+            }
+        }
         .sheet(isPresented: $showingCreateFeed) {
             NavigationStack {
                 ManagementWebView(
@@ -193,6 +205,10 @@ struct MacRootView: View {
     }
 
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
+
+    private var showDemoBanner: Bool {
+        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner && AuthenticatedClient.current() == nil
+    }
 
     /// "Update all", whose icon cross-fades to a spinner while a run is in flight so the busy
     /// indicator sits inside the group without changing the item set or the group's width (both
