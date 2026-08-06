@@ -177,7 +177,9 @@ source and issue board live at
   `Article.starred: Bool` is a plain field (no more built-in "Starred" tag or `Tag.isBuiltIn`).
   `Article.serverID: Int?` is the sync identity `SyncWriter` upserts/removes/backfills by.
   `Article.hasContent: Bool` tracks whether `/articles/:id/content` has landed yet for this row,
-  driving the sync engine's backfill retry. `Article.blocks` (computed from `blockData`) is unchanged
+  driving the sync engine's backfill retry. `Article.read: Bool` and `Article.readRank: Int` track
+  read state and drive primary timeline sort (never assign directly — use `ArticleWrites.setRead(_:)`
+  instead). `Article.blocks` (computed from `blockData`) is unchanged
   from before — see **Reader**.
 - **Networking** (`Yana/Networking/`): `YanaAPIClient` (a thin typed wrapper over every
   `/api/v1/**` route — `get`/`patch`/`post`/`getRaw`, Bearer-token auth, ISO-8601 date decoding,
@@ -212,28 +214,29 @@ source and issue board live at
   only by its own tests — production search runs through `ArticleListSearch`'s `#Predicate`-backed
   fetch instead (see **Views** below); it predates this rework and isn't part of its scope.
   `SyncEngine.sync()` (`@MainActor`)
-  first replaces the local `Feed` mirror wholesale from `GET /api/v1/feeds` (small, unpaginated — no
-  incremental-delta protocol needed there), then paginates `GET /api/v1/articles/sync` via an opaque
-  cursor (`AppSettings.syncCursor`, `nil` forcing a full resync), applying each page's `new`/`updated`
-  summaries and `removed` server ids through `SyncWriter`. A `resyncRequired: true` response (the
-  server no longer recognizes the cursor) clears it and loops again from scratch rather than giving
-  up. This is an **offline-first, not lazy-on-render** design: a full pass also eagerly
-  backfills full block content for every locally-known article that doesn't have it yet
-  (`backfillMissingContent`, driven by `Article.hasContent == false`, not by re-listing from
-  `/articles/sync`) via `GET /articles/:id/content`, at bounded concurrency
-  (`runBounded`, a sliding-window `withTaskGroup` capped at `maxConcurrentContentFetches` = 6) so
-  full-text search and true offline reading both work without a network round-trip per article.
-  Individual content-fetch failures are swallowed, not fatal — they just retry on the next sync pass.
-  `SyncWriter` (`@ModelActor`) does the actual `ModelContext` writes: `upsertSummaries` matches by
-  `Article.serverID`, preserving `createdAt` on update (an article's timeline position never jumps
-  on re-fetch — matching the pre-rework rule, though the random import-jitter that used to scatter a
-  batch's `createdAt`s is gone, since imports are no longer a client-side batch operation);
-  `applyContent` decodes a `WireDocument` into `[Block]` and sets `hasContent = true`, tolerating a
-  race where the matching article hasn't landed locally yet; `applyRemovals` deletes by `serverID`
-  one id at a time (a single `IN`-with-`??`-coalesce predicate compiles but crashes at fetch time —
-  CoreData's SQL generator can't use a `TERNARY` as an `IN` LHS); `replaceFeeds` upserts by the
-  server's feed id (stored as `Feed.identifier`, string form — feeds have no other natural
-  client-side identity any more).
+  first flushes any pending writes in `PendingWriteQueue`, then replaces the local `Feed` mirror
+  wholesale from `GET /api/v1/feeds` (small, unpaginated — no incremental-delta protocol needed
+  there), then paginates `GET /api/v1/articles/sync` via an opaque cursor (`AppSettings.syncCursor`,
+  `nil` forcing a full resync), applying each page's `new`/`updated` summaries and `removed` server
+  ids through `SyncWriter`. A `resyncRequired: true` response (the server no longer recognizes the
+  cursor) clears it and loops again from scratch rather than giving up. This is an **offline-first,
+  not lazy-on-render** design: a full pass also eagerly backfills full block content for every
+  locally-known article that doesn't have it yet (`backfillMissingContent`, driven by
+  `Article.hasContent == false`, not by re-listing from `/articles/sync`) via `GET /articles/:id/content`,
+  at bounded concurrency (`runBounded`, a sliding-window `withTaskGroup` capped at
+  `maxConcurrentContentFetches` = 6) so full-text search and true offline reading both work without
+  a network round-trip per article. Individual content-fetch failures are swallowed, not fatal — they
+  just retry on the next sync pass. `SyncWriter` (`@ModelActor`) does the actual `ModelContext`
+  writes: `upsertSummaries` matches by `Article.serverID`, preserving `createdAt` on update (an
+  article's timeline position never jumps on re-fetch — matching the pre-rework rule, though the
+  random import-jitter that used to scatter a batch's `createdAt`s is gone, since imports are no
+  longer a client-side batch operation), and applies `read` with an upgrade-only rule on update
+  (unconditional on insert); `applyContent` decodes a `WireDocument` into `[Block]` and sets
+  `hasContent = true`, tolerating a race where the matching article hasn't landed locally yet;
+  `applyRemovals` deletes by `serverID` one id at a time (a single `IN`-with-`??`-coalesce predicate
+  compiles but crashes at fetch time — CoreData's SQL generator can't use a `TERNARY` as an `IN`
+  LHS); `replaceFeeds` upserts by the server's feed id (stored as `Feed.identifier`, string form —
+  feeds have no other natural client-side identity any more).
 - **Actions** (`Yana/Services/ArticleActions.swift`, `Yana/Services/UpdateAndSync.swift`): the
   user-initiated write/trigger surface, separate from `SyncEngine`'s read path. `ArticleActions`
   is a thin façade — `setStarred` (`PATCH /articles/:id`), `reload` (`POST /articles/:id/reload`),
@@ -246,8 +249,11 @@ source and issue board live at
   which — once triggered prematurely mid-poll — would permanently block any later retry, since
   nothing else ever resets `hasContent` back to `false`), overwriting on every attempt rather than
   stopping at the first success, since there's no reliable "did it actually change" signal. Starring
-  is optimistic — the reader/list flip `Article.starred` locally and save immediately, then fire
-  `setStarred` and roll back only on failure; it stays silently local-only when not paired.
+  and marking read are both optimistic, funneled through the shared `ArticleWrites` facade — flip the
+  local flag and save immediately, then fire the PATCH; on failure the change is enqueued into
+  `PendingWriteQueue` (backed by `AppSettings.pendingWrites`) instead of being rolled back, and
+  `SyncEngine.sync()` retries every queued write opportunistically before its normal pull. Both stay
+  silently local-only when not paired.
 - **Images** (`Yana/Services/ImageStore.swift`, `Yana/Views/Config/FeedLogoView.swift`,
   `Yana/Services/ArticleHeaderLogo.swift`): `ImageStore` is a disk cache keyed by content hash,
   fetching `GET /api/v1/images/:hash` on cache miss and writing the raw bytes verbatim under that
@@ -436,13 +442,16 @@ source and issue board live at
   back up as API calls. `AuthenticatedClient.current() == nil` ("not paired") is treated as a normal,
   silent state throughout — sync, background refresh, and the reader's action handlers all no-op
   rather than error.
-- **No read/unread state:** the home surface is a single **endless timeline** of all articles
-  ordered by import date (`Article.createdAt`), swiped both directions, with the position remembered
-  across launches (device-local only now — see **Timeline anchor** above). The full lightweight index
-  is loaded upfront from `ArticleStore` and kept in sync with SwiftData saves; the reader decodes
-  each page's `[Block]` body lazily. Re-fetched articles keep their original `createdAt` on update
-  (`SyncWriter.upsertSummaries` never touches it for an existing row), so updates don't jump the
-  timeline.
+- **Read state drives the primary sort:** the timeline sorts by `Article.readRank` (0=read,
+  1=unread) then `Article.createdAt` — read articles first (oldest→newest), then unread articles
+  (oldest→newest), so the next unvisited article is always the boundary between the two blocks.
+  An article is marked read automatically the moment it becomes the current/displayed one: an iOS
+  pager swipe completing, opening it from the article list, or a Mac sidebar selection change
+  (`ArticleWrites.markRead`). The server can upgrade a synced article from unread to read (read
+  on another device) but a sync pass can never downgrade an already-locally-read article back to
+  unread (`SyncWriter.upsertSummaries`'s upgrade-only rule) — this prevents a racing sync from
+  reordering the list under the user's finger. Starring remains a separate, orthogonal
+  `Article.starred` boolean with its own "Starred Only" quick-filter, unaffected by read state.
 - **Tags are a live join, not a snapshot:** `Feed.tagIDs` is refreshed from the server on every
   `/feeds` fetch, and the timeline's tag/feed/starred filtering (`Yana/Utilities/TimelineFiltering.swift`
   — `TagFilter`/`FeedFilter`/`StarredFilter`, applied identically to the full `Article` and the
