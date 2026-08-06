@@ -1,9 +1,9 @@
-#if DEBUG
 import UIKit
 
 /// Generates fully-original, license-clean lead images for App Store screenshot fixtures.
 /// Deterministic (same `index` always yields the same bytes) so the fixture is reproducible
-/// and offline — no network fetch, no third-party imagery.
+/// and offline — no network fetch, no third-party imagery. Also used to generate demo-mode lead
+/// images when onboarding's server step is skipped (see `ScreenshotSeed`).
 enum ScreenshotImageFactory {
     private static let size = CGSize(width: 1200, height: 800)
 
@@ -104,4 +104,3 @@ enum ScreenshotImageFactory {
         return image.jpegData(compressionQuality: 0.9) ?? Data()
     }
 }
-#endif

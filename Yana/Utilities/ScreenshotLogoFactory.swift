@@ -1,9 +1,9 @@
-#if DEBUG
 import UIKit
 
 /// Generates fully-original, license-clean feed "logo" tiles for App Store screenshot
 /// fixtures: a rounded-square tile in a given color with a bold white monogram centered
-/// on it. Deterministic (same inputs always yield the same bytes) and network-free.
+/// on it. Deterministic (same inputs always yield the same bytes) and network-free. Also used to
+/// generate demo-mode feed logos when onboarding's server step is skipped (see `ScreenshotSeed`).
 enum ScreenshotLogoFactory {
     private static let side: CGFloat = 180
     private static let cornerRadiusFraction: CGFloat = 0.22
@@ -61,4 +61,3 @@ enum ScreenshotLogoFactory {
         return UIColor(red: red, green: green, blue: blue, alpha: 1)
     }
 }
-#endif

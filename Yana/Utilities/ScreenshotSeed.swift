@@ -1,10 +1,11 @@
-#if DEBUG
 import Foundation
 import SwiftData
 
-/// Curated, network-free library for App Store screenshots. Gated by the
-/// `-UITEST_SCREENSHOTS` launch argument so it never runs on a normal launch or on the
-/// `YANA_SEED_ARTICLES` performance path. Idempotent: bails if any Feed already exists.
+/// Curated, network-free demo library. Used two ways: (1) for App Store screenshots, gated by the
+/// `-UITEST_SCREENSHOTS` launch argument via `seedIfRequested` so it never runs on a normal launch;
+/// (2) as the seeded demo content shown to a user who skips server pairing during onboarding (see
+/// `OnboardingServerPage`), which calls `seed(into:)` directly. Idempotent either way: bails if any
+/// `Feed` already exists.
 ///
 /// Authors a small library of fully ORIGINAL feeds/articles in-code (no third-party content,
 /// no network) and generates every image in-process: `ScreenshotLogoFactory` for feed logos and
@@ -239,4 +240,3 @@ enum ScreenshotSeed {
         }
     }
 }
-#endif
