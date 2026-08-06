@@ -13,10 +13,20 @@ struct OnboardingServerPage: View {
     var body: some View {
         Form {
             Section {
-                TextField("https://your-server.example.com", text: $serverURLText)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                // A plain `TextField` placeholder here renders link-blue, not the standard gray
+                // placeholder color — iOS auto-styles a `.keyboardType(.URL)` field's placeholder
+                // as a hyperlink when the placeholder text itself parses as a URL. An explicit
+                // overlay sidesteps that and always renders as a normal gray placeholder.
+                ZStack(alignment: .leading) {
+                    if serverURLText.isEmpty {
+                        Text("https://your-server.example.com")
+                            .foregroundStyle(.secondary)
+                    }
+                    TextField("", text: $serverURLText)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
             } header: {
                 Text("Server Address")
             } footer: {

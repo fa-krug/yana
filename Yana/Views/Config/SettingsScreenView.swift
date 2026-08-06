@@ -12,6 +12,7 @@ struct SettingsScreenView: View {
 
     var body: some View {
         Form {
+            ServerSettingsSection()
             manageSection
             ReaderSettingsSection()
             AIModeSettingsSection()
