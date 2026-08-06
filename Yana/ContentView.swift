@@ -52,6 +52,7 @@ struct ContentView: View {
                         ServerMigrationNoticeView(onDismiss: {
                             settings.hasDismissedServerMigrationNotice = true
                             appState.showServerMigrationNotice = false
+                            presentWelcomeIfNeeded()
                         })
                         .interactiveDismissDisabled()
                     }
@@ -62,6 +63,7 @@ struct ContentView: View {
             if ProcessInfo.processInfo.arguments.contains("-UITEST_RESET_ONBOARDING") {
                 settings.hasCompletedOnboarding = false
             }
+            var migrationNoticeWillShow = false
             if !Self.skipServerMigrationAutomation {
                 // Skip the UserDefaults round-trip once evaluated — `evaluate` itself is what
                 // actually guarantees never-reclassify, this is just an optimization.
@@ -80,6 +82,7 @@ struct ContentView: View {
                     isPreServerMigrationUser: settings.isPreServerMigrationUser,
                     hasDismissedNotice: settings.hasDismissedServerMigrationNotice
                 ) {
+                    migrationNoticeWillShow = true
                     if isMac {
                         openWindow(id: WindowID.serverNotice, value: true)
                     } else {
@@ -87,24 +90,31 @@ struct ContentView: View {
                     }
                 }
             }
-            // A device that completed onboarding once but has no valid session any more (session
-            // revoked from another device, or the user cleared the app's Keychain data) re-enters
-            // `WelcomeView` starting at `.server` rather than restarting from `.welcome`.
-            if !settings.hasCompletedOnboarding, !Self.skipOnboarding {
-                appState.welcomeInitialStep = .welcome
-                if isMac {
-                    openWindow(id: WindowID.welcome, value: true)
-                } else {
-                    appState.showWelcome = true
-                }
-            } else if settings.hasCompletedOnboarding, AuthenticatedClient.current() == nil, !Self.skipOnboarding {
-                appState.welcomeInitialStep = .server
-                if isMac {
-                    openWindow(id: WindowID.welcome, value: true)
-                } else {
-                    appState.showWelcome = true
-                }
+            // Existing users must see the migration notice before Welcome/pairing, not alongside
+            // it — a pre-migration user has, by definition, completed onboarding but never paired,
+            // so it would otherwise also satisfy the re-pairing condition below in the same pass.
+            // `presentWelcomeIfNeeded` is re-run from the notice's dismiss handler once it closes.
+            if !migrationNoticeWillShow {
+                presentWelcomeIfNeeded()
             }
+        }
+    }
+
+    /// A device that never completed onboarding starts at `.welcome`; a device that completed
+    /// onboarding once but has no valid session any more (session revoked from another device, or
+    /// the user cleared the app's Keychain data) re-enters at `.server` instead. No-ops if neither
+    /// applies, or under the UI-test onboarding-skip launch arguments.
+    private func presentWelcomeIfNeeded() {
+        guard !Self.skipOnboarding else { return }
+        guard let step = WelcomeGate.neededStep(
+            hasCompletedOnboarding: settings.hasCompletedOnboarding,
+            isPaired: AuthenticatedClient.current() != nil
+        ) else { return }
+        appState.welcomeInitialStep = step
+        if isMac {
+            openWindow(id: WindowID.welcome, value: true)
+        } else {
+            appState.showWelcome = true
         }
     }
 }

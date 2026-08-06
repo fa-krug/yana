@@ -3362,82 +3362,72 @@
         }
       }
     },
-    "Yana Now Requires a Server": {
+    "Yana Now Runs on a Server": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yana benötigt jetzt einen Server"
+            "value": "Yana läuft jetzt über einen Server"
           }
         }
       }
     },
-    "Starting with this version, Yana needs to connect to a Yana Server to fetch and manage your feeds and articles.": {
+    "Since you last opened Yana, it’s grown from a fully on-device app into a lightweight companion for your own self-hosted Yana Server — the server now fetches your feeds and does the heavy lifting, and this app just shows you the results.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ab dieser Version benötigt Yana eine Verbindung zu einem Yana-Server, um Feeds und Artikel abzurufen und zu verwalten."
+            "value": "Seit du Yana zuletzt geöffnet hast, hat sich einiges verändert: Aus der rein lokalen App ist ein schlanker Begleiter für deinen eigenen, selbst gehosteten Yana-Server geworden – der Server ruft jetzt deine Feeds ab und erledigt die eigentliche Arbeit, diese App zeigt nur noch die Ergebnisse an."
           }
         }
       }
     },
-    "Learn more about the Yana Server": {
+    "Learn More": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mehr über den Yana-Server erfahren"
+            "value": "Mehr erfahren"
           }
         }
       }
     },
-    "Would you rather not switch? Yana 1.1.0 — the last fully self-contained, server-free release — remains open source.": {
+    "Prefer things exactly as they were? Yana 1.1.0 is still available — the last fully self-contained release, no server required.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kein Wechsel gewünscht? Yana 1.1.0 – die letzte vollständig eigenständige, serverlose Version – bleibt Open Source."
+            "value": "Lieber alles beim Alten lassen? Yana 1.1.0 ist weiterhin verfügbar – die letzte vollständig eigenständige Version, ganz ohne Server."
           }
         }
       }
     },
-    "Build Yana 1.1.0 from Source": {
+    "Get Yana 1.1.0": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yana 1.1.0 aus dem Quellcode selbst bauen"
+            "value": "Yana 1.1.0 beziehen"
           }
         }
       }
     },
-    "Don’t want to use Yana anymore?": {
+    "If this change isn’t for you, just let me know and I’ll refund your purchase.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yana nicht mehr nutzen?"
+            "value": "Falls diese Änderung nichts für dich ist, einfach kurz Bescheid geben – der Kaufpreis wird erstattet."
           }
         }
       }
     },
-    "Email info@fa-krug.de for a Refund": {
+    "Request a Refund": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Für eine Rückerstattung an info@fa-krug.de schreiben"
-          }
-        }
-      }
-    },
-    "Got It": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verstanden"
+            "value": "Rückerstattung anfragen"
           }
         }
       }
