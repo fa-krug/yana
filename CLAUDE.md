@@ -233,10 +233,12 @@ source and issue board live at
   `maxConcurrentContentFetches` = 6) so full-text search and true offline reading both work without
   a network round-trip per article. Individual content-fetch failures are swallowed, not fatal — they
   just retry on the next sync pass. `SyncWriter` (`@ModelActor`) does the actual `ModelContext`
-  writes: `upsertSummaries` matches by `Article.serverID`, preserving `createdAt` on update (an
-  article's timeline position never jumps on re-fetch — matching the pre-rework rule, though the
-  random import-jitter that used to scatter a batch's `createdAt`s is gone, since imports are no
-  longer a client-side batch operation), and applies `read` with an upgrade-only rule on update
+  writes: `upsertSummaries` matches by `Article.serverID`, and never re-stamps `Article.date` (the
+  original article date, what the timeline shows and sorts by) or `createdAt` on update — an
+  article's timeline position never jumps on re-fetch, matching the server's own treatment of a
+  publication date as immutable (the random import-jitter that used to scatter a batch's
+  `createdAt`s under the old client-side-aggregation design is gone; imports are no longer a
+  client-side batch operation), and applies `read` with an upgrade-only rule on update
   (unconditional on insert); `applyContent` decodes a `WireDocument` into `[Block]` and sets
   `hasContent = true`, tolerating a race where the matching article hasn't landed locally yet;
   `applyRemovals` deletes by `serverID` one id at a time (a single `IN`-with-`??`-coalesce predicate
@@ -445,8 +447,11 @@ source and issue board live at
   silent state throughout — sync, background refresh, and the reader's action handlers all no-op
   rather than error.
 - **Read state drives the primary sort:** the timeline sorts by `Article.readRank` (0=read,
-  1=unread) then `Article.createdAt` — read articles first (oldest→newest), then unread articles
-  (oldest→newest), so the next unvisited article is always the boundary between the two blocks.
+  1=unread) then `Article.date` — the original article date reported by the source, not the
+  device's import/sync time (`Article.createdAt`, which still exists but only drives
+  `SyncWriter`'s content-backfill order) — read articles first (oldest→newest), then unread
+  articles (oldest→newest), so the next unvisited article is always the boundary between the two
+  blocks.
   An article is marked read automatically the moment it becomes the current/displayed one: an iOS
   pager swipe completing, opening it from the article list, or a Mac sidebar selection change
   (`ArticleWrites.markRead`). The server can upgrade a synced article from unread to read (read

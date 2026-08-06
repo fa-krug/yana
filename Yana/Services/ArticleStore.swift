@@ -7,7 +7,7 @@ import SwiftData
 actor ArticleSummaryLoader {
     func load() throws -> [ArticleSummary] {
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.readRank, order: .forward), SortDescriptor(\.createdAt, order: .forward)]
+            sortBy: [SortDescriptor(\.readRank, order: .forward), SortDescriptor(\.date, order: .forward)]
         )
         // Only the light columns; the heavy body fields (`blockData`/`plainText`/`summary`) and the
         // legacy `content` stay unfetched.
@@ -24,29 +24,29 @@ actor ArticleSummaryLoader {
     /// saved anchor (inclusive), ascending. Falls back to the newest `2*radius+1` when there is no
     /// anchor or it is gone. Same light columns / prefetch as `load()`.
     func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary] {
-        // The window splits on `createdAt` (`>= anchorDate` newer, `< anchorDate` older). Under
+        // The window splits on `date` (`>= anchorDate` newer, `< anchorDate` older). Under
         // exact-timestamp ties the anchor may not land in the truncated window; that is acceptable
         // and self-healing — this is only the transient cold-cache first-paint set, and the full
         // load (ms later) plus reanchor-by-identifier resolves the true position regardless.
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
 
-        if let anchorID, let anchorDate = try anchorCreatedAt(for: anchorID) {
+        if let anchorID, let anchorDate = try anchorDate(for: anchorID) {
             var newerD = lightDescriptor(
-                predicate: #Predicate { $0.createdAt >= anchorDate }, order: .forward
+                predicate: #Predicate { $0.date >= anchorDate }, order: .forward
             )
             newerD.fetchLimit = radius + 1
             let newer = try modelContext.fetch(newerD)
 
             var olderD = lightDescriptor(
-                predicate: #Predicate { $0.createdAt < anchorDate }, order: .reverse
+                predicate: #Predicate { $0.date < anchorDate }, order: .reverse
             )
             olderD.fetchLimit = radius
             let older = try modelContext.fetch(olderD)
 
-            // `newer`/`older` are two separate fetches split on `createdAt` alone, so a read row
-            // with a later `createdAt` can land in `newer` alongside genuinely-adjacent unread
+            // `newer`/`older` are two separate fetches split on `date` alone, so a read row
+            // with a later `date` can land in `newer` alongside genuinely-adjacent unread
             // rows (and vice versa for `older`) -- the naive concatenation below is not
-            // guaranteed to match `lightDescriptor`'s `(readRank, createdAt)` order. Re-sort with
+            // guaranteed to match `lightDescriptor`'s `(readRank, date)` order. Re-sort with
             // the same comparator `SummaryIndexMerge` uses so this transient cold-start window
             // never visibly mis-orders read/unread blocks before the full reconcile lands.
             return (Array(older.reversed()) + newer)
@@ -79,24 +79,24 @@ actor ArticleSummaryLoader {
         return try modelContext.fetch(descriptor).map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 
-    private func anchorCreatedAt(for identifier: String) throws -> Date? {
+    private func anchorDate(for identifier: String) throws -> Date? {
         var d = FetchDescriptor<Article>(
             predicate: #Predicate { $0.identifier == identifier },
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            sortBy: [SortDescriptor(\.date, order: .forward)]
         )
         d.fetchLimit = 1
-        d.propertiesToFetch = [\.createdAt]
-        return try modelContext.fetch(d).first?.createdAt
+        d.propertiesToFetch = [\.date]
+        return try modelContext.fetch(d).first?.date
     }
 
-    /// A `createdAt`-sorted descriptor restricted to the light timeline columns, with `feed`/`tags`
+    /// A `date`-sorted descriptor restricted to the light timeline columns, with `feed`/`tags`
     /// prefetched — the same shape `load()` uses, factored out for the windowed fetches.
     private func lightDescriptor(
         predicate: Predicate<Article>?, order: SortOrder
     ) -> FetchDescriptor<Article> {
         var d = FetchDescriptor<Article>(
             predicate: predicate,
-            sortBy: [SortDescriptor(\.readRank, order: order), SortDescriptor(\.createdAt, order: order)]
+            sortBy: [SortDescriptor(\.readRank, order: order), SortDescriptor(\.date, order: order)]
         )
         d.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.readRank]
         d.relationshipKeyPathsForPrefetching = [\.feed, \.tags]

@@ -186,7 +186,7 @@ struct ArticleListView: View {
         guard !q.isEmpty else { searchResults = nil; return }
         var descriptor = FetchDescriptor<Article>(
             predicate: ArticleListSearch.predicate(for: q),
-            sortBy: [SortDescriptor(\.createdAt, order: .forward)]
+            sortBy: [SortDescriptor(\.date, order: .forward)]
         )
         descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
@@ -229,7 +229,7 @@ struct ArticleListView: View {
                             .foregroundStyle(Color.accentColor)
                         Text("·").foregroundStyle(.tertiary)
                     }
-                    Text(summary.createdAt, style: .date)
+                    Text(summary.date, style: .date)
                         .foregroundStyle(.tertiary)
                 }
                 .font(.caption)
