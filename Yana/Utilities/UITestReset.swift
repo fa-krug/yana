@@ -17,19 +17,7 @@ enum UITestReset {
     @MainActor
     static func resetIfRequested(into context: ModelContext) {
         guard ProcessInfo.processInfo.arguments.contains(launchArgument) else { return }
-        // Articles first: they reference feeds and tags.
-        for article in (try? context.fetch(FetchDescriptor<Article>())) ?? [] { context.delete(article) }
-        for feed in (try? context.fetch(FetchDescriptor<Feed>())) ?? [] { context.delete(feed) }
-        // Seeded user tags would otherwise linger in the tag filter and lengthen the Settings form.
-        for tag in (try? context.fetch(FetchDescriptor<Tag>())) ?? [] { context.delete(tag) }
-        do {
-            try context.save()
-        } catch {
-            NSLog("UITestReset: save failed: \(error)")
-        }
-        // Both anchors would now point at articles that no longer exist.
-        let settings = AppSettings()
-        settings.timelineAnchorIdentifier = nil
+        LocalLibraryReset.wipe(context: context)
     }
 }
 #endif
