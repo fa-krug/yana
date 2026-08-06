@@ -3724,16 +3724,6 @@
         }
       }
     },
-    "No articles yet. Add feeds, then update.": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Noch keine Artikel. Feeds hinzufügen und dann aktualisieren."
-          }
-        }
-      }
-    },
     "Sync Status": {
       "localizations": {
         "de": {
@@ -4418,6 +4408,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Beim Ändern des Servers ist eine erneute Anmeldung erforderlich."
+          }
+        }
+      }
+    },
+    "Pair a Yana Server that has feeds and articles configured.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koppele einen Yana-Server mit Feeds und Artikeln."
+          }
+        }
+      }
+    },
+    "Pair a Yana Server with feeds and articles to start reading.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koppele einen Yana-Server mit Feeds und Artikeln, um zu lesen."
+          }
+        }
+      }
+    },
+    "Pair Server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server koppeln"
           }
         }
       }

@@ -106,7 +106,14 @@ struct MacRootView: View {
 
     @ViewBuilder private var detail: some View {
         if model.filteredArticles.isEmpty {
-            MacEmptyLibraryView(onCreateFeed: { showingCreateFeed = true })
+            MacEmptyLibraryView(
+                isPaired: AuthenticatedClient.current() != nil,
+                onCreateFeed: { showingCreateFeed = true },
+                onPairServer: {
+                    appState.welcomeInitialStep = .server
+                    openWindow(id: WindowID.welcome, value: true)
+                }
+            )
         } else {
             MacReaderDetailView(
                 articles: model.filteredArticles,
@@ -351,7 +358,7 @@ private struct MacSidebarView: View {
             if displayed.isEmpty {
                 if searchText.isEmpty {
                     ContentUnavailableView("No Articles", systemImage: "tray",
-                                           description: Text("No articles yet. Add feeds, then update."))
+                                           description: Text("Pair a Yana Server that has feeds and articles configured."))
                 } else {
                     ContentUnavailableView.search(text: searchText)
                 }
@@ -556,17 +563,27 @@ private struct MacArticleRow: View {
     }
 }
 
-/// Detail-pane state when the library is empty: a call to add the first feed.
+/// Detail-pane state when the library is empty: a call to add the first feed (when a server is
+/// already paired) or to pair a server in the first place (when it isn't — a bare "Add Feed" button
+/// would otherwise open the feed-creation WebView against no server at all).
 private struct MacEmptyLibraryView: View {
+    let isPaired: Bool
     let onCreateFeed: () -> Void
+    let onPairServer: () -> Void
 
     var body: some View {
         ContentUnavailableView {
             Label("No Articles", systemImage: "tray")
         } description: {
-            Text("Add a feed to start reading.")
+            Text(isPaired
+                 ? "Add a feed to start reading."
+                 : "Pair a Yana Server with feeds and articles to start reading.")
         } actions: {
-            Button("Add Feed", action: onCreateFeed).buttonStyle(.borderedProminent)
+            if isPaired {
+                Button("Add Feed", action: onCreateFeed).buttonStyle(.borderedProminent)
+            } else {
+                Button("Pair Server", action: onPairServer).buttonStyle(.borderedProminent)
+            }
         }
     }
 }
