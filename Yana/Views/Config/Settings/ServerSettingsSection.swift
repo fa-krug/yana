@@ -24,7 +24,7 @@ struct ServerSettingsSection: View {
             .accessibilityIdentifier("settings.server")
             .sheet(isPresented: $isChangingServer) {
                 NavigationStack {
-                    OnboardingServerPage(onPaired: { isChangingServer = false })
+                    OnboardingServerPage(onPaired: { isChangingServer = false }, isOnboardingFlow: false)
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
