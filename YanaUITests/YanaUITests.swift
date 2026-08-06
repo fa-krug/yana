@@ -53,11 +53,11 @@ final class YanaUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["emptyArticlesTitle"].waitForExistence(timeout: Self.launchTimeout))
     }
 
-    /// Onboarding: welcome → server pairing → AI mode via the footer Continue button; the server
-    /// step shows its address field with no sheet auto-opening (pairing only starts via its own
-    /// "Sign In" button, which this test deliberately doesn't tap -- that opens a WebView against
-    /// a real Yana Server, out of scope for this offline UI test); and only Finish (on the final
-    /// AI-mode step) completes onboarding.
+    /// Onboarding: welcome → server pairing → AI mode; the server step shows its address field
+    /// with no sheet auto-opening (pairing only starts via its own "Sign In" button, which this
+    /// test deliberately doesn't tap -- that opens a WebView against a real Yana Server, out of
+    /// scope for this offline UI test), advancing instead via the form's own "Skip for now"
+    /// button; and only Finish (on the final AI-mode step) completes onboarding.
     @MainActor
     func testOnboardingStepsAndFinish() throws {
         let app = XCUIApplication()
@@ -75,17 +75,21 @@ final class YanaUITests: XCTestCase {
         XCTAssertFalse(app.webViews.firstMatch.exists,
                        "No pairing sheet should open automatically on the server step")
 
-        // Server → AI mode via Continue (without pairing -- the re-pairing gate is what catches
-        // an unpaired device on the next launch; see ContentView).
-        continueButton.tap()
+        // Server → AI mode via the form's own "Skip for now" button (without pairing -- the
+        // re-pairing gate is what catches an unpaired device on the next launch; see ContentView).
+        let skipButton = app.buttons["onboardingSkipServerButton"]
+        XCTAssertTrue(skipButton.waitForExistence(timeout: Self.uiTimeout))
+        skipButton.tap()
 
         // The AI-mode page is shown with its Finish button.
         let finish = app.buttons["onboardingFinishButton"]
         XCTAssertTrue(finish.waitForExistence(timeout: Self.uiTimeout))
 
-        // Finish completes onboarding and reveals the reader (empty state here).
+        // Finish completes onboarding and reveals the reader. "Skip for now" seeds the demo
+        // library (`ScreenshotSeed`), so the reader is showing demo content here, not the empty
+        // state -- assert on reader chrome that exists either way.
         finish.tap()
-        XCTAssertTrue(app.staticTexts["emptyArticlesTitle"].waitForExistence(timeout: Self.launchTimeout))
+        XCTAssertTrue(app.buttons["reader.menu"].waitForExistence(timeout: Self.launchTimeout))
     }
 
     /// The Settings "Show Welcome Screen Again" row brings the welcome screen back.

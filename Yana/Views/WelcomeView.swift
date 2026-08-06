@@ -70,7 +70,10 @@ struct WelcomeView: View {
                     .controlSize(.large)
                     .accessibilityIdentifier("onboardingBackButton")
                 }
-                // The final step completes onboarding via "Finish"; earlier steps advance the pager.
+                // The final step completes onboarding via "Finish"; the server step's own form
+                // supplies a single state-driven "Skip"/"Continue" button (see
+                // `OnboardingServerPage`), so this shared footer has nothing to add there; other
+                // steps advance the pager.
                 if step == .aiMode {
                     Button(action: finish) {
                         Text("Finish")
@@ -80,7 +83,7 @@ struct WelcomeView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
                     .accessibilityIdentifier("onboardingFinishButton")
-                } else {
+                } else if step != .server {
                     Button(action: goForward) {
                         Text("Continue")
                             .font(.headline)

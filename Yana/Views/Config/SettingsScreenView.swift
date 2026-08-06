@@ -13,7 +13,13 @@ struct SettingsScreenView: View {
     var body: some View {
         Form {
             ServerSettingsSection()
-            manageSection
+            // Without a paired server the Manage pane has nothing to load (see
+            // `MacSettingsWindow.availablePanes` for the Mac equivalent of this same guard) --
+            // pass this view's own `settings` so a server change while this Form is visible is
+            // observed and the row appears/disappears live, not just after a re-open.
+            if AuthenticatedClient.current(settings: settings) != nil {
+                manageSection
+            }
             ReaderSettingsSection()
             AIModeSettingsSection()
             NotificationsSettingsSection()
