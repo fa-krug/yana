@@ -3462,6 +3462,16 @@
         }
       }
     },
+    "Show unread count on app icon": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ungelesene Anzahl auf App-Symbol anzeigen"
+          }
+        }
+      }
+    },
     "Your Feeds": {
       "localizations": {
         "de": {

@@ -39,6 +39,7 @@ final class AppSettings {
     private enum Key {
         static let updateInterval = "settings.updateInterval"
         static let notificationsEnabled = "settings.notificationsEnabled"
+        static let showUnreadBadge = "settings.showUnreadBadge"
         // AI
         static let aiMode = "settings.aiMode"
         static let serverBaseURL = "settings.serverBaseURL"
@@ -117,6 +118,12 @@ final class AppSettings {
     var notificationsEnabled: Bool {
         get { access(keyPath: \.notificationsEnabled); return defaults.bool(forKey: Key.notificationsEnabled) }
         set { withMutation(keyPath: \.notificationsEnabled) { defaults.set(newValue, forKey: Key.notificationsEnabled) } }
+    }
+    /// Opt-in (default off) app-icon badge showing the unread count within the current timeline
+    /// filter. See `UnreadBadgeUpdater`.
+    var showUnreadBadge: Bool {
+        get { access(keyPath: \.showUnreadBadge); return defaults.bool(forKey: Key.showUnreadBadge) }
+        set { withMutation(keyPath: \.showUnreadBadge) { defaults.set(newValue, forKey: Key.showUnreadBadge) } }
     }
 
     // MARK: AI

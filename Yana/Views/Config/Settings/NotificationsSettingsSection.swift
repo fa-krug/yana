@@ -24,6 +24,10 @@ struct NotificationsSettingsSection: View {
                 Label("Notify about new articles", systemImage: "bell.badge.fill")
                     .labelStyle(.tintedIcon(.red))
             }
+            Toggle(isOn: $settings.showUnreadBadge) {
+                Label("Show unread count on app icon", systemImage: "app.badge")
+                    .labelStyle(.tintedIcon(.red))
+            }
         }
         .alert("Notifications Disabled", isPresented: $showNotificationDeniedAlert) {
             Button("OK", role: .cancel) {}
