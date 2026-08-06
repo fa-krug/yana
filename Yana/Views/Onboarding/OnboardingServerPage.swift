@@ -35,12 +35,14 @@ struct OnboardingServerPage: View {
                     .disabled(URL(string: serverURLText) == nil)
             }
 
-            Section {
-                Button("Skip for now", action: skipPairing)
-                    .disabled(isSkipping)
-                    .accessibilityIdentifier("onboardingSkipServerButton")
-            } footer: {
-                Text("You'll see demo content until you pair a server. Pair anytime from Settings.")
+            if AuthenticatedClient.current() == nil {
+                Section {
+                    Button("Skip for now", action: skipPairing)
+                        .disabled(isSkipping)
+                        .accessibilityIdentifier("onboardingSkipServerButton")
+                } footer: {
+                    Text("You'll see demo content until you pair a server. Pair anytime from Settings.")
+                }
             }
         }
         .accessibilityIdentifier("onboardingServerScreen")
@@ -67,9 +69,9 @@ struct OnboardingServerPage: View {
 
     private func skipPairing() {
         isSkipping = true
+        settings.hasSkippedServerPairing = true
         Task {
             await ScreenshotSeed.seed(into: AppContainer.shared.mainContext)
-            settings.hasSkippedServerPairing = true
             isSkipping = false
             onPaired()
         }

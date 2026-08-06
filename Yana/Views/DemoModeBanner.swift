@@ -1,4 +1,3 @@
-// Yana/Views/DemoModeBanner.swift
 import SwiftUI
 
 /// Persistent reminder that the timeline is showing seeded demo content rather than a paired

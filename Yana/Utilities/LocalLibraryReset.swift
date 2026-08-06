@@ -19,5 +19,8 @@ enum LocalLibraryReset {
         }
         // The anchor would now point at an article that no longer exists.
         AppSettings().timelineAnchorIdentifier = nil
+        // Force a full resync next time — an opaque cursor from the wiped mirror would otherwise
+        // resume from a delta and the wiped articles would never come back.
+        AppSettings().syncCursor = nil
     }
 }

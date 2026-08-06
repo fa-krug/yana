@@ -169,7 +169,7 @@ struct ReaderScreen: View {
     private var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
 
     private var showDemoBanner: Bool {
-        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner
+        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner && AuthenticatedClient.current() == nil
     }
 
     var body: some View {

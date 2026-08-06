@@ -207,7 +207,7 @@ struct MacRootView: View {
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
 
     private var showDemoBanner: Bool {
-        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner
+        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner && AuthenticatedClient.current() == nil
     }
 
     /// "Update all", whose icon cross-fades to a spinner while a run is in flight so the busy
