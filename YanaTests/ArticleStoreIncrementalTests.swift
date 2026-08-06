@@ -22,7 +22,7 @@ struct ArticleStoreIncrementalTests {
         }
     }
 
-    @Test func insertedArticlesAppearInCreatedAtOrder() async throws {
+    @Test func insertedArticlesAppearInDateOrder() async throws {
         let fixture = try LibraryFixture.make(articleCount: 300)
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let feedID = try #require(
@@ -39,8 +39,8 @@ struct ArticleStoreIncrementalTests {
         await wait(for: store, toReach: 325)
 
         #expect(store.summaries.count == 325)
-        #expect(store.summaries.map(\.createdAt) == store.summaries.map(\.createdAt).sorted(),
-                "the spliced index must stay createdAt-ascending")
+        #expect(store.summaries.map(\.date) == store.summaries.map(\.date).sorted(),
+                "the spliced index must stay date-ascending")
         #expect(Set(store.summaries.map(\.identifier)).count == 325, "no duplicated rows")
     }
 
@@ -73,7 +73,7 @@ struct ArticleStoreIncrementalTests {
         store.start()
         await wait(for: store, toReach: 100)
 
-        var descriptor = FetchDescriptor<Article>(sortBy: [SortDescriptor(\.createdAt)])
+        var descriptor = FetchDescriptor<Article>(sortBy: [SortDescriptor(\.date)])
         descriptor.fetchLimit = 3
         let doomed = try context.fetch(descriptor)
         let goneIDs = Set(doomed.map(\.identifier))
@@ -115,7 +115,7 @@ struct ArticleStoreIncrementalTests {
         store.start()
         await wait(for: store, toReach: 150)
 
-        var descriptor = FetchDescriptor<Article>(sortBy: [SortDescriptor(\.createdAt)])
+        var descriptor = FetchDescriptor<Article>(sortBy: [SortDescriptor(\.date)])
         descriptor.fetchLimit = 1
         let article = try #require(try context.fetch(descriptor).first)
         let target = article.identifier

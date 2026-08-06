@@ -30,7 +30,7 @@ struct SummaryIndexMergeTests {
         return (container, articles, articles.map { ArticleSummary($0) })
     }
 
-    @Test func insertLandsInCreatedAtOrder() throws {
+    @Test func insertLandsInDateOrder() throws {
         let (_, _, all) = try Self.rows(5)
         // Drop the middle row from the index, then splice it back in.
         let index = all.enumerated().filter { $0.offset != 2 }.map(\.element)
@@ -41,7 +41,7 @@ struct SummaryIndexMergeTests {
     @Test func changedRowMovesToItsNewPosition() throws {
         let (_, articles, all) = try Self.rows(4)
         // Same row, re-dated to be the oldest — it must move to the front, not duplicate.
-        articles[3].createdAt = Date(timeIntervalSince1970: -100)
+        articles[3].date = Date(timeIntervalSince1970: -100)
         let moved = ArticleSummary(articles[3])
         let merged = SummaryIndexMerge.apply(to: all, changed: [moved], removed: [])
         #expect(merged.count == 4)
@@ -62,7 +62,7 @@ struct SummaryIndexMergeTests {
         let changed = all.enumerated().filter { $0.offset % 3 == 0 }.map(\.element)
         let merged = SummaryIndexMerge.apply(to: index, changed: changed.shuffled(), removed: [])
         #expect(merged.count == 50)
-        #expect(merged.map(\.createdAt) == merged.map(\.createdAt).sorted())
+        #expect(merged.map(\.date) == merged.map(\.date).sorted())
         #expect(Set(merged.map(\.identifier)).count == 50, "no duplicates")
     }
 
@@ -86,7 +86,7 @@ struct SummaryIndexMergeTests {
         #expect(SummaryIndexMerge.isSpliceable([]))
     }
 
-    @Test func mergeOrdersReadBeforeUnreadRegardlessOfCreatedAt() throws {
+    @Test func mergeOrdersReadBeforeUnreadRegardlessOfDate() throws {
         let (container, _, _) = try Self.rows(0)
         let context = ModelContext(container)
         let feed = try context.fetch(FetchDescriptor<Feed>()).first!
@@ -109,7 +109,7 @@ struct SummaryIndexMergeTests {
             to: [], changed: [ArticleSummary(unreadOld), ArticleSummary(readNew)], removed: []
         )
         // readNew is read (rank 0) and unreadOld is unread (rank 1) -- read must come first even
-        // though unreadOld's createdAt is earlier.
+        // though unreadOld's date is earlier.
         #expect(merged.map(\.identifier) == ["rn", "uo"])
     }
 }

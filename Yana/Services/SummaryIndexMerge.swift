@@ -4,7 +4,7 @@ import SwiftData
 /// Splices a small set of changed/removed rows into the timeline index, so a save costs work
 /// proportional to what changed rather than to the size of the library.
 ///
-/// The index is the `(readRank, createdAt)`-ascending order `ArticleSummaryLoader.load()`
+/// The index is the `(readRank, date)`-ascending order `ArticleSummaryLoader.load()`
 /// produces (read oldest→newest, then unread oldest→newest — see `Article.readRank`), and this
 /// preserves it: one linear merge pass, no re-sort. Rows are identified by `persistentID` —
 /// `identifier` is only a per-feed dedup key, so two feeds can legitimately share one.
@@ -12,7 +12,7 @@ import SwiftData
 /// Pure, so the ordering rules below are unit-tested without a store.
 enum SummaryIndexMerge {
 
-    /// Apply `changed` (re-read rows) and `removed` (deleted rows) to a `(readRank, createdAt)`
+    /// Apply `changed` (re-read rows) and `removed` (deleted rows) to a `(readRank, date)`
     /// ascending index -- read articles (oldest→newest), then unread articles (oldest→newest).
     ///
     /// Ties keep the incoming row *after* the existing ones. SQLite gives no guarantee for tied sort
@@ -50,13 +50,13 @@ enum SummaryIndexMerge {
 
     /// The timeline's canonical ordering: read (oldest→newest) before unread (oldest→newest).
     /// `Bool` has no `Comparable` conformance, so this can't be a tuple `<` -- written out
-    /// explicitly. Internal (not `private`) so other callers assembling a `(readRank, createdAt)`
+    /// explicitly. Internal (not `private`) so other callers assembling a `(readRank, date)`
     /// window from multiple fetches -- e.g. `ArticleSummaryLoader.loadWindow`'s anchor-relative
     /// older/newer split -- can re-sort against this same single source of truth instead of
     /// re-deriving the rule.
     static func isOrderedBefore(_ a: ArticleSummary, _ b: ArticleSummary) -> Bool {
         if a.isRead != b.isRead { return a.isRead && !b.isRead }
-        return a.createdAt < b.createdAt
+        return a.date < b.date
     }
 
     /// Whether `index` can be spliced at all. A disk-cache-hydrated index carries no

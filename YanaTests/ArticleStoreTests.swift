@@ -17,25 +17,25 @@ struct ArticleStoreTests {
         return SummaryIndexCache(fileURL: url)
     }
 
-    private func insertArticle(_ id: String, into context: ModelContext, createdAt: Date) {
+    private func insertArticle(_ id: String, into context: ModelContext, date: Date) {
         let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)")
         let article = Article(title: id, identifier: id, url: id)
         article.feed = feed
-        article.createdAt = createdAt
+        article.date = date
         context.insert(feed); context.insert(article)
     }
 
     private func seed(_ count: Int, into context: ModelContext) {
         for i in 0..<count {
-            insertArticle("a\(i)", into: context, createdAt: Date(timeIntervalSince1970: TimeInterval(i + 1)))
+            insertArticle("a\(i)", into: context, date: Date(timeIntervalSince1970: TimeInterval(i + 1)))
         }
     }
 
     @Test func loadsExistingArticlesChronologically() async throws {
         let container = try makeContainer()
         let context = container.mainContext
-        insertArticle("old", into: context, createdAt: Date(timeIntervalSince1970: 1))
-        insertArticle("new", into: context, createdAt: Date(timeIntervalSince1970: 2))
+        insertArticle("old", into: context, date: Date(timeIntervalSince1970: 1))
+        insertArticle("new", into: context, date: Date(timeIntervalSince1970: 2))
         try context.save()
 
         let store = ArticleStore(container: container, cache: tempCache())
@@ -51,7 +51,7 @@ struct ArticleStoreTests {
         await store.refreshNow()
         #expect(store.summaries.isEmpty)
 
-        insertArticle("x", into: container.mainContext, createdAt: .now)
+        insertArticle("x", into: container.mainContext, date: .now)
         try container.mainContext.save()
         await store.refreshNow()
 
@@ -67,7 +67,7 @@ struct ArticleStoreTests {
         let cache = tempCache()
         let cachedContainer = try makeContainer()
         let cachedContext = ModelContext(cachedContainer)
-        insertArticle("cached", into: cachedContext, createdAt: .now)
+        insertArticle("cached", into: cachedContext, date: .now)
         try cachedContext.save()
         let cachedSummary = ArticleSummary(
             try #require(cachedContext.fetch(FetchDescriptor<Article>()).first)

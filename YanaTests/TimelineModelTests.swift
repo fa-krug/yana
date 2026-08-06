@@ -25,10 +25,10 @@ struct TimelineModelTests {
         return try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
     }
 
-    private func insertArticle(_ id: String, into context: ModelContext, createdAt: Date) {
+    private func insertArticle(_ id: String, into context: ModelContext, date: Date) {
         let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)")
         let article = Article(title: id, identifier: id, url: "https://x.com/\(id)")
-        article.createdAt = createdAt
+        article.date = date
         article.feed = feed
         context.insert(feed); context.insert(article)
     }
@@ -40,9 +40,9 @@ struct TimelineModelTests {
     ) throws -> (model: TimelineModel, store: ArticleStore) {
         let container = try makeContainer()
         let context = container.mainContext
-        insertArticle("a", into: context, createdAt: Date(timeIntervalSince1970: 1))
-        insertArticle("b", into: context, createdAt: Date(timeIntervalSince1970: 2))
-        insertArticle("c", into: context, createdAt: Date(timeIntervalSince1970: 3))
+        insertArticle("a", into: context, date: Date(timeIntervalSince1970: 1))
+        insertArticle("b", into: context, date: Date(timeIntervalSince1970: 2))
+        insertArticle("c", into: context, date: Date(timeIntervalSince1970: 3))
         try context.save()
 
         let cacheURL = FileManager.default.temporaryDirectory
@@ -169,9 +169,9 @@ struct TimelineModelTests {
         let feedA = Feed(name: "FeedA", aggregator: "feedContent", identifier: "fa")
         let feedB = Feed(name: "FeedB", aggregator: "feedContent", identifier: "fb")
         let a = Article(title: "a", identifier: "a", url: "https://x.com/a")
-        a.createdAt = Date(timeIntervalSince1970: 1); a.feed = feedA
+        a.date = Date(timeIntervalSince1970: 1); a.feed = feedA
         let b = Article(title: "b", identifier: "b", url: "https://x.com/b")
-        b.createdAt = Date(timeIntervalSince1970: 2); b.feed = feedB
+        b.date = Date(timeIntervalSince1970: 2); b.feed = feedB
         context.insert(feedA); context.insert(feedB); context.insert(a); context.insert(b)
         try context.save()
 
