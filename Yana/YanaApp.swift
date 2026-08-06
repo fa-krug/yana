@@ -182,7 +182,7 @@ struct YanaApp: App {
         .defaultSize(width: 720, height: 640)
 
         WindowGroup(id: WindowID.serverNotice, for: Bool.self) { _ in
-            ServerMigrationNoticeWindowRoot()
+            ServerMigrationNoticeWindowRoot(appState: appState)
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 640, height: 560)

@@ -16,24 +16,24 @@ struct ServerMigrationNoticeView: View {
                         .font(.system(size: 56, weight: .semibold))
                         .foregroundStyle(.tint)
                         .accessibilityHidden(true)
-                    Text("Yana Now Requires a Server")
+                    Text("Yana Now Runs on a Server")
                         .font(.largeTitle.bold())
                         .multilineTextAlignment(.center)
 
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Starting with this version, Yana needs to connect to a Yana Server to fetch and manage your feeds and articles.")
+                        Text("Since you last opened Yana, it’s grown from a fully on-device app into a lightweight companion for your own self-hosted Yana Server — the server now fetches your feeds and does the heavy lifting, and this app just shows you the results.")
                         Link(destination: URL(string: "https://yana.fa-krug.de/server.html")!) {
-                            Text("Learn more about the Yana Server")
+                            Text("Learn More")
                         }
 
-                        Text("Would you rather not switch? Yana 1.1.0 — the last fully self-contained, server-free release — remains open source.")
+                        Text("Prefer things exactly as they were? Yana 1.1.0 is still available — the last fully self-contained release, no server required.")
                         Link(destination: URL(string: "https://github.com/fa-krug/yana/releases/tag/v1.1.0")!) {
-                            Text("Build Yana 1.1.0 from Source")
+                            Text("Get Yana 1.1.0")
                         }
 
-                        Text("Don’t want to use Yana anymore?")
+                        Text("If this change isn’t for you, just let me know and I’ll refund your purchase.")
                         Link(destination: URL(string: "mailto:info@fa-krug.de")!) {
-                            Text("Email info@fa-krug.de for a Refund")
+                            Text("Request a Refund")
                         }
                     }
                     .font(.body)
@@ -50,7 +50,7 @@ struct ServerMigrationNoticeView: View {
 
     private var footer: some View {
         Button(action: onDismiss) {
-            Text("Got It")
+            Text("Continue")
                 .font(.headline)
                 .frame(maxWidth: .infinity)
         }
