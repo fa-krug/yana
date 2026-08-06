@@ -178,7 +178,7 @@ source and issue board live at
   `Article.serverID: Int?` is the sync identity `SyncWriter` upserts/removes/backfills by.
   `Article.hasContent: Bool` tracks whether `/articles/:id/content` has landed yet for this row,
   driving the sync engine's backfill retry. `Article.read: Bool` and `Article.readRank: Int` track
-  read state and drive primary timeline sort (never assign directly — use `ArticleWrites.setRead(_:)`
+  read state and drive primary timeline sort (never assign directly — use `Article.setRead(_:)`
   instead). `Article.blocks` (computed from `blockData`) is unchanged
   from before — see **Reader**.
 - **Networking** (`Yana/Networking/`): `YanaAPIClient` (a thin typed wrapper over every
