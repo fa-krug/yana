@@ -38,7 +38,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if isMac {
-                MacRootView()
+                MacRootView(appState: appState)
             } else {
                 ReaderScreen(appState: appState)
                     .fullScreenCover(isPresented: $appState.showWelcome) {
