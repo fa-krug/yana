@@ -114,6 +114,62 @@ struct UpdateAndSyncTests {
         }
     }
 
+    @Test func pollForFreshContentToleratesTransientTransportFailuresWhilePollingRunStatus() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings(container: container)
+            var runStatusCallCount = 0
+            var syncCallCount = 0
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                let path = request.url!.path
+                if path == "/api/v1/runs/5" {
+                    runStatusCallCount += 1
+                    // The first two attempts fail at the transport level (a malformed/non-JSON
+                    // 500 body, which can't be decoded as the server's error envelope either --
+                    // see `YanaAPIClient.send`'s `.transport` fallback). Only the third attempt
+                    // succeeds, reporting the run as still running once before completing.
+                    if runStatusCallCount <= 2 {
+                        let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+                        return (response, "not json".data(using: .utf8)!)
+                    }
+                    let status = runStatusCallCount < 4 ? "running" : "completed"
+                    let body = #"{"runId":5,"status":"\#(status)","totalJobs":1,"completedJobs":0,"failedJobs":0}"#
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, body.data(using: .utf8)!)
+                }
+                if path == "/api/v1/articles/sync" {
+                    syncCallCount += 1
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#.data(using: .utf8)!)
+                }
+                if path == "/api/v1/feeds" {
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, #"{"feeds":[]}"#.data(using: .utf8)!)
+                }
+                if path == "/api/v1/tags" {
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, #"{"tags":[]}"#.data(using: .utf8)!)
+                }
+                let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+                return (response, Data())
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let result = await UpdateAndSync.pollForFreshContent(
+                runId: 5, container: container, client: client, settings: settings, pollInterval: .milliseconds(10)
+            )
+
+            // Two transport failures followed by "running" then "completed": the wait doesn't
+            // bail after the first (or even second) transient failure, and still reaches a
+            // definitive "completed" status before syncing exactly once.
+            #expect(runStatusCallCount == 4)
+            #expect(syncCallCount == 1)
+            #expect(result == SyncResult(newCount: 0, updatedCount: 0, removedCount: 0))
+        }
+    }
+
     // MARK: - pollForReloadedContent
 
     @Test func pollForReloadedContentFetchesContentWhenTheMatchingJobCompletes() async throws {

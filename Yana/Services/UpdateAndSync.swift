@@ -35,13 +35,30 @@ enum UpdateAndSync {
         return (try? await engine.sync()) ?? SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
     }
 
+    /// A single failed request against `/api/v1/runs/:id` is not necessarily the run's actual
+    /// state -- it can just as easily be a dropped packet or a transient 502. Only a genuinely
+    /// authoritative failure (auth rejected, response undecodable, or a well-formed server error)
+    /// means the run can't be queried and is worth bailing on immediately; a bare transport error
+    /// is retried, capped at `maxConsecutiveTransportFailures` in a row so a fully dead connection
+    /// still gives up instead of silently burning the whole `maxAttempts` budget on retries that
+    /// were never going to succeed.
     private static func waitForRunToFinish(
         runId: Int, client: YanaAPIClient, pollInterval: Duration, maxAttempts: Int
     ) async {
+        let maxConsecutiveTransportFailures = 3
+        var consecutiveTransportFailures = 0
         for _ in 0..<maxAttempts {
             if Task.isCancelled { return }
-            guard let status: RunStatusResponse = try? await client.get("/api/v1/runs/\(runId)") else { return }
-            if !status.isRunning { return }
+            do {
+                let status: RunStatusResponse = try await client.get("/api/v1/runs/\(runId)")
+                consecutiveTransportFailures = 0
+                if !status.isRunning { return }
+            } catch YanaAPIClientError.transport {
+                consecutiveTransportFailures += 1
+                if consecutiveTransportFailures >= maxConsecutiveTransportFailures { return }
+            } catch {
+                return
+            }
             try? await Task.sleep(for: pollInterval)
         }
     }
@@ -56,11 +73,16 @@ enum UpdateAndSync {
     /// without a network call. If no matching terminal event arrives within `eventTimeout` (a
     /// dropped SSE connection, or the event simply being missed -- the stream is best-effort),
     /// this falls back to exactly one direct content fetch, matching what this method has always
-    /// done as its fallback path.
+    /// done as its fallback path. `eventTimeout` defaults to 10s: the SSE stream is only opened
+    /// after the reload POST has already acked, so if the server's worker finishes in that brief
+    /// window the terminal event is gone for good (the server emits it once, on transition) and
+    /// the caller is stuck waiting out the full timeout before the fallback fetch runs -- keeping
+    /// the default short bounds that worst-case stall tightly, since the fallback fetch itself is
+    /// cheap and idempotent.
     @discardableResult
     static func pollForReloadedContent(
         jobId: Int, articleServerID: Int, container: ModelContainer, client: YanaAPIClient,
-        eventTimeout: Duration = .seconds(30)
+        eventTimeout: Duration = .seconds(10)
     ) async -> Bool {
         switch await waitForReloadJobOutcome(jobId: jobId, client: client, eventTimeout: eventTimeout) {
         case .some(false):
