@@ -18,9 +18,13 @@ struct JobEventsClient: Sendable {
                 do {
                     var request = URLRequest(url: client.baseURL.appendingPathComponent("/api/v1/jobs/events"))
                     request.setValue("Bearer \(client.token)", forHTTPHeaderField: "Authorization")
-                    let (data, response) = try await client.session.data(for: request)
+                    let (bytes, response) = try await client.session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                         throw YanaAPIClientError.transport
+                    }
+                    var data = Data()
+                    for try await byte in bytes {
+                        data.append(byte)
                     }
                     let content = String(data: data, encoding: .utf8) ?? ""
                     let lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)

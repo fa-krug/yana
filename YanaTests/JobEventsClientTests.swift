@@ -65,4 +65,29 @@ struct JobEventsClientTests {
             }
         }
     }
+
+    @Test func cancelsTheUnderlyingTaskOnEarlyTermination() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let sseBody = "event: job\ndata: {\"jobId\":1,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"completed\",\"progress\":1}\n\n"
+                + "event: job\ndata: {\"jobId\":2,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"completed\",\"progress\":1}\n\n"
+                + "event: job\ndata: {\"jobId\":3,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"completed\",\"progress\":1}\n\n"
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "text/event-stream"])!
+                return (response, sseBody.data(using: .utf8)!)
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            var eventCount = 0
+            for try await event in JobEventsClient(client: client).events() {
+                eventCount += 1
+                if eventCount >= 1 {
+                    break  // Early termination after first event
+                }
+            }
+
+            #expect(eventCount == 1)
+        }
+    }
 }
