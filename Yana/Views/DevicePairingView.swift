@@ -82,15 +82,28 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            if let keyWindow = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
-                return keyWindow
-            }
-            // No key window yet — this method is only ever called while this view is already
-            // on screen, so some scene is guaranteed to be connected to anchor a fresh window
-            // to (avoiding the scene-less `UIWindow()` initializer, deprecated as of iOS 26).
-            return UIWindow(windowScene: scenes.first!)
+        // On iOS this delegate callback lands on the main thread, but on Mac Catalyst
+        // `ASWebAuthenticationSession` invokes it from a background XPC queue talking to the
+        // system's Safari-hosted auth agent — so `MainActor.assumeIsolated` cannot be assumed
+        // true here and traps if called directly off-main. Hop to main synchronously instead
+        // (this delegate method must return its anchor synchronously, so we can't `await`).
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated { Self.resolveAnchor() }
         }
+        return DispatchQueue.main.sync {
+            MainActor.assumeIsolated { Self.resolveAnchor() }
+        }
+    }
+
+    @MainActor
+    private static func resolveAnchor() -> ASPresentationAnchor {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let keyWindow = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
+            return keyWindow
+        }
+        // No key window yet — this method is only ever called while this view is already
+        // on screen, so some scene is guaranteed to be connected to anchor a fresh window
+        // to (avoiding the scene-less `UIWindow()` initializer, deprecated as of iOS 26).
+        return UIWindow(windowScene: scenes.first!)
     }
 }
