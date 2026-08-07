@@ -103,7 +103,7 @@ struct ArticleListView: View {
                     else { return }
                     UpdateActivity.shared.restart {
                         do {
-                            try await ArticleActions(client: client).reload(articleServerID: serverID)
+                            let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
                             guard !Task.isCancelled else { return }
                             // See `UpdateAndSync.pollForReloadedContent`'s doc comment: this
                             // deliberately re-fetches this one article's content directly rather
@@ -111,7 +111,7 @@ struct ArticleListView: View {
                             // backfill, which a premature fetch during the poll window could
                             // permanently lock out of any later retry.
                             await UpdateAndSync.pollForReloadedContent(
-                                articleServerID: serverID, container: modelContext.container, client: client
+                                jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client
                             )
                         } catch {
                             // Matches the pre-server behavior of swallowing a failed reload
