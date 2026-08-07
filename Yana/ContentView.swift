@@ -5,6 +5,7 @@ struct ContentView: View {
     @Bindable var appState: AppState
 
     @Environment(\.openWindow) private var openWindow
+    @Environment(ArticleStore.self) private var store
 
     @State private var settings = AppSettings()
 
@@ -39,24 +40,34 @@ struct ContentView: View {
         Group {
             if isMac {
                 MacRootView(appState: appState)
+            } else if appState.isPerformingInitialSync {
+                InitialSyncLoadingView()
             } else {
                 ReaderScreen(appState: appState)
-                    .fullScreenCover(isPresented: $appState.showWelcome) {
-                        WelcomeView(onFinish: {
-                            settings.hasCompletedOnboarding = true
-                            appState.showWelcome = false
-                        }, initialStep: appState.welcomeInitialStep)
-                        .interactiveDismissDisabled()
-                    }
-                    .fullScreenCover(isPresented: $appState.showServerMigrationNotice) {
-                        ServerMigrationNoticeView(onDismiss: {
-                            settings.hasDismissedServerMigrationNotice = true
-                            appState.showServerMigrationNotice = false
-                            presentWelcomeIfNeeded()
-                        })
-                        .interactiveDismissDisabled()
-                    }
             }
+        }
+        .fullScreenCover(isPresented: $appState.showWelcome) {
+            WelcomeView(onFinish: {
+                settings.hasCompletedOnboarding = true
+                appState.showWelcome = false
+                if let client = AuthenticatedClient.current() {
+                    Task {
+                        await InitialSyncGate.run(
+                            container: AppContainer.shared, client: client,
+                            articleStore: store, appState: appState, settings: settings
+                        )
+                    }
+                }
+            }, initialStep: appState.welcomeInitialStep)
+            .interactiveDismissDisabled()
+        }
+        .fullScreenCover(isPresented: $appState.showServerMigrationNotice) {
+            ServerMigrationNoticeView(onDismiss: {
+                settings.hasDismissedServerMigrationNotice = true
+                appState.showServerMigrationNotice = false
+                presentWelcomeIfNeeded()
+            })
+            .interactiveDismissDisabled()
         }
         .onAppear {
             // Test hook: force the first-launch flow regardless of persisted state.

@@ -17,4 +17,8 @@ final class AppState {
     var showSettings = false
     var showFilter = false
     var showArticleList = false
+    /// True while the device's very first sync (right after pairing) is still running, gating the
+    /// reader behind `InitialSyncLoadingView` -- see `InitialSyncGate`. Never true again once
+    /// `AppSettings.hasCompletedInitialSync` is set.
+    var isPerformingInitialSync = false
 }

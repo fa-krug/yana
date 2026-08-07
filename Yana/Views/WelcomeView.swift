@@ -136,12 +136,9 @@ struct WelcomeView: View {
         step = next
     }
 
-    /// Completes onboarding and kicks off a first foreground sync now that pairing is complete.
+    /// Completes onboarding. The host's `onFinish` kicks off the first foreground sync (see
+    /// `InitialSyncGate`, called from `ContentView`) now that pairing is complete.
     private func finish() {
-        Task {
-            guard let client = AuthenticatedClient.current() else { return }
-            _ = try? await SyncEngine(container: AppContainer.shared, client: client).sync()
-        }
         onFinish()
     }
 }

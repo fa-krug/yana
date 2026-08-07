@@ -62,6 +62,8 @@ final class AppSettings {
         static let hasSeenFullscreenHint = "settings.hasSeenFullscreenHint"
         // Onboarding
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
+        // Initial sync
+        static let hasCompletedInitialSync = "settings.hasCompletedInitialSync"
         // Demo mode (skipped server pairing)
         static let hasSkippedServerPairing = "settings.hasSkippedServerPairing"
         static let hasDismissedDemoBanner = "settings.hasDismissedDemoBanner"
@@ -216,6 +218,15 @@ final class AppSettings {
     var hasCompletedOnboarding: Bool {
         get { access(keyPath: \.hasCompletedOnboarding); return defaults.bool(forKey: Key.hasCompletedOnboarding) }
         set { withMutation(keyPath: \.hasCompletedOnboarding) { defaults.set(newValue, forKey: Key.hasCompletedOnboarding) } }
+    }
+
+    // MARK: Initial sync
+    /// One-time flag: whether this device's very first sync (right after pairing) has ever
+    /// completed and settled. Gates `InitialSyncGate` -- every sync after this one is a small
+    /// incremental delta that never needs to block the reader.
+    var hasCompletedInitialSync: Bool {
+        get { access(keyPath: \.hasCompletedInitialSync); return defaults.bool(forKey: Key.hasCompletedInitialSync) }
+        set { withMutation(keyPath: \.hasCompletedInitialSync) { defaults.set(newValue, forKey: Key.hasCompletedInitialSync) } }
     }
 
     // MARK: Demo mode

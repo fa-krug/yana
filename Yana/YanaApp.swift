@@ -129,12 +129,18 @@ struct YanaApp: App {
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)
                     // Pull the server's article/feed state on every foreground launch. `nil` from
-                    // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error;
-                    // a thrown sync error is likewise swallowed here (a spotty connection at
-                    // launch must never block first paint or crash the app -- see `SyncEngine`'s
-                    // own per-item error handling for the same philosophy).
+                    // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error.
+                    // Routed through `InitialSyncGate`: on every launch after the device's first
+                    // sync has ever completed, this is the same fire-and-forget, error-swallowing
+                    // sync as before (a spotty connection at launch must never block first paint or
+                    // crash the app); on the very first one, it blocks the reader behind
+                    // `AppState.isPerformingInitialSync` until the historical backlog has landed and
+                    // settled.
                     if let client = AuthenticatedClient.current() {
-                        _ = try? await SyncEngine(container: AppContainer.shared, client: client).sync()
+                        await InitialSyncGate.run(
+                            container: AppContainer.shared, client: client,
+                            articleStore: articleStore, appState: appState, settings: appSettings
+                        )
                     }
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
