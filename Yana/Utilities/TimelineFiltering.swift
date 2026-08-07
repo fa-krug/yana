@@ -115,12 +115,37 @@ enum TimelineAnchor {
 enum TimelineDisplayOrder {
     /// Keeps previously-known items at their existing position (refreshed with their latest values
     /// from `canonical`) and appends genuinely new ones at the end, in `canonical`'s relative order.
+    ///
+    /// `identifier` is only a per-feed dedup key (see `SummaryIndexMerge`'s doc comment) — two
+    /// articles from different feeds can legitimately share one, so `canonical` is grouped into
+    /// per-identifier queues rather than a `[identifier: item]` dictionary (which trapped on the
+    /// first duplicate key in production). Each `previous` item consumes the next unconsumed
+    /// canonical item sharing its identifier, in encounter order; anything left over — genuinely
+    /// new items, or extra occurrences of a shared identifier — is appended at the end.
     static func merge<T: TimelineIdentifiable>(previous: [T], canonical: [T]) -> [T] {
         guard !previous.isEmpty else { return canonical }
-        let canonicalByID = Dictionary(uniqueKeysWithValues: canonical.map { ($0.identifier, $0) })
-        var merged = previous.compactMap { canonicalByID[$0.identifier] }
-        let known = Set(merged.map(\.identifier))
-        merged.append(contentsOf: canonical.filter { !known.contains($0.identifier) })
+        var canonicalByID: [String: [T]] = [:]
+        for item in canonical {
+            canonicalByID[item.identifier, default: []].append(item)
+        }
+        var consumedCount: [String: Int] = [:]
+        var merged: [T] = []
+        merged.reserveCapacity(previous.count)
+        for item in previous {
+            guard let group = canonicalByID[item.identifier] else { continue }
+            let index = consumedCount[item.identifier, default: 0]
+            guard index < group.count else { continue }
+            merged.append(group[index])
+            consumedCount[item.identifier] = index + 1
+        }
+        var seenCount: [String: Int] = [:]
+        for item in canonical {
+            let index = seenCount[item.identifier, default: 0]
+            seenCount[item.identifier] = index + 1
+            if index >= consumedCount[item.identifier, default: 0] {
+                merged.append(item)
+            }
+        }
         return merged
     }
 }

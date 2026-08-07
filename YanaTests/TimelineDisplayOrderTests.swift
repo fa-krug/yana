@@ -5,8 +5,8 @@ import Testing
 @MainActor
 @Suite("Timeline display order")
 struct TimelineDisplayOrderTests {
-    private func article(_ id: String) -> Article {
-        Article(title: id, identifier: id, url: "https://x.com/\(id)")
+    private func article(_ id: String, title: String? = nil) -> Article {
+        Article(title: title ?? id, identifier: id, url: "https://x.com/\(id)")
     }
 
     @Test func firstMergeAdoptsCanonicalOrderWhenPreviousIsEmpty() {
@@ -46,5 +46,26 @@ struct TimelineDisplayOrderTests {
         fresh.title = "New Title"
         let merged = TimelineDisplayOrder.merge(previous: [stale], canonical: [fresh])
         #expect(merged.map(\.title) == ["New Title"])
+    }
+
+    /// Regression test for a production crash: `identifier` is only a per-feed dedup key (see
+    /// `SummaryIndexMerge`'s doc comment), so two articles from different feeds can legitimately
+    /// share one. An earlier version of `merge` built a `[identifier: item]` dictionary via
+    /// `uniqueKeysWithValues`, which trapped the instant two same-identifier rows existed anywhere
+    /// in `canonical`.
+    @Test func handlesDuplicateIdentifiersWithoutCrashing() {
+        let previous = [article("shared", title: "Feed A"), article("shared", title: "Feed B")]
+        let canonical = [article("shared", title: "Feed A v2"), article("shared", title: "Feed B v2")]
+        let merged = TimelineDisplayOrder.merge(previous: previous, canonical: canonical)
+        #expect(merged.map(\.title) == ["Feed A v2", "Feed B v2"])
+    }
+
+    /// A third occurrence of a shared identifier (a genuinely new article from a third feed using
+    /// the same per-feed id) must be appended, not dropped or mismatched to an existing row.
+    @Test func appendsExtraOccurrenceOfASharedIdentifier() {
+        let previous = [article("shared", title: "Feed A")]
+        let canonical = [article("shared", title: "Feed A v2"), article("shared", title: "Feed C new")]
+        let merged = TimelineDisplayOrder.merge(previous: previous, canonical: canonical)
+        #expect(merged.map(\.title) == ["Feed A v2", "Feed C new"])
     }
 }
