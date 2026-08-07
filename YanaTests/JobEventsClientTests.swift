@@ -80,14 +80,21 @@ struct JobEventsClientTests {
             let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
 
             var eventCount = 0
-            for try await event in JobEventsClient(client: client).events() {
-                eventCount += 1
-                if eventCount >= 1 {
-                    break  // Early termination after first event
+            final class TerminationFlag: @unchecked Sendable {
+                var terminated = false
+            }
+            let flag = TerminationFlag()
+            do {
+                for try await _ in JobEventsClient(client: client).events(didTerminate: { flag.terminated = true }) {
+                    eventCount += 1
+                    if eventCount >= 1 {
+                        break  // Early termination after first event
+                    }
                 }
             }
 
             #expect(eventCount == 1)
+            #expect(flag.terminated == true)
         }
     }
 }

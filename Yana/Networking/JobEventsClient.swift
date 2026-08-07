@@ -12,7 +12,7 @@ import Foundation
 struct JobEventsClient: Sendable {
     let client: YanaAPIClient
 
-    func events() -> AsyncThrowingStream<JobEvent, Error> {
+    func events(didTerminate: (@Sendable () -> Void)? = nil) -> AsyncThrowingStream<JobEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -22,13 +22,13 @@ struct JobEventsClient: Sendable {
                     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                         throw YanaAPIClientError.transport
                     }
+                    var accumulator = SSEFrameAccumulator()
                     var data = Data()
                     for try await byte in bytes {
                         data.append(byte)
                     }
                     let content = String(data: data, encoding: .utf8) ?? ""
                     let lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-                    var accumulator = SSEFrameAccumulator()
                     for line in lines {
                         if let frame = accumulator.consume(line: line), let event = JobEvent.decode(frame: frame) {
                             continuation.yield(event)
@@ -39,7 +39,10 @@ struct JobEventsClient: Sendable {
                     continuation.finish(throwing: error)
                 }
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { _ in
+                task.cancel()
+                didTerminate?()
+            }
         }
     }
 }
