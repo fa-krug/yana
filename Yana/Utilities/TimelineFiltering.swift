@@ -105,4 +105,24 @@ enum TimelineAnchor {
     }
 }
 
+/// Keeps a displayed list's existing order stable across live data updates, instead of adopting
+/// a freshly-resorted `canonical` array wholesale. `ArticleStore`'s read-before-unread + date sort
+/// is correct for `store.summaries` and the article list, but applying it immediately to the
+/// reader's own display array reorders the timeline out from under the user mid-swipe: marking the
+/// current page read moves it from the unread bucket to the read bucket the instant it's displayed,
+/// and adopting that new order immediately changes the pager's `viewControllerBefore/After`
+/// neighbors before the user finishes paging forward.
+enum TimelineDisplayOrder {
+    /// Keeps previously-known items at their existing position (refreshed with their latest values
+    /// from `canonical`) and appends genuinely new ones at the end, in `canonical`'s relative order.
+    static func merge<T: TimelineIdentifiable>(previous: [T], canonical: [T]) -> [T] {
+        guard !previous.isEmpty else { return canonical }
+        let canonicalByID = Dictionary(uniqueKeysWithValues: canonical.map { ($0.identifier, $0) })
+        var merged = previous.compactMap { canonicalByID[$0.identifier] }
+        let known = Set(merged.map(\.identifier))
+        merged.append(contentsOf: canonical.filter { !known.contains($0.identifier) })
+        return merged
+    }
+}
+
 

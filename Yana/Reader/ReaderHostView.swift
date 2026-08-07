@@ -129,16 +129,22 @@ struct ReaderScreen: View {
     /// property initializers can't reference `self.settings`.
     private var anchorController: ReaderAnchorController { ReaderAnchorController(settings: settings) }
 
-    /// Re-filter only (used by tag/feed/untagged setting changes — position is preserved/clamped
-    /// elsewhere).
-    private func recomputeFilter() {
+    /// Re-filter `store.summaries`. By default preserves `filteredArticles`' existing display
+    /// order (see `TimelineDisplayOrder.merge`) rather than adopting the freshly-filtered array's
+    /// read/unread + date sort wholesale; pass `preservingOrder: false` for a deliberate
+    /// user-driven filter change (tag/feed/starred-only toggle), where a fresh sort is the
+    /// expected result.
+    private func recomputeFilter(preservingOrder: Bool = true) {
         let byTag = TagFilter.apply(
             to: store.summaries,
             disabledTagNames: settings.disabledTagNames,
             includeUntagged: settings.includeUntagged
         )
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        filteredArticles = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        filteredArticles = preservingOrder
+            ? TimelineDisplayOrder.merge(previous: filteredArticles, canonical: canonical)
+            : canonical
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
@@ -266,10 +272,10 @@ struct ReaderScreen: View {
         .onChange(of: store.summaries) { _, _ in
             applyTimeline()
         }
-        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
-        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
-        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
-        .onChange(of: settings.starredOnly) { _, _ in recomputeFilter() }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter(preservingOrder: false) }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter(preservingOrder: false) }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter(preservingOrder: false) }
+        .onChange(of: settings.starredOnly) { _, _ in recomputeFilter(preservingOrder: false) }
 
     }
 
