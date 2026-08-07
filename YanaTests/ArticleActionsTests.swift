@@ -31,13 +31,14 @@ struct ArticleActionsTests {
         }
     }
 
-    @Test func reloadPostsAndSucceedsOn202() async throws {
+    @Test func reloadPostsAndReturnsTheJobId() async throws {
         try await MockURLProtocol.lock.withLock {
             let client = stubClient(pathsToResponses: [
                 "POST /api/v1/articles/100/reload": (#"{"jobId":1}"#.data(using: .utf8)!, 202)
             ])
             let actions = ArticleActions(client: client)
-            try await actions.reload(articleServerID: 100)
+            let jobID = try await actions.reload(articleServerID: 100)
+            #expect(jobID == 1)
         }
     }
 
