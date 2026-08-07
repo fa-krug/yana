@@ -14,8 +14,8 @@ private struct AggregateResponse: Decodable { let runId: Int }
 /// Every method here only sends a request and decodes its ack -- it never touches the local
 /// SwiftData mirror itself. `setStarred`'s ack does carry the new value back, but callers still
 /// own writing it locally (this type has no `ModelContext`); `reload`/`updateAll` only trigger
-/// server-side work and their response is just an ack with a job/run id, not new content, so
-/// callers must follow up with a `SyncEngine.sync()` to actually pull results down.
+/// server-side work, returning a job/run id callers hand to `UpdateAndSync` to actually observe
+/// completion and pull results down -- neither ack is new content itself.
 @MainActor
 final class ArticleActions {
     private let client: YanaAPIClient
@@ -32,8 +32,13 @@ final class ArticleActions {
         let _: ReadResponse = try await client.patch("/api/v1/articles/\(articleServerID)", body: ReadBody(read: read))
     }
 
-    func reload(articleServerID: Int) async throws {
-        let _: ReloadResponse = try await client.post("/api/v1/articles/\(articleServerID)/reload")
+    /// Returns the server's `jobId` for this reload -- `UpdateAndSync.pollForReloadedContent`
+    /// needs it to pick this job's own completion event out of the shared `/jobs/events` stream
+    /// (every reload/aggregate job for this user is multiplexed onto that one stream).
+    @discardableResult
+    func reload(articleServerID: Int) async throws -> Int {
+        let response: ReloadResponse = try await client.post("/api/v1/articles/\(articleServerID)/reload")
+        return response.jobId
     }
 
     @discardableResult

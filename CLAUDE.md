@@ -184,7 +184,18 @@ source and issue board live at
   layer that turns the server's `type`-discriminated block JSON — matching
   `yana-server/src/lib/aggregators/blocks/schema.ts` — into the app's existing `Block`/`InlineRun`
   enum. `Block` itself keeps its compiler-synthesized `Codable`, which encodes differently, so this
-  is a separate decode path, not a `Block` extension).
+  is a separate decode path, not a `Block` extension). Four more files back the real server-
+  completion polling `UpdateAndSync` does (see **Sync**/**Actions** below): `RunStatus.swift`
+  (`RunStatusResponse`, the `GET /api/v1/runs/:id` wire shape, `status` a plain `String` — not a
+  closed enum — so a future server-added status degrades gracefully instead of failing to decode);
+  `JobEvent.swift` (`JobEventPayload`/`RunEventPayload`, mirroring `yana-server`'s `ApiEvent` "job"/
+  "run" SSE variants, same plain-`String`-status reasoning); `SSEFrameAccumulator.swift` (pure,
+  synchronous SSE frame parsing — one line in, an `SSEFrame` out on a blank-line terminator, per the
+  SSE spec, with `: ping` comment lines ignored); and `JobEventsClient.swift` (streams
+  `GET /api/v1/jobs/events`, `yana-server`'s per-user SSE feed of job/run completion — the only way
+  to observe a standalone `article.reload` job finishing, since that job has `runId: null` and is
+  invisible to `/runs/:id`; documented server-side as best-effort, so callers must have their own
+  fallback for a dropped connection or a missed event).
 - **Auth / device pairing** (`Yana/Services/DevicePairing.swift`, `Yana/Views/DevicePairingView.swift`,
   `Yana/Services/CookieMigration.swift`, `Yana/Services/KeychainService.swift`,
   `Yana/Services/AuthenticatedClient.swift`): `DevicePairing`
@@ -250,13 +261,21 @@ source and issue board live at
   is a thin façade — `setStarred` (`PATCH /articles/:id`), `reload` (`POST /articles/:id/reload`),
   `updateAll` (`POST /aggregate`) — that only sends a request and decodes its ack; it never touches
   the local SwiftData mirror. `reload`/`updateAll`'s ack is just a job/run id, not new content (the
-  server does the re-fetch asynchronously), so `UpdateAndSync` follows up: `pollForFreshContent`
-  bounded-backoff-retries `SyncEngine.sync()` (worst case ~9s) until a pass reports any change, used
-  by the reader's pull-down / "Update All" flow; `pollForReloadedContent` instead re-fetches one
-  article's content directly on each attempt (bypassing `SyncEngine`'s `hasContent`-gated backfill,
-  which — once triggered prematurely mid-poll — would permanently block any later retry, since
-  nothing else ever resets `hasContent` back to `false`), overwriting on every attempt rather than
-  stopping at the first success, since there's no reliable "did it actually change" signal. Starring
+  server does the re-fetch asynchronously), so `UpdateAndSync` follows up with real completion
+  detection instead of a blind fixed backoff: `pollForFreshContent` polls `GET /api/v1/runs/:id`
+  (`RunStatusResponse`) until the run's status is no longer `"running"` — tolerating transient
+  `.transport` failures for a few consecutive attempts rather than aborting on the first network
+  blip, but bailing immediately on `.unauthorized`/`.decoding`/`.server(...)` since those mean the
+  run genuinely can't be queried — then runs `SyncEngine.sync()` exactly once, used by the reader's
+  pull-down / "Update All" flow. `pollForReloadedContent` instead waits on `JobEventsClient`'s SSE
+  stream (`GET /api/v1/jobs/events`) for a terminal `job` event matching the reload's `jobId` (that
+  job has `runId: null`, so `/runs/:id` can never see it), and only on a `"failed"`/`"cancelled"`
+  event returns without a network call; a `"completed"` event, or no matching event arriving within
+  `eventTimeout` (a dropped SSE connection is documented server-side as best-effort — the default
+  timeout is a short 10s specifically to bound this worst case, since the fallback below is cheap),
+  falls back to exactly one direct re-fetch of that article's content (bypassing `SyncEngine`'s
+  `hasContent`-gated backfill, which — once triggered prematurely mid-poll — would permanently block
+  any later retry, since nothing else ever resets `hasContent` back to `false`). Starring
   and marking read are both optimistic, funneled through the shared `ArticleWrites` facade — flip the
   local flag and save immediately, then fire the PATCH; on failure the change is enqueued into
   `PendingWriteQueue` (backed by `AppSettings.pendingWrites`) instead of being rolled back, and
@@ -470,11 +489,14 @@ source and issue board live at
   both of which now only *trigger* server-side work and must poll to see the result (a POST/PATCH ack
   is not the content itself — see `UpdateAndSync`). **"Update"** (the reader's pull-down gesture, "Update
   All") calls `ArticleActions.updateAll()` (`POST /aggregate`, all enabled feeds) then
-  `UpdateAndSync.pollForFreshContent` (bounded-backoff retries of `SyncEngine.sync()`).
+  `UpdateAndSync.pollForFreshContent` (polls `GET /api/v1/runs/:id` until the run finishes, then
+  syncs once — see **Actions** above for the transient-failure handling).
   **"Reload"** (the `ArticleListView` swipe, the reader overflow menu) calls
   `ArticleActions.reload(articleServerID:)` (`POST /articles/:id/reload`, that article only) then
-  `UpdateAndSync.pollForReloadedContent` (direct re-fetch of `/articles/:id/content` on each poll
-  attempt, not through `SyncEngine`'s backfill — see **Actions** above for why). There is no more
+  `UpdateAndSync.pollForReloadedContent` (waits on the `/api/v1/jobs/events` SSE stream for that
+  job's completion, falling back to a single direct re-fetch of `/articles/:id/content` if no
+  matching event arrives in time — not through `SyncEngine`'s backfill; see **Actions** above for
+  why). There is no more
   client-side per-feed update/reload or "auto-run a newly created feed" — feed creation/management
   happens entirely in the server's web UI now.
 - **SwiftData source of truth, sync writes it:** `SyncEngine`/`SyncWriter` write; views read
@@ -496,7 +518,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  rework's completion, 289 tests across 77 suites, all passing.
+  rework's completion, 342 tests across 87 suites, all passing.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap

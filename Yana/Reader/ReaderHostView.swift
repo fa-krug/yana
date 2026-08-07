@@ -378,10 +378,10 @@ struct ReaderScreen: View {
         let feedName = article.feed?.name
         UpdateActivity.shared.restart {
             do {
-                try await ArticleActions(client: client).reload(articleServerID: serverID)
+                let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
                 guard !Task.isCancelled else { return }
                 let applied = await UpdateAndSync.pollForReloadedContent(
-                    articleServerID: serverID, container: modelContext.container, client: client
+                    jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client
                 )
                 guard !Task.isCancelled else { return }
                 if applied {
@@ -418,10 +418,10 @@ struct ReaderScreen: View {
         }
         UpdateActivity.shared.restart {
             do {
-                try await ArticleActions(client: client).updateAll()
+                let runId = try await ArticleActions(client: client).updateAll()
                 guard !Task.isCancelled else { return }
                 let result = await UpdateAndSync.pollForFreshContent(
-                    container: modelContext.container, client: client, settings: settings
+                    runId: runId, container: modelContext.container, client: client, settings: settings
                 )
                 guard !Task.isCancelled else { return }
                 toast = ToastMessage(text: RefreshOutcome.message(newCount: result.newCount, feedName: nil))

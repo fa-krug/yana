@@ -1,94 +1,137 @@
 import Foundation
 import SwiftData
 
-/// Coordinates a server-triggered write (`ArticleActions.reload`/`updateAll`) with pulling its
-/// results back down. Both of those calls only ack that the server *started* work -- a reload/
-/// aggregate run finishes asynchronously, with no fixed latency -- so a caller that wants to show
-/// the result must follow up with `SyncEngine.sync()` itself, not assume the ack delivered content.
+/// Coordinates a server-triggered write (`ArticleActions.reload`/`updateAll`) with observing its
+/// actual completion and pulling the result back down. Both triggers only ack that the server
+/// *started* work; this type is what turns that ack into "the work is done, here's the outcome."
 ///
-/// The design spec (`docs/superpowers/specs/2026-08-05-server-api-client-rework-design.md`)
-/// documents a `GET /runs/:id` job-status endpoint for precise completion detection, but its
-/// response shape isn't pinned down anywhere in this codebase or in Task 13's `ArticleActions`
-/// interface (which deliberately exposes only `setStarred`/`reload`/`updateAll`), and guessing at
-/// an unspecified wire format would be worse than not polling it at all. Instead this polls the
-/// already-specified, already-tested `/articles/sync` endpoint (via `SyncEngine.sync()`) a few
-/// times with a short backoff, stopping as soon as a pass reports any change. This is a bounded
-/// heuristic, not a guarantee -- a slow server-side run can still finish after the last attempt,
-/// in which case the next manual refresh or background sync (Task 14) picks it up.
+/// The two triggers are tracked completely differently server-side (confirmed by reading
+/// `yana-server` directly -- see `docs/superpowers/specs/2026-08-05-server-api-client-rework-design.md:137-138`
+/// for the intent this file implements):
+/// - `updateAll()`'s `POST /aggregate` returns a `runId` that IS queryable via
+///   `GET /api/v1/runs/:id` (`RunStatusResponse`) -- `pollForFreshContent` polls that REST
+///   endpoint until the run is no longer `"running"`, then syncs exactly once.
+/// - `reload()`'s `POST /articles/:id/reload` returns a `jobId` for a job with `runId: null` --
+///   it is NOT part of a run, so `/runs/:id` can never see it, and there is no `GET /jobs/:id`.
+///   The only place its completion surfaces is the per-user SSE stream `GET /api/v1/jobs/events`
+///   (`JobEventsClient`), which emits a terminal `job` event exactly once. That stream is
+///   documented server-side as best-effort, so `pollForReloadedContent` falls back to a single
+///   direct content re-fetch if no matching terminal event arrives within `eventTimeout`.
 @MainActor
 enum UpdateAndSync {
-    /// Backoff between poll attempts. Worst case ~9s before giving up.
-    private static let delays: [Duration] = [.seconds(1), .seconds(2), .seconds(2), .seconds(2), .seconds(2)]
-
-    /// Repeatedly calls `SyncEngine.sync()` until a pass reports a change or attempts run out.
-    /// Returns the last `SyncResult` observed (all zeros if nothing arrived in time). Cooperatively
-    /// cancellable: bails immediately once the enclosing `Task` is cancelled, returning whatever
-    /// was last observed.
-    ///
-    /// Used by `updateAll()`'s "Update" flow only, where the counts genuinely flow through
-    /// `/articles/sync`'s summary page loop. **Not used by `reload()`'s flow** -- a single
-    /// article's re-fetched content comes from `backfillMissingContent()`'s `hasContent`-gated
-    /// scan, which contributes nothing to these counters, so this method's termination check can
-    /// never actually observe a reload landing. See `pollForReloadedContent` for that path.
+    /// Polls `GET /api/v1/runs/:id` until the run's status is no longer `"running"` (or attempts
+    /// run out), then runs `SyncEngine.sync()` exactly once to pull in whatever the run produced.
+    /// Cooperatively cancellable: bails immediately once the enclosing `Task` is cancelled.
     @discardableResult
     static func pollForFreshContent(
-        container: ModelContainer, client: YanaAPIClient, settings: AppSettings
+        runId: Int, container: ModelContainer, client: YanaAPIClient, settings: AppSettings,
+        pollInterval: Duration = .seconds(1), maxAttempts: Int = 30
     ) async -> SyncResult {
-        let engine = SyncEngine(container: container, client: client, settings: settings)
-        var last = SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
-        for delay in delays {
-            if Task.isCancelled { return last }
-            try? await Task.sleep(for: delay)
-            if Task.isCancelled { return last }
-            last = (try? await engine.sync()) ?? last
-            if last.newCount > 0 || last.updatedCount > 0 || last.removedCount > 0 { return last }
+        await waitForRunToFinish(runId: runId, client: client, pollInterval: pollInterval, maxAttempts: maxAttempts)
+        guard !Task.isCancelled else {
+            return SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
         }
-        return last
+        let engine = SyncEngine(container: container, client: client, settings: settings)
+        return (try? await engine.sync()) ?? SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
     }
 
-    /// Re-fetches ONE article's content directly, bypassing `SyncEngine`'s generic
-    /// `hasContent`-gated backfill scan entirely, on every attempt of the same bounded backoff
-    /// schedule -- overwriting each time rather than stopping at the first successful fetch.
-    ///
-    /// This exists specifically for `reload()`: the server's reload job is asynchronous, so a
-    /// content fetch this early in the window can land *before* the server has actually finished
-    /// re-fetching -- getting the pre-reload content back. Going through the backfill scan
-    /// instead (as an earlier version of this code did, resetting `hasContent = false` first) is
-    /// actively wrong for this case, not just imprecise: `articlesMissingContent`'s predicate is a
-    /// one-way `hasContent == false` gate, so a premature backfill fetch sets `hasContent = true`
-    /// and *permanently* blocks any later retry -- not just for this poll window, but forever,
-    /// since nothing else ever resets it back to `false`. Calling `applyContent` directly here has
-    /// no such gate: a premature fetch is simply overwritten by the next attempt a few seconds
-    /// later, converging on the freshest content the window happened to observe.
-    ///
-    /// There is no reliable way to tell whether the content actually *changed* (the server may
-    /// legitimately return byte-identical content if the reload found nothing new), so this
-    /// returns `true` as soon as *any* attempt successfully applies content -- "we re-fetched and
-    /// applied within the window" is treated as reload's success signal, matching what "Reload"
-    /// has always meant in this app (re-fetch in place, not detect-a-change).
+    /// A single failed request against `/api/v1/runs/:id` is not necessarily the run's actual
+    /// state -- it can just as easily be a dropped packet or a transient 502. Only a genuinely
+    /// authoritative failure (auth rejected, response undecodable, or a well-formed server error)
+    /// means the run can't be queried and is worth bailing on immediately; a bare transport error
+    /// is retried, capped at `maxConsecutiveTransportFailures` in a row so a fully dead connection
+    /// still gives up instead of silently burning the whole `maxAttempts` budget on retries that
+    /// were never going to succeed.
+    private static func waitForRunToFinish(
+        runId: Int, client: YanaAPIClient, pollInterval: Duration, maxAttempts: Int
+    ) async {
+        let maxConsecutiveTransportFailures = 3
+        var consecutiveTransportFailures = 0
+        for _ in 0..<maxAttempts {
+            if Task.isCancelled { return }
+            do {
+                let status: RunStatusResponse = try await client.get("/api/v1/runs/\(runId)")
+                consecutiveTransportFailures = 0
+                if !status.isRunning { return }
+            } catch YanaAPIClientError.transport {
+                consecutiveTransportFailures += 1
+                if consecutiveTransportFailures >= maxConsecutiveTransportFailures { return }
+            } catch {
+                return
+            }
+            try? await Task.sleep(for: pollInterval)
+        }
+    }
+
+    /// Waits for `/api/v1/jobs/events` to report this exact `jobId` reaching a terminal state,
+    /// then -- only on `"completed"` -- re-fetches and applies that one article's content
+    /// directly, bypassing `SyncEngine`'s generic `hasContent`-gated backfill entirely (an earlier
+    /// version of this code went through that backfill, resetting `hasContent = false` first, and
+    /// that is actively wrong: a premature backfill fetch racing the poll sets `hasContent = true`
+    /// and permanently blocks any later retry, since nothing else ever resets it). If the job
+    /// reports `"failed"`/`"cancelled"`, there is nothing new to fetch, so this returns `false`
+    /// without a network call. If no matching terminal event arrives within `eventTimeout` (a
+    /// dropped SSE connection, or the event simply being missed -- the stream is best-effort),
+    /// this falls back to exactly one direct content fetch, matching what this method has always
+    /// done as its fallback path. `eventTimeout` defaults to 10s: the SSE stream is only opened
+    /// after the reload POST has already acked, so if the server's worker finishes in that brief
+    /// window the terminal event is gone for good (the server emits it once, on transition) and
+    /// the caller is stuck waiting out the full timeout before the fallback fetch runs -- keeping
+    /// the default short bounds that worst-case stall tightly, since the fallback fetch itself is
+    /// cheap and idempotent.
     @discardableResult
     static func pollForReloadedContent(
+        jobId: Int, articleServerID: Int, container: ModelContainer, client: YanaAPIClient,
+        eventTimeout: Duration = .seconds(10)
+    ) async -> Bool {
+        switch await waitForReloadJobOutcome(jobId: jobId, client: client, eventTimeout: eventTimeout) {
+        case .some(false):
+            return false
+        case .some(true), .none:
+            return await fetchAndApplyContent(articleServerID: articleServerID, container: container, client: client)
+        }
+    }
+
+    /// `true` = the matching job completed; `false` = it failed/was cancelled; `nil` = no matching
+    /// terminal event arrived before `eventTimeout` (dropped connection, missed event, or the
+    /// stream simply ended without ever mentioning this job).
+    private static func waitForReloadJobOutcome(
+        jobId: Int, client: YanaAPIClient, eventTimeout: Duration
+    ) async -> Bool? {
+        await withTaskGroup(of: Bool?.self) { group in
+            group.addTask {
+                var iterator = JobEventsClient(client: client).events().makeAsyncIterator()
+                while let event = try? await iterator.next() {
+                    if case let .job(payload) = event, payload.jobId == jobId, payload.isTerminal {
+                        return payload.status == "completed"
+                    }
+                }
+                return nil
+            }
+            group.addTask {
+                try? await Task.sleep(for: eventTimeout)
+                return nil
+            }
+            defer { group.cancelAll() }
+            for await result in group {
+                return result
+            }
+            return nil
+        }
+    }
+
+    private static func fetchAndApplyContent(
         articleServerID: Int, container: ModelContainer, client: YanaAPIClient
     ) async -> Bool {
-        var appliedAtLeastOnce = false
-        for delay in delays {
-            if Task.isCancelled { return appliedAtLeastOnce }
-            try? await Task.sleep(for: delay)
-            if Task.isCancelled { return appliedAtLeastOnce }
-            guard let document: WireDocument = try? await client.get(
-                "/api/v1/articles/\(articleServerID)/content"
-            ) else { continue }
-            // `SyncWriter` is a `@ModelActor` -- per this codebase's rule, every call into one
-            // from a `@MainActor` context (this enum) must be hopped off-main via
-            // `OffMainActor.run`, or the write runs inline on the calling (main) thread. Mirrors
-            // `SyncEngine.syncFeeds()`'s exact pattern: construct on the caller's actor, wrap only
-            // the `await` into the actor.
-            let writer = SyncWriter(modelContainer: container)
-            let applied = await OffMainActor.run {
-                await writer.applyContent(articleServerID: articleServerID, document: document)
-            }
-            appliedAtLeastOnce = appliedAtLeastOnce || applied
+        guard let document: WireDocument = try? await client.get(
+            "/api/v1/articles/\(articleServerID)/content"
+        ) else { return false }
+        // `SyncWriter` is a `@ModelActor` -- per this codebase's rule, every call into one from a
+        // `@MainActor` context (this enum) must be hopped off-main via `OffMainActor.run`, or the
+        // write runs inline on the calling (main) thread.
+        let writer = SyncWriter(modelContainer: container)
+        return await OffMainActor.run {
+            await writer.applyContent(articleServerID: articleServerID, document: document)
         }
-        return appliedAtLeastOnce
     }
 }
