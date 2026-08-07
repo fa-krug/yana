@@ -23,15 +23,16 @@ struct JobEventsClient: Sendable {
                         throw YanaAPIClientError.transport
                     }
                     var accumulator = SSEFrameAccumulator()
-                    var data = Data()
+                    var lineBuffer = Data()
                     for try await byte in bytes {
-                        data.append(byte)
-                    }
-                    let content = String(data: data, encoding: .utf8) ?? ""
-                    let lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-                    for line in lines {
-                        if let frame = accumulator.consume(line: line), let event = JobEvent.decode(frame: frame) {
-                            continuation.yield(event)
+                        if byte == UInt8(ascii: "\n") {
+                            let line = String(data: lineBuffer, encoding: .utf8) ?? ""
+                            lineBuffer.removeAll(keepingCapacity: true)
+                            if let frame = accumulator.consume(line: line), let event = JobEvent.decode(frame: frame) {
+                                continuation.yield(event)
+                            }
+                        } else {
+                            lineBuffer.append(byte)
                         }
                     }
                     continuation.finish()
