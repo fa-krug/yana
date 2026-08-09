@@ -147,8 +147,33 @@ enum UpdateAndSync {
         // `@MainActor` context (this enum) must be hopped off-main via `OffMainActor.run`, or the
         // write runs inline on the calling (main) thread.
         let writer = SyncWriter(modelContainer: container)
-        return await OffMainActor.run {
+        let applied = await OffMainActor.run {
             await writer.applyContent(articleServerID: articleServerID, document: document)
         }
+        guard applied else { return false }
+
+        // The reload can also change the article's title -- `yana-server`'s `handleReloadJob`
+        // re-derives it from the refetched source and writes `articles.name` (e.g. AI title
+        // translation, or the source correcting its own headline), but `/articles/:id/content`
+        // carries only the block body, never the title. A normal sync pass picks that change up
+        // through `/articles/sync`'s `updated` list (the reload also bumps `updatedAt`). Doing
+        // this *after* the content is already applied, not during the poll, is what makes it
+        // safe: the premature-backfill race this method's doc comment warns about only exists
+        // when a generic sync races the *content* fetch before it's confirmed done -- by this
+        // point this article's `hasContent` is already correctly `true`, so `backfillMissingContent`
+        // has nothing to do for it.
+        let engine = SyncEngine(container: container, client: client)
+        _ = try? await engine.sync()
+
+        if let visibleArticle, visibleArticle.serverID == articleServerID {
+            let freshTitle = try? ModelContext(container).fetch(
+                FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == articleServerID })
+            ).first?.title
+            if let freshTitle, freshTitle != visibleArticle.title {
+                visibleArticle.title = freshTitle
+                try? visibleArticle.modelContext?.save()
+            }
+        }
+        return true
     }
 }

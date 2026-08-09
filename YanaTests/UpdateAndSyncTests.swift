@@ -345,4 +345,71 @@ struct UpdateAndSyncTests {
             #expect(visibleArticle.plainText.contains("fresh"))
         }
     }
+
+    /// Regression test: `yana-server`'s reload job can rewrite `articles.name` (an AI title
+    /// translation, or the source correcting its own headline) alongside the body, but
+    /// `/articles/:id/content` only ever carries blocks -- never the title. The fix is a normal
+    /// sync pass after the content apply, which picks the new title up via `/articles/sync`'s
+    /// `updated` list; this pins that the visible article's `title` actually changes too, not just
+    /// the store.
+    @Test func pollForReloadedContentPicksUpAnUpdatedTitleViaSync() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", aggregator: "feed_content", identifier: "f1",
+                             enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old Title", identifier: "art-100",
+                                        date: .now, author: "", icon: nil, read: false, starred: false,
+                                        createdAt: .now, updatedAt: .now)
+            ])
+
+            let readerContext = ModelContext(container)
+            let visibleArticle = try readerContext.fetch(
+                FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == 100 })
+            ).first!
+            #expect(visibleArticle.title == "Old Title")
+
+            let sseBody = "event: job\ndata: {\"jobId\":42,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"completed\",\"progress\":1}\n\n"
+            let contentBody = #"{"version":1,"blocks":[]}"#
+            let syncBody = #"""
+            {"new":[],"updated":[{"id":100,"feedId":1,"name":"New Title","identifier":"art-100","date":"2026-01-01T00:00:00Z","author":"","icon":null,"read":false,"starred":false,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z"}],"removed":[],"nextCursor":null}
+            """#
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                let path = request.url!.path
+                switch path {
+                case "/api/v1/jobs/events":
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                    return (response, sseBody.data(using: .utf8)!)
+                case "/api/v1/articles/100/content":
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, contentBody.data(using: .utf8)!)
+                case "/api/v1/feeds":
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, #"{"feeds":[]}"#.data(using: .utf8)!)
+                case "/api/v1/tags":
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, #"{"tags":[]}"#.data(using: .utf8)!)
+                case "/api/v1/articles/sync":
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, syncBody.data(using: .utf8)!)
+                default:
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+                    return (response, Data())
+                }
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let applied = await UpdateAndSync.pollForReloadedContent(
+                jobId: 42, articleServerID: 100, container: container, client: client, visibleArticle: visibleArticle
+            )
+
+            #expect(applied)
+            #expect(visibleArticle.title == "New Title")
+        }
+    }
 }
