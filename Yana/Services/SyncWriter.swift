@@ -226,6 +226,26 @@ actor SyncWriter {
         return touched
     }
 
+    /// Every `ImageStore` content hash still referenced by a locally-known article's blocks or a
+    /// feed's logo -- the "still needed" set `SyncEngine.pruneOrphanedImages` diffs against
+    /// `ImageStore.allHashes()`, so an image whose last referencing article (or feed) is gone
+    /// (removed via `applyRemovals`, a feed's cascade-delete in `replaceFeeds`, or a local
+    /// swipe-to-delete) gets deleted from disk instead of lingering forever.
+    func referencedImageHashes() -> Set<String> {
+        var hashes = Set<String>()
+        if let feeds = try? modelContext.fetch(FetchDescriptor<Feed>()) {
+            for feed in feeds {
+                if let logo = feed.logoImageHash { hashes.insert(logo) }
+            }
+        }
+        if let articles = try? modelContext.fetch(FetchDescriptor<Article>()) {
+            for article in articles {
+                hashes.formUnion(Block.imageHashes(in: article.blocks))
+            }
+        }
+        return hashes
+    }
+
     /// The content-backfill candidate list: every locally-known article whose body hasn't
     /// synced yet, oldest-`createdAt`-first, capped at `limit` so one pass never tries to fetch
     /// an unbounded backlog.

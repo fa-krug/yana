@@ -72,3 +72,42 @@ struct Embed: Codable, Sendable, Equatable {
     /// Optional label (video title, tweet author).
     var title: String?
 }
+
+extension Block {
+    /// Every `ImageStore` content hash reachable from `blocks` -- `.image` refs and embed
+    /// `thumbnailRef`s, recursing into lists/blockquotes since those nest further blocks. A
+    /// remote-URL ref (not a `yana-img://` ref) yields no hash, since there's nothing for it in
+    /// `ImageStore` to prefetch or prune. Shared by `SyncEngine` (prefetching every referenced
+    /// image during sync, not just the lead image on-demand) and `SyncWriter`
+    /// (`referencedImageHashes`, so a since-deleted article's images can be told apart from ones
+    /// still in use).
+    static func imageHashes(in blocks: [Block]) -> Set<String> {
+        var hashes = Set<String>()
+        func visit(_ blocks: [Block]) {
+            for block in blocks {
+                switch block {
+                case let .image(ref, _):
+                    if let hash = imageHash(fromRef: ref) { hashes.insert(hash) }
+                case let .list(_, items):
+                    items.forEach(visit)
+                case let .blockquote(children):
+                    visit(children)
+                case let .embed(embed):
+                    if let ref = embed.thumbnailRef, let hash = imageHash(fromRef: ref) {
+                        hashes.insert(hash)
+                    }
+                case .paragraph, .heading, .codeBlock, .divider:
+                    break
+                }
+            }
+        }
+        visit(blocks)
+        return hashes
+    }
+
+    private static func imageHash(fromRef ref: String) -> String? {
+        let prefix = "\(ReaderWeb.imageScheme)://"
+        guard ref.hasPrefix(prefix) else { return nil }
+        return String(ref.dropFirst(prefix.count))
+    }
+}

@@ -634,10 +634,19 @@ private struct EmbedCardView: View {
 /// `ReaderImageCache` — the common case, since the pager prewarms neighbors' and the displayed
 /// page's lead images — the page starts visible, so there is no fade and no blank frame. Pages with
 /// no lead image are visible from the first frame.
-private struct LeadImageReveal: ViewModifier {
+///
+/// The wait is bounded by `revealTimeout`: on a slow/bad connection the lead-image fetch can stall
+/// far longer than a user will wait, and with no bound the page just sits at `opacity(0)` — showing
+/// nothing but the plain `.systemBackground` fill underneath, which is black in Dark Mode. Past the
+/// timeout the page reveals anyway; the lead image then pops in on its own like any other in-body
+/// image once the (still in-flight) fetch completes, trading the rare late pop-in for never showing
+/// an unbounded blank/black page.
+struct LeadImageReveal: ViewModifier {
     let leadImageRef: String?
     @State private var ready: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    static let revealTimeout: Duration = .seconds(2)
 
     init(leadImageRef: String?) {
         self.leadImageRef = leadImageRef
@@ -653,9 +662,24 @@ private struct LeadImageReveal: ViewModifier {
             .animation(Motion.resolve(.easeIn(duration: 0.2), reduceMotion: reduceMotion), value: ready)
             .task(id: leadImageRef) {
                 guard !ready, let leadImageRef else { return }
-                _ = await ReaderImageCache.shared.image(for: leadImageRef)
+                await Self.awaitFirst(timeout: Self.revealTimeout) {
+                    _ = await ReaderImageCache.shared.image(for: leadImageRef)
+                }
                 ready = true
             }
+    }
+
+    /// Runs `load` and a `timeout`-second sleep concurrently, returning as soon as either finishes.
+    /// `load` keeps running to completion in the background if the timeout wins (its result still
+    /// lands in `ReaderImageCache` for whoever reads it next), matching the pattern
+    /// `UpdateAndSync.waitForReloadJobOutcome` uses for its own event-vs-timeout race.
+    static func awaitFirst(timeout: Duration, load: @escaping @Sendable () async -> Void) async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await load() }
+            group.addTask { try? await Task.sleep(for: timeout) }
+            await group.next()
+            group.cancelAll()
+        }
     }
 }
 

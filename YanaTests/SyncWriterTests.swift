@@ -280,4 +280,31 @@ struct SyncWriterTests {
         ])
         #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
     }
+
+    /// `SyncEngine.pruneOrphanedImages`'s "still needed" set: every article's body-image hashes
+    /// plus every feed's logo hash, deduped, with nothing else (no `nil` logos, no article that
+    /// has no images at all contributing a spurious entry).
+    @Test func referencedImageHashesUnionsArticleBlocksAndFeedLogos() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let context = container.mainContext
+
+        let feed = Feed(name: "Test Feed", aggregator: "feed_content", identifier: "1")
+        feed.logoImageHash = "logo-hash"
+        context.insert(feed)
+
+        let withImage = Article(title: "A", identifier: "a", url: "a")
+        withImage.feed = feed
+        withImage.blocks = [.image(ref: "yana-img://body-hash", caption: [])]
+        context.insert(withImage)
+
+        let withoutImage = Article(title: "B", identifier: "b", url: "b")
+        withoutImage.feed = feed
+        context.insert(withoutImage)
+
+        try context.save()
+
+        let hashes = await writer.referencedImageHashes()
+        #expect(hashes == ["logo-hash", "body-hash"])
+    }
 }

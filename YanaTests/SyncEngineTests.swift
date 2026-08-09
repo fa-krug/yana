@@ -335,6 +335,129 @@ struct SyncEngineTests {
         }
     }
 
+    /// Root cause of the "article stays black on bad internet" bug: the reader only fetched an
+    /// article's lead image on-demand when the page was displayed, with no bound on how long that
+    /// could take. Sync now fetches every image an article's body actually references right
+    /// alongside its content, so by the time the article is opened the image is already on disk
+    /// (`LeadImageReveal`'s on-demand fallback then almost never has to wait at all).
+    @Test func backfillPrefetchesEveryImageTheArticleBodyReferences() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+            let imageDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let imageStore = ImageStore(directory: imageDir)
+
+            let syncResponse = #"""
+            {"new":[{"id":100,"feedId":1,"name":"Hello","identifier":"a1","date":"2026-01-01T00:00:00Z","author":"","icon":null,"read":false,"starred":false,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}],"updated":[],"removed":[],"nextCursor":null}
+            """#.data(using: .utf8)!
+            let contentResponse = #"""
+            {"version":1,"blocks":[
+                {"type":"image","ref":"yana-img://lead-hash","caption":[]},
+                {"type":"paragraph","runs":[{"text":"Body","styles":[],"link":null}]},
+                {"type":"embed","provider":"video","thumbnailRef":"yana-img://embed-hash","externalURL":"https://example.test/v.mp4","title":null}
+            ]}
+            """#.data(using: .utf8)!
+            let feedsResponse = #"{"feeds":[{"id":1,"name":"Test Feed","aggregator":"feed_content","identifier":"1","enabled":true,"dailyLimit":20,"tagIds":[],"logoImageHash":null,"updatedAt":"2026-01-01T00:00:00Z"}]}"#.data(using: .utf8)!
+
+            let client = stubClient(responses: [
+                "/api/v1/articles/sync": (syncResponse, 200),
+                "/api/v1/articles/100/content": (contentResponse, 200),
+                "/api/v1/feeds": (feedsResponse, 200),
+                "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/images/lead-hash": (Data([0x01]), 200),
+                "/api/v1/images/embed-hash": (Data([0x02]), 200),
+            ])
+
+            let engine = SyncEngine(container: container, client: client, settings: settings, imageStore: imageStore)
+            _ = try await engine.sync()
+
+            #expect(await imageStore.fileExists(forHash: "lead-hash"))
+            #expect(await imageStore.fileExists(forHash: "embed-hash"))
+        }
+    }
+
+    /// A feed's logo is prefetched the same way -- it's referenced from every one of that feed's
+    /// articles (`ArticleHeaderLogo`), not from any single article's body, so it can't ride along
+    /// with the per-article content backfill above.
+    @Test func syncPrefetchesFeedLogoImages() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+            let imageDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let imageStore = ImageStore(directory: imageDir)
+
+            let feedsResponse = #"{"feeds":[{"id":1,"name":"Test Feed","aggregator":"feed_content","identifier":"1","enabled":true,"dailyLimit":20,"tagIds":[],"logoImageHash":"logo-hash","updatedAt":"2026-01-01T00:00:00Z"}]}"#.data(using: .utf8)!
+
+            let client = stubClient(responses: [
+                "/api/v1/feeds": (feedsResponse, 200),
+                "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/articles/sync": (#"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#.data(using: .utf8)!, 200),
+                "/api/v1/images/logo-hash": (Data([0x03]), 200),
+            ])
+
+            let engine = SyncEngine(container: container, client: client, settings: settings, imageStore: imageStore)
+            _ = try await engine.sync()
+
+            #expect(await imageStore.fileExists(forHash: "logo-hash"))
+        }
+    }
+
+    /// Second half of the "delete an article's images too" request: an image whose only
+    /// referencing article was removed via `/articles/sync`'s `removed` list must not linger on
+    /// disk forever -- `pruneOrphanedImages` deletes it, while an image still referenced by a
+    /// surviving article (or a feed logo) is left alone.
+    @Test func pruneOrphanedImagesDeletesOnlyImagesNoLongerReferenced() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+            let imageDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let imageStore = ImageStore(directory: imageDir)
+
+            // Seed one article that will survive (referencing "kept-hash") and one that will be
+            // removed by this sync pass (referencing "orphaned-hash") -- both images already on
+            // disk, as if a prior sync had prefetched them.
+            let context = container.mainContext
+            let feed = Feed(name: "Test Feed", aggregator: "feed_content", identifier: "1")
+            context.insert(feed)
+            let kept = Article(title: "Kept", identifier: "kept", url: "kept")
+            kept.serverID = 200
+            kept.feed = feed
+            kept.blocks = [.image(ref: "yana-img://kept-hash", caption: [])]
+            context.insert(kept)
+            let removed = Article(title: "Removed", identifier: "removed", url: "removed")
+            removed.serverID = 201
+            removed.feed = feed
+            removed.blocks = [.image(ref: "yana-img://orphaned-hash", caption: [])]
+            context.insert(removed)
+            try context.save()
+
+            let seedClient = stubClient(responses: [
+                "/api/v1/images/kept-hash": (Data([0x04]), 200),
+                "/api/v1/images/orphaned-hash": (Data([0x05]), 200),
+            ])
+            _ = await imageStore.fetchIfNeeded(hash: "kept-hash", client: seedClient)
+            _ = await imageStore.fetchIfNeeded(hash: "orphaned-hash", client: seedClient)
+            #expect(await imageStore.fileExists(forHash: "kept-hash"))
+            #expect(await imageStore.fileExists(forHash: "orphaned-hash"))
+
+            let feedsResponse = #"{"feeds":[{"id":1,"name":"Test Feed","aggregator":"feed_content","identifier":"1","enabled":true,"dailyLimit":20,"tagIds":[],"logoImageHash":null,"updatedAt":"2026-01-01T00:00:00Z"}]}"#.data(using: .utf8)!
+            let client = stubClient(responses: [
+                "/api/v1/feeds": (feedsResponse, 200),
+                "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/articles/sync": (#"{"new":[],"updated":[],"removed":[201],"nextCursor":null}"#.data(using: .utf8)!, 200),
+            ])
+
+            let engine = SyncEngine(container: container, client: client, settings: settings, imageStore: imageStore)
+            _ = try await engine.sync()
+
+            #expect(await imageStore.fileExists(forHash: "kept-hash"))
+            #expect(await imageStore.fileExists(forHash: "orphaned-hash") == false)
+        }
+    }
+
     @Test func syncFlushesPendingWritesBeforePulling() async throws {
         try await MockURLProtocol.lock.withLock {
             let container = try makeContainer()

@@ -243,7 +243,17 @@ source and issue board live at
   at bounded concurrency (`runBounded`, a sliding-window `withTaskGroup` capped at
   `maxConcurrentContentFetches` = 6) so full-text search and true offline reading both work without
   a network round-trip per article. Individual content-fetch failures are swallowed, not fatal — they
-  just retry on the next sync pass. `SyncWriter` (`@ModelActor`) does the actual `ModelContext`
+  just retry on the next sync pass. Every image an article's body actually references (`.image`
+  refs and embed `thumbnailRef`s — `Block.imageHashes(in:)`, recursing into lists/blockquotes) is
+  fetched into `ImageStore` right alongside that article's content, and every feed's logo is
+  fetched the same way from `syncFeeds()`; this is what makes the reader's `LeadImageReveal` gate
+  (`ArticleBlockView.swift`) almost never have to wait on its own bounded on-demand fallback. A
+  final `pruneOrphanedImages` pass diffs `ImageStore.allHashes()` against
+  `SyncWriter.referencedImageHashes()` (every surviving article's block-image hashes ∪ every feed's
+  logo hash) and deletes whatever's left — so an image whose last referencing article is gone
+  (`applyRemovals`'s explicit list, a feed's cascade-delete in `replaceFeeds`, or a local
+  swipe-to-delete since the last sync) doesn't linger on disk forever; this is pure local disk I/O,
+  so it runs even when the rest of the pass was offline/degraded. `SyncWriter` (`@ModelActor`) does the actual `ModelContext`
   writes: `upsertSummaries` matches by `Article.serverID`, and never re-stamps `Article.date` (the
   original article date, what the timeline shows and sorts by) or `createdAt` on update — an
   article's timeline position never jumps on re-fetch, matching the server's own treatment of a

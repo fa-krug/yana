@@ -37,6 +37,10 @@ final class SyncEngine {
     private let container: ModelContainer
     private let client: YanaAPIClient
     private let settings: AppSettings
+    /// Injectable purely so tests can point it at a throwaway on-disk directory instead of the
+    /// real `ImageStore.shared` cache (`~/Library/Caches/images`) -- every other collaborator here
+    /// is already injected the same way (`container`, `client`, `settings`).
+    private let imageStore: ImageStore
     private let maxConcurrentContentFetches = 6
 
     /// Pagination page size for `/api/v1/articles/sync`. A page shorter than this means the
@@ -49,10 +53,12 @@ final class SyncEngine {
     /// forever on the main actor.
     private static let maxConsecutiveResyncAttempts = 3
 
-    init(container: ModelContainer, client: YanaAPIClient, settings: AppSettings = AppSettings()) {
+    init(container: ModelContainer, client: YanaAPIClient, settings: AppSettings = AppSettings(),
+         imageStore: ImageStore = .shared) {
         self.container = container
         self.client = client
         self.settings = settings
+        self.imageStore = imageStore
     }
 
     @discardableResult
@@ -131,6 +137,7 @@ final class SyncEngine {
         }
 
         try await backfillMissingContent()
+        await pruneOrphanedImages()
 
         return SyncResult(newCount: totalNew, updatedCount: totalUpdated, removedCount: totalRemoved)
     }
@@ -139,6 +146,13 @@ final class SyncEngine {
         let response: FeedsResponse = try await client.get("/api/v1/feeds")
         let writer = SyncWriter(modelContainer: container)
         _ = await OffMainActor.run { await writer.replaceFeeds(response.feeds) }
+
+        let logoHashes = Set(response.feeds.compactMap(\.logoImageHash))
+        let client = client
+        let imageStore = imageStore
+        await runBounded(Array(logoHashes), maxConcurrency: maxConcurrentContentFetches) { hash in
+            _ = await imageStore.fetchIfNeeded(hash: hash, client: client)
+        }
     }
 
     /// Sibling to `syncFeeds()`: `/tags` is small and unpaginated the same way, and populating
@@ -172,12 +186,22 @@ final class SyncEngine {
         let serverIDs = pending.map(\.serverID)
         let client = client
         let container = container
+        let imageStore = imageStore
 
         await runBounded(serverIDs, maxConcurrency: maxConcurrentContentFetches) { serverID in
             do {
                 let document: WireDocument = try await client.get("/api/v1/articles/\(serverID)/content")
                 let writer = SyncWriter(modelContainer: container)
                 _ = await writer.applyContent(articleServerID: serverID, document: document)
+                // Eager, not lazy-on-render: every image the article's body actually references
+                // is fetched right alongside its content, not just the lead image on first open
+                // (see `LeadImageReveal`'s bounded on-demand fallback for the rare case this
+                // hasn't landed yet -- a stale/incomplete backfill, not the common path).
+                await withTaskGroup(of: Void.self) { group in
+                    for hash in Block.imageHashes(in: document.blocks) {
+                        group.addTask { _ = await imageStore.fetchIfNeeded(hash: hash, client: client) }
+                    }
+                }
             } catch YanaAPIClientError.unauthorized {
                 // This loop swallows every other failure by design (see the doc comment above),
                 // so a revoked/expired session would otherwise never reach anything that clears
@@ -190,6 +214,21 @@ final class SyncEngine {
             } catch {
                 // Leave hasContent == false; picked up again on the next sync pass.
             }
+        }
+    }
+
+    /// Deletes any on-disk cached image no locally-known article or feed still references. Runs
+    /// after removals/backfill have settled so a removed article's images (whether removed via
+    /// `applyRemovals`'s explicit list, a feed's cascade-delete in `replaceFeeds`, or a local
+    /// swipe-to-delete since the last sync) don't linger on disk forever -- `ImageStore` has no
+    /// other path that ever deletes a blob once fetched. Pure local disk I/O (no network), so this
+    /// runs even when the rest of the pass was offline/degraded.
+    private func pruneOrphanedImages() async {
+        let writer = SyncWriter(modelContainer: container)
+        let referenced = await OffMainActor.run { await writer.referencedImageHashes() }
+        let orphaned = await imageStore.allHashes().subtracting(referenced)
+        for hash in orphaned {
+            await imageStore.remove(forHash: hash)
         }
     }
 }
