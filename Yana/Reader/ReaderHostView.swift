@@ -387,7 +387,8 @@ struct ReaderScreen: View {
                 let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
                 guard !Task.isCancelled else { return }
                 let applied = await UpdateAndSync.pollForReloadedContent(
-                    jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client
+                    jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client,
+                    visibleArticle: article
                 )
                 guard !Task.isCancelled else { return }
                 if applied {

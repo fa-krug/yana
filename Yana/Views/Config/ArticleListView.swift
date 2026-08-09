@@ -109,9 +109,14 @@ struct ArticleListView: View {
                             // deliberately re-fetches this one article's content directly rather
                             // than going through `SyncEngine`'s generic `hasContent`-gated
                             // backfill, which a premature fetch during the poll window could
-                            // permanently lock out of any later retry.
+                            // permanently lock out of any later retry. `article` is registered on
+                            // this view's `modelContext`, the same context the reader (presented
+                            // from) reads from -- pass it as `visibleArticle` so a reload of the
+                            // currently-open (or previously-viewed) article updates that live
+                            // object too, not just the store.
                             await UpdateAndSync.pollForReloadedContent(
-                                jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client
+                                jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client,
+                                visibleArticle: article
                             )
                         } catch {
                             // Matches the pre-server behavior of swallowing a failed reload

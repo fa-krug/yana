@@ -288,4 +288,61 @@ struct UpdateAndSyncTests {
             #expect(applied)
         }
     }
+
+    /// Regression test: the reader holds an already-registered `Article` on its own
+    /// `ModelContext`, fetched before the reload started. `SyncWriter` applies the reload's
+    /// content through a *separate* `@ModelActor` context, so without `visibleArticle` that
+    /// registered object's fields never change -- a plain `fetch` on its context doesn't refresh
+    /// an already-registered object's attributes from a sibling context's save. Passing
+    /// `visibleArticle` must update that exact object directly.
+    @Test func pollForReloadedContentUpdatesTheVisibleArticleDirectly() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", aggregator: "feed_content", identifier: "f1",
+                             enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
+                                        date: .now, author: "", icon: nil, read: false, starred: false,
+                                        createdAt: .now, updatedAt: .now)
+            ])
+
+            // A separate context, standing in for the reader's main-thread `ModelContext` --
+            // exactly like `ArticleResolution.resolve` would hand the reader.
+            let readerContext = ModelContext(container)
+            let visibleArticle = try readerContext.fetch(
+                FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == 100 })
+            ).first!
+            #expect(visibleArticle.hasContent == false)
+
+            let sseBody = "event: job\ndata: {\"jobId\":42,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"completed\",\"progress\":1}\n\n"
+            let contentBody = #"{"version":1,"blocks":[{"type":"paragraph","runs":[{"text":"fresh","styles":[],"link":null}]}]}"#
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                let path = request.url!.path
+                if path == "/api/v1/jobs/events" {
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                    return (response, sseBody.data(using: .utf8)!)
+                }
+                if path == "/api/v1/articles/100/content" {
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (response, contentBody.data(using: .utf8)!)
+                }
+                let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+                return (response, Data())
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let applied = await UpdateAndSync.pollForReloadedContent(
+                jobId: 42, articleServerID: 100, container: container, client: client, visibleArticle: visibleArticle
+            )
+
+            #expect(applied)
+            #expect(visibleArticle.hasContent)
+            #expect(visibleArticle.plainText.contains("fresh"))
+        }
+    }
 }

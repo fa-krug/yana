@@ -79,16 +79,25 @@ enum UpdateAndSync {
     /// the caller is stuck waiting out the full timeout before the fallback fetch runs -- keeping
     /// the default short bounds that worst-case stall tightly, since the fallback fetch itself is
     /// cheap and idempotent.
+    /// `visibleArticle`, if given, is the `Article` instance a reader is currently holding and
+    /// rendering for `articleServerID` -- pass it so its in-memory fields are updated directly on
+    /// its own `ModelContext` rather than only through `SyncWriter`'s separate `@ModelActor`
+    /// context. Without this, the write lands in the store but the already-registered `Article`
+    /// object the reader observes keeps its stale, pre-reload field values (a plain `fetch` does
+    /// not refresh already-registered objects' attributes from a sibling context's save), so the
+    /// reader silently keeps showing the old content even though the reload succeeded.
     @discardableResult
     static func pollForReloadedContent(
         jobId: Int, articleServerID: Int, container: ModelContainer, client: YanaAPIClient,
-        eventTimeout: Duration = .seconds(10)
+        visibleArticle: Article? = nil, eventTimeout: Duration = .seconds(10)
     ) async -> Bool {
         switch await waitForReloadJobOutcome(jobId: jobId, client: client, eventTimeout: eventTimeout) {
         case .some(false):
             return false
         case .some(true), .none:
-            return await fetchAndApplyContent(articleServerID: articleServerID, container: container, client: client)
+            return await fetchAndApplyContent(
+                articleServerID: articleServerID, container: container, client: client, visibleArticle: visibleArticle
+            )
         }
     }
 
@@ -121,11 +130,19 @@ enum UpdateAndSync {
     }
 
     private static func fetchAndApplyContent(
-        articleServerID: Int, container: ModelContainer, client: YanaAPIClient
+        articleServerID: Int, container: ModelContainer, client: YanaAPIClient, visibleArticle: Article?
     ) async -> Bool {
         guard let document: WireDocument = try? await client.get(
             "/api/v1/articles/\(articleServerID)/content"
         ) else { return false }
+        // Update the reader's already-registered object directly, on its own context, so the
+        // visible page reflects the new content immediately -- see `pollForReloadedContent`'s doc
+        // comment for why `SyncWriter`'s write alone isn't enough.
+        if let visibleArticle, visibleArticle.serverID == articleServerID {
+            visibleArticle.blocks = document.blocks
+            visibleArticle.hasContent = true
+            try? visibleArticle.modelContext?.save()
+        }
         // `SyncWriter` is a `@ModelActor` -- per this codebase's rule, every call into one from a
         // `@MainActor` context (this enum) must be hopped off-main via `OffMainActor.run`, or the
         // write runs inline on the calling (main) thread.
