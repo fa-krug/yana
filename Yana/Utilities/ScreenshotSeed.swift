@@ -163,6 +163,17 @@ enum ScreenshotSeed {
     @MainActor
     static func seedIfRequested(into context: ModelContext) async {
         guard ProcessInfo.processInfo.arguments.contains(launchArgument) else { return }
+        // Fake a paired state so Settings' "Manage Feeds & Tags" row (gated on
+        // `AuthenticatedClient.current(settings:)`, see `SettingsScreenView`) is visible in the
+        // `03_Feeds` shot. Safe: the fixture never actually navigates into `ManagementWebView`
+        // (which would need a real network round-trip), it only asserts the row exists.
+        var settings = AppSettings()
+        if settings.serverBaseURL.isEmpty {
+            settings.serverBaseURL = "https://example.com"
+        }
+        if KeychainService.loadDeviceToken() == nil {
+            KeychainService.saveDeviceToken("screenshot-fixture-token")
+        }
         await seed(into: context)
     }
 
