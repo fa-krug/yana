@@ -20,6 +20,8 @@ struct ReaderHostView: UIViewControllerRepresentable {
     var onRefresh: (() -> Void)?
     /// Fired from the empty-timeline page's shortcut button to start creating the first feed.
     var onCreateFeed: (() -> Void)?
+    /// Fired from the empty-timeline page's shortcut button (unpaired variant) to start pairing.
+    var onPairServer: (() -> Void)?
     var onShowFilter: (() -> Void)?
     var onShowArticleList: (() -> Void)?
     var onShowSettings: (() -> Void)?
@@ -27,7 +29,9 @@ struct ReaderHostView: UIViewControllerRepresentable {
     var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
+    var onOpenOnServer: ((Article) -> Void)?
     let aiReady: Bool
+    let hasServer: Bool
     let isSummarizing: Bool
     /// Bumped by the host after a summary is written so the displayed page re-renders.
     let reloadToken: Int
@@ -47,8 +51,11 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
+        reader.onOpenOnServer = onOpenOnServer
         reader.onCreateFeed = onCreateFeed
+        reader.onPairServer = onPairServer
         reader.aiReady = aiReady
+        reader.hasServer = hasServer
         reader.isSummarizing = isSummarizing
         context.coordinator.lastReloadToken = reloadToken
         reader.configure(articles: articles, index: currentIndex)
@@ -73,8 +80,11 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onForceUpdateArticle = onForceUpdateArticle
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
+        reader.onOpenOnServer = onOpenOnServer
         reader.onCreateFeed = onCreateFeed
+        reader.onPairServer = onPairServer
         reader.aiReady = aiReady
+        reader.hasServer = hasServer
         reader.isSummarizing = isSummarizing
         // MUST run before the reloadToken re-render: clearing summaryPending here lets the
         // subsequent reloadCurrentPage render the real summary; the unchanged-HTML guard then
@@ -115,6 +125,9 @@ struct ReaderScreen: View {
     @State private var isSummarizing = false
     @State private var reloadToken = 0
     @State private var showingCreateFeed = false
+    /// Server-side article id to view in `ManagementWebView`, set by the reader's "Open on Server"
+    /// menu action; `nil` means the sheet is dismissed.
+    @State private var openOnServerArticleID: Int?
     /// Set by the Settings "Show Welcome Screen Again" row; consumed once the Settings sheet has
     /// fully dismissed so the welcome cover presents cleanly (no stacked-presentation race).
     @State private var restartOnboardingPending = false
@@ -172,10 +185,27 @@ struct ReaderScreen: View {
 
 
 
-    private var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
+    private var hasServer: Bool { AuthenticatedClient.current() != nil }
+
+    /// `.server` mode degrades gracefully on its own but still needs an actual pairing to reach
+    /// the server; `.appleIntelligence` only needs on-device availability, independent of pairing.
+    private var aiReady: Bool {
+        switch settings.aiMode {
+        case .server: hasServer
+        case .appleIntelligence: AISummaryReadiness.isReady(mode: .appleIntelligence)
+        }
+    }
 
     private var showDemoBanner: Bool {
-        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner && AuthenticatedClient.current() == nil
+        settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner && !hasServer
+    }
+
+    /// Dropped while unpaired/demo: there's nothing on a server to pull fresh content from.
+    /// Precomputed (rather than inlined as a ternary in the view-builder call below) because the
+    /// call's already-large parameter list pushes the type-checker over its time budget otherwise.
+    private var onRefreshHandler: (() -> Void)? {
+        guard hasServer else { return nil }
+        return { self.triggerRefresh() }
     }
 
     var body: some View {
@@ -198,8 +228,12 @@ struct ReaderScreen: View {
                     onArticleDisplayed: { markRead($0) },
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
                     isFilterActive: settings.isTimelineFilterActive,
-                    onRefresh: triggerRefresh,
+                    onRefresh: onRefreshHandler,
                     onCreateFeed: { showingCreateFeed = true },
+                    onPairServer: {
+                        appState.welcomeInitialStep = .server
+                        appState.showWelcome = true
+                    },
                     onShowFilter: { appState.showFilter = true },
                     onShowArticleList: { appState.showArticleList = true },
                     onShowSettings: { appState.showSettings = true },
@@ -207,7 +241,9 @@ struct ReaderScreen: View {
                     onForceUpdateArticle: forceUpdateArticle,
                     onCopyLink: copyLink,
                     onSummarize: summarize,
+                    onOpenOnServer: { openOnServerArticleID = $0.serverID },
                     aiReady: aiReady,
+                    hasServer: hasServer,
                     isSummarizing: isSummarizing,
                     reloadToken: reloadToken
                 )
@@ -249,6 +285,20 @@ struct ReaderScreen: View {
                     serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
                     path: "/feeds/new"
                 )
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { openOnServerArticleID != nil },
+            set: { if !$0 { openOnServerArticleID = nil } }
+        )) {
+            if let id = openOnServerArticleID {
+                NavigationStack {
+                    ManagementWebView(
+                        serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
+                        path: "/articles/\(id)",
+                        title: "Article"
+                    )
+                }
             }
         }
         .sheet(isPresented: $appState.showArticleList) {

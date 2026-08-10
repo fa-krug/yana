@@ -32,7 +32,7 @@ struct YanaCommands: Commands {
         CommandMenu("Article") {
             Button("Update all") { model?.triggerRefresh() }
                 .keyboardShortcut("r", modifiers: .command)
-                .disabled(model == nil)
+                .disabled(model == nil || model?.hasServer != true)
 
             Divider()
 
@@ -56,11 +56,13 @@ struct YanaCommands: Commands {
             Divider()
 
             Button("Open in Browser") { if let a = model?.selectedArticle() { model?.openWebsite(a) } }
-                .disabled(model?.selectedSummary == nil)
+                .disabled(model?.selectedSummary == nil || model?.hasServer != true)
             Button("Copy link") { if let a = model?.selectedArticle() { model?.copyLink(a) } }
                 .disabled(model?.selectedSummary == nil)
             Button("Reload") { if let a = model?.selectedArticle() { model?.forceUpdateArticle(a) } }
-                .disabled(model?.selectedSummary == nil)
+                .disabled(model?.selectedSummary == nil || model?.hasServer != true)
+            Button("Open on Server") { if let a = model?.selectedArticle() { model?.openOnServer(a) } }
+                .disabled(model?.selectedSummary == nil || model?.hasServer != true)
         }
     }
 

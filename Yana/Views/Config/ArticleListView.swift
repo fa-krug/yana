@@ -96,37 +96,40 @@ struct ArticleListView: View {
                           systemImage: summary.isStarred ? "star.slash" : "star")
                 }
                 .tint(.yellow)
-                Button {
-                    guard let article = article(for: summary),
-                          let client = AuthenticatedClient.current(),
-                          let serverID = article.serverID
-                    else { return }
-                    UpdateActivity.shared.restart {
-                        do {
-                            let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
-                            guard !Task.isCancelled else { return }
-                            // See `UpdateAndSync.pollForReloadedContent`'s doc comment: this
-                            // deliberately re-fetches this one article's content directly rather
-                            // than going through `SyncEngine`'s generic `hasContent`-gated
-                            // backfill, which a premature fetch during the poll window could
-                            // permanently lock out of any later retry. `article` is registered on
-                            // this view's `modelContext`, the same context the reader (presented
-                            // from) reads from -- pass it as `visibleArticle` so a reload of the
-                            // currently-open (or previously-viewed) article updates that live
-                            // object too, not just the store.
-                            await UpdateAndSync.pollForReloadedContent(
-                                jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client,
-                                visibleArticle: article
-                            )
-                        } catch {
-                            // Matches the pre-server behavior of swallowing a failed reload
-                            // silently -- this swipe action has no toast/error surface.
+                // Dropped while unpaired/demo: there's no server to reload this article against.
+                if AuthenticatedClient.current() != nil {
+                    Button {
+                        guard let article = article(for: summary),
+                              let client = AuthenticatedClient.current(),
+                              let serverID = article.serverID
+                        else { return }
+                        UpdateActivity.shared.restart {
+                            do {
+                                let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
+                                guard !Task.isCancelled else { return }
+                                // See `UpdateAndSync.pollForReloadedContent`'s doc comment: this
+                                // deliberately re-fetches this one article's content directly rather
+                                // than going through `SyncEngine`'s generic `hasContent`-gated
+                                // backfill, which a premature fetch during the poll window could
+                                // permanently lock out of any later retry. `article` is registered on
+                                // this view's `modelContext`, the same context the reader (presented
+                                // from) reads from -- pass it as `visibleArticle` so a reload of the
+                                // currently-open (or previously-viewed) article updates that live
+                                // object too, not just the store.
+                                await UpdateAndSync.pollForReloadedContent(
+                                    jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client,
+                                    visibleArticle: article
+                                )
+                            } catch {
+                                // Matches the pre-server behavior of swallowing a failed reload
+                                // silently -- this swipe action has no toast/error surface.
+                            }
                         }
+                    } label: {
+                        Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")
                     }
-                } label: {
-                    Label("Reload", systemImage: "arrow.trianglehead.2.clockwise")
+                    .tint(.orange)
                 }
-                .tint(.orange)
             }
         ) { summary in
             Button { onSelect(summary) } label: { row(summary) }
