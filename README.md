@@ -1,110 +1,98 @@
-# Yana iOS
+# Yana
 
-A native SwiftUI iOS app that is a fully **self-contained RSS/content aggregator**. It
-fetches, parses, and processes feeds **on-device** and stores everything locally with
-SwiftData. There is **no server and no login** — everything runs entirely on the phone, for
-privacy-conscious users who want their feeds without any backend.
+A native SwiftUI app for iOS, iPadOS, and Mac (via Catalyst). Yana itself doesn't fetch or
+parse anything — it's a thin, offline-first client for [Yana Server](https://github.com/fa-krug/yana-server),
+a separate self-hosted project that does the actual work: pulling feeds, running scrapers,
+talking to AI providers. You point this app at a server you run, it syncs down articles,
+feeds, and images into a local SwiftData store so browsing works instantly offline, and it
+pushes your actions (starring, reloading an article, kicking off a refresh) back up as API
+calls. No credentials live on the device beyond a pairing token, and there's no feed/tag
+editor in the app at all — that's handled by the server's own web UI, opened from Settings in
+a WebView that reuses your login.
 
-Yana is **free and open source** under the [MIT License](LICENSE). Browse the code, file a
-bug, or request a new source at [github.com/fa-krug/yana](https://github.com/fa-krug/yana).
+Yana is free and open source under the [MIT License](LICENSE). Browse the code, file a bug,
+or request a new source at [github.com/fa-krug/yana](https://github.com/fa-krug/yana).
 
 ## Requirements
 
-- iOS 26.0+
-- Xcode 26.0+
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.38+
+You'll need iOS 26.0+ or macOS 26.0+ (for the Mac Catalyst build), Xcode 26.0+, and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.38+ to generate the project. You'll also
+need somewhere to point the app at — a running [Yana Server](https://github.com/fa-krug/yana-server)
+instance, since Yana on its own has nothing to sync.
 
 ## Setup
 
-1. Install XcodeGen:
+Install XcodeGen if you don't already have it:
 
-   ```bash
-   brew install xcodegen
-   ```
+```bash
+brew install xcodegen
+```
 
-2. Generate the Xcode project:
+Generate the Xcode project and open it:
 
-   ```bash
-   xcodegen generate
-   ```
+```bash
+xcodegen generate
+open Yana.xcodeproj
+```
 
-3. Open the project:
-
-   ```bash
-   open Yana.xcodeproj
-   ```
-
-4. Select the **Yana** scheme and run on a simulator or device.
+Then select the **Yana** scheme and run it, either on an iOS/iPadOS simulator or device, or
+on **My Mac (Mac Catalyst)**.
 
 ## How It Works
 
-- **Add feeds.** In the config hub, create a feed, pick an aggregator type (RSS/Atom, full
-  website, a site-specific scraper, Reddit, YouTube, or podcast), set its identifier
-  (URL / subreddit / channel) and per-type options, and assign **tags**.
-- **Aggregate on-device.** The app fetches and parses each feed locally and stores articles
-  in SwiftData. Articles inherit a snapshot of their feed's tags at import time.
-- **Read the timeline.** The home surface is a single **endless timeline** of all articles
-  ordered by date. Swipe in either direction; the app remembers your position. There is no
-  read/unread state.
-- **Filter by tags.** A filter button lists every tag (plus "Untagged"), each toggleable —
-  all on by default. **Starred** is itself a built-in tag.
-- **Refresh.** Pull down on the reader to force-update the current article and the whole
-  timeline. Per-feed and all-feeds updates are available in the config hub.
-- **Read aloud.** Play any article as speech in a voice that matches its language; playback
-  keeps going from the lock screen and Control Center. Pick a preferred voice in **Settings › Reader**.
-- **Keys.** Reddit and YouTube require user-supplied API keys; AI post-processing
-  (summarize / improve / translate) uses your own OpenAI / Anthropic / Gemini / Mistral /
-  Qwen / DeepSeek key. Settings shows config fields for the selected provider only (API key,
-  model, and — for OpenAI-compatible providers — API URL). A generated summary appears as
-  its own block between the article header and body. Secrets are stored in the Keychain.
-  A **Test** button in Settings checks each key with a minimal auth call and tells you
-  whether it's valid before you rely on it.
-- **Contribute.** **Settings › About** links straight to the source and the issue board —
-  the built-in source list grows from what people request there.
+On first launch you enter your server's URL and sign in through a system browser sheet
+(`ASWebAuthenticationSession`, so passkeys from iCloud Keychain work). That gets you a Bearer
+token in the Keychain — nothing else to configure on the phone.
+
+From there the app is mostly just a mirror of what's on the server. It syncs articles, feeds,
+and images down and stores them in SwiftData; a full sync also backfills article bodies and
+their images eagerly, so once you've synced, everything works with no connection at all. All
+the actual feed/tag setup and AI provider configuration happens on the server's web UI, opened
+from Settings › Manage Feeds & Tags.
+
+The home screen is an endless timeline of every article: read ones first, oldest to newest,
+then unread ones the same way, so the boundary between the two blocks is always the next
+thing worth reading. Swipe in either direction and it remembers where you left off. A filter
+button lets you toggle tags on and off — tag membership always reflects the feed's current
+state on the server rather than a snapshot from when the article arrived — plus a "Starred
+Only" switch.
+
+Pulling down on the reader triggers a full refresh on the server ("Update All"); swiping an
+article or using the reader's overflow menu re-fetches just that one ("Reload"). Both work the
+same way under the hood: the app kicks off the job, waits for it to finish server-side, then
+syncs the result down.
+
+Articles can be read aloud in a voice matching their language, with lock-screen and Control
+Center controls, and summarized either by your server's configured AI provider or by
+on-device Apple Intelligence, whichever you pick in Settings. A summary shows up as its own
+block right below the article header.
 
 ## Features
 
-### Core (MVP)
-- Feed configuration (create / edit / delete, aggregator type, per-feed options, tags)
-- Tag management (create / rename / recolor / delete / reorder; Starred is a locked built-in)
-- On-device aggregation into SwiftData
-- Endless date-ordered timeline with remembered position
-- Tag-based filtering (all on by default; includes "Untagged")
-- Native `[Block]` article rendering in the swipe reader
-- Read articles aloud in a language-matched voice with lock-screen controls
-- Star / unstar; starred articles are exempt from cleanup
-- Force update via pull-down; per-feed / all-feeds updates
-- ~One-month retention (older non-starred articles are cleaned up)
-- Best-effort background refresh
-- Optional AI post-processing per feed
+Device pairing keeps everything server-driven — the app has no aggregation logic of its own,
+just a sync layer talking to `/api/v1/articles/sync` and `/api/v1/feeds`. On top of that
+there's the endless timeline with remembered position, live tag filtering, native block
+rendering for article bodies, starring, and the Update/Reload actions described above, plus
+server-side retention so old articles clean themselves up without any client involvement.
+Background refresh runs opportunistically through `BGAppRefreshTask`/`BGProcessingTask` on
+iOS and a repeating loop on Mac. Beyond that there's full-text search across title, content,
+author, and feed name; opt-in notifications for new articles after a background sync;
+read-aloud with lock-screen controls; AI summarization from either the server or Apple
+Intelligence; and a proper native Mac app with its own two-column window layout rather than a
+scaled-up iPad view.
 
-### Enhanced (shipped)
-- Search across articles (title / content / author / feed name)
-- OPML import / export with `yana:` extension attributes
-- New-article notifications after a background refresh (opt-in)
-- Credential validation (Test buttons for Reddit / YouTube / AI keys)
-
-### Backlog
-- Biometric authentication (Face ID / Touch ID)
-- Multiple local libraries
-- Offline article caching
-- Share extension to add feeds
-- iPad multi-column layout
-- Home screen widgets
+Still on the list: Face ID/Touch ID protection, multiple independent local libraries, a share
+extension for adding feeds, a real iPad multi-column layout, and home screen widgets.
 
 ## Requesting a New Source
 
-Yana ships with built-in aggregators for RSS/Atom, full websites, several site-specific
-scrapers, Reddit, YouTube, and podcasts, and the list grows from real requests. Two ways to
-ask for one:
-
-- **In the app:** **Settings › About › Suggest a Source or Report an Issue** opens the issue
-  board directly.
-- **On the web:** open a new issue at
-  [github.com/fa-krug/yana/issues](https://github.com/fa-krug/yana/issues).
-
-Include the site's URL and, if you have it, a link to its feed or the exact page you want
-followed. The more specific the request, the quicker it can be added.
+Aggregators — RSS/Atom, full websites, site-specific scrapers, Reddit, YouTube, podcasts, and
+so on — live entirely on the [Yana Server](https://github.com/fa-krug/yana-server) side now,
+so there's no source-specific code in this app to touch. In the app, Settings › About ›
+Suggest a Source or Report an Issue opens the issue board directly; on the web you can open a
+new issue at [github.com/fa-krug/yana/issues](https://github.com/fa-krug/yana/issues). Include
+the site's URL and, if you have it, a link to its feed or the exact page you want followed —
+the more specific the request, the quicker it gets added.
 
 ## Project Structure
 
@@ -112,14 +100,16 @@ followed. The more specific the request, the quicker it can be added.
 Yana/
   YanaApp.swift             # App entry point; creates the SwiftData ModelContainer
   ContentView.swift         # Root view; opens directly into the timeline reader
-  Models/                   # SwiftData @Model types (Feed, Tag, Article), options, settings
-  Aggregators/              # AggregatorType, Aggregator protocol, registry, DTOs
-  Services/                 # AggregationService, KeychainService, AIClient, AIProcessor, CredentialTester
-  Views/                    # SwiftUI views (reader + config hub)
+  Models/                   # SwiftData @Model types (Feed, Tag, Article), settings
+  Networking/               # YanaAPIClient, block-decoding, run/job-event wire types, SSE parsing
+  Services/                 # DevicePairing, SyncEngine/SyncWriter, ArticleActions, ImageStore, AI providers
+  Reader/                   # Native SwiftUI block renderer, pager, Mac Catalyst windowing (Reader/Mac/)
+  Views/                    # SwiftUI views (settings, onboarding, management WebView)
   Utilities/                # Constants and extensions
   Resources/                # Asset catalogs, string catalog
-  Entitlements/             # iOS entitlements
+  Entitlements/             # iOS/Mac entitlements
 docs/app-store/             # App Store listing copy (EN/DE descriptions + keyword files)
+docs/site/                  # GitHub Pages marketing + legal site (yana.fa-krug.de)
 project.yml                 # XcodeGen project definition
 LICENSE                     # MIT license
 ```
@@ -127,67 +117,56 @@ LICENSE                     # MIT license
 ## Tests
 
 ```bash
-# Run unit tests
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-- `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`)
-- `YanaUITests/` — UI tests using XCTest
+`YanaTests/` has the unit tests, written with the Swift Testing framework. `YanaUITests/`
+covers UI flows with XCTest, including the flows that capture the App Store screenshots below.
 
 ## App Store Screenshots
 
-Generate framed, captioned marketing screenshots (English, iPhone-only — 6.9″ `iPhone 17 Pro Max`):
+For iPhone (English + German, 6.9″ `iPhone 17 Pro Max`), framed and captioned:
 
 ```bash
 brew install fastlane   # first time only
 fastlane screenshots
 ```
 
-This runs the `ScreenshotUITests` capture flow against an offline content fixture
-(`ScreenshotSeed`, DEBUG-only, gated by the `-UITEST_SCREENSHOTS` launch argument) on the
-6.9″ iPhone simulator, then frames the results — device frame + caption on a solid
-background sized to exactly 1320×2868 so the output stays App-Store-valid. Captions live in
-`fastlane/screenshots/en-US/title.strings`; framed output lands in `fastlane/screenshots/en-US/`.
+For the Mac App Store (English + German, 2880×1800):
 
-### Fully original, generated content
+```bash
+fastlane mac screenshots_mac
+```
 
-The fixture is **100% original** — invented feed names and hand-authored article text, with all
-imagery generated in-process: `ScreenshotImageFactory` renders article lead images and
-`ScreenshotLogoFactory` renders per-feed logo tiles, stored in `ImageStore` so the reader resolves
-them like any real import. Nothing is fetched from or copied out of real feeds, so there is no
-third-party licensing/trademark exposure and no image binaries are committed.
-
-To change what appears, edit `ScreenshotSeed.feedSpecs` (feed names, tags, article
-titles/summaries/bodies) and/or the two generators, then re-run `fastlane screenshots`. If you
-change article titles, check the `03_Search` query in `YanaUITests/ScreenshotUITests.swift` still
-matches an article.
-
-Notes:
-- The `screenshots` lane sets `LANG/LC_ALL=en_US.UTF-8` for you (fastlane crashes on a bare
-  `C`/US-ASCII shell locale).
-- `ScreenshotSeed` is idempotent (it bails if any feed already exists). After editing the
-  fixture content, erase the simulator before re-capturing so it re-seeds fresh:
-  `xcrun simctl shutdown all && xcrun simctl erase all`.
-- The caption font (`OpenSans-Bold.ttf`, SIL OFL) is bundled under `fastlane/screenshots/`
-  because frameit resolves the title font relative to that directory.
+Both lanes run against an offline content fixture (`ScreenshotSeed`, DEBUG-only, gated by the
+`-UITEST_SCREENSHOTS` launch argument), so nothing is fetched from real feeds and there's no
+licensing exposure. The iPhone lane adds a device frame and localized captions under
+`fastlane/screenshots/{en-US,de-DE}/`; the Mac lane just captures plain window shots, per Mac
+App Store convention, under `fastlane/screenshots_mac/{en-US,de-DE}/`. `CLAUDE.md` has the
+full pipeline details and the codesigning gotchas for the Mac lane.
 
 ## Architecture
 
-- **UI Framework:** SwiftUI (iOS 26.0+)
-- **Language:** Swift 6 with strict concurrency (`@MainActor` throughout)
-- **Persistence:** SwiftData — the single source of truth for feeds, tags, and articles
-- **Aggregation:** pluggable on-device `Aggregator`s keyed by `AggregatorType`, orchestrated
-  by `AggregationService`
-- **Secrets:** Keychain (Reddit / YouTube / AI provider keys); non-secret prefs in
-  `UserDefaults` via `AppSettings`
-- **Project Generation:** XcodeGen (`project.yml`)
-- **Code Quality:** SwiftLint + SwiftFormat
+The UI is SwiftUI throughout, shared across iOS, iPadOS, and Mac Catalyst, written in Swift 6
+with strict concurrency and `@MainActor` everywhere it matters. SwiftData is the local,
+offline-first mirror of whatever state the server has. Networking goes through
+`YanaAPIClient`, a thin typed wrapper over the server's `/api/v1/**` REST API; `SyncEngine`
+and `SyncWriter` handle pulling articles, feeds, and images down and applying local writes,
+while `ArticleActions` and `UpdateAndSync` push user-triggered actions up and poll them for
+completion. Auth is device pairing via `ASWebAuthenticationSession`, with the resulting Bearer
+token kept in the Keychain, device-local and not synced through iCloud. The project itself is
+generated from `project.yml` via XcodeGen, and code quality is enforced with SwiftLint and
+SwiftFormat.
+
+## Related Projects
+
+[Yana Server](https://github.com/fa-krug/yana-server) is the self-hosted backend this app
+pairs with — it's the one actually doing the aggregation, scraping, and AI-provider calls.
 
 ## License
 
 Yana is released under the [MIT License](LICENSE). Source and issue tracker:
-[github.com/fa-krug/yana](https://github.com/fa-krug/yana). Source and feature requests are
-welcome on the issue board.
+[github.com/fa-krug/yana](https://github.com/fa-krug/yana).
 
 ## Acknowledgements
 
