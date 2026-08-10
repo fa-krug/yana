@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Yana Server — Yana</title>
-    <meta name="description" content="Yana Server: a free, self-hosted, open-source RSS/YouTube/Reddit/podcast aggregator that powers the Yana app." />
+    <title>Yana Server: Yana</title>
+    <meta name="description" content="Yana Server is the free, self-hosted, open-source engine behind the Yana app: it fetches RSS, YouTube, Reddit and podcast sources, cleans them up, and offers AI summaries through one unified API." />
     <link rel="icon" href="assets/img/app-icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="assets/img/app-icon.svg" />
     <link rel="stylesheet" href="assets/styles.css" />
@@ -40,57 +40,87 @@
         <!-- English -->
         <div class="lang-en">
           <h1>Yana Server</h1>
-          <p>Starting with Yana 2.0, the app needs a Yana Server to fetch and manage feeds and articles. The server is free, open source, and self-hosted — there is no hosted/managed plan and no pricing.</p>
+          <p>Yana isn't just a phone app. The app is a client, and the actual work happens on the Yana Server: a program you install and run yourself, on a home NAS, a Raspberry Pi, or any small VPS. It's free, open source, and there's nothing to sign up for. You install it, it runs on your own hardware, and it's yours.</p>
 
-          <h2>What it is</h2>
-          <p>A self-hosted RSS, YouTube, Reddit, and podcast aggregator that powers the Yana iOS/Mac client's feed sync. It's a single process — Next.js, React, TypeScript, and a local SQLite database — with no Redis and no separate worker container.</p>
+          <h2>What it actually does</h2>
+          <p>Think of the server as the part of a feed reader that normally lives on someone else's infrastructure, except here it lives on yours. It goes out and checks your sources on a schedule, downloads new articles, strips out the ads and clutter, resizes images, and stores the finished result in its own database. When the app on your phone syncs, it isn't scraping the web itself, it's just asking your server "what's new," and your server already has the answer ready. That's also why the app works so well offline: everything it shows you was already fetched and processed before you opened it.</p>
+          <p>It ships as one process. No Redis, no queue workers, no separate database server to babysit, just Next.js, React, TypeScript, and a local SQLite file. If you can run a single Docker container or a single Node process, you can run Yana Server.</p>
+
+          <h2>A unified API for very different sources</h2>
+          <p>RSS, YouTube, Reddit, and podcasts don't have anything in common at the protocol level, and a handful of sites like heise, Tagesschau, or MacTechNews don't publish a usable feed at all. The server hides all of that behind one API: every source, however it's fetched under the hood, comes out the other side as the same kind of article, with the same fields, the same image handling, the same everything. The app never has to know or care what it's talking to. That's also what makes adding a new source mostly a server-side problem rather than something that needs a client update.</p>
+
+          <h2>Aggregators</h2>
+          <p>Each source type is handled by its own aggregator inside the server: one for generic RSS/Atom feeds, one for YouTube channels, one for Reddit communities, one for podcasts, and a set of hand-tuned scrapers for sites that are worth reading but never had a proper feed. New aggregators get added over time, usually because someone opened an issue asking for a source.</p>
+
+          <h2>AI features</h2>
+          <p>The server can generate short summaries of articles on request. Point it at an AI provider of your choice, OpenAI, Anthropic, Gemini, or a compatible endpoint, and the app can ask for a summary before you commit to reading the whole thing. This is entirely optional and off until you configure it: without a provider set up, the app just falls back to on-device Apple Intelligence, or skips summaries altogether.</p>
 
           <h2>Accounts</h2>
-          <p>Sign-in uses passkeys. An administrator account is created the first time the server starts; there is no public self-service sign-up — an administrator provisions each user.</p>
+          <p>Sign-in uses passkeys, no passwords to leak. The first time the server starts it creates an administrator account, and from there that administrator invites and manages every other user. There's no open sign-up page, because there doesn't need to be.</p>
 
           <h2>Install with npm</h2>
-          <pre><code>npm install
-npm run dev</code></pre>
+          <pre><code>npm install @sascha384/yana
+yana</code></pre>
           <p>Then open <code>http://localhost:3000</code>.</p>
 
           <h2>Install with Docker</h2>
-          <pre><code>mkdir -p data media &amp;&amp; chown -R 1001:1001 data media
-docker compose up --build</code></pre>
+          <pre><code>docker run -d \
+  --name yana \
+  -p 3000:3000 \
+  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+  -v yana-data:/app/data \
+  -v yana-media:/app/media \
+  sascha384/yana:latest</code></pre>
           <p>Then open <code>http://localhost:3000</code>.</p>
 
           <h2>Configuration</h2>
-          <p>Copy <code>.env.example</code> to <code>.env</code>. Set <code>BETTER_AUTH_SECRET</code> before any real deployment (for example with <code>openssl rand -base64 32</code>) — it signs session cookies. Optional variables include <code>DATABASE_PATH</code>, <code>MEDIA_PATH</code>, <code>PASSKEY_RP_ID</code>, <code>PUBLIC_URL</code>, <code>TZ</code>, and <code>PORT</code>. Change the default admin account (<code>admin@admin.com</code> / <code>admin</code>) immediately after first login.</p>
+          <p><code>BETTER_AUTH_SECRET</code> signs your session cookies, so generate a real one (the <code>openssl rand -base64 32</code> above works fine) rather than leaving it blank. Beyond that, a handful of optional environment variables cover things like the database path, media storage path, the passkey relying-party ID, your public URL, timezone, and port; the README on GitHub lists all of them. Change the default admin account right after your first login.</p>
 
-          <h2>License</h2>
-          <p>MIT-licensed, like the Yana app itself. Source: <a href="https://github.com/fa-krug/yana-server">github.com/fa-krug/yana-server</a>.</p>
+          <h2>License and source</h2>
+          <p>MIT-licensed, same as the app. All the technical details, the full list of aggregators, and the API reference live in the repository: <a href="https://github.com/fa-krug/yana-server">github.com/fa-krug/yana-server</a>.</p>
         </div>
 
         <!-- German -->
         <div class="lang-de">
           <h1>Yana-Server</h1>
-          <p>Ab Yana 2.0 benötigt die App einen Yana-Server, um Feeds und Artikel abzurufen und zu verwalten. Der Server ist kostenlos, Open Source und wird selbst gehostet — es gibt kein gehostetes Angebot und keine Preise.</p>
+          <p>Yana ist nicht nur eine Handy-App. Die App ist ein Client, die eigentliche Arbeit übernimmt der Yana-Server: ein Programm, das selbst installiert und betrieben wird, auf einem NAS zu Hause, einem Raspberry Pi oder einem kleinen VPS. Kostenlos, Open Source, keine Anmeldung nötig. Installieren, auf eigener Hardware laufen lassen, fertig.</p>
 
-          <h2>Was er ist</h2>
-          <p>Ein selbst gehosteter RSS-, YouTube-, Reddit- und Podcast-Aggregator, der die Feed-Synchronisierung des Yana-Clients für iOS/Mac antreibt. Ein einziger Prozess — Next.js, React, TypeScript und eine lokale SQLite-Datenbank — ohne Redis und ohne separaten Worker-Container.</p>
+          <h2>Was er wirklich tut</h2>
+          <p>Der Server übernimmt genau den Teil eines Feed-Readers, der sonst irgendwo bei einem fremden Anbieter läuft, nur eben auf der eigenen Infrastruktur. Er prüft die Quellen nach Zeitplan, lädt neue Artikel herunter, entfernt Werbung und störenden Ballast, verkleinert Bilder und speichert das Ergebnis in einer eigenen Datenbank. Wenn die App auf dem Telefon synchronisiert, durchsucht sie nicht selbst das Web, sondern fragt lediglich den eigenen Server, was es Neues gibt, und der hat die Antwort bereits fertig. Genau deshalb funktioniert die App auch offline so gut: Alles, was angezeigt wird, wurde vorher schon abgerufen und aufbereitet.</p>
+          <p>Läuft als ein einziger Prozess. Kein Redis, keine separaten Worker, keine zusätzliche Datenbank zum Warten, nur Next.js, React, TypeScript und eine lokale SQLite-Datei. Wer einen einzelnen Docker-Container oder einen einzelnen Node-Prozess starten kann, kann auch den Yana-Server betreiben.</p>
+
+          <h2>Eine einheitliche API für sehr unterschiedliche Quellen</h2>
+          <p>RSS, YouTube, Reddit und Podcasts haben auf Protokollebene wenig gemeinsam, und Seiten wie heise, Tagesschau oder MacTechNews bieten gar keinen brauchbaren Feed an. Der Server versteckt das alles hinter einer einzigen API: Jede Quelle kommt am Ende als derselbe Artikel-Typ heraus, mit denselben Feldern, derselben Bildbehandlung, egal wie sie im Hintergrund geholt wurde. Die App muss nie wissen, womit sie eigentlich spricht. Das macht eine neue Quelle meist zu einer reinen Server-Aufgabe, ohne dass ein App-Update nötig wäre.</p>
+
+          <h2>Aggregatoren</h2>
+          <p>Jeder Quellentyp wird im Server von einem eigenen Aggregator behandelt: einer für generische RSS-/Atom-Feeds, einer für YouTube-Kanäle, einer für Reddit-Communities, einer für Podcasts, dazu eine Reihe handgepflegter Scraper für Seiten, die lesenswert sind, aber nie einen ordentlichen Feed hatten. Neue Aggregatoren kommen mit der Zeit dazu, meist weil jemand ein Issue mit einer Quelle vorgeschlagen hat.</p>
+
+          <h2>KI-Funktionen</h2>
+          <p>Der Server kann auf Anfrage kurze Zusammenfassungen von Artikeln erzeugen. Dazu wird ein KI-Anbieter der eigenen Wahl eingerichtet, OpenAI, Anthropic, Gemini oder ein kompatibler Endpunkt, und die App kann dann vor dem eigentlichen Lesen eine Zusammenfassung anfragen. Das ist vollständig optional und standardmäßig aus: Ohne eingerichteten Anbieter greift die App auf Apple Intelligence auf dem Gerät zurück oder lässt Zusammenfassungen einfach weg.</p>
 
           <h2>Konten</h2>
-          <p>Die Anmeldung erfolgt per Passkey. Beim ersten Start wird ein Administratorkonto angelegt; eine öffentliche Selbstregistrierung gibt es nicht — ein Administrator legt jedes Konto an.</p>
+          <p>Die Anmeldung erfolgt per Passkey, keine Passwörter, die verloren gehen können. Beim ersten Start legt der Server ein Administratorkonto an, und von dort aus lädt diese Person alle weiteren Nutzer ein und verwaltet sie. Eine offene Registrierungsseite gibt es nicht, weil sie nicht gebraucht wird.</p>
 
           <h2>Installation mit npm</h2>
-          <pre><code>npm install
-npm run dev</code></pre>
+          <pre><code>npm install @sascha384/yana
+yana</code></pre>
           <p>Anschließend <code>http://localhost:3000</code> öffnen.</p>
 
           <h2>Installation mit Docker</h2>
-          <pre><code>mkdir -p data media &amp;&amp; chown -R 1001:1001 data media
-docker compose up --build</code></pre>
+          <pre><code>docker run -d \
+  --name yana \
+  -p 3000:3000 \
+  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+  -v yana-data:/app/data \
+  -v yana-media:/app/media \
+  sascha384/yana:latest</code></pre>
           <p>Anschließend <code>http://localhost:3000</code> öffnen.</p>
 
           <h2>Konfiguration</h2>
-          <p><code>.env.example</code> nach <code>.env</code> kopieren. Vor jedem echten Einsatz <code>BETTER_AUTH_SECRET</code> setzen (zum Beispiel mit <code>openssl rand -base64 32</code>) — es signiert die Sitzungs-Cookies. Optionale Variablen sind <code>DATABASE_PATH</code>, <code>MEDIA_PATH</code>, <code>PASSKEY_RP_ID</code>, <code>PUBLIC_URL</code>, <code>TZ</code> und <code>PORT</code>. Das Standard-Administratorkonto (<code>admin@admin.com</code> / <code>admin</code>) direkt nach der ersten Anmeldung ändern.</p>
+          <p><code>BETTER_AUTH_SECRET</code> signiert die Sitzungs-Cookies, deshalb einen echten Wert erzeugen (der obige Befehl mit <code>openssl rand -base64 32</code> reicht dafür) statt ihn leer zu lassen. Daneben gibt es einige optionale Umgebungsvariablen für Dinge wie den Datenbankpfad, den Medienpfad, die Passkey-Relying-Party-ID, die eigene öffentliche URL, Zeitzone und Port; die vollständige Liste steht im README auf GitHub. Das Standard-Administratorkonto direkt nach der ersten Anmeldung ändern.</p>
 
-          <h2>Lizenz</h2>
-          <p>MIT-lizenziert, wie die Yana-App selbst. Quellcode: <a href="https://github.com/fa-krug/yana-server">github.com/fa-krug/yana-server</a>.</p>
+          <h2>Lizenz und Quellcode</h2>
+          <p>MIT-lizenziert, wie die App selbst. Alle technischen Details, die vollständige Liste der Aggregatoren und die API-Referenz stehen im Repository: <a href="https://github.com/fa-krug/yana-server">github.com/fa-krug/yana-server</a>.</p>
         </div>
       </div>
     </main>
