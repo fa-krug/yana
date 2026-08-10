@@ -26,4 +26,4 @@ Search across everything by title, text, author, or source name.
 
 Old articles get cleaned up according to your server's retention settings, while your starred ones always stay put.
 
-Yana is built for people who want their feeds without handing their reading habits to anyone. If you care about speed, privacy, and having your content actually available when you want it, give it a try. You will need a free, self-hosted Yana Server to pair with — see yana.fa-krug.de/server for setup.
+Yana is built for people who want their feeds without handing their reading habits to anyone. If you care about speed, privacy, and having your content actually available when you want it, give it a try. You will need a free, self-hosted Yana Server to pair with, setup at yana.fa-krug.de/server.

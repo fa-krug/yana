@@ -567,6 +567,17 @@ source and issue board live at
   `YanaUITests.scrollToSettingsRow(_:in:)`, which drags along the leading edge over the inert row
   labels and waits for `isHittable` rather than `exists`.
 
+### User-facing text style
+- **All user-facing copy — in-app strings, App Store descriptions, release notes, marketing site
+  copy, onboarding text — must read as naturally written prose, not as AI-generated text.** Write
+  in flowing sentences and paragraphs. **Never use bullet points, numbered lists, or em/en dashes
+  (—, –) as a rhetorical device** to bolt two clauses together — use a period, comma, or "and"/"but"
+  instead, the way a person drafting marketing copy actually writes. This applies to English and
+  German equally. See `docs/app-store/description-{en,de}.md` and
+  `docs/app-store/release-notes-*.md` for the target tone and structure.
+- This does **not** apply to code comments, commit messages, or this file (`CLAUDE.md`) — only to
+  text a user of the app or website will actually read.
+
 ### Translations
 - Source language: English (`en`)
 - Supported languages: English (`en`), German (`de`). Registered in `project.yml` under `options.knownRegions`.
