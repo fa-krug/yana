@@ -7,7 +7,7 @@ import UIKit
 
 /// A one-shot request to scroll the Mac sidebar to a specific row. `TimelineModel` bumps this only
 /// from programmatic selection changes (`moveSelection`, the anchor restore in `applyTimeline`, a
-/// remote anchor landing via `jumpToSyncedTimelinePosition`, and the self-heal in
+/// remote position landing via `jumpToSyncedTimelinePosition`, and the self-heal in
 /// `reanchorToCurrentArticle`) — never from the `selection` setter, which is what the sidebar
 /// `List` itself drives on a user click; bumping from there would fight the user's own scrolling.
 /// `token` always increments even when `id` repeats, so a second request for the same article
@@ -51,10 +51,11 @@ final class TimelineModel {
 
 
 
-    /// Records + pushes a changed anchor to iCloud KVS (coalesced). The same `TimelineAnchorWriter`
-    /// type iOS's `ReaderAnchorController` uses, so the no-ping-pong guarantee is asserted against
-    /// one shared, testable seam on both platforms: `jumpToSyncedTimelinePosition` must never call
-    /// `anchorWriter.record`, only the user-driven `selection` setter and `moveSelection` may.
+    /// Records the anchor locally and pushes it to the server (debounced) via `ReadingPositionSync`.
+    /// The same `TimelineAnchorWriter` type iOS's `ReaderAnchorController` uses, so the
+    /// no-ping-pong guarantee is asserted against one shared, testable seam on both platforms:
+    /// `jumpToSyncedTimelinePosition` must never call `anchorWriter.record`, only the user-driven
+    /// `selection` setter and `moveSelection` may.
     let anchorWriter: TimelineAnchorWriter
 
     var isConfigured: Bool { modelContext != nil }
@@ -85,9 +86,9 @@ final class TimelineModel {
                   // The sidebar `List(selection:)` binding is re-read (and written back) after any
                   // programmatic move of `currentIndex` — e.g. `jumpToSyncedTimelinePosition` — so
                   // without this guard, re-selecting the row already at `currentIndex` would still
-                  // call `anchorWriter.record`/`pushSoon` for a no-op selection change. Worst case
-                  // that's a stale anchor pushed back to iCloud KVS moments after a newer one
-                  // arrived, which last-writer-wins could then drag another device backwards.
+                  // call `anchorWriter.record` for a no-op selection change. Worst case that's a
+                  // stale anchor pushed back to the server moments after a newer one arrived, which
+                  // last-writer-wins could then drag another device backwards.
                   i != currentIndex
             else { return }
             currentIndex = i
@@ -174,12 +175,27 @@ final class TimelineModel {
         )
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }
-        currentIndex = resolved.anchorIndex
+        currentIndex = jumpToSyncedTimelinePosition(in: resolved.articles) ?? resolved.anchorIndex
 
         didRestoreAnchor = true
         // The launch case: the sidebar has no rows to scroll to until this delivery, so this is the
         // first point a scroll request can be made.
         requestScroll(to: resolved.articles[currentIndex].identifier)
+    }
+
+    /// Applies a reading position pulled from another paired device (see
+    /// `AppSettings.pendingRemoteReadingPosition`), if it resolves against `articles`. Consumes the
+    /// pending value either way (resolved or not) so a stale/unsyncable remote position isn't
+    /// retried forever. Call ONLY from `applyTimeline`'s first-load branch -- never mid-session,
+    /// which would yank the user off the article they're actively reading. Mirrors
+    /// `ReaderAnchorController.jumpToSyncedTimelinePosition` on iOS; see its doc comment for why
+    /// this must never call `anchorWriter.record`.
+    private func jumpToSyncedTimelinePosition(in articles: [ArticleSummary]) -> Int? {
+        guard let articleID = settings.pendingRemoteReadingPosition else { return nil }
+        settings.pendingRemoteReadingPosition = nil
+        guard let index = articles.firstIndex(where: { $0.serverID == articleID }) else { return nil }
+        settings.timelineAnchorIdentifier = articles[index].identifier
+        return index
     }
 
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention

@@ -11,6 +11,11 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
     /// `identifier`.
     let persistentID: PersistentIdentifier?
     let identifier: String
+    /// This article's id on the paired server, mirroring `Article.serverID`. `nil` when the
+    /// article hasn't synced yet. Lets `ReadingPositionSync`/`ReaderAnchorController` resolve a
+    /// pulled remote reading position (a server article id) directly against the displayed
+    /// timeline without a separate SwiftData round-trip.
+    let serverID: Int?
     let title: String
     let feedName: String
     let feedLogoHash: String?
@@ -33,6 +38,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
     init(_ article: Article, tagNamesByID: [Int: String] = [:]) {
         persistentID = article.persistentModelID
         identifier = article.identifier
+        serverID = article.serverID
         title = article.title
         feedName = article.feed?.name ?? ""
         feedLogoHash = article.feed?.logoImageHash
@@ -46,13 +52,16 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
 
     // Persist every field EXCEPT the runtime-only `persistentID`.
     private enum CodingKeys: String, CodingKey {
-        case identifier, title, feedName, feedLogoHash, author, date, createdAt, tagNames, isStarred, isRead
+        case identifier, serverID, title, feedName, feedLogoHash, author, date, createdAt, tagNames, isStarred, isRead
     }
 
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         persistentID = nil
         identifier = try c.decode(String.self, forKey: .identifier)
+        // `decodeIfPresent`, not `decode`: cache entries written before this field existed have no
+        // `serverID` key at all, and must decode as `nil` rather than fail the whole disk-cache load.
+        serverID = try c.decodeIfPresent(Int.self, forKey: .serverID)
         title = try c.decode(String.self, forKey: .title)
         feedName = try c.decode(String.self, forKey: .feedName)
         feedLogoHash = try c.decodeIfPresent(String.self, forKey: .feedLogoHash)
@@ -67,6 +76,7 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
     func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(identifier, forKey: .identifier)
+        try c.encodeIfPresent(serverID, forKey: .serverID)
         try c.encode(title, forKey: .title)
         try c.encode(feedName, forKey: .feedName)
         try c.encodeIfPresent(feedLogoHash, forKey: .feedLogoHash)
