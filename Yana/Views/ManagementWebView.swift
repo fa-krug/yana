@@ -7,10 +7,11 @@ import WebKit
 struct ManagementWebView: View {
     let serverBaseURL: URL
     var path: String = "/feeds"
+    var title: LocalizedStringKey = "Manage"
 
     var body: some View {
         ManagementWKWebView(url: serverBaseURL.appendingPathComponent(path))
-            .navigationTitle("Manage")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
     }
 }

@@ -39,6 +39,9 @@ final class TimelineModel {
     private(set) var scrollTarget: SidebarScrollRequest?
     var isSummarizing = false
     var toast: ToastMessage?
+    /// Server-side article id to view in `ManagementWebView`, set by `openOnServer`; `nil` means
+    /// the sheet `MacRootView` binds to this is dismissed.
+    var openOnServerArticleID: Int?
 
     private let settings: AppSettings
     private var didRestoreAnchor = false
@@ -130,7 +133,14 @@ final class TimelineModel {
         scrollTarget = SidebarScrollRequest(id: id, token: (scrollTarget?.token ?? 0) + 1)
     }
 
-    var aiReady: Bool { AISummaryReadiness.isReady(mode: settings.aiMode) }
+    /// `.server` mode degrades gracefully on its own but still needs an actual pairing to reach
+    /// the server; `.appleIntelligence` only needs on-device availability, independent of pairing.
+    var aiReady: Bool {
+        switch settings.aiMode {
+        case .server: hasServer
+        case .appleIntelligence: AISummaryReadiness.isReady(mode: .appleIntelligence)
+        }
+    }
 
     // MARK: - Filtering / anchor (mirrors ReaderScreen)
 
@@ -224,6 +234,15 @@ final class TimelineModel {
         guard let url = URL(string: article.url) else { return }
         UIApplication.shared.open(url)
         #endif
+    }
+
+    /// True when a server is paired, gating the "Open on Server" action alongside a per-article
+    /// `serverID` check at the call site.
+    var hasServer: Bool { AuthenticatedClient.current() != nil }
+
+    func openOnServer(_ article: Article) {
+        guard AuthenticatedClient.current() != nil, let serverID = article.serverID else { return }
+        openOnServerArticleID = serverID
     }
 
     func summarize(_ article: Article) {

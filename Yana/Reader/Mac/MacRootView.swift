@@ -62,6 +62,20 @@ struct MacRootView: View {
                 )
             }
         }
+        .sheet(isPresented: Binding(
+            get: { model.openOnServerArticleID != nil },
+            set: { if !$0 { model.openOnServerArticleID = nil } }
+        )) {
+            if let id = model.openOnServerArticleID {
+                NavigationStack {
+                    ManagementWebView(
+                        serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
+                        path: "/articles/\(id)",
+                        title: "Article"
+                    )
+                }
+            }
+        }
         .toast($model.toast)
         // Scene-wide (not tied to which view has focus) so ⌘↑/⌘↓ move the article even when the
         // UIKit reader in the detail pane holds first responder.
@@ -167,15 +181,21 @@ struct MacRootView: View {
                 .disabled(model.selectedSummary == nil)
                 .help(Text("Read Aloud"))
 
-                Button {
-                    if let article = model.selectedArticle() { model.openWebsite(article) }
-                } label: {
-                    Label("Open Page", systemImage: "safari").macToolbarIcon()
+                // Dropped while unpaired/demo: those articles' `url`s aren't real pages worth
+                // leaving the app for.
+                if model.hasServer {
+                    Button {
+                        if let article = model.selectedArticle() { model.openWebsite(article) }
+                    } label: {
+                        Label("Open Page", systemImage: "safari").macToolbarIcon()
+                    }
+                    .disabled(model.selectedSummary == nil)
+                    .help(Text("Open Page"))
                 }
-                .disabled(model.selectedSummary == nil)
-                .help(Text("Open Page"))
 
-                updateButton
+                if model.hasServer {
+                    updateButton
+                }
             }
         }
 
@@ -194,12 +214,19 @@ struct MacRootView: View {
                         } label: { Label("Summarize", systemImage: "sparkles") }
                             .disabled(model.isSummarizing)
                     }
-                    Button {
-                        if let article = model.selectedArticle() { model.forceUpdateArticle(article) }
-                    } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+                    if model.hasServer {
+                        Button {
+                            if let article = model.selectedArticle() { model.forceUpdateArticle(article) }
+                        } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+                    }
                     Button {
                         if let article = model.selectedArticle() { model.copyLink(article) }
                     } label: { Label("Copy link", systemImage: "link") }
+                    if model.hasServer {
+                        Button {
+                            if let article = model.selectedArticle() { model.openOnServer(article) }
+                        } label: { Label("Open on Server", systemImage: "server.rack") }
+                    }
                 }
             } label: {
                 Label("More", systemImage: "ellipsis").macToolbarIcon()
@@ -540,19 +567,31 @@ private struct MacArticleRow: View {
                   systemImage: summary.isStarred ? "star.slash" : "star")
         }
 
-        Button {
-            if let article = model.resolve(summary) { model.openWebsite(article) }
-        } label: { Label("Open in Browser", systemImage: "safari") }
+        // Dropped while unpaired/demo: those articles' `url`s aren't real pages worth leaving
+        // the app for.
+        if model.hasServer {
+            Button {
+                if let article = model.resolve(summary) { model.openWebsite(article) }
+            } label: { Label("Open in Browser", systemImage: "safari") }
+        }
 
         Button {
             if let article = model.resolve(summary) { model.copyLink(article) }
         } label: { Label("Copy link", systemImage: "link") }
 
+        if model.hasServer {
+            Button {
+                if let article = model.resolve(summary) { model.openOnServer(article) }
+            } label: { Label("Open on Server", systemImage: "server.rack") }
+        }
+
         Divider()
 
-        Button {
-            if let article = model.resolve(summary) { model.forceUpdateArticle(article) }
-        } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+        if model.hasServer {
+            Button {
+                if let article = model.resolve(summary) { model.forceUpdateArticle(article) }
+            } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+        }
 
         if model.aiReady {
             Button {

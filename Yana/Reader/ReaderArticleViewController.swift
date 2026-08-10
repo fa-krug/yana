@@ -3,20 +3,31 @@ import SafariServices
 import SwiftUI
 
 /// The reader's zero-state, shown inside the pager (so the nav-bar chrome stays) when the timeline
-/// is empty. Offers a direct shortcut to create the first feed.
+/// is empty. Offers a direct shortcut to create the first feed when paired — an unpaired device has
+/// no server to create a feed against, so it offers pairing instead (mirrors `MacEmptyLibraryView`).
 struct ReaderEmptyStateView: View {
+    var isPaired: Bool
     var onCreateFeed: () -> Void
+    var onPairServer: () -> Void
 
     var body: some View {
         ContentUnavailableView {
             Label("No Articles", systemImage: "tray")
                 .accessibilityIdentifier("emptyArticlesTitle")
         } description: {
-            Text("Add your first feed to start reading.")
+            Text(isPaired
+                 ? "Add your first feed to start reading."
+                 : "Pair a Yana Server with feeds and articles to start reading.")
         } actions: {
-            Button(String(localized: "Add Your First Feed"), action: onCreateFeed)
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("emptyAddFirstFeed")
+            if isPaired {
+                Button(String(localized: "Add Your First Feed"), action: onCreateFeed)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("emptyAddFirstFeed")
+            } else {
+                Button(String(localized: "Pair Server"), action: onPairServer)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("emptyPairServer")
+            }
         }
     }
 }
@@ -37,10 +48,26 @@ final class ReaderArticleViewController: UIViewController,
     var onForceUpdateArticle: ((Article) -> Void)?
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
+    var onOpenOnServer: ((Article) -> Void)?
     /// Invoked by the empty-timeline page's shortcut button to begin creating the first feed.
     var onCreateFeed: (() -> Void)?
+    /// Invoked by the empty-timeline page's shortcut button (unpaired variant) to start pairing.
+    var onPairServer: (() -> Void)?
     /// Whether AI is configured/available; gates the Summarize menu item. Set by the host.
     var aiReady = false
+    /// Whether a server is paired; gates the "Open on Server" menu item and the toolbar's
+    /// "Open in Browser" button (an unpaired/demo article's source link isn't a real page worth
+    /// leaving the app for). Set by the host.
+    var hasServer = false {
+        didSet {
+            guard hasServer != oldValue, isViewLoaded else { return }
+            if isShowingEmptyState {
+                emptyStateController.rootView = makeEmptyStateView()
+            } else {
+                configureToolbar()
+            }
+        }
+    }
     /// True while an on-demand summary is in flight; disables the Summarize menu item.
     var isSummarizing = false
 
@@ -56,15 +83,23 @@ final class ReaderArticleViewController: UIViewController,
     private var isShowingEmptyState = false
 
     /// The zero-state page shown inside the pager when there are no articles. Built lazily; its
-    /// button reads `onCreateFeed` at tap time, so it works even though the callback is assigned
-    /// after this controller is created.
-    private lazy var emptyStateController: UIViewController = {
-        let host = UIHostingController(
-            rootView: ReaderEmptyStateView(onCreateFeed: { [weak self] in self?.onCreateFeed?() })
-        )
+    /// buttons read `onCreateFeed`/`onPairServer` at tap time, so they work even though the
+    /// callbacks are assigned after this controller is created. `hasServer`'s `didSet` and
+    /// `applyEmptyState` both refresh `rootView` via `makeEmptyStateView()` so `isPaired` tracks
+    /// pairing changes that happen while this page is on screen.
+    private lazy var emptyStateController: UIHostingController<ReaderEmptyStateView> = {
+        let host = UIHostingController(rootView: makeEmptyStateView())
         host.view.backgroundColor = .systemBackground
         return host
     }()
+
+    private func makeEmptyStateView() -> ReaderEmptyStateView {
+        ReaderEmptyStateView(
+            isPaired: hasServer,
+            onCreateFeed: { [weak self] in self?.onCreateFeed?() },
+            onPairServer: { [weak self] in self?.onPairServer?() }
+        )
+    }
 
     /// The pager's internal gesture scroll view (`UIPageViewController` hosts a private
     /// `_UIQueuingScrollView`), located by scanning the page controller's subviews. Used to detect
@@ -301,17 +336,24 @@ final class ReaderArticleViewController: UIViewController,
 
     private func configureToolbar() {
         shareItem = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareArticle))
-        let browser = UIBarButtonItem(image: UIImage(systemName: "safari"), style: .plain, target: self, action: #selector(openInBrowser))
-        browser.accessibilityLabel = String(localized: "Open in Browser")
         speakItem = UIBarButtonItem(image: UIImage(systemName: "play.circle"), style: .plain, target: self, action: #selector(toggleSpeech))
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
         // Read-aloud + Share + Open-in-Browser grouped together at the right edge, with the
-        // read-aloud (play/pause) button left-most of the group.
-        toolbarItems = [flex(), speakItem, shareItem, browser]
+        // read-aloud (play/pause) button left-most of the group. Open-in-Browser is dropped while
+        // unpaired/demo: those articles' `url`s aren't real pages worth leaving the app for.
+        toolbarItems = hasServer
+            ? [flex(), speakItem, shareItem, browserItem]
+            : [flex(), speakItem, shareItem]
         updateSpeakItem()
         // Reflect synthesizer state transitions (pause, finish) back onto the toolbar button.
         speech.onStateChange = { [weak self] in self?.updateSpeakItem() }
     }
+
+    private lazy var browserItem: UIBarButtonItem = {
+        let item = UIBarButtonItem(image: UIImage(systemName: "safari"), style: .plain, target: self, action: #selector(openInBrowser))
+        item.accessibilityLabel = String(localized: "Open in Browser")
+        return item
+    }()
 
     private func updateSpeakItem() {
         let speaking = speech.state == .speaking
@@ -358,6 +400,7 @@ final class ReaderArticleViewController: UIViewController,
             ? [articleListItem, indicatorItem] : [articleListItem]
         navigationItem.rightBarButtonItems = rightBarItems
         speech.stop()
+        emptyStateController.rootView = makeEmptyStateView()
         guard pageController.viewControllers?.first !== emptyStateController else { return }
         pageController.setViewControllers([emptyStateController], direction: .forward, animated: false)
     }
@@ -585,20 +628,30 @@ final class ReaderArticleViewController: UIViewController,
             return [UIMenu(title: "", options: .displayInline, children: [settingsAction])]
         }
         let config = ReaderMenuBuilder.config(
-            hasURL: !article.url.isEmpty, aiReady: aiReady
+            hasURL: !article.url.isEmpty, aiReady: aiReady,
+            hasServerArticle: hasServer && article.serverID != nil
         )
         var actions: [UIMenuElement] = []
 
-        actions.append(UIAction(
-            title: String(localized: "Reload"),
-            image: UIImage(systemName: "arrow.trianglehead.2.clockwise")
-        ) { [weak self] _ in self?.onForceUpdateArticle?(article) })
+        if config.showReload {
+            actions.append(UIAction(
+                title: String(localized: "Reload"),
+                image: UIImage(systemName: "arrow.trianglehead.2.clockwise")
+            ) { [weak self] _ in self?.onForceUpdateArticle?(article) })
+        }
 
         if config.showCopyLink {
             actions.append(UIAction(
                 title: String(localized: "Copy link"),
                 image: UIImage(systemName: "link")
             ) { [weak self] _ in self?.onCopyLink?(article) })
+        }
+
+        if config.showOpenOnServer {
+            actions.append(UIAction(
+                title: String(localized: "Open on Server"),
+                image: UIImage(systemName: "server.rack")
+            ) { [weak self] _ in self?.onOpenOnServer?(article) })
         }
 
         if config.showSummarize {
