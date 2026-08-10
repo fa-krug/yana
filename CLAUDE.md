@@ -331,17 +331,38 @@ source and issue board live at
   `.NSPersistentStoreRemoteChange` (to catch CloudKit merges, which land below SwiftData with no
   `didSave` posted) is gone, since `AppContainer.shared` no longer configures a `cloudKitDatabase` at
   all (CloudKit/iCloud sync was removed from this app before this rework began).
-- **Timeline anchor** (`Yana/Services/TimelineAnchorWriter.swift`, `Yana/Reader/ReaderAnchorController.swift`,
-  `Yana/Reader/Mac/TimelineModel.swift`): also much simpler post-CloudKit-removal than the old
-  cross-device-sync design this file used to document. `TimelineAnchorWriter` just persists the
-  current article's `identifier` to `AppSettings.timelineAnchorIdentifier` (device-local
-  `UserDefaults`) — there is no push, no `NSUbiquitousKeyValueStore`, no synced UID, no
-  no-ping-pong concern, because there is nothing to ping-pong with any more. `ReaderAnchorController`
-  (iOS) and `TimelineModel.anchorWriter` (Mac) are still kept as separate, directly-testable
-  read/write surfaces so `saveAnchor`/`recordOpenedArticle` (user-driven) and
-  `reanchorIndex`/`reanchorToCurrentArticle` (self-heal on timeline mutation, resolving by
-  identifier via `TimelinePageIndex`) stay distinguishable in tests, even though the sync layer that
-  originally motivated the split is gone.
+- **Timeline anchor / reading-position sync** (`Yana/Services/TimelineAnchorWriter.swift`,
+  `Yana/Services/ReadingPositionSync.swift`, `Yana/Reader/ReaderAnchorController.swift`,
+  `Yana/Reader/Mac/TimelineModel.swift`): server-backed, not the old CloudKit-era cross-device-sync
+  design this file used to document, and not purely device-local either. `TimelineAnchorWriter.record`
+  does two things on every user-driven selection change (a completed swipe, a sidebar click,
+  Next/Previous Article, or picking an article from the list): it persists the current article's
+  `identifier` to `AppSettings.timelineAnchorIdentifier` (device-local `UserDefaults`, always
+  immediate — offline-first, navigating never waits on network), and it schedules a debounced push
+  of that article's `serverID` to `PATCH /api/v1/reading-position` via `ReadingPositionSync` (a
+  ~2s idle debounce, so rapid timeline navigation doesn't fire a PATCH per page). A failed push is
+  queued in `AppSettings.pendingReadingPositionPush` — a single field, not folded into
+  `PendingWriteQueue`, since a reading position has no per-article multiplicity — and retried by
+  `ReadingPositionSync.flushPending`, called from `SyncEngine.performSync()` right alongside
+  `PendingWriteQueue.flush`, before any pull. `SyncEngine.syncReadingPosition()` pulls
+  `GET /api/v1/reading-position` on every sync, gated by `updatedAt` last-writer-wins against
+  `AppSettings.readingPositionUpdatedAt` (so a stale pull can neither regress a push still in
+  flight nor re-apply a position this device just pushed itself), and stashes a genuinely newer
+  value in `AppSettings.pendingRemoteReadingPosition` rather than applying it immediately —
+  swallowing any failure (including a 404 from a server predating this endpoint) since this is a
+  nicety layered on the sync pass, never allowed to break the feeds/tags/articles pull that
+  actually matters. That stashed value is applied — and consumed — by
+  `ReaderAnchorController`/`TimelineModel`'s `jumpToSyncedTimelinePosition`, called ONLY from
+  `applyTimeline()`'s first-load branch (a fresh app launch/session, before the user has navigated)
+  by resolving the pulled server article id directly against `ArticleSummary.serverID` — never
+  mid-session, which would yank the user off the article they're actively reading. This read side
+  writes `timelineAnchorIdentifier` directly rather than going through `TimelineAnchorWriter.record`,
+  by design: it must never trigger another push, or two open devices would trade anchor writes
+  forever (pinned by `ReaderAnchorControllerTests`). `ReaderAnchorController` (iOS) and
+  `TimelineModel.anchorWriter` (Mac) remain separate, directly-testable read/write surfaces so the
+  user-driven push path (`saveAnchor`/`recordOpenedArticle`/`selection`/`moveSelection`) and the
+  self-heal/remote-apply read paths (`reanchorIndex`/`reanchorToCurrentArticle`/
+  `jumpToSyncedTimelinePosition`) stay distinguishable in tests.
 - **Background refresh** (`Yana/Services/BackgroundRefreshManager.swift`): best-effort periodic
   `BGAppRefreshTask` + `BGProcessingTask`, registered at launch, rescheduled from the per-device
   `AppSettings.updateInterval` (`UpdateInterval` enum). `runRefresh` now calls
