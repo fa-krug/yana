@@ -188,6 +188,11 @@ struct YanaApp: App {
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 640)
+        // Locks the window to its content's size (which `WelcomeView` now pins to exactly this
+        // size on Mac Catalyst) rather than leaving it freely resizable — onboarding is a small,
+        // fixed wizard, not a document window, so there's no reason a user (or a restored prior
+        // frame) should be able to stretch it into a mostly-empty giant window.
+        .windowResizability(.contentSize)
 
         WindowGroup(id: WindowID.serverNotice, for: Bool.self) { _ in
             ServerMigrationNoticeWindowRoot(appState: appState)

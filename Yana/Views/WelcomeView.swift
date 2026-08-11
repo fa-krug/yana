@@ -14,6 +14,30 @@ struct WelcomeView: View {
     /// needs to reference this type.
     enum Step: Int, CaseIterable {
         case welcome, server, aiMode
+
+        var headerIcon: String {
+            switch self {
+            case .welcome: "newspaper.fill"
+            case .server: "server.rack"
+            case .aiMode: "sparkles"
+            }
+        }
+
+        var headerTitle: LocalizedStringKey {
+            switch self {
+            case .welcome: "Welcome to Yana"
+            case .server: "Connect to Your Server"
+            case .aiMode: "Choose Your AI"
+            }
+        }
+
+        var headerSubtitle: LocalizedStringKey {
+            switch self {
+            case .welcome: "Your own private feed reader — all your sources, gathered on your server."
+            case .server: "Yana needs a Yana Server to sign in and sync your feeds."
+            case .aiMode: "Summarize, improve, or translate articles using your server's AI provider or Apple Intelligence on this device."
+            }
+        }
     }
 
     @State private var step: Step
@@ -27,6 +51,7 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+            header
             Group {
                 switch step {
                 case .welcome: WelcomeIntroPage()
@@ -34,7 +59,7 @@ struct WelcomeView: View {
                 case .aiMode: OnboardingAIModePage()
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .transition(.asymmetric(
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal: .move(edge: .leading).combined(with: .opacity)
@@ -45,6 +70,16 @@ struct WelcomeView: View {
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: step)
+        #if targetEnvironment(macCatalyst)
+        // On iOS this view fills whatever full-screen container hosts it, which is correct there.
+        // On Mac Catalyst it hosts in its own `WindowGroup` (`WelcomeWindowRoot`), and without a
+        // fixed size the window can be resized (or restored from a previous, larger frame)
+        // arbitrarily tall — every step then stretches to fill that, leaving a large dead gap
+        // below sparser steps like `OnboardingServerPage`. Pinning this to the window's
+        // `.defaultSize` (see `YanaApp`) and pairing that with `.windowResizability(.contentSize)`
+        // keeps the window itself locked to this size instead.
+        .frame(width: 720, height: 640)
+        #endif
     }
 
     // MARK: Chrome
@@ -55,6 +90,31 @@ struct WelcomeView: View {
         Color.clear
             .frame(height: 24)
             .padding(.top, 12)
+    }
+
+    /// Shared across every step, at a fixed position right below `topBar` — each step only
+    /// swaps the icon/title/subtitle text, not the header's presence or placement, so paging
+    /// through the wizard never shifts where it sits (previously each page drew its own header
+    /// inline with its content, so a step with less content below it — like the server-pairing
+    /// step — ended up with its header at a different height than the others).
+    private var header: some View {
+        VStack(spacing: 12) {
+            Image(systemName: step.headerIcon)
+                .font(.system(size: 48, weight: .semibold))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            Text(step.headerTitle)
+                .font(.title.bold())
+                .multilineTextAlignment(.center)
+            Text(step.headerSubtitle)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 24)
+        .frame(maxWidth: .infinity)
     }
 
     private var footer: some View {
@@ -183,29 +243,15 @@ private struct WelcomeIntroPage: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 32) {
-                VStack(spacing: 12) {
-                    Image(systemName: "newspaper.fill")
-                        .font(.system(size: 56, weight: .semibold))
-                        .foregroundStyle(.tint)
-                        .accessibilityHidden(true)
-                    Text("Welcome to Yana")
-                        .font(.largeTitle.bold())
-                        .multilineTextAlignment(.center)
-                    Text("Your own private feed reader — all your sources, gathered on your server.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
+            // The icon/title/subtitle header lives in `WelcomeView.header` now, shared and fixed
+            // in position across every step — this page only supplies the feature list below it.
+            VStack(spacing: 24) {
+                ForEach(features) { feature in
+                    featureRow(feature)
                 }
-                VStack(spacing: 24) {
-                    ForEach(features) { feature in
-                        featureRow(feature)
-                    }
-                }
-                .padding(.horizontal, 8)
             }
             .padding(.horizontal, 24)
-            .padding(.top, 32)
+            .padding(.top, 8)
             .padding(.bottom, 24)
         }
         .accessibilityIdentifier("welcomeScreen")
