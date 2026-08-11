@@ -51,17 +51,46 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         let deviceName = UIDevice.current.name
         let url = DevicePairing.pairingURL(serverBaseURL: serverBaseURL, session: pairingSession, deviceName: deviceName)
 
-        let authSession = ASWebAuthenticationSession(url: url, callbackURLScheme: "yana") { [weak self] callbackURL, _ in
-            Task { @MainActor in
-                self?.finish(callbackURL: callbackURL)
-            }
-        }
+        // Passing a *reference* to `handleAuthCallback` rather than an inline closure literal
+        // matters: a closure literal written textually inside a method of this `@MainActor`
+        // class is isolated to it by default (SE-0316), and Swift wraps the closure *value* in
+        // an isolation-check thunk that runs before our code — no rewrite of a closure's body
+        // could avoid that (confirmed across four different bodies: `Task { @MainActor in }`,
+        // plain `DispatchQueue.main.async`, that wrapped in `MainActor.assumeIsolated`, and a
+        // body that only called the plain, non-isolated `perform(_:on:with:waitUntilDone:)` —
+        // all four crashed at the identical symbol, before ever reaching the body). That thunk
+        // traps (`EXC_BREAKPOINT` in `dispatch_assert_queue`) on the background XPC queue
+        // (`com.apple.NSXPCConnection...SafariLaunchAgent`) this completion handler actually
+        // fires from on Mac Catalyst. `handleAuthCallback` below is declared `nonisolated`, so a
+        // reference to it carries no such isolation for Swift to wrap — exactly why
+        // `presentationAnchor`'s `nonisolated` method (not a closure) never had this problem.
+        let authSession = ASWebAuthenticationSession(
+            url: url,
+            callbackURLScheme: "yana",
+            completionHandler: handleAuthCallback
+        )
         authSession.presentationContextProvider = self
         // Non-ephemeral: the resulting session cookie is written to the shared cookie jar
         // (`HTTPCookieStorage.shared`), which `CookieMigration` reads from on success.
         authSession.prefersEphemeralWebBrowserSession = false
         session = authSession
         authSession.start()
+    }
+
+    // `nonisolated` so this can be referenced directly as `ASWebAuthenticationSession`'s
+    // completion handler with no closure-isolation wrapping — see the comment at the call site
+    // in `start`. `perform(_:on:with:waitUntilDone:)` dispatches by Objective-C selector onto the
+    // main thread's run loop, which (unlike a Swift `Task`/`DispatchQueue` hop from here) needs
+    // no Swift Concurrency executor check on the way, so it can't hit the same trap.
+    nonisolated private func handleAuthCallback(_ callbackURL: URL?, _ error: (any Error)?) {
+        perform(#selector(finishFromCallback(_:)), on: Thread.main, with: callbackURL, waitUntilDone: false)
+    }
+
+    // `@objc` target for the `perform(_:on:with:waitUntilDone:)` hop above — `perform` passes
+    // its `with:` argument as a plain `Any?`, so this just re-narrows it back to `URL?` before
+    // forwarding to the real (isolated) handler.
+    @objc private func finishFromCallback(_ callbackURL: Any?) {
+        finish(callbackURL: callbackURL as? URL)
     }
 
     private func finish(callbackURL: URL?) {

@@ -8,11 +8,16 @@ import SwiftData
 enum LocalLibraryReset {
     @MainActor
     static func wipe(context: ModelContext) {
-        // Articles first: they reference feeds and tags.
-        for article in (try? context.fetch(FetchDescriptor<Article>())) ?? [] { context.delete(article) }
-        for feed in (try? context.fetch(FetchDescriptor<Feed>())) ?? [] { context.delete(feed) }
-        for tag in (try? context.fetch(FetchDescriptor<Tag>())) ?? [] { context.delete(tag) }
+        // A batch `delete(model:)` deletes in place (no fetch, no per-object faulting), unlike
+        // fetching every row into memory and calling `context.delete(_:)` in a loop -- on a
+        // library with any real number of articles, that loop ran synchronously on the main
+        // actor for long enough to visibly freeze the UI mid-transition (reported after "Weiter"
+        // / "Vorerst überspringen" on the onboarding server step). Articles first: they reference
+        // feeds and tags.
         do {
+            try context.delete(model: Article.self)
+            try context.delete(model: Feed.self)
+            try context.delete(model: Tag.self)
             try context.save()
         } catch {
             NSLog("LocalLibraryReset: save failed: \(error)")
