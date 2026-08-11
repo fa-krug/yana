@@ -53,6 +53,10 @@ final class AppSettings {
         static let starredOnly = "settings.starredOnly"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
+        // Reading position sync
+        static let readingPositionUpdatedAt = "settings.readingPositionUpdatedAt"
+        static let pendingRemoteReadingPosition = "settings.pendingRemoteReadingPosition"
+        static let pendingReadingPositionPush = "settings.pendingReadingPositionPush"
         // Reader
         static let articleTextSize = "settings.articleTextSize"
         static let articleFont = "settings.articleFont"
@@ -267,5 +271,54 @@ final class AppSettings {
     var timelineAnchorIdentifier: String? {
         get { access(keyPath: \.timelineAnchorIdentifier); return defaults.string(forKey: Key.timelineAnchorIdentifier) }
         set { withMutation(keyPath: \.timelineAnchorIdentifier) { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) } }
+    }
+
+    // MARK: Reading position sync
+    /// The most recent reading-position `updatedAt` this device knows about -- either its own
+    /// push's server-stamped ack, or a value pulled from the server. `SyncEngine.syncReadingPosition`
+    /// compares against this (last-writer-wins) so a stale pull can never regress a newer local
+    /// push still in flight, and so this device doesn't re-apply a position it just pushed itself.
+    /// Device-local bookkeeping -- not itself synced.
+    var readingPositionUpdatedAt: Date? {
+        get { access(keyPath: \.readingPositionUpdatedAt); return defaults.object(forKey: Key.readingPositionUpdatedAt) as? Date }
+        set { withMutation(keyPath: \.readingPositionUpdatedAt) { defaults.set(newValue, forKey: Key.readingPositionUpdatedAt) } }
+    }
+    /// A reading position pulled from the server but not yet applied to the visible timeline --
+    /// the server article id to jump to. Consumed exactly once, by the reader's next fresh session
+    /// (`ReaderAnchorController`/`TimelineModel`'s `jumpToSyncedTimelinePosition`, called only from
+    /// `applyTimeline`'s first-load branch) -- never applied mid-session, which would yank the user
+    /// off the article they're actively reading. `nil` once consumed.
+    var pendingRemoteReadingPosition: Int? {
+        get {
+            access(keyPath: \.pendingRemoteReadingPosition)
+            return defaults.object(forKey: Key.pendingRemoteReadingPosition) == nil
+                ? nil : defaults.integer(forKey: Key.pendingRemoteReadingPosition)
+        }
+        set {
+            withMutation(keyPath: \.pendingRemoteReadingPosition) {
+                if let newValue { defaults.set(newValue, forKey: Key.pendingRemoteReadingPosition) }
+                else { defaults.removeObject(forKey: Key.pendingRemoteReadingPosition) }
+            }
+        }
+    }
+    /// A local reading-position push that failed (offline, or a real server error) and needs
+    /// retry -- the server article id to (re)send. Retried opportunistically alongside
+    /// `PendingWriteQueue`, see `ReadingPositionSync.flushPending`. Not folded into
+    /// `PendingWriteQueue` itself: that queue's dedup key is per-article, but a reading-position
+    /// push has no per-article multiplicity -- there is only ever one current position -- so a
+    /// single field, always overwritten by the newest attempt, is simpler and correct.
+    /// Device-local -- never synced.
+    var pendingReadingPositionPush: Int? {
+        get {
+            access(keyPath: \.pendingReadingPositionPush)
+            return defaults.object(forKey: Key.pendingReadingPositionPush) == nil
+                ? nil : defaults.integer(forKey: Key.pendingReadingPositionPush)
+        }
+        set {
+            withMutation(keyPath: \.pendingReadingPositionPush) {
+                if let newValue { defaults.set(newValue, forKey: Key.pendingReadingPositionPush) }
+                else { defaults.removeObject(forKey: Key.pendingReadingPositionPush) }
+            }
+        }
     }
 }

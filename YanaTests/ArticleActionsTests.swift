@@ -52,4 +52,15 @@ struct ArticleActionsTests {
             #expect(runID == 5)
         }
     }
+
+    @Test func setReadingPositionSendsAPatchAndReturnsUpdatedAt() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let client = stubClient(pathsToResponses: [
+                "PATCH /api/v1/reading-position": (#"{"articleId":100,"updatedAt":"2026-01-01T00:00:00Z"}"#.data(using: .utf8)!, 200)
+            ])
+            let actions = ArticleActions(client: client)
+            let updatedAt = try await actions.setReadingPosition(articleServerID: 100)
+            #expect(updatedAt == ISO8601DateFormatter().date(from: "2026-01-01T00:00:00Z"))
+        }
+    }
 }
