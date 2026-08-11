@@ -458,6 +458,109 @@ struct SyncEngineTests {
         }
     }
 
+    @Test func syncPullsANewerRemoteReadingPositionAndStashesItForLaterApply() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+
+            let client = stubClient(responses: [
+                "/api/v1/feeds": (#"{"feeds":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/articles/sync": (#"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#.data(using: .utf8)!, 200),
+                "/api/v1/reading-position": (#"{"articleId":42,"updatedAt":"2026-01-01T00:00:00Z"}"#.data(using: .utf8)!, 200),
+            ])
+
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            _ = try await engine.sync()
+
+            #expect(settings.pendingRemoteReadingPosition == 42)
+            #expect(settings.readingPositionUpdatedAt == ISO8601DateFormatter().date(from: "2026-01-01T00:00:00Z"))
+        }
+    }
+
+    /// Last-writer-wins: a pull no newer than what this device already knows about must not
+    /// overwrite a pending remote position still waiting to be applied, nor resurrect one this
+    /// device already consumed.
+    @Test func syncIgnoresAReadingPositionPullThatIsNotNewerThanTheKnownTimestamp() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+            settings.readingPositionUpdatedAt = ISO8601DateFormatter().date(from: "2026-01-02T00:00:00Z")
+
+            let client = stubClient(responses: [
+                "/api/v1/feeds": (#"{"feeds":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/articles/sync": (#"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#.data(using: .utf8)!, 200),
+                "/api/v1/reading-position": (#"{"articleId":42,"updatedAt":"2026-01-01T00:00:00Z"}"#.data(using: .utf8)!, 200),
+            ])
+
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            _ = try await engine.sync()
+
+            #expect(settings.pendingRemoteReadingPosition == nil)
+        }
+    }
+
+    /// A server that doesn't support this endpoint yet (404, matching every test above that
+    /// doesn't stub `/api/v1/reading-position` at all) must not break the rest of the sync pass --
+    /// this is a nicety layered on top, not load-bearing for feeds/tags/articles.
+    @Test func syncToleratesAMissingReadingPositionEndpoint() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+
+            let client = stubClient(responses: [
+                "/api/v1/feeds": (#"{"feeds":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                "/api/v1/articles/sync": (#"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#.data(using: .utf8)!, 200),
+                // no /api/v1/reading-position stub -> falls through to the stubClient's 404 default
+            ])
+
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            let result = try await engine.sync()
+
+            #expect(result.newCount == 0)
+            #expect(settings.pendingRemoteReadingPosition == nil)
+        }
+    }
+
+    @Test func syncFlushesAPendingReadingPositionPushBeforePulling() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+            settings.pendingReadingPositionPush = 100
+
+            var sawPatch = false
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                if request.httpMethod == "PATCH", request.url!.path == "/api/v1/reading-position" {
+                    sawPatch = true
+                    return (HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!,
+                            #"{"articleId":100,"updatedAt":"2026-01-01T00:00:00Z"}"#.data(using: .utf8)!)
+                }
+                let responses: [String: (Data, Int)] = [
+                    "/api/v1/articles/sync": (#"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#.data(using: .utf8)!, 200),
+                    "/api/v1/feeds": (#"{"feeds":[]}"#.data(using: .utf8)!, 200),
+                    "/api/v1/tags": (#"{"tags":[]}"#.data(using: .utf8)!, 200),
+                ]
+                let (data, status) = responses[request.url!.path] ?? (Data(), 404)
+                return (HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!, data)
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            _ = try await engine.sync()
+
+            #expect(sawPatch)
+            #expect(settings.pendingReadingPositionPush == nil)
+        }
+    }
+
     @Test func syncFlushesPendingWritesBeforePulling() async throws {
         try await MockURLProtocol.lock.withLock {
             let container = try makeContainer()

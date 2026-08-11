@@ -83,4 +83,41 @@ struct ArticleSummaryTests {
         let decoded = try JSONDecoder().decode(ArticleSummary.self, from: data)
         #expect(decoded.isRead == true)
     }
+
+    /// `serverID` (mirroring `Article.serverID`) is what `ReadingPositionSync`/
+    /// `ReaderAnchorController` resolve a pulled remote reading position against, without a
+    /// separate SwiftData round-trip.
+    @Test func serverIDMirrorsArticleServerID() throws {
+        let context = try makeContext()
+        let article = Article(title: "T", identifier: "id-3", url: "https://x.com/3")
+        article.serverID = 42
+        context.insert(article)
+        try context.save()
+
+        let summary = ArticleSummary(article)
+        #expect(summary.serverID == 42)
+    }
+
+    /// A cache entry written before `serverID` existed has no such key at all -- decoding it must
+    /// produce `nil`, not fail the whole disk-cache load.
+    @Test func serverIDDecodesToNilWhenMissingFromOlderCachedData() throws {
+        let json = #"""
+        {"identifier":"id-4","title":"T","feedName":"F","author":"","date":0,"createdAt":0,"tagNames":[],"isStarred":false,"isRead":false}
+        """#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(ArticleSummary.self, from: json)
+        #expect(decoded.serverID == nil)
+    }
+
+    @Test func serverIDRoundTripsThroughCoding() throws {
+        let context = try makeContext()
+        let article = Article(title: "T", identifier: "id-5", url: "https://x.com/5")
+        article.serverID = 7
+        context.insert(article)
+        try context.save()
+
+        let summary = ArticleSummary(article)
+        let data = try JSONEncoder().encode(summary)
+        let decoded = try JSONDecoder().decode(ArticleSummary.self, from: data)
+        #expect(decoded.serverID == 7)
+    }
 }

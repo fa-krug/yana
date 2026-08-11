@@ -178,7 +178,7 @@ struct ReaderScreen: View {
         )
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }   // wait for a non-empty delivery to anchor
-        appState.currentIndex = resolved.anchorIndex
+        appState.currentIndex = anchorController.jumpToSyncedTimelinePosition(in: resolved.articles) ?? resolved.anchorIndex
 
         didRestoreAnchor = true
     }
@@ -392,9 +392,10 @@ struct ReaderScreen: View {
     /// so it records exactly the article the user paged to and is never reached by the programmatic
     /// index moves of restore/reanchor/clamp — which previously could overwrite the anchor with a
     /// fallback position. Delegates to `ReaderAnchorController`, which pushes the new anchor
-    /// (coalesced) since this is the user-driven write path; `jumpToSyncedTimelinePosition` above is
-    /// the remote-apply path and must never push, or two open devices would trade anchor writes
-    /// forever — see `ReaderAnchorControllerTests` for the assertion.
+    /// (coalesced) since this is the user-driven write path; `applyTimeline`'s first-load call to
+    /// `ReaderAnchorController.jumpToSyncedTimelinePosition` is the remote-apply path and must
+    /// never push, or two open devices would trade anchor writes forever — see
+    /// `ReaderAnchorControllerTests` for the assertion.
     private func saveAnchor(at index: Int) {
         anchorController.saveAnchor(at: index, in: filteredArticles)
     }

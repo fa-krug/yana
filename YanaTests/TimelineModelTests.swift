@@ -25,11 +25,12 @@ struct TimelineModelTests {
         return try ModelContainer(for: Feed.self, Yana.Tag.self, Article.self, configurations: config)
     }
 
-    private func insertArticle(_ id: String, into context: ModelContext, date: Date) {
+    private func insertArticle(_ id: String, into context: ModelContext, date: Date, serverID: Int? = nil) {
         let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)")
         let article = Article(title: id, identifier: id, url: "https://x.com/\(id)")
         article.date = date
         article.feed = feed
+        article.serverID = serverID
         context.insert(feed); context.insert(article)
     }
 
@@ -154,6 +155,51 @@ struct TimelineModelTests {
     }
 
 
+
+    // MARK: - Remote reading-position apply (first load only)
+
+    /// The core cross-device behavior: a reading position pulled from another paired device (see
+    /// `AppSettings.pendingRemoteReadingPosition`) is applied at the very first `applyTimeline`
+    /// call, taking priority over the plain local-anchor fallback, and is consumed exactly once.
+    @Test func applyTimelineJumpsToAPendingRemoteReadingPosition() async throws {
+        let settings = freshSettings()
+        let container = try makeContainer()
+        let context = container.mainContext
+        insertArticle("a", into: context, date: Date(timeIntervalSince1970: 1), serverID: 10)
+        insertArticle("b", into: context, date: Date(timeIntervalSince1970: 2), serverID: 20)
+        insertArticle("c", into: context, date: Date(timeIntervalSince1970: 3), serverID: 30)
+        try context.save()
+        settings.pendingRemoteReadingPosition = 20   // "b"
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        await store.refreshNow()
+
+        let model = TimelineModel(settings: settings)
+        model.configure(modelContext: context, store: store)
+        model.applyTimeline()
+
+        #expect(model.selectedSummary?.identifier == "b")
+        #expect(settings.timelineAnchorIdentifier == "b")
+        #expect(settings.pendingRemoteReadingPosition == nil, "consumed once applied")
+    }
+
+    /// A remote position that doesn't resolve against the current timeline (stale, or an article
+    /// this device hasn't synced) must fall back to the plain local anchor, not leave the reader
+    /// unparked -- and must still consume the pending value so it isn't retried forever.
+    @Test func applyTimelineFallsBackToTheLocalAnchorWhenTheRemotePositionDoesNotResolve() async throws {
+        let settings = freshSettings()
+        let (model, store) = try makeConfiguredModel(settings: settings)   // a/b/c, no serverIDs set
+        await store.refreshNow()
+        settings.timelineAnchorIdentifier = "a"
+        settings.pendingRemoteReadingPosition = 999   // no article has this serverID
+
+        model.applyTimeline()
+
+        #expect(model.selectedSummary?.identifier == "a")
+        #expect(settings.pendingRemoteReadingPosition == nil)
+    }
 
     // MARK: - clampIndex scroll bump (review finding 4)
 

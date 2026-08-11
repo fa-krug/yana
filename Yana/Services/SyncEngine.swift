@@ -17,6 +17,7 @@ private struct SyncPage: Decodable {
 
 private struct FeedsResponse: Decodable { let feeds: [SyncFeedWire] }
 private struct TagsResponse: Decodable { let tags: [SyncTagWire] }
+private struct ReadingPositionWire: Decodable { let articleId: Int?; let updatedAt: Date? }
 
 enum SyncEngineError: Error, Equatable {
     /// The server returned `resyncRequired` on `SyncEngine.maxConsecutiveResyncAttempts`
@@ -79,12 +80,14 @@ final class SyncEngine {
 
     private func performSync() async throws -> SyncResult {
         await PendingWriteQueue.flush(using: ArticleActions(client: client), settings: settings)
+        await ReadingPositionSync.flushPending(client: client, settings: settings)
 
         var totalNew = 0, totalUpdated = 0, totalRemoved = 0
         var resyncAttempts = 0
 
         try await syncFeeds()
         try await syncTags()
+        await syncReadingPosition()
 
         while true {
             let page: SyncPage = try await client.get(
@@ -163,6 +166,29 @@ final class SyncEngine {
         let response: TagsResponse = try await client.get("/api/v1/tags")
         let writer = SyncWriter(modelContainer: container)
         _ = await OffMainActor.run { await writer.syncTags(response.tags) }
+    }
+
+    /// Pulls the account's shared reading position (see `ReadingPositionSync`) and stashes it for
+    /// the reader to apply at its next fresh session -- never applied immediately here, which would
+    /// yank a user off the article they're actively reading mid-sync (see
+    /// `AppSettings.pendingRemoteReadingPosition`'s doc comment). Small and unpaginated, like
+    /// `syncFeeds`/`syncTags`. Last-writer-wins by `updatedAt`: a pull no newer than what this
+    /// device already knows about is dropped, so a background sync can neither regress a local
+    /// push still in flight nor re-apply a position this device itself just pushed.
+    ///
+    /// Deliberately swallows every failure (including a 404 from a server that predates this
+    /// endpoint) rather than throwing -- this is a nicety layered on top of the sync pass, and must
+    /// never break the feeds/tags/articles pull that actually matters.
+    private func syncReadingPosition() async {
+        do {
+            let response: ReadingPositionWire = try await client.get("/api/v1/reading-position")
+            guard let articleId = response.articleId, let updatedAt = response.updatedAt else { return }
+            if let known = settings.readingPositionUpdatedAt, known >= updatedAt { return }
+            settings.readingPositionUpdatedAt = updatedAt
+            settings.pendingRemoteReadingPosition = articleId
+        } catch {
+            // See doc comment above.
+        }
     }
 
     /// Fetches full content for every locally-known article that doesn't have it yet, at
