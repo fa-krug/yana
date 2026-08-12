@@ -3,12 +3,13 @@ import SwiftData
 
 @Model
 final class Article {
-    // Cold-path fetches sort/filter by these: date drives the anchor window, full index load,
-    // and fetchNewest; createdAt still drives SyncWriter's oldest-first content-backfill order;
-    // identifier drives the one-row fetchByIdentifier lookup; serverID drives SyncWriter's
-    // upsert/removal/content-backfill lookups. Without an index each is a full table scan over
-    // the retained library. Single-column (no query filters on both together). Additive
-    // metadata — SwiftData handles it via lightweight migration.
+    // Cold-path fetches sort/filter by these: createdAt drives the anchor window, full index
+    // load, fetchNewest, and SyncWriter's oldest-first content-backfill order; date is fetched for
+    // display only; identifier drives the one-row fetchByIdentifier lookup; serverID drives
+    // SyncWriter's upsert/removal/content-backfill lookups and breaks createdAt ties in the
+    // timeline sort. Without an index each is a full table scan over the retained library.
+    // Single-column (no query filters on both together). Additive metadata — SwiftData handles it
+    // via lightweight migration.
     // Only one #Index macro is allowed per @Model, so every indexed keypath group lives here.
     #Index<Article>([\.date], [\.createdAt], [\.identifier], [\.serverID], [\.readRank])
     var title: String = ""
@@ -34,7 +35,8 @@ final class Article {
     /// out under retention. Defaulted for lightweight SwiftData migration.
     var leadImageRef: String = ""
     /// The original article date reported by the source (the server's `date`, from the feed/site
-    /// itself) -- what's shown in the reader/timeline and what the timeline sorts by. Not
+    /// itself) -- shown in the reader/timeline, but display-only: a feed can backfill this out of
+    /// chronological order, so the timeline sorts by `createdAt` instead, never this. Not
     /// re-stamped on a sync update (see `SyncWriter.upsertSummaries`), matching the server's own
     /// treatment of a publication date as immutable.
     var date: Date = Date.now
@@ -43,9 +45,13 @@ final class Article {
     /// AI-generated summary, shown above the body in the reader. Defaulted for lightweight
     /// SwiftData migration; empty when summarization is off.
     var summary: String = ""
-    /// When this article was first synced to this device. Not shown in the UI (the timeline shows
-    /// and sorts by `date` instead); still drives `SyncWriter`'s oldest-first content-backfill
-    /// order and is preserved across updates so a re-fetch can't reorder the backfill queue.
+    /// When this article was first synced to this device -- mirrors the server's own `createdAt`
+    /// (its stable, append-only, backfill-proof insertion order key; see `SyncWriter`'s wire
+    /// decode). Not shown in the UI, but drives the timeline's own sort order (`ArticleStore`,
+    /// `SummaryIndexMerge`, `TimelinePinning`) as well as `SyncWriter`'s oldest-first
+    /// content-backfill order, and is preserved across updates so neither a re-fetch nor a
+    /// backfilled `date` can ever reorder an article once synced -- this is what makes "back"
+    /// navigation land on a stable, identical-across-devices article every time.
     var createdAt: Date = Date.now
 
     var starred: Bool = false
@@ -58,7 +64,7 @@ final class Article {
     var read: Bool = false
     /// Mirrors `read` as a `SortDescriptor`-sortable key: `0` when read, `1` when unread. Exists only
     /// because `Bool` does not conform to `Comparable`, so `SortDescriptor(\.read)` cannot compile —
-    /// every fetch that orders the timeline sorts by this ascending, then by `date` ascending,
+    /// every fetch that orders the timeline sorts by this ascending, then by `createdAt` ascending,
     /// giving "read (oldest→newest), then unread (oldest→newest)". Kept in sync with `read`
     /// exclusively by `setRead(_:)`.
     var readRank: Int = 1

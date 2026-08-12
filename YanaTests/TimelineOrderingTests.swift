@@ -6,7 +6,8 @@ import Testing
 /// Timeline ordering: `ArticleSummaryLoader` (used by `ArticleStore`) fetches articles read-first
 /// (oldest→newest), then unread (oldest→newest) — see `Article.readRank`'s doc comment. This is
 /// the canonical display order for both the reader pager and the article list view that reads
-/// `store.summaries` directly.
+/// `store.summaries` directly. Sorted by `createdAt` (server insertion order), never `date` (the
+/// feed's own, possibly-backfilled publish timestamp) — see `Article.createdAt`'s doc comment.
 @MainActor
 @Suite("Timeline ordering")
 struct TimelineOrderingTests {
@@ -16,8 +17,11 @@ struct TimelineOrderingTests {
         return ModelContext(container)
     }
 
-    private func insertArticle(_ id: String, date: Date, read: Bool, into context: ModelContext) {
+    private func insertArticle(
+        _ id: String, createdAt: Date, date: Date, read: Bool, into context: ModelContext
+    ) {
         let a = Article(title: id, identifier: id, url: "https://x.com/\(id)")
+        a.createdAt = createdAt
         a.date = date
         a.setRead(read)
         context.insert(a)
@@ -25,23 +29,32 @@ struct TimelineOrderingTests {
 
     private func seed(_ context: ModelContext) {
         let base = Date(timeIntervalSince1970: 1_000_000)
-        // Unread, newest by date -- must still sort AFTER every read article.
-        insertArticle("unread-new", date: base.addingTimeInterval(300), read: false, into: context)
-        // Read, oldest by date -- must sort first overall.
-        insertArticle("read-old", date: base, read: true, into: context)
-        // Unread, oldest unread -- must sort right after the read block.
-        insertArticle("unread-old", date: base.addingTimeInterval(100), read: false, into: context)
-        // Read, newest read -- must sort right before the unread block.
-        insertArticle("read-new", date: base.addingTimeInterval(200), read: true, into: context)
+        // `createdAt` encodes the expected sort order; `date` is deliberately reversed within each
+        // read/unread bucket so this test proves the fetch sorts by `createdAt` (server insertion
+        // order), never `date` (the feed's own, possibly-backfilled publish timestamp).
+        insertArticle(
+            "read-old", createdAt: base, date: base.addingTimeInterval(200), read: true, into: context
+        )
+        insertArticle(
+            "read-new", createdAt: base.addingTimeInterval(100), date: base, read: true, into: context
+        )
+        insertArticle(
+            "unread-old", createdAt: base.addingTimeInterval(200), date: base.addingTimeInterval(300),
+            read: false, into: context
+        )
+        insertArticle(
+            "unread-new", createdAt: base.addingTimeInterval(300), date: base.addingTimeInterval(100),
+            read: false, into: context
+        )
     }
 
-    @Test func articleStoreFetchDescriptorIsReadThenUnreadByDate() throws {
+    @Test func articleStoreFetchDescriptorIsReadThenUnreadByCreatedAt() throws {
         let context = try makeContext()
         seed(context)
 
-        // The ArticleSummaryLoader descriptor: readRank ascending, then date ascending.
+        // The ArticleSummaryLoader descriptor: readRank ascending, then createdAt ascending.
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.readRank, order: .forward), SortDescriptor(\.date, order: .forward)]
+            sortBy: [SortDescriptor(\.readRank, order: .forward), SortDescriptor(\.createdAt, order: .forward)]
         )
         descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.readRank]
         let fetched = try context.fetch(descriptor)

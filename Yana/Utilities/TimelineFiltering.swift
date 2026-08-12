@@ -11,10 +11,15 @@ protocol TimelineFilterable {
 }
 
 /// Items addressable by their stable `identifier` (the timeline anchor key) and orderable by their
-/// display `date`.
+/// `createdAt` insertion order. `date` (the feed's own publish timestamp) is display-only: a feed
+/// can backfill it out of chronological order, so it must never drive sort/reinsertion decisions --
+/// `createdAt` is assigned once, server-side, at insert and never changes. `serverID` breaks ties,
+/// since a bulk import can land more than one row in the same `createdAt` second.
 protocol TimelineIdentifiable {
     var identifier: String { get }
     var date: Date { get }
+    var createdAt: Date { get }
+    var serverID: Int? { get }
 }
 
 extension Article: TimelineFilterable {
@@ -117,13 +122,17 @@ enum TimelineAnchor {
 /// regardless of what changed underneath it (filter toggles, sync-driven insertions/removals,
 /// reopening the list).
 ///
-/// `articles` must already be in canonical `(isRead, date)` order -- the read block first, oldest
-/// to newest, then the unread block, oldest to newest -- the same order `TagFilter`/`FeedFilter`/
-/// `StarredFilter` preserve from `ArticleStore.summaries` (see `Article.readRank`). `identifier` is
-/// only a per-feed dedup key (see `SummaryIndexMerge`'s doc comment) so a pin could in principle
-/// match the wrong one of two same-identifier rows from different feeds; this is an accepted,
-/// pre-existing limitation of using `identifier` as a lookup key throughout this file, not
-/// something new here.
+/// `articles` must already be in canonical `(isRead, createdAt)` order -- the read block first,
+/// oldest to newest, then the unread block, oldest to newest -- the same order `TagFilter`/
+/// `FeedFilter`/`StarredFilter` preserve from `ArticleStore.summaries` (see `Article.readRank`).
+/// Reinsertion is keyed on `TimelineOrder` (`createdAt`, server insertion order), never `date` (the
+/// feed's own, possibly-backfilled publish timestamp): once an article is read and unpinned, its
+/// `createdAt` never changes again, so its settled position is permanent -- unlike a `date`-keyed
+/// reinsertion, which could land a stale, already-read article between the two rows the user just
+/// navigated between, corrupting "back" navigation. `identifier` is only a per-feed dedup key (see
+/// `SummaryIndexMerge`'s doc comment) so a pin could in principle match the wrong one of two
+/// same-identifier rows from different feeds; this is an accepted, pre-existing limitation of using
+/// `identifier` as a lookup key throughout this file, not something new here.
 enum TimelinePinning {
     static func apply<T: TimelineIdentifiable & TimelineFilterable>(
         to articles: [T], pinning pinnedIdentifier: String?
@@ -136,9 +145,22 @@ enum TimelinePinning {
         var result = articles
         let pinned = result.remove(at: pinnedIndex)
         let unreadStart = result.firstIndex(where: { !$0.filterRead }) ?? result.count
-        let insertionIndex = result[unreadStart...].firstIndex { $0.date > pinned.date } ?? result.count
+        let insertionIndex = result[unreadStart...].firstIndex {
+            TimelineOrder.isOrderedBefore(pinned, $0)
+        } ?? result.count
         result.insert(pinned, at: insertionIndex)
         return result
+    }
+}
+
+/// The timeline's canonical secondary ordering key: `createdAt` ascending, then `serverID` as a
+/// tiebreak for same-second inserts. Shared by `TimelinePinning` and `SummaryIndexMerge` so both
+/// always agree on where an article settles once it is no longer pinned -- a single source of
+/// truth is what keeps "back" navigation stable across a pin handoff.
+enum TimelineOrder {
+    static func isOrderedBefore<T: TimelineIdentifiable>(_ a: T, _ b: T) -> Bool {
+        if a.createdAt != b.createdAt { return a.createdAt < b.createdAt }
+        return (a.serverID ?? 0) < (b.serverID ?? 0)
     }
 }
 

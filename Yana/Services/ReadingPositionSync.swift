@@ -70,4 +70,18 @@ final class ReadingPositionSync {
             // leave queued
         }
     }
+
+    /// Stashes a remote position update for the reader to apply at its next fresh session --
+    /// never applied immediately, which would yank the user off the article they're actively
+    /// reading (see `AppSettings.pendingRemoteReadingPosition`'s doc comment). Last-writer-wins by
+    /// `updatedAt`: an update no newer than what this device already knows about is dropped, so
+    /// this can never regress a local push still in flight or re-apply a position this device
+    /// itself just pushed. The single source of truth for that rule -- shared by `SyncEngine`'s
+    /// periodic `GET /api/v1/reading-position` pull and `ReadingPositionLiveSync`'s live SSE push,
+    /// so a remote update is applied identically regardless of which route delivered it.
+    static func applyRemoteUpdate(articleId: Int, updatedAt: Date, settings: AppSettings) {
+        if let known = settings.readingPositionUpdatedAt, known >= updatedAt { return }
+        settings.readingPositionUpdatedAt = updatedAt
+        settings.pendingRemoteReadingPosition = articleId
+    }
 }
