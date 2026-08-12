@@ -19,3 +19,27 @@ struct ManagementWebViewURLTests {
         #expect(query["next"] == "/feeds/new")
     }
 }
+
+private struct StubMintTokenFailure: Error {}
+
+@Suite("ManagementWebView.loadURL")
+struct ManagementWebViewLoadURLTests {
+    @Test @MainActor func mintTokenSuccessReturnsTheBootstrapURL() async {
+        let serverBaseURL = URL(string: "https://my-yana.example.com")!
+        let url = await ManagementWebView.loadURL(serverBaseURL: serverBaseURL, path: "/feeds") {
+            "abc123"
+        }
+        let expected = ManagementWebView.webviewSessionURL(
+            serverBaseURL: serverBaseURL, token: "abc123", next: "/feeds"
+        )
+        #expect(url == expected)
+    }
+
+    @Test func mintTokenFailureFallsBackToThePlainPathURL() async {
+        let serverBaseURL = URL(string: "https://my-yana.example.com")!
+        let url = await ManagementWebView.loadURL(serverBaseURL: serverBaseURL, path: "/feeds") {
+            throw StubMintTokenFailure()
+        }
+        #expect(url == serverBaseURL.appendingPathComponent("/feeds"))
+    }
+}
