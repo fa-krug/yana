@@ -128,6 +128,9 @@ struct YanaApp: App {
                     // Convert any pre-migration articles still holding legacy HTML into native
                     // blocks, off the launch/render path. No-op once the backlog is cleared.
                     BlockMigration.run(container: AppContainer.shared)
+                    // Clean up any duplicate Article rows a device accumulated from racing syncs
+                    // before SyncCoordinator existed. No-op once none remain.
+                    DuplicateArticleCleanup.run(container: AppContainer.shared)
                     // Pull the server's article/feed state on every foreground launch. `nil` from
                     // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error.
                     // Routed through `InitialSyncGate`: on every launch after the device's first

@@ -33,7 +33,8 @@ enum InitialSyncGate {
         settings: AppSettings
     ) async {
         guard !settings.hasCompletedInitialSync else {
-            _ = try? await SyncEngine(container: container, client: client).sync()
+            let engine = SyncEngine(container: container, client: client)
+            _ = try? await SyncCoordinator.shared.run { try await engine.sync() }
             return
         }
 
@@ -41,7 +42,8 @@ enum InitialSyncGate {
         var succeeded = false
         for attempt in 0..<maxAttempts {
             do {
-                _ = try await SyncEngine(container: container, client: client).sync()
+                let engine = SyncEngine(container: container, client: client)
+                _ = try await SyncCoordinator.shared.run { try await engine.sync() }
                 succeeded = true
                 break
             } catch YanaAPIClientError.unauthorized {

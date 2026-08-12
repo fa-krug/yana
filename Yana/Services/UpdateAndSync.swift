@@ -32,7 +32,8 @@ enum UpdateAndSync {
             return SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
         }
         let engine = SyncEngine(container: container, client: client, settings: settings)
-        return (try? await engine.sync()) ?? SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
+        return (try? await SyncCoordinator.shared.run { try await engine.sync() })
+            ?? SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
     }
 
     /// A single failed request against `/api/v1/runs/:id` is not necessarily the run's actual
@@ -163,7 +164,7 @@ enum UpdateAndSync {
         // point this article's `hasContent` is already correctly `true`, so `backfillMissingContent`
         // has nothing to do for it.
         let engine = SyncEngine(container: container, client: client)
-        _ = try? await engine.sync()
+        _ = try? await SyncCoordinator.shared.run { try await engine.sync() }
 
         if let visibleArticle, visibleArticle.serverID == articleServerID {
             let freshTitle = try? ModelContext(container).fetch(

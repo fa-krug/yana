@@ -33,9 +33,11 @@ final class BackgroundRefreshManager {
     #endif
 
     /// Guards against the refresh and processing tasks both firing close together: the first to
-    /// run does the sync; the other just re-arms. Each handler builds its own `SyncEngine`, so
-    /// there's no shared state on that object to coordinate the two — the guard has to live on
-    /// the (main-actor) manager.
+    /// run does the sync; the other just re-arms, skipping a redundant second sync entirely
+    /// rather than queueing one. This is an optimization local to these two sibling handlers, not
+    /// the app's only sync lock — `SyncCoordinator` (which every `SyncEngine.sync()` call site
+    /// routes through, including this one) is what stops *any* two syncs from ever running
+    /// concurrently, e.g. a BGTask firing mid-pull-to-refresh.
     private var isRunning = false
 
     init(
@@ -68,7 +70,7 @@ final class BackgroundRefreshManager {
         notifier: Notifying = NotificationService(),
         settings: AppSettings = AppSettings()
     ) async {
-        guard let result = try? await engine.sync() else { return }
+        guard let result = try? await SyncCoordinator.shared.run({ try await engine.sync() }) else { return }
         let inserted = result.newCount
         guard settings.notificationsEnabled, inserted > 0 else { return }
         let authorized = await notifier.isAuthorized()

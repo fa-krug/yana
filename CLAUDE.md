@@ -266,6 +266,25 @@ source and issue board live at
   compiles but crashes at fetch time — CoreData's SQL generator can't use a `TERNARY` as an `IN`
   LHS); `replaceFeeds` upserts by the server's feed id (stored as `Feed.identifier`, string form —
   feeds have no other natural client-side identity any more).
+- **Sync serialization / duplicate cleanup** (`Yana/Services/SyncCoordinator.swift`,
+  `Yana/Services/DuplicateArticleCleanup.swift`): `Article.serverID` has no `@Attribute(.unique)`
+  (adding one would be a risky lightweight migration for exactly the devices this is meant to fix),
+  so two independent `SyncWriter` instances — each its own `@ModelActor`, its own private
+  `ModelContext` — can race the same server article: both fetch "no local row with this `serverID`,"
+  both `insert()`, both `save()`, producing a duplicate `Article` row. Every production
+  `SyncEngine.sync()` call site (background refresh, pull-to-refresh/"Update All", (re-)pairing, the
+  initial post-onboarding sync, reload's post-poll sync) now routes through `SyncCoordinator.shared.
+  run { try await engine.sync() }`, a `@MainActor` FIFO queue that chains each call onto the previous
+  one's completion so no two syncs ever run concurrently — this closes the gap the old per-call-site
+  guards (`BackgroundRefreshManager.isRunning`, `UpdateActivity.restart`) left open between
+  *different* call sites (a BGTask firing mid-pull-to-refresh, or Mac's `runNow()`/periodic loop,
+  which had no lock at all). `DuplicateArticleCleaner` (a `@ModelActor`, run once per launch from
+  `YanaApp`'s `.task` right alongside `BlockMigration.run`, same fire-and-forget pattern) sweeps up
+  whatever duplicates a device already accumulated before this fix: it groups every locally-known
+  article by `serverID`, keeps the row with content already synced (or, failing that, the earliest
+  `createdAt`) as the survivor, OR's `starred`/`read` from the losing rows into it so neither is
+  silently dropped, and deletes the rest. Self-clearing — a no-op single fetch once no duplicates
+  remain.
 - **Actions** (`Yana/Services/ArticleActions.swift`, `Yana/Services/UpdateAndSync.swift`): the
   user-initiated write/trigger surface, separate from `SyncEngine`'s read path. `ArticleActions`
   is a thin façade — `setStarred` (`PATCH /articles/:id`), `reload` (`POST /articles/:id/reload`),

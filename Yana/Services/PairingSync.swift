@@ -12,7 +12,8 @@ enum PairingSync {
         LocalLibraryReset.wipe(context: AppContainer.shared.mainContext)
         guard let client = AuthenticatedClient.current() else { return }
         UpdateActivity.shared.restart {
-            _ = try? await SyncEngine(container: AppContainer.shared, client: client).sync()
+            let engine = SyncEngine(container: AppContainer.shared, client: client)
+            _ = try? await SyncCoordinator.shared.run { try await engine.sync() }
         }
     }
 }
