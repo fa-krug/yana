@@ -37,14 +37,12 @@ struct DevicePairingView: View {
 private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPresentationContextProviding {
     private var session: ASWebAuthenticationSession?
     private var pairingSession: DevicePairingSession?
-    private var serverBaseURL: URL?
     private var onPaired: ((String) -> Void)?
     private var onCancel: (() -> Void)?
 
     func start(serverBaseURL: URL, onPaired: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
         let pairingSession = DevicePairing.makeSession()
         self.pairingSession = pairingSession
-        self.serverBaseURL = serverBaseURL
         self.onPaired = onPaired
         self.onCancel = onCancel
 
@@ -66,7 +64,10 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
 
     private func finish(callbackURL: URL?) {
         session = nil
-        guard let callbackURL, let pairingSession, let serverBaseURL else {
+        // `pairingSession` alone is the "has start() been called" gate -- it's set together with
+        // (and never outlives) the local `serverBaseURL` `start()` used to build the pairing URL,
+        // so there's no separate value from that URL still needed here.
+        guard let callbackURL, let pairingSession else {
             onCancel?()
             return
         }

@@ -8,5 +8,7 @@ import Foundation
 /// `ManagementWebView.swift`'s module doc for the constraint this works around).
 struct WebviewSessionToken: Decodable, Equatable, Sendable {
     let token: String
-    let expiresAt: Date
+    /// Optional so a future server change that stops sending this field degrades to a missing
+    /// value instead of failing the whole decode -- nothing in the client currently reads it.
+    let expiresAt: Date?
 }
