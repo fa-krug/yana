@@ -142,10 +142,9 @@ struct ReaderScreen: View {
     /// property initializers can't reference `self.settings`.
     private var anchorController: ReaderAnchorController { ReaderAnchorController(settings: settings) }
 
-    /// Re-filter `store.summaries`. Pass `preservingOrder: false` for a deliberate
-    /// user-driven filter change (tag/feed/starred-only toggle), where a fresh sort is the
-    /// expected result. (Order preservation via `TimelinePinning` is wired in by caller.)
-    private func recomputeFilter(preservingOrder: Bool = true) {
+    /// Re-filter `store.summaries`, then pin the currently-displayed article's position (see
+    /// `TimelinePinning`) so marking it read doesn't reshuffle the timeline out from under the user.
+    private func recomputeFilter() {
         let byTag = TagFilter.apply(
             to: store.summaries,
             disabledTagNames: settings.disabledTagNames,
@@ -153,7 +152,7 @@ struct ReaderScreen: View {
         )
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
         let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = canonical
+        filteredArticles = TimelinePinning.apply(to: canonical, pinning: settings.timelineAnchorIdentifier)
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
@@ -318,10 +317,10 @@ struct ReaderScreen: View {
         .onChange(of: store.summaries) { _, _ in
             applyTimeline()
         }
-        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter(preservingOrder: false) }
-        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter(preservingOrder: false) }
-        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter(preservingOrder: false) }
-        .onChange(of: settings.starredOnly) { _, _ in recomputeFilter(preservingOrder: false) }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
+        .onChange(of: settings.starredOnly) { _, _ in recomputeFilter() }
 
     }
 
