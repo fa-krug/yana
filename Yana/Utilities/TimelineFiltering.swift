@@ -117,12 +117,13 @@ enum TimelineAnchor {
 /// regardless of what changed underneath it (filter toggles, sync-driven insertions/removals,
 /// reopening the list).
 ///
-/// `articles` must already be in canonical `(isRead, date)` order (ascending: unread block first,
-/// each block oldest-first) -- the same order `TagFilter`/`FeedFilter`/`StarredFilter` preserve from
-/// `ArticleStore.summaries`. `identifier` is only a per-feed dedup key (see `SummaryIndexMerge`'s
-/// doc comment) so a pin could in principle match the wrong one of two same-identifier rows from
-/// different feeds; this is an accepted, pre-existing limitation of using `identifier` as a lookup
-/// key throughout this file, not something new here.
+/// `articles` must already be in canonical `(isRead, date)` order -- the read block first, oldest
+/// to newest, then the unread block, oldest to newest -- the same order `TagFilter`/`FeedFilter`/
+/// `StarredFilter` preserve from `ArticleStore.summaries` (see `Article.readRank`). `identifier` is
+/// only a per-feed dedup key (see `SummaryIndexMerge`'s doc comment) so a pin could in principle
+/// match the wrong one of two same-identifier rows from different feeds; this is an accepted,
+/// pre-existing limitation of using `identifier` as a lookup key throughout this file, not
+/// something new here.
 enum TimelinePinning {
     static func apply<T: TimelineIdentifiable & TimelineFilterable>(
         to articles: [T], pinning pinnedIdentifier: String?
@@ -134,8 +135,8 @@ enum TimelinePinning {
 
         var result = articles
         let pinned = result.remove(at: pinnedIndex)
-        let unreadEnd = result.firstIndex(where: { $0.filterRead }) ?? result.count
-        let insertionIndex = result[0..<unreadEnd].firstIndex { $0.date > pinned.date } ?? unreadEnd
+        let unreadStart = result.firstIndex(where: { !$0.filterRead }) ?? result.count
+        let insertionIndex = result[unreadStart...].firstIndex { $0.date > pinned.date } ?? result.count
         result.insert(pinned, at: insertionIndex)
         return result
     }

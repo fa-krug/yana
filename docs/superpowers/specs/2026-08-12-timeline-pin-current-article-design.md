@@ -8,7 +8,7 @@ reshuffle that design causes, and extends coverage to the Mac sidebar and the ar
 
 ## Problem
 
-The timeline sorts by `(readRank, date)`: unread articles first, then read articles, oldest-first
+The timeline sorts by `(readRank, date)`: read articles first, then unread articles, oldest-first
 within each block. An article is marked read the instant it becomes the currently-displayed one
 (iOS pager swipe completion, iOS list-open, Mac sidebar selection — see the related spec). That
 `read` flip immediately changes the article's sort key, so it visibly jumps out of the unread block

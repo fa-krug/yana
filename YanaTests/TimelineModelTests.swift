@@ -118,7 +118,7 @@ struct TimelineModelTests {
         await store.refreshNow()
         model.applyTimeline()   // parks on "a" per the helper's 3-article a/b/c fixture (dates 1,2,3)
 
-        model.selection = "b"   // marks "b" read; canonical order alone would become [a, c, b]
+        model.selection = "b"   // marks "b" read; canonical (read-first) order alone would become [b, a, c]
         model.recomputeFilter()
 
         #expect(model.filteredArticles.map(\.identifier) == ["a", "b", "c"],

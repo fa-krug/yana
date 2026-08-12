@@ -56,23 +56,33 @@ struct ArticleListFilterTests {
     /// Mirrors `ArticleListView.results`'s browsing-mode chain (no search active): the currently-
     /// open article, even once marked read, must stay ahead of the still-unread rows instead of
     /// jumping to the back of the read block the instant the list is opened.
+    /// "b" is read and pinned (the article currently being browsed). "d" is a second, unpinned
+    /// read article -- exercising a real multi-row read block, not the degenerate single-read-row
+    /// case that would pass under either the correct or the previously-inverted algorithm. Input is
+    /// built directly in true canonical (readRank, date) order: the read block first (oldest to
+    /// newest: "b" date 2, "d" date 3), then the unread block (oldest to newest: "a" date 1, "c"
+    /// date 4) -- `TagFilter`/`FeedFilter`/`StarredFilter` only filter, they never reorder, so
+    /// feeding them anything else would not reflect what `ArticleStore` actually hands the pinning
+    /// step.
     @Test func currentArticlePinnedAheadOfReadBlockWhenBrowsing() throws {
         let ctx = try makeContext()
         let feed = Feed(name: "Alpha", aggregator: "feedContent", identifier: "f")
         ctx.insert(feed)
-        let a = Article(title: "a", identifier: "a", url: "https://x/a")
-        a.date = Date(timeIntervalSince1970: 1); a.feed = feed
         let b = Article(title: "b", identifier: "b", url: "https://x/b")
         b.date = Date(timeIntervalSince1970: 2); b.feed = feed; b.setRead(true)
+        let d = Article(title: "d", identifier: "d", url: "https://x/d")
+        d.date = Date(timeIntervalSince1970: 3); d.feed = feed; d.setRead(true)
+        let a = Article(title: "a", identifier: "a", url: "https://x/a")
+        a.date = Date(timeIntervalSince1970: 1); a.feed = feed
         let c = Article(title: "c", identifier: "c", url: "https://x/c")
-        c.date = Date(timeIntervalSince1970: 3); c.feed = feed
-        ctx.insert(a); ctx.insert(b); ctx.insert(c)
+        c.date = Date(timeIntervalSince1970: 4); c.feed = feed
+        ctx.insert(a); ctx.insert(b); ctx.insert(c); ctx.insert(d)
 
-        let byTag = TagFilter.apply(to: [a, b, c], disabledTagNames: [], includeUntagged: true)
+        let byTag = TagFilter.apply(to: [b, d, a, c], disabledTagNames: [], includeUntagged: true)
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: [])
         let canonical = StarredFilter.apply(to: byFeed, starredOnly: false)
         let pinned = TimelinePinning.apply(to: canonical, pinning: "b")
 
-        #expect(pinned.map(\.identifier) == ["a", "b", "c"])
+        #expect(pinned.map(\.identifier) == ["d", "a", "b", "c"])
     }
 }

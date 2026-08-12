@@ -180,8 +180,8 @@ Then delete the entire `TimelineDisplayOrder` enum (current lines 108-151) and r
 /// regardless of what changed underneath it (filter toggles, sync-driven insertions/removals,
 /// reopening the list).
 ///
-/// `articles` must already be in canonical `(isRead, date)` order (ascending: unread block first,
-/// each block oldest-first) -- the same order `TagFilter`/`FeedFilter`/`StarredFilter` preserve from
+/// `articles` must already be in canonical `(isRead, date)` order (ascending: read block first,
+/// then unread block, each block oldest-first) -- the same order `TagFilter`/`FeedFilter`/`StarredFilter` preserve from
 /// `ArticleStore.summaries`. `identifier` is only a per-feed dedup key (see `SummaryIndexMerge`'s
 /// doc comment) so a pin could in principle match the wrong one of two same-identifier rows from
 /// different feeds; this is an accepted, pre-existing limitation of using `identifier` as a lookup
