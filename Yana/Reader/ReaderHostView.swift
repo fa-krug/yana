@@ -142,11 +142,9 @@ struct ReaderScreen: View {
     /// property initializers can't reference `self.settings`.
     private var anchorController: ReaderAnchorController { ReaderAnchorController(settings: settings) }
 
-    /// Re-filter `store.summaries`. By default preserves `filteredArticles`' existing display
-    /// order (see `TimelineDisplayOrder.merge`) rather than adopting the freshly-filtered array's
-    /// read/unread + date sort wholesale; pass `preservingOrder: false` for a deliberate
+    /// Re-filter `store.summaries`. Pass `preservingOrder: false` for a deliberate
     /// user-driven filter change (tag/feed/starred-only toggle), where a fresh sort is the
-    /// expected result.
+    /// expected result. (Order preservation via `TimelinePinning` is wired in by caller.)
     private func recomputeFilter(preservingOrder: Bool = true) {
         let byTag = TagFilter.apply(
             to: store.summaries,
@@ -155,9 +153,7 @@ struct ReaderScreen: View {
         )
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
         let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = preservingOrder
-            ? TimelineDisplayOrder.merge(previous: filteredArticles, canonical: canonical)
-            : canonical
+        filteredArticles = canonical
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
