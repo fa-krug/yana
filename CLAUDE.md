@@ -504,7 +504,14 @@ source and issue board live at
   blocks.
   An article is marked read automatically the moment it becomes the current/displayed one: an iOS
   pager swipe completing, opening it from the article list, or a Mac sidebar selection change
-  (`ArticleWrites.markRead`). The server can upgrade a synced article from unread to read (read
+  (`ArticleWrites.markRead`).
+  While the currently-displayed article remains current, its position in every sorted timeline view
+  (the iOS reader pager, the Mac sidebar, and the article list's browsing mode) is pinned as if it
+  were still unread even after `read` flips to `true` — see `TimelinePinning`
+  (`Yana/Utilities/TimelineFiltering.swift`) — so marking it read doesn't visibly reshuffle the list
+  out from under the user; it settles into its true read-block position only once the user
+  navigates to a different article.
+  The server can upgrade a synced article from unread to read (read
   on another device) but a sync pass can never downgrade an already-locally-read article back to
   unread (`SyncWriter.upsertSummaries`'s upgrade-only rule) — this prevents a racing sync from
   reordering the list under the user's finger. Starring remains a separate, orthogonal
