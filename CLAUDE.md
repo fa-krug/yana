@@ -12,7 +12,8 @@ SwiftData mirror for instant offline browsing, and pushes user actions (star, re
 aggregation run) back up as API calls. There is **no on-device aggregation** and **no
 per-provider credentials stored on the phone** any more: feed/tag/AI-provider configuration
 happens in the server's own web UI, reached from Settings through an embedded WebView that
-reuses the pairing session's cookies. Yana is open source under the MIT license (`LICENSE`); the
+bootstraps a fresh, short-lived, single-use server session token on every appearance. Yana is
+open source under the MIT license (`LICENSE`); the
 source and issue board live at
 [github.com/fa-krug/yana](https://github.com/fa-krug/yana).
 
@@ -197,8 +198,7 @@ source and issue board live at
   invisible to `/runs/:id`; documented server-side as best-effort, so callers must have their own
   fallback for a dropped connection or a missed event).
 - **Auth / device pairing** (`Yana/Services/DevicePairing.swift`, `Yana/Views/DevicePairingView.swift`,
-  `Yana/Services/CookieMigration.swift`, `Yana/Services/KeychainService.swift`,
-  `Yana/Services/AuthenticatedClient.swift`): `DevicePairing`
+  `Yana/Services/KeychainService.swift`, `Yana/Services/AuthenticatedClient.swift`): `DevicePairing`
   is a pure state machine — `makeSession` mints a client-generated, never-persisted random `state`
   (the same anti-forgery pattern `gh auth login --web` uses), `pairingURL` builds the server's
   `/login?next=/device/pair&state=...&scheme=yana&deviceName=...` URL, and `handleCallback` validates
@@ -210,12 +210,17 @@ source and issue board live at
   since the server address is arbitrary and self-hosted (unknown at build time, different per user).
   `ASWebAuthenticationSession` has no such restriction. `yana://` is registered as a
   `CFBundleURLTypes` scheme in `Info-iOS.plist` (not required by `ASWebAuthenticationSession` itself,
-  which intercepts the callback scheme directly, but kept since it documents the scheme in use). The
-  trade-off: this session's cookies land in Safari's shared cookie jar (`HTTPCookieStorage.shared`),
-  not the `WKWebsiteDataStore` `ManagementWebView` reads from — the two are entirely separate on iOS
-  with no automatic sharing — so `CookieMigration.copySharedCookies(for:)` copies the resulting
-  session cookies into `WKWebsiteDataStore.default()`'s cookie store right after a successful
-  pairing, preserving the "no second login" behavior `ManagementWebView` depends on. On success the
+  which intercepts the callback scheme directly, but kept since it documents the scheme in use). This
+  session's cookies land in Safari's shared cookie jar (`HTTPCookieStorage.shared`), not the
+  `WKWebsiteDataStore` `ManagementWebView` reads from — the two are entirely separate on iOS with no
+  automatic sharing, and on Mac Catalyst App Sandbox isolates the app's `HTTPCookieStorage.shared`
+  from the system's out-of-process Safari auth agent `ASWebAuthenticationSession` runs through there,
+  so a one-shot cookie copy at pairing time never reliably reached `ManagementWebView`'s cookie store
+  at all on that platform. `ManagementWebView` no longer depends on this session's cookies: instead,
+  every time it appears it calls `POST /api/v1/auth/webview-session-token` for a fresh,
+  Bearer-authenticated, short-lived, single-use token and loads
+  `GET /webview-session?token=...&next=...`, which the server exchanges for a real session cookie —
+  see `Yana/Views/ManagementWebView.swift`'s module doc. On success the
   token is stored via `KeychainService.saveDeviceToken` — the Keychain service is now just
   `saveDeviceToken`/`loadDeviceToken`/`deleteDeviceToken` over one key, written with
   `kSecAttrSynchronizable: false` (device-local; no more per-provider API keys, no more iCloud
@@ -556,7 +561,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  rework's completion, 342 tests across 87 suites, all passing.
+  rework's completion, 367 tests across 93 suites, all passing.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap
@@ -645,7 +650,7 @@ source and issue board live at
 
 ### Enhanced
 - **Search** ✅ — full-text search across articles (title/plainText/author/feed name) via the reader's `ArticleListView`
-- **Feed/tag management** ✅ — moved entirely to the server's own web UI, reached from Settings (`ManagementWebView`) via an embedded WebView that reuses the pairing session's cookies
+- **Feed/tag management** ✅ — moved entirely to the server's own web UI, reached from Settings (`ManagementWebView`) via an embedded WebView that bootstraps a fresh, short-lived, single-use server session token on every appearance
 - **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background sync
 - **Read-aloud** ✅ — `ReaderSpeechController` reads articles aloud with a voice matching the article's language, continues from the lock screen / Control Center, and exposes a voice picker in the Reader settings section
 - **Offline-first sync** ✅ — an authenticated device eagerly mirrors the server's full article/feed state (including block content and every referenced image) into local SwiftData, so browsing and full-text search both work with no network round-trip once synced; a paired-but-offline device still reads everything it already has
