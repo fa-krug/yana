@@ -105,6 +105,26 @@ struct TimelineModelTests {
         #expect(article?.read == true)
     }
 
+    /// The bug this guards against: before this fix, `TimelineModel.recomputeFilter()` had no
+    /// order-preservation at all, so marking "b" read the instant it's selected immediately moved
+    /// it to the back of the read block on the very next recompute -- reshuffling the sidebar under
+    /// the user's cursor. `model.selection = "b"` itself doesn't trigger a recompute (that normally
+    /// happens asynchronously via the `store.summaries` -> `.onChange` -> `applyTimeline` chain
+    /// `MacRootView` wires up outside this test's scope), so this test calls `recomputeFilter()`
+    /// directly to exercise exactly the code path that chain would eventually run.
+    @Test func settingSelectionKeepsThePinnedArticleAheadOfTheReadBlockAfterRecompute() async throws {
+        let settings = freshSettings()
+        let (model, store) = try makeConfiguredModel(settings: settings)
+        await store.refreshNow()
+        model.applyTimeline()   // parks on "a" per the helper's 3-article a/b/c fixture (dates 1,2,3)
+
+        model.selection = "b"   // marks "b" read; canonical order alone would become [a, c, b]
+        model.recomputeFilter()
+
+        #expect(model.filteredArticles.map(\.identifier) == ["a", "b", "c"],
+                "the just-selected 'b', now read, must stay pinned ahead of the still-unread 'c'")
+    }
+
     // MARK: - Sidebar scroll requests (Task 5)
 
     /// Pins "macOS also doesn't focus the article list on the current selected article": every
