@@ -1,15 +1,17 @@
+import Foundation
 import Testing
 @testable import Yana
 
 struct TimelineBootstrapTests {
     private struct Item: TimelineFilterable, TimelineIdentifiable {
         let identifier: String
+        let date: Date
         let filterTagNames: [String]
         let filterFeedName: String?
         let filterStarred: Bool
         let filterRead: Bool
         init(_ id: String, tags: [String] = ["t"], feed: String? = "f", starred: Bool = false, read: Bool = false) {
-            identifier = id; filterTagNames = tags; filterFeedName = feed; filterStarred = starred; filterRead = read
+            identifier = id; date = Date(timeIntervalSince1970: 0); filterTagNames = tags; filterFeedName = feed; filterStarred = starred; filterRead = read
         }
     }
 

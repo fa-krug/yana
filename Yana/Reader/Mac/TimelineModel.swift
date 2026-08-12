@@ -153,7 +153,8 @@ final class TimelineModel {
             includeUntagged: settings.includeUntagged
         )
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        filteredArticles = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        filteredArticles = TimelinePinning.apply(to: canonical, pinning: settings.timelineAnchorIdentifier)
     }
 
     /// First load: filter + park on the saved anchor in one pass. Subsequent deliveries refilter and

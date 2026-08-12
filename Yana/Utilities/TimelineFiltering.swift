@@ -10,9 +10,11 @@ protocol TimelineFilterable {
     var filterRead: Bool { get }
 }
 
-/// Items addressable by their stable `identifier` (the timeline anchor key).
+/// Items addressable by their stable `identifier` (the timeline anchor key) and orderable by their
+/// display `date`.
 protocol TimelineIdentifiable {
     var identifier: String { get }
+    var date: Date { get }
 }
 
 extension Article: TimelineFilterable {
@@ -105,48 +107,38 @@ enum TimelineAnchor {
     }
 }
 
-/// Keeps a displayed list's existing order stable across live data updates, instead of adopting
-/// a freshly-resorted `canonical` array wholesale. `ArticleStore`'s read-before-unread + date sort
-/// is correct for `store.summaries` and the article list, but applying it immediately to the
-/// reader's own display array reorders the timeline out from under the user mid-swipe: marking the
-/// current page read moves it from the unread bucket to the read bucket the instant it's displayed,
-/// and adopting that new order immediately changes the pager's `viewControllerBefore/After`
-/// neighbors before the user finishes paging forward.
-enum TimelineDisplayOrder {
-    /// Keeps previously-known items at their existing position (refreshed with their latest values
-    /// from `canonical`) and appends genuinely new ones at the end, in `canonical`'s relative order.
-    ///
-    /// `identifier` is only a per-feed dedup key (see `SummaryIndexMerge`'s doc comment) — two
-    /// articles from different feeds can legitimately share one, so `canonical` is grouped into
-    /// per-identifier queues rather than a `[identifier: item]` dictionary (which trapped on the
-    /// first duplicate key in production). Each `previous` item consumes the next unconsumed
-    /// canonical item sharing its identifier, in encounter order; anything left over — genuinely
-    /// new items, or extra occurrences of a shared identifier — is appended at the end.
-    static func merge<T: TimelineIdentifiable>(previous: [T], canonical: [T]) -> [T] {
-        guard !previous.isEmpty else { return canonical }
-        var canonicalByID: [String: [T]] = [:]
-        for item in canonical {
-            canonicalByID[item.identifier, default: []].append(item)
-        }
-        var consumedCount: [String: Int] = [:]
-        var merged: [T] = []
-        merged.reserveCapacity(previous.count)
-        for item in previous {
-            guard let group = canonicalByID[item.identifier] else { continue }
-            let index = consumedCount[item.identifier, default: 0]
-            guard index < group.count else { continue }
-            merged.append(group[index])
-            consumedCount[item.identifier] = index + 1
-        }
-        var seenCount: [String: Int] = [:]
-        for item in canonical {
-            let index = seenCount[item.identifier, default: 0]
-            seenCount[item.identifier] = index + 1
-            if index >= consumedCount[item.identifier, default: 0] {
-                merged.append(item)
-            }
-        }
-        return merged
+/// Reinserts the currently-displayed article's row at the position it would occupy if it were
+/// still unread, whenever it has actually been marked read. `ArticleWrites.markRead` sets the
+/// `read` flag the instant an article becomes current (pager swipe, list-open, sidebar selection),
+/// which would otherwise immediately move that row from the unread block into the read block --
+/// reshuffling the timeline out from under the user mid-navigation. This is a pure, stateless
+/// transform recomputed fresh from `articles` every call (never a diff against a remembered
+/// previous array), so it can't drift the way a history-dependent merge can: it's correct
+/// regardless of what changed underneath it (filter toggles, sync-driven insertions/removals,
+/// reopening the list).
+///
+/// `articles` must already be in canonical `(isRead, date)` order -- the read block first, oldest
+/// to newest, then the unread block, oldest to newest -- the same order `TagFilter`/`FeedFilter`/
+/// `StarredFilter` preserve from `ArticleStore.summaries` (see `Article.readRank`). `identifier` is
+/// only a per-feed dedup key (see `SummaryIndexMerge`'s doc comment) so a pin could in principle
+/// match the wrong one of two same-identifier rows from different feeds; this is an accepted,
+/// pre-existing limitation of using `identifier` as a lookup key throughout this file, not
+/// something new here.
+enum TimelinePinning {
+    static func apply<T: TimelineIdentifiable & TimelineFilterable>(
+        to articles: [T], pinning pinnedIdentifier: String?
+    ) -> [T] {
+        guard let pinnedIdentifier,
+              let pinnedIndex = articles.firstIndex(where: { $0.identifier == pinnedIdentifier }),
+              articles[pinnedIndex].filterRead
+        else { return articles }
+
+        var result = articles
+        let pinned = result.remove(at: pinnedIndex)
+        let unreadStart = result.firstIndex(where: { !$0.filterRead }) ?? result.count
+        let insertionIndex = result[unreadStart...].firstIndex { $0.date > pinned.date } ?? result.count
+        result.insert(pinned, at: insertionIndex)
+        return result
     }
 }
 
