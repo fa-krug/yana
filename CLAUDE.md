@@ -189,14 +189,17 @@ source and issue board live at
   completion polling `UpdateAndSync` does (see **Sync**/**Actions** below): `RunStatus.swift`
   (`RunStatusResponse`, the `GET /api/v1/runs/:id` wire shape, `status` a plain `String` — not a
   closed enum — so a future server-added status degrades gracefully instead of failing to decode);
-  `JobEvent.swift` (`JobEventPayload`/`RunEventPayload`, mirroring `yana-server`'s `ApiEvent` "job"/
-  "run" SSE variants, same plain-`String`-status reasoning); `SSEFrameAccumulator.swift` (pure,
+  `JobEvent.swift` (`JobEventPayload`/`RunEventPayload`/`ReadingPositionEventPayload`, mirroring
+  `yana-server`'s `ApiEvent` "job"/"run"/"readingPosition" SSE variants, same plain-`String`-status
+  reasoning for the first two); `SSEFrameAccumulator.swift` (pure,
   synchronous SSE frame parsing — one line in, an `SSEFrame` out on a blank-line terminator, per the
   SSE spec, with `: ping` comment lines ignored); and `JobEventsClient.swift` (streams
-  `GET /api/v1/jobs/events`, `yana-server`'s per-user SSE feed of job/run completion — the only way
-  to observe a standalone `article.reload` job finishing, since that job has `runId: null` and is
-  invisible to `/runs/:id`; documented server-side as best-effort, so callers must have their own
-  fallback for a dropped connection or a missed event).
+  `GET /api/v1/jobs/events`, `yana-server`'s per-user SSE feed of job/run/reading-position
+  completion — the only way to observe a standalone `article.reload` job finishing, since that job
+  has `runId: null` and is invisible to `/runs/:id`; documented server-side as best-effort, so
+  callers must have their own fallback for a dropped connection or a missed event —
+  `UpdateAndSync.pollForReloadedContent` falls back to a direct re-fetch,
+  `ReadingPositionLiveSync` falls back to the next full sync's periodic pull).
 - **Auth / device pairing** (`Yana/Services/DevicePairing.swift`, `Yana/Views/DevicePairingView.swift`,
   `Yana/Services/KeychainService.swift`, `Yana/Services/AuthenticatedClient.swift`): `DevicePairing`
   is a pure state machine — `makeSession` mints a client-generated, never-persisted random `state`
@@ -337,9 +340,10 @@ source and issue board live at
   `didSave` posted) is gone, since `AppContainer.shared` no longer configures a `cloudKitDatabase` at
   all (CloudKit/iCloud sync was removed from this app before this rework began).
 - **Timeline anchor / reading-position sync** (`Yana/Services/TimelineAnchorWriter.swift`,
-  `Yana/Services/ReadingPositionSync.swift`, `Yana/Reader/ReaderAnchorController.swift`,
-  `Yana/Reader/Mac/TimelineModel.swift`): server-backed, not the old CloudKit-era cross-device-sync
-  design this file used to document, and not purely device-local either. `TimelineAnchorWriter.record`
+  `Yana/Services/ReadingPositionSync.swift`, `Yana/Services/ReadingPositionLiveSync.swift`,
+  `Yana/Reader/ReaderAnchorController.swift`, `Yana/Reader/Mac/TimelineModel.swift`): server-backed,
+  not the old CloudKit-era cross-device-sync design this file used to document, and not purely
+  device-local either. `TimelineAnchorWriter.record`
   does two things on every user-driven selection change (a completed swipe, a sidebar click,
   Next/Previous Article, or picking an article from the list): it persists the current article's
   `identifier` to `AppSettings.timelineAnchorIdentifier` (device-local `UserDefaults`, always
@@ -356,7 +360,20 @@ source and issue board live at
   value in `AppSettings.pendingRemoteReadingPosition` rather than applying it immediately —
   swallowing any failure (including a 404 from a server predating this endpoint) since this is a
   nicety layered on the sync pass, never allowed to break the feeds/tags/articles pull that
-  actually matters. That stashed value is applied — and consumed — by
+  actually matters. That last-writer-wins gate/stash rule is factored into
+  `ReadingPositionSync.applyRemoteUpdate(articleId:updatedAt:settings:)`, a single source of truth
+  shared by `syncReadingPosition`'s pull above AND `ReadingPositionLiveSync`'s live push below, so a
+  remote update is applied identically regardless of which route delivered it.
+  `ReadingPositionLiveSync` (started/stopped alongside `scenePhase` in `YanaApp.swift`, active only
+  while foregrounded) holds a long-lived connection to the same per-user SSE feed
+  `UpdateAndSync`/`JobEventsClient` already use for reload-job completion
+  (`GET /api/v1/jobs/events`), watching for the `readingPosition` event `yana-server` publishes
+  right after a `PATCH /api/v1/reading-position` commits (`src/lib/api/events.ts`/
+  `src/app/api/v1/reading-position/route.ts` in the `yana-server` repo) — so another paired device's
+  navigation shows up here within the live connection's latency instead of waiting for this
+  device's next full sync. Best-effort like the rest of that SSE feed: a dropped/never-opened
+  connection loses nothing but low latency, since the periodic pull above always eventually catches
+  up regardless. That stashed value is applied — and consumed — by
   `ReaderAnchorController`/`TimelineModel`'s `jumpToSyncedTimelinePosition`, called ONLY from
   `applyTimeline()`'s first-load branch (a fresh app launch/session, before the user has navigated)
   by resolving the pulled server article id directly against `ArticleSummary.serverID` — never

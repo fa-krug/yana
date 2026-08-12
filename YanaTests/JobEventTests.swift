@@ -18,6 +18,13 @@ struct JobEventTests {
         ))
     }
 
+    @Test func decodesAReadingPositionFrameIntoAReadingPositionEvent() {
+        let frame = SSEFrame(event: "readingPosition", data: #"{"articleId":7,"updatedAt":"2026-08-12T10:00:00.000Z"}"#)
+        #expect(JobEvent.decode(frame: frame) == .readingPosition(
+            ReadingPositionEventPayload(articleId: 7, updatedAt: Date(timeIntervalSince1970: 1_786_528_800))
+        ))
+    }
+
     @Test func returnsNilForAFrameWithNoRecognizedEventName() {
         let frame = SSEFrame(event: nil, data: "irrelevant")
         #expect(JobEvent.decode(frame: frame) == nil)

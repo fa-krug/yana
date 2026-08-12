@@ -95,4 +95,40 @@ struct ReadingPositionSyncTests {
             #expect(settings.pendingReadingPositionPush == 100)
         }
     }
+
+    // MARK: - applyRemoteUpdate (shared by SyncEngine's pull and ReadingPositionLiveSync's push)
+
+    @Test func applyRemoteUpdateStashesAFreshPositionWhenNoneIsKnown() {
+        let settings = freshSettings()
+        let updatedAt = Date(timeIntervalSince1970: 1000)
+        ReadingPositionSync.applyRemoteUpdate(articleId: 7, updatedAt: updatedAt, settings: settings)
+        #expect(settings.pendingRemoteReadingPosition == 7)
+        #expect(settings.readingPositionUpdatedAt == updatedAt)
+    }
+
+    @Test func applyRemoteUpdateAcceptsAStrictlyNewerUpdate() {
+        let settings = freshSettings()
+        settings.readingPositionUpdatedAt = Date(timeIntervalSince1970: 1000)
+        ReadingPositionSync.applyRemoteUpdate(articleId: 7, updatedAt: Date(timeIntervalSince1970: 2000), settings: settings)
+        #expect(settings.pendingRemoteReadingPosition == 7)
+        #expect(settings.readingPositionUpdatedAt == Date(timeIntervalSince1970: 2000))
+    }
+
+    @Test func applyRemoteUpdateDropsAnUpdateNoNewerThanWhatIsAlreadyKnown() {
+        let settings = freshSettings()
+        settings.readingPositionUpdatedAt = Date(timeIntervalSince1970: 2000)
+        ReadingPositionSync.applyRemoteUpdate(articleId: 7, updatedAt: Date(timeIntervalSince1970: 1000), settings: settings)
+        #expect(settings.pendingRemoteReadingPosition == nil)
+        #expect(settings.readingPositionUpdatedAt == Date(timeIntervalSince1970: 2000))
+    }
+
+    @Test func applyRemoteUpdateDropsAnExactlyEqualUpdate() {
+        // Guards against a device re-applying a position it just pushed itself, or a live SSE
+        // event echoing the exact same write the periodic pull already applied.
+        let settings = freshSettings()
+        let same = Date(timeIntervalSince1970: 1500)
+        settings.readingPositionUpdatedAt = same
+        ReadingPositionSync.applyRemoteUpdate(articleId: 99, updatedAt: same, settings: settings)
+        #expect(settings.pendingRemoteReadingPosition == nil)
+    }
 }

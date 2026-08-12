@@ -206,9 +206,7 @@ final class SyncEngine {
         do {
             let response: ReadingPositionWire = try await client.get("/api/v1/reading-position")
             guard let articleId = response.articleId, let updatedAt = response.updatedAt else { return }
-            if let known = settings.readingPositionUpdatedAt, known >= updatedAt { return }
-            settings.readingPositionUpdatedAt = updatedAt
-            settings.pendingRemoteReadingPosition = articleId
+            ReadingPositionSync.applyRemoteUpdate(articleId: articleId, updatedAt: updatedAt, settings: settings)
         } catch {
             // See doc comment above.
         }

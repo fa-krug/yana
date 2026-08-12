@@ -118,6 +118,10 @@ struct YanaApp: App {
                         // `ArticleStore.cacheWriteDelay`); flush it before the app can be suspended
                         // so the next cold start paints from an up-to-date cache.
                         Task { await articleStore.flushCache() }
+                        // No point paying for an open SSE connection while nothing is watching it.
+                        ReadingPositionLiveSync.shared.stop()
+                    case .active:
+                        ReadingPositionLiveSync.shared.start(settings: appSettings)
                     default:
                         break
                     }
@@ -145,6 +149,10 @@ struct YanaApp: App {
                             articleStore: articleStore, appState: appState, settings: appSettings
                         )
                     }
+                    // `.onChange(of: scenePhase)` below only fires on a CHANGE, so the very first
+                    // `.active` state on a cold launch needs this called explicitly here too;
+                    // `start()` is idempotent, so this and the scene-phase handler never race.
+                    ReadingPositionLiveSync.shared.start(settings: appSettings)
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
