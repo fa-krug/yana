@@ -62,8 +62,31 @@ final class SyncEngine {
         self.imageStore = imageStore
     }
 
+    /// In-flight `sync()` tasks, keyed by container identity rather than a single global lock so
+    /// tests using isolated throwaway containers are never accidentally serialized against each
+    /// other. Launch (`InitialSyncGate`), the Mac's repeating refresh loop, pull-to-refresh, and
+    /// background refresh can all trigger a sync around the same time with no coordination between
+    /// them; without this, two overlapping calls each build their own `SyncWriter` and each run its
+    /// fetch-then-insert-if-not-found check before either has saved, so each independently decides
+    /// "not found" and inserts its own copy of the same server article -- the exact duplicate-row
+    /// bug this serialization exists to close. A caller that arrives while a sync against the same
+    /// container is already running just awaits and shares that in-flight result.
+    @MainActor
+    private static var inFlightSyncs: [ObjectIdentifier: Task<SyncResult, Error>] = [:]
+
     @discardableResult
     func sync() async throws -> SyncResult {
+        let key = ObjectIdentifier(container)
+        if let existing = Self.inFlightSyncs[key] {
+            return try await existing.value
+        }
+        let task = Task { try await self.syncUnserialized() }
+        Self.inFlightSyncs[key] = task
+        defer { Self.inFlightSyncs[key] = nil }
+        return try await task.value
+    }
+
+    private func syncUnserialized() async throws -> SyncResult {
         do {
             return try await performSync()
         } catch YanaAPIClientError.unauthorized {
