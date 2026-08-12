@@ -13,9 +13,9 @@ import SwiftUI
 ///
 /// The trade-off: this session's cookies land in Safari's shared cookie jar
 /// (`HTTPCookieStorage.shared`), not the `WKWebsiteDataStore` `ManagementWebView` reads from —
-/// the two are entirely separate on iOS, with no automatic sharing. `CookieMigration` copies the
-/// resulting session cookies over after a successful pairing so `ManagementWebView` still reuses
-/// the session without asking the user to sign in a second time.
+/// the two are entirely separate on iOS, with no automatic sharing. `ManagementWebView` now
+/// bootstraps its own session via a server-issued one-time token, so the shared cookie jar is
+/// no longer consulted.
 struct DevicePairingView: View {
     let serverBaseURL: URL
     let onPaired: (String) -> Void
@@ -58,7 +58,7 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         }
         authSession.presentationContextProvider = self
         // Non-ephemeral: the resulting session cookie is written to the shared cookie jar
-        // (`HTTPCookieStorage.shared`), which `CookieMigration` reads from on success.
+        // (`HTTPCookieStorage.shared`), persisting the pairing session.
         authSession.prefersEphemeralWebBrowserSession = false
         session = authSession
         authSession.start()
@@ -72,10 +72,7 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         }
         switch DevicePairing.handleCallback(callbackURL, session: pairingSession) {
         case .success(let token):
-            Task {
-                await CookieMigration.copySharedCookies(for: serverBaseURL)
-                onPaired?(token)
-            }
+            onPaired?(token)
         case .stateMismatch, .malformedCallback:
             onCancel?()
         }
