@@ -152,7 +152,9 @@ struct ReaderScreen: View {
         )
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
         let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = TimelinePinning.apply(to: canonical, pinning: settings.timelineAnchorIdentifier)
+        filteredArticles = TimelinePinning.apply(
+            to: canonical, pinning: settings.timelineAnchorIdentifier, pinningServerID: settings.timelineAnchorServerID
+        )
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
@@ -169,7 +171,8 @@ struct ReaderScreen: View {
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
             starredOnly: settings.starredOnly,
-            anchorIdentifier: settings.timelineAnchorIdentifier
+            anchorIdentifier: settings.timelineAnchorIdentifier,
+            anchorServerID: settings.timelineAnchorServerID
         )
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }   // wait for a non-empty delivery to anchor
@@ -301,6 +304,8 @@ struct ReaderScreen: View {
                 ArticleListView(
                     currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
                         ? filteredArticles[appState.currentIndex].identifier : nil,
+                    currentArticleServerID: filteredArticles.indices.contains(appState.currentIndex)
+                        ? filteredArticles[appState.currentIndex].serverID : nil,
                     onSelect: openArticle
                 )
             }
@@ -343,7 +348,7 @@ struct ReaderScreen: View {
     /// change is reflected, then resolve by identifier (not a stale index) and dismiss the sheet.
     private func openArticle(_ summary: ArticleSummary) {
         recomputeFilter()
-        if let i = TimelinePageIndex.index(of: summary.identifier, in: filteredArticles) {
+        if let i = TimelinePageIndex.index(of: summary.identifier, serverID: summary.serverID, in: filteredArticles) {
             appState.currentIndex = i
             anchorController.recordOpenedArticle(summary)
             if let article = ArticleResolution.resolve(summary, in: modelContext) {

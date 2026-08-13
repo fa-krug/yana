@@ -32,7 +32,9 @@ final class ReaderAnchorController {
     /// cleanup). Returns `nil` when it doesn't resolve — leave the index untouched and wait
     /// for the next delivery.
     func reanchorIndex(in articles: [ArticleSummary]) -> Int? {
-        return TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: articles)
+        return TimelinePageIndex.index(
+            of: settings.timelineAnchorIdentifier, serverID: settings.timelineAnchorServerID, in: articles
+        )
     }
 
     /// Applies a reading position pulled from another paired device (see
@@ -51,6 +53,7 @@ final class ReaderAnchorController {
         settings.pendingRemoteReadingPosition = nil
         guard let index = articles.firstIndex(where: { $0.serverID == articleID }) else { return nil }
         settings.timelineAnchorIdentifier = articles[index].identifier
+        settings.timelineAnchorServerID = articleID
         return index
     }
 }

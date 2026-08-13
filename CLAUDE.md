@@ -347,7 +347,8 @@ source and issue board live at
   does two things on every user-driven selection change (a completed swipe, a sidebar click,
   Next/Previous Article, or picking an article from the list): it persists the current article's
   `identifier` to `AppSettings.timelineAnchorIdentifier` (device-local `UserDefaults`, always
-  immediate — offline-first, navigating never waits on network), and it schedules a debounced push
+  immediate — offline-first, navigating never waits on network) alongside its `serverID` to the
+  parallel `AppSettings.timelineAnchorServerID` field, and it schedules a debounced push
   of that article's `serverID` to `PATCH /api/v1/reading-position` via `ReadingPositionSync` (a
   ~2s idle debounce, so rapid timeline navigation doesn't fire a PATCH per page). A failed push is
   queued in `AppSettings.pendingReadingPositionPush` — a single field, not folded into
@@ -378,13 +379,20 @@ source and issue board live at
   `applyTimeline()`'s first-load branch (a fresh app launch/session, before the user has navigated)
   by resolving the pulled server article id directly against `ArticleSummary.serverID` — never
   mid-session, which would yank the user off the article they're actively reading. This read side
-  writes `timelineAnchorIdentifier` directly rather than going through `TimelineAnchorWriter.record`,
-  by design: it must never trigger another push, or two open devices would trade anchor writes
-  forever (pinned by `ReaderAnchorControllerTests`). `ReaderAnchorController` (iOS) and
-  `TimelineModel.anchorWriter` (Mac) remain separate, directly-testable read/write surfaces so the
-  user-driven push path (`saveAnchor`/`recordOpenedArticle`/`selection`/`moveSelection`) and the
+  writes `timelineAnchorIdentifier`/`timelineAnchorServerID` directly rather than going through
+  `TimelineAnchorWriter.record`, by design: it must never trigger another push, or two open devices
+  would trade anchor writes forever (pinned by `ReaderAnchorControllerTests`). `ReaderAnchorController`
+  (iOS) and `TimelineModel.anchorWriter` (Mac) remain separate, directly-testable read/write surfaces
+  so the user-driven push path (`saveAnchor`/`recordOpenedArticle`/`selection`/`moveSelection`) and the
   self-heal/remote-apply read paths (`reanchorIndex`/`reanchorToCurrentArticle`/
-  `jumpToSyncedTimelinePosition`) stay distinguishable in tests.
+  `jumpToSyncedTimelinePosition`) stay distinguishable in tests. Every one of these position-resolution
+  lookups (`TimelinePageIndex.index`, `TimelineAnchor.index`, `TimelinePinning.apply`, the reader
+  pager's neighbor/page-cache lookups in `ReaderArticleViewController`) prefers an exact `serverID`
+  match over `identifier` when one is available (`TimelineIdentifiable.stableKey` in
+  `Yana/Utilities/TimelineFiltering.swift`): `Article.identifier` is only a per-feed dedup key, so two
+  different feeds can legitimately share one, and a plain identifier match could otherwise resolve —
+  or cache — the wrong feed's article, which is what caused "going back" to occasionally land the
+  reader on (or briefly render) a completely unrelated article.
 - **Background refresh** (`Yana/Services/BackgroundRefreshManager.swift`): best-effort periodic
   `BGAppRefreshTask` + `BGProcessingTask`, registered at launch, rescheduled from the per-device
   `AppSettings.updateInterval` (`UpdateInterval` enum). `runRefresh` now calls
