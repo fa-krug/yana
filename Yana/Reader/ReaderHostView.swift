@@ -142,17 +142,13 @@ struct ReaderScreen: View {
     /// property initializers can't reference `self.settings`.
     private var anchorController: ReaderAnchorController { ReaderAnchorController(settings: settings) }
 
-    /// Re-filter `store.summaries`, then pin the currently-displayed article's position (see
-    /// `TimelinePinning`) so marking it read doesn't reshuffle the timeline out from under the user.
+    /// Adopt `store.browsingArticles` — already tag/feed/starred-filtered and pinned to the
+    /// currently-displayed article (see `TimelinePinning`, and `ArticleStore`'s doc comment) so
+    /// marking it read doesn't reshuffle the timeline out from under the user. `ArticleStore` is a
+    /// single shared instance, so this stays current regardless of which `AppSettings` instance a
+    /// filter was actually changed through (the reader's own filter sheet, or the article list's).
     private func recomputeFilter() {
-        let byTag = TagFilter.apply(
-            to: store.summaries,
-            disabledTagNames: settings.disabledTagNames,
-            includeUntagged: settings.includeUntagged
-        )
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = TimelinePinning.apply(to: canonical, pinning: settings.timelineAnchorIdentifier)
+        filteredArticles = store.browsingArticles
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
@@ -315,14 +311,14 @@ struct ReaderScreen: View {
                 settings.hasSeenFullscreenHint = true
             }
         }
-        .onChange(of: store.summaries) { _, _ in
+        // Covers both a synced-content change (store.summaries, which browsingArticles is derived
+        // from) and a filter change (browsingArticles is also recomputed on every UserDefaults
+        // write -- see ArticleStore) in one watch, on the one value that actually determines what's
+        // displayed. `applyTimeline` itself branches on `didRestoreAnchor`, so this fires the
+        // first-load bootstrap exactly once and refilter-plus-reanchor on every delivery after.
+        .onChange(of: store.browsingArticles) { _, _ in
             applyTimeline()
         }
-        .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
-        .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
-        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
-        .onChange(of: settings.starredOnly) { _, _ in recomputeFilter() }
-
     }
 
     /// Toggles locally right away (optimistic) via `ArticleWrites`; queued for retry rather than
