@@ -113,6 +113,12 @@ actor ArticleSummaryLoader {
 final class ArticleStore {
     private(set) var summaries: [ArticleSummary] = []
     private(set) var hasLoaded = false
+    /// `summaries` filtered by the reader's tag/feed/starred timeline filter and pinned to the
+    /// currently displayed article (see `TimelinePinning`). Kept current here — recomputed
+    /// alongside `summaries` and on every `UserDefaults` change — rather than in a separate object,
+    /// so the article list sheet (`ArticleListView`) always has it ready without depending on that
+    /// view's own render cycle to recompute it.
+    private(set) var browsingArticles: [ArticleSummary] = []
 
     /// Half-width of the cold-cache window; ~`2*radius+1` articles around the anchor.
     private static let windowRadius = 25
@@ -132,6 +138,12 @@ final class ArticleStore {
     private let cache: SummaryIndexCache
     private let anchorProvider: () -> String?
     private var observer: NSObjectProtocol?
+    /// Backs `browsingArticles`; a plain `AppSettings()` like every other reader/settings view
+    /// uses. Since `AppSettings` instances don't observe each other's writes (each wraps the same
+    /// `UserDefaults` independently), `defaultsObserver` below is what picks up a filter changed
+    /// through any other instance.
+    @ObservationIgnored private let settings = AppSettings()
+    @ObservationIgnored private var defaultsObserver: NSObjectProtocol?
 
     /// Rows reported by saves since the last refresh, folded together. Drained by the coalescer.
     @ObservationIgnored private var pending = LibraryChangeSet()
@@ -187,6 +199,11 @@ final class ArticleStore {
             guard !change.isEmpty else { return }
             Task { @MainActor [weak self] in self?.enqueue(change) }
         }
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.recomputeBrowsingArticles() }
+        }
         Task { await bootstrap() }
     }
 
@@ -234,6 +251,7 @@ final class ArticleStore {
             }
             summaries = window
         }
+        recomputeBrowsingArticles()
         hasLoaded = true
         StartupTrace.event("ArticleStore.hasLoaded")
     }
@@ -322,7 +340,23 @@ final class ArticleStore {
         guard next != summaries else { return }
         summaries = next
         UnreadBadgeUpdater.refresh(summaries: next)
+        recomputeBrowsingArticles()
         cacheCoalescer?.schedule()
+    }
+
+    /// Re-derive `browsingArticles` from the current `summaries` and filter settings. Called
+    /// whenever either changes — see `browsingArticles`'s doc comment.
+    private func recomputeBrowsingArticles() {
+        let byTag = TagFilter.apply(
+            to: summaries,
+            disabledTagNames: settings.disabledTagNames,
+            includeUntagged: settings.includeUntagged
+        )
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        let next = TimelinePinning.apply(to: canonical, pinning: settings.timelineAnchorIdentifier)
+        guard next != browsingArticles else { return }
+        browsingArticles = next
     }
 
     /// Flush the deferred disk-cache write now — for scene-background, where the app may be
@@ -333,5 +367,6 @@ final class ArticleStore {
 
     isolated deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
     }
 }

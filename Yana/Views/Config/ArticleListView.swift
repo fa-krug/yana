@@ -48,21 +48,21 @@ struct ArticleListView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(ArticleListPreparer.self) private var preparer
+    @Environment(ArticleStore.self) private var store
 
     @State private var settings = AppSettings()
     @State private var summaryToDelete: ArticleSummary?
 
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
-    /// Browsing reads `preparer.browsingArticles` — already tag/feed/starred-filtered and pinned to
-    /// the current article, kept continuously current in the background (see
-    /// `ArticleListPreparer`'s doc comment) rather than recomputed here on first appearance. A
-    /// search instead re-filters its own predicate-fetched matches through the same tag/feed/
-    /// starred chain (a search fetch has no notion of the timeline filter) and skips pinning, since
-    /// search results are sorted by date alone with no read/unread blocks to jump between.
+    /// Browsing reads `store.browsingArticles` — already tag/feed/starred-filtered and pinned to
+    /// the current article, kept continuously current by `ArticleStore` in the background (see its
+    /// doc comment) rather than recomputed here on first appearance. A search instead re-filters
+    /// its own predicate-fetched matches through the same tag/feed/starred chain (a search fetch
+    /// has no notion of the timeline filter) and skips pinning, since search results are sorted by
+    /// date alone with no read/unread blocks to jump between.
     private var results: [ArticleSummary] {
-        guard let searchResults = uiState.searchResults else { return preparer.browsingArticles }
+        guard let searchResults = uiState.searchResults else { return store.browsingArticles }
         let byTag = TagFilter.apply(to: searchResults,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
