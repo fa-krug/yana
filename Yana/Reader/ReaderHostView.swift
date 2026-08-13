@@ -301,7 +301,8 @@ struct ReaderScreen: View {
                 ArticleListView(
                     currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
                         ? filteredArticles[appState.currentIndex].identifier : nil,
-                    onSelect: openArticle
+                    onSelect: openArticle,
+                    uiState: appState.articleListState
                 )
             }
         }

@@ -41,16 +41,16 @@ enum ArticleListSearch {
 struct ArticleListView: View {
     let currentArticleID: String?
     let onSelect: (ArticleSummary) -> Void
+    /// Owned by `AppState`, not local `@State` — see `ArticleListUIState`'s doc comment: this is
+    /// what lets the sheet reappear already showing its last search query and results instead of
+    /// resetting to a blank search every time it's reopened.
+    @Bindable var uiState: ArticleListUIState
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
 
     @State private var settings = AppSettings()
-    @State private var searchText = ""
-    @State private var debouncedSearch = ""
-    @State private var searchResults: [ArticleSummary]? = nil
-    @State private var showFilter = false
     @State private var summaryToDelete: ArticleSummary?
 
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
@@ -62,13 +62,13 @@ struct ArticleListView: View {
     /// article doesn't show it jump to the bottom of the read section. Search results are sorted by
     /// date alone (no read/unread blocks to jump between), so pinning is skipped there.
     private var results: [ArticleSummary] {
-        let base = searchResults ?? store.summaries
+        let base = uiState.searchResults ?? store.summaries
         let byTag = TagFilter.apply(to: base,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
         let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        guard searchResults == nil else { return canonical }
+        guard uiState.searchResults == nil else { return canonical }
         return TimelinePinning.apply(to: canonical, pinning: currentArticleID)
     }
 
@@ -83,7 +83,7 @@ struct ArticleListView: View {
         let currentItemID = results.first { $0.identifier == currentArticleID }?.id
         return ManagedList(
             items: results,
-            searchText: $searchText,
+            searchText: $uiState.searchText,
             emptyTitle: "No Articles",
             emptyIcon: "tray",
             emptyDescription: "No articles yet. Add feeds, then pull to refresh.",
@@ -145,13 +145,13 @@ struct ArticleListView: View {
         }
         // `ManagedList` doesn't own `.searchable()` itself (see its doc comment); this view isn't
         // `.id()`-wrapped, so there's nothing special here beyond attaching it directly.
-        .searchable(text: $searchText, placement: ManagedListSearch.placement, prompt: "Search articles")
-        .task(id: searchText) {
+        .searchable(text: $uiState.searchText, placement: ManagedListSearch.placement, prompt: "Search articles")
+        .task(id: uiState.searchText) {
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
-            debouncedSearch = searchText
+            uiState.debouncedSearch = uiState.searchText
         }
-        .task(id: debouncedSearch) { await runSearch() }
+        .task(id: uiState.debouncedSearch) { await runSearch() }
         .navigationTitle("Articles")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -165,14 +165,14 @@ struct ArticleListView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showFilter = true } label: {
+                Button { uiState.showFilter = true } label: {
                     Image(systemName: isFilterActive
                           ? "line.3.horizontal.decrease.circle.fill"
                           : "line.3.horizontal.decrease.circle")
                 }
             }
         }
-        .sheet(isPresented: $showFilter) { TagFilterView() }
+        .sheet(isPresented: $uiState.showFilter) { TagFilterView() }
         .alert(
             String(localized: "Delete Article?"),
             isPresented: Binding(get: { summaryToDelete != nil }, set: { if !$0 { summaryToDelete = nil } })
@@ -196,8 +196,8 @@ struct ArticleListView: View {
 
     /// Run the full-text predicate fetch while a query is active; clear back to the index otherwise.
     private func runSearch() async {
-        let q = debouncedSearch.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { searchResults = nil; return }
+        let q = uiState.debouncedSearch.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { uiState.searchResults = nil; return }
         var descriptor = FetchDescriptor<Article>(
             predicate: ArticleListSearch.predicate(for: q),
             sortBy: [SortDescriptor(\.date, order: .forward)]
@@ -206,7 +206,7 @@ struct ArticleListView: View {
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         let matches = (try? modelContext.fetch(descriptor)) ?? []
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
-        searchResults = matches.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
+        uiState.searchResults = matches.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 
     /// The Mac's roomier rows read better with a touch more space between title and subline;
