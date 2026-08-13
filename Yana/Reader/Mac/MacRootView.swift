@@ -91,7 +91,16 @@ struct MacRootView: View {
             MacScreenshotWindow.applyWindowGeometryIfRequested()
             #endif
         }
-        .onChange(of: store.summaries) { _, _ in model.applyTimeline() }
+        // Covers both a synced-content change (store.summaries, which browsingArticles is derived
+        // from) and a filter change (browsingArticles is also recomputed on every UserDefaults
+        // write -- see ArticleStore) in one watch. `applyTimeline` branches on `didRestoreAnchor`,
+        // so this fires the first-load bootstrap exactly once and refilter-plus-reanchor on every
+        // delivery after; `clampIndex` is the safety net for when the reanchor can't find the
+        // currently-displayed article any more (it was just filtered out).
+        .onChange(of: store.browsingArticles) { _, _ in
+            model.applyTimeline()
+            model.clampIndex()
+        }
         .onChange(of: UpdateActivity.shared.isUpdating || model.isSummarizing) { _, busy in
             if busy {
                 spinnerHoldTask?.cancel()
@@ -108,10 +117,6 @@ struct MacRootView: View {
                 }
             }
         }
-        .onChange(of: settings.disabledTagNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
-        .onChange(of: settings.includeUntagged) { _, _ in model.recomputeFilter(); model.clampIndex() }
-        .onChange(of: settings.disabledFeedNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
-        .onChange(of: settings.starredOnly) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onDisappear {
             spinnerHoldTask?.cancel()
             spinnerHoldTask = nil

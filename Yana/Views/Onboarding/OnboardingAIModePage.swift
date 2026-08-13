@@ -24,7 +24,7 @@ struct OnboardingAIModePage: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
-            card {
+            onboardingCard {
                 VStack(alignment: .leading, spacing: 16) {
                     Picker("AI Mode", selection: Binding(
                         get: { settings.aiMode },
@@ -50,13 +50,6 @@ struct OnboardingAIModePage: View {
         .padding(.vertical, 32)
         .frame(maxWidth: 480)
         .frame(maxWidth: .infinity)
-    }
-
-    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var statusText: String {

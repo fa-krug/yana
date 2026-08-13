@@ -38,22 +38,12 @@ final class ReaderAnchorController {
     }
 
     /// Applies a reading position pulled from another paired device (see
-    /// `AppSettings.pendingRemoteReadingPosition`), if it resolves against `articles`. Consumes the
-    /// pending value either way (resolved or not) so a stale/unsyncable remote position isn't
-    /// retried forever. Call ONLY from `applyTimeline`'s first-load branch -- a fresh session,
-    /// before the user has navigated -- never mid-session, which would yank the user off the
-    /// article they're actively reading.
-    ///
-    /// Deliberately does NOT go through `writer.record`: this is the read side of the sync, and
-    /// pushing the value straight back would let two open devices trade anchor writes forever. It
-    /// updates `timelineAnchorIdentifier` directly instead, so subsequent self-heal reanchoring
-    /// (`reanchorIndex`) still resolves to the right article without re-triggering a push.
+    /// `AppSettings.pendingRemoteReadingPosition`), if it resolves against `articles`. Call ONLY
+    /// from `applyTimeline`'s first-load branch -- a fresh session, before the user has navigated --
+    /// never mid-session, which would yank the user off the article they're actively reading.
+    /// Delegates to `ReadingPositionSync.jumpToSyncedTimelinePosition`, shared with `TimelineModel`
+    /// (Mac) so the no-ping-pong guarantee (see that method's doc comment) lives in one place.
     func jumpToSyncedTimelinePosition(in articles: [ArticleSummary]) -> Int? {
-        guard let articleID = settings.pendingRemoteReadingPosition else { return nil }
-        settings.pendingRemoteReadingPosition = nil
-        guard let index = articles.firstIndex(where: { $0.serverID == articleID }) else { return nil }
-        settings.timelineAnchorIdentifier = articles[index].identifier
-        settings.timelineAnchorServerID = articleID
-        return index
+        ReadingPositionSync.jumpToSyncedTimelinePosition(in: articles, settings: settings)
     }
 }

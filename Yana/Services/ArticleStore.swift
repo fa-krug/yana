@@ -152,11 +152,14 @@ final class ArticleStore {
     /// disambiguate two feeds sharing the same `identifier`.
     private let anchorProvider: () -> (identifier: String?, serverID: Int?)
     private var observer: NSObjectProtocol?
-    /// Backs `browsingArticles`; a plain `AppSettings()` like every other reader/settings view
-    /// uses. Since `AppSettings` instances don't observe each other's writes (each wraps the same
-    /// `UserDefaults` independently), `defaultsObserver` below is what picks up a filter changed
+    /// Backs `browsingArticles`. Injectable (default `AppSettings()`, like every other reader/
+    /// settings view) so a test can point it at the same isolated `UserDefaults` suite it hands to
+    /// `TimelineModel`/`ReaderScreen` -- otherwise `browsingArticles` would filter/pin against the
+    /// real `UserDefaults.standard` regardless of what a test configured elsewhere. Since
+    /// `AppSettings` instances don't observe each other's writes even when they DO share a suite
+    /// (each wraps it independently), `defaultsObserver` below is what picks up a filter changed
     /// through any other instance.
-    @ObservationIgnored private let settings = AppSettings()
+    @ObservationIgnored private let settings: AppSettings
     @ObservationIgnored private var defaultsObserver: NSObjectProtocol?
     /// The filter/anchor values `browsingArticles` last saw. `UserDefaults.didChangeNotification`
     /// fires for every write in the process, not just these six keys, and carries no indication of
@@ -188,14 +191,13 @@ final class ArticleStore {
     init(
         container: ModelContainer,
         cache: SummaryIndexCache = .shared,
-        anchorProvider: @escaping () -> (identifier: String?, serverID: Int?) = {
-            let settings = AppSettings()
-            return (settings.timelineAnchorIdentifier, settings.timelineAnchorServerID)
-        }
+        settings: AppSettings = AppSettings(),
+        anchorProvider: (() -> (identifier: String?, serverID: Int?))? = nil
     ) {
         self.container = container
         self.cache = cache
-        self.anchorProvider = anchorProvider
+        self.settings = settings
+        self.anchorProvider = anchorProvider ?? { (settings.timelineAnchorIdentifier, settings.timelineAnchorServerID) }
     }
 
     /// Begin observing saves and run the first load. Idempotent.
@@ -388,6 +390,15 @@ final class ArticleStore {
             timelineAnchorIdentifier: settings.timelineAnchorIdentifier,
             timelineAnchorServerID: settings.timelineAnchorServerID
         )
+    }
+
+    /// Force `browsingArticles` current right now, bypassing the `UserDefaults`-driven snapshot
+    /// skip in `handleDefaultsChange` -- for a caller that needs it synchronously up to date on
+    /// demand rather than relying on that background observer having already caught up (`start()`
+    /// isn't always running, e.g. in `TimelineModel`'s unit tests, which mutate `AppSettings`
+    /// directly without going through the notification `start()` would otherwise be listening for).
+    func refreshBrowsingArticles() {
+        recomputeBrowsingArticles()
     }
 
     /// A `UserDefaults` write landed somewhere in the process. Only re-derive `browsingArticles`
