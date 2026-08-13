@@ -53,3 +53,27 @@ struct NotificationService: Notifying {
         try? await center.add(request)
     }
 }
+
+extension NotificationService {
+    /// Which Settings toggle is being turned on. Each case names the `AppSettings` flag it gates.
+    enum Kind {
+        case newArticles
+        case unreadBadge
+    }
+
+    /// Requests system notification authorization, then gates the toggle's `AppSettings` flag on the
+    /// result: granted flips the flag on, denied leaves (or resets) it off. Returns whether
+    /// authorization was granted, so the caller knows whether to surface a denied alert. Takes a
+    /// `Notifying` so tests can substitute a fake instead of prompting the real system UI.
+    @MainActor
+    static func enable(_ kind: Kind, settings: AppSettings, notifier: Notifying = NotificationService()) async -> Bool {
+        let granted = await notifier.requestAuthorization()
+        switch kind {
+        case .newArticles:
+            settings.notificationsEnabled = granted
+        case .unreadBadge:
+            settings.showUnreadBadge = granted
+        }
+        return granted
+    }
+}
