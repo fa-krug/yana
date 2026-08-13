@@ -97,4 +97,35 @@ struct ArticleResolutionTests {
         #expect(resolved?.feed?.identifier == "B")
         #expect(resolved?.title == "Title B")
     }
+
+    /// The persistentID-nil fallback (a cache-rehydrated summary) is just as exposed to the
+    /// cross-feed identifier collision as the primary path -- `fetchByIdentifier` alone can't tell
+    /// two same-identifier rows apart. `serverID` (which survives the disk-cache round-trip, unlike
+    /// `persistentID`) must be tried first.
+    @Test func resolveFallbackDisambiguatesCrossFeedIdentifierCollisionByServerID() async throws {
+        let context = try makeContext()
+
+        let feedA = Feed(name: "A", aggregator: "feedContent", identifier: "A")
+        let feedB = Feed(name: "B", aggregator: "feedContent", identifier: "B")
+        context.insert(feedA); context.insert(feedB)
+
+        let articleA = Article(title: "Title A", identifier: "shared-id", url: "uA")
+        articleA.feed = feedA
+        articleA.serverID = 1
+        let articleB = Article(title: "Title B", identifier: "shared-id", url: "uB")
+        articleB.feed = feedB
+        articleB.serverID = 2
+        context.insert(articleA); context.insert(articleB)
+        try context.save()
+
+        // Simulate a cache-rehydrated summary: encode -> decode drops persistentID but keeps serverID.
+        let data = try PropertyListEncoder().encode([ArticleSummary(articleB)])
+        let decoded = try PropertyListDecoder().decode([ArticleSummary].self, from: data)
+        let summaryB = try #require(decoded.first)
+        #expect(summaryB.persistentID == nil)
+
+        let resolved = ArticleResolution.resolve(summaryB, in: context)
+        #expect(resolved?.feed?.identifier == "B")
+        #expect(resolved?.title == "Title B")
+    }
 }

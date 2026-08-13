@@ -154,7 +154,9 @@ final class TimelineModel {
         )
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
         let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = TimelinePinning.apply(to: canonical, pinning: settings.timelineAnchorIdentifier)
+        filteredArticles = TimelinePinning.apply(
+            to: canonical, pinning: settings.timelineAnchorIdentifier, pinningServerID: settings.timelineAnchorServerID
+        )
     }
 
     /// First load: filter + park on the saved anchor in one pass. Subsequent deliveries refilter and
@@ -172,7 +174,8 @@ final class TimelineModel {
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
             starredOnly: settings.starredOnly,
-            anchorIdentifier: settings.timelineAnchorIdentifier
+            anchorIdentifier: settings.timelineAnchorIdentifier,
+            anchorServerID: settings.timelineAnchorServerID
         )
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }
@@ -196,6 +199,7 @@ final class TimelineModel {
         settings.pendingRemoteReadingPosition = nil
         guard let index = articles.firstIndex(where: { $0.serverID == articleID }) else { return nil }
         settings.timelineAnchorIdentifier = articles[index].identifier
+        settings.timelineAnchorServerID = articleID
         return index
     }
 
@@ -203,7 +207,9 @@ final class TimelineModel {
     /// cleanup).
     private func reanchorToCurrentArticle() {
         let previous = currentIndex
-        if let i = TimelinePageIndex.index(of: settings.timelineAnchorIdentifier, in: filteredArticles) {
+        if let i = TimelinePageIndex.index(
+            of: settings.timelineAnchorIdentifier, serverID: settings.timelineAnchorServerID, in: filteredArticles
+        ) {
             currentIndex = i
         } else {
             return

@@ -109,4 +109,26 @@ struct TimelinePinningTests {
         let result = TimelinePinning.apply(to: input, pinning: "r")
         #expect(result.map(\.identifier) == ["p", "q", "r", "s"])
     }
+
+    /// `identifier` is only a per-feed dedup key -- two different feeds can share the same source
+    /// URL. Without `pinningServerID`, a plain identifier match pins whichever duplicate comes first,
+    /// which can be the wrong feed's (still-unread) article and silently reshuffle it as if it were
+    /// the one just read. Supplying `pinningServerID` disambiguates to the actual displayed article.
+    @Test func pinningServerIDDisambiguatesArticlesThatShareAnIdentifierAcrossFeeds() {
+        let otherFeedsCopy = article("dup", order: 1)                    // unread, serverID unset
+        let thisFeedsCopy = article("dup", order: 2, read: true)
+        thisFeedsCopy.serverID = 99
+        // Canonical (readRank, createdAt) order: the read row first, then the unread block ascending.
+        let input = [thisFeedsCopy, otherFeedsCopy, article("z", order: 10)]
+
+        let result = TimelinePinning.apply(to: input, pinning: "dup", pinningServerID: 99)
+
+        // The read, serverID-99 copy is pulled out of the read block and reinserted into the unread
+        // block at its createdAt-sorted position; the unrelated unread "dup" from the other feed
+        // (no serverID) is left completely alone rather than being mistaken for the pin target.
+        #expect(result.map(\.serverID) == [nil, 99, nil])
+        #expect(result[0] === otherFeedsCopy)
+        #expect(result[1] === thisFeedsCopy)
+        #expect(result[2].identifier == "z")
+    }
 }

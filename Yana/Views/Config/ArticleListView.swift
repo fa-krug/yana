@@ -40,6 +40,10 @@ enum ArticleListSearch {
 /// and scrolled into view on appear. Keeps swipe actions (star/reload) and swipe-to-delete.
 struct ArticleListView: View {
     let currentArticleID: String?
+    /// The open article's `serverID`, alongside `currentArticleID`. `identifier` is only a per-feed
+    /// dedup key (two feeds can share a source URL), so every "is this the open row" check below
+    /// prefers this globally-unique id when it's present -- see `TimelinePageIndex.index`.
+    var currentArticleServerID: Int? = nil
     let onSelect: (ArticleSummary) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -69,7 +73,7 @@ struct ArticleListView: View {
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
         let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
         guard searchResults == nil else { return canonical }
-        return TimelinePinning.apply(to: canonical, pinning: currentArticleID)
+        return TimelinePinning.apply(to: canonical, pinning: currentArticleID, pinningServerID: currentArticleServerID)
     }
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }
@@ -78,9 +82,19 @@ struct ArticleListView: View {
         ArticleResolution.resolve(summary, in: modelContext)
     }
 
+    /// Whether `summary` is the article currently open in the reader. Prefers `serverID` when known
+    /// (see `currentArticleServerID`'s doc comment); falls back to `identifier` only when no
+    /// `serverID` is available.
+    private func isCurrent(_ summary: ArticleSummary) -> Bool {
+        if let currentArticleServerID {
+            return summary.serverID == currentArticleServerID
+        }
+        return currentArticleID != nil && summary.identifier == currentArticleID
+    }
+
     var body: some View {
         let results = results
-        let currentItemID = results.first { $0.identifier == currentArticleID }?.id
+        let currentItemID = results.first { isCurrent($0) }?.id
         return ManagedList(
             items: results,
             searchText: $searchText,
@@ -140,7 +154,7 @@ struct ArticleListView: View {
         ) { summary in
             Button { onSelect(summary) } label: { row(summary) }
                 .buttonStyle(.plain)
-                .listRowBackground(summary.identifier == currentArticleID
+                .listRowBackground(isCurrent(summary)
                                    ? Color.accentColor.opacity(0.15) : nil)
         }
         // `ManagedList` doesn't own `.searchable()` itself (see its doc comment); this view isn't
@@ -220,7 +234,7 @@ struct ArticleListView: View {
     }
 
     private func row(_ summary: ArticleSummary) -> some View {
-        let isCurrent = summary.identifier == currentArticleID
+        let isCurrent = isCurrent(summary)
         return HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(isCurrent ? Color.accentColor : Color.clear)

@@ -53,6 +53,7 @@ final class AppSettings {
         static let starredOnly = "settings.starredOnly"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
+        static let timelineAnchorServerID = "settings.timelineAnchorServerID"
         // Reading position sync
         static let readingPositionUpdatedAt = "settings.readingPositionUpdatedAt"
         static let pendingRemoteReadingPosition = "settings.pendingRemoteReadingPosition"
@@ -271,6 +272,24 @@ final class AppSettings {
     var timelineAnchorIdentifier: String? {
         get { access(keyPath: \.timelineAnchorIdentifier); return defaults.string(forKey: Key.timelineAnchorIdentifier) }
         set { withMutation(keyPath: \.timelineAnchorIdentifier) { defaults.set(newValue, forKey: Key.timelineAnchorIdentifier) } }
+    }
+    /// The anchored article's `serverID`, alongside `timelineAnchorIdentifier`. `identifier` is only
+    /// a per-feed dedup key (two feeds can share a source URL), so every anchor-resolution lookup
+    /// prefers this globally-unique id when it's present -- see `TimelinePageIndex.index`. `nil` for
+    /// an anchor saved before this field existed, or for unsynced fixture data; those fall back to
+    /// the identifier-only lookup.
+    var timelineAnchorServerID: Int? {
+        get {
+            access(keyPath: \.timelineAnchorServerID)
+            return defaults.object(forKey: Key.timelineAnchorServerID) == nil
+                ? nil : defaults.integer(forKey: Key.timelineAnchorServerID)
+        }
+        set {
+            withMutation(keyPath: \.timelineAnchorServerID) {
+                if let newValue { defaults.set(newValue, forKey: Key.timelineAnchorServerID) }
+                else { defaults.removeObject(forKey: Key.timelineAnchorServerID) }
+            }
+        }
     }
 
     // MARK: Reading position sync

@@ -53,6 +53,24 @@ struct ReaderAnchorControllerTests {
         #expect(settings.timelineAnchorIdentifier == "a")
     }
 
+    // MARK: - Self-heal reanchor
+
+    /// `Article.identifier` is only a per-feed dedup key -- two different feeds can share the same
+    /// source URL. A background timeline mutation (sync landing, a refresh) re-resolves the saved
+    /// anchor via `reanchorIndex`; without `timelineAnchorServerID` disambiguating it, that lookup
+    /// could snap the reader to a completely different feed's article sharing the same identifier
+    /// string as the one actually being read -- the exact "going back jumps to a completely other
+    /// place" bug this pins.
+    @Test func reanchorIndexDisambiguatesArticlesThatShareAnIdentifierAcrossFeeds() throws {
+        let settings = freshSettings()
+        let articles = try makeSummaries([("dup", 1), ("dup", 2), ("z", 3)])
+        let controller = ReaderAnchorController(settings: settings)
+
+        controller.recordOpenedArticle(articles[1])   // the second feed's "dup" (serverID 2)
+
+        #expect(controller.reanchorIndex(in: articles) == 1)
+    }
+
     // MARK: - Remote-apply read
 
     @Test func jumpToSyncedTimelinePositionResolvesByServerIDAndUpdatesTheLocalAnchor() throws {

@@ -27,6 +27,7 @@ struct LocalLibraryResetTests {
         try context.save()
 
         AppSettings().timelineAnchorIdentifier = "demo://article/0"
+        AppSettings().timelineAnchorServerID = 42
         AppSettings().syncCursor = "some-cursor"
 
         LocalLibraryReset.wipe(context: context)
@@ -35,6 +36,7 @@ struct LocalLibraryResetTests {
         #expect(try context.fetch(FetchDescriptor<Feed>()).isEmpty)
         #expect(try context.fetch(FetchDescriptor<Yana.Tag>()).isEmpty)
         #expect(AppSettings().timelineAnchorIdentifier == nil)
+        #expect(AppSettings().timelineAnchorServerID == nil)
         #expect(AppSettings().syncCursor == nil)
     }
 }
