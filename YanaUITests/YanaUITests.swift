@@ -69,8 +69,12 @@ final class YanaUITests: XCTestCase {
         XCTAssertTrue(continueButton.waitForExistence(timeout: Self.launchTimeout))
         continueButton.tap()                       // welcome → server
 
-        // The server page shows its address field and no sheet is auto-presented.
-        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: Self.uiTimeout),
+        // The server page shows its address field and no sheet is auto-presented. Uses
+        // `launchTimeout`, not `uiTimeout` -- this step follows a full app launch (`app.launch()`
+        // above), and in a full-suite run the simulator is already under load from prior test
+        // classes, so the shorter `uiTimeout` intermittently lost this race even though the step
+        // itself does no network I/O.
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: Self.launchTimeout),
                       "The server step should show its address text field")
         XCTAssertFalse(app.webViews.firstMatch.exists,
                        "No pairing sheet should open automatically on the server step")
@@ -78,12 +82,12 @@ final class YanaUITests: XCTestCase {
         // Server → AI mode via the form's own "Skip for now" button (without pairing -- the
         // re-pairing gate is what catches an unpaired device on the next launch; see ContentView).
         let skipButton = app.buttons["onboardingSkipServerButton"]
-        XCTAssertTrue(skipButton.waitForExistence(timeout: Self.uiTimeout))
+        XCTAssertTrue(skipButton.waitForExistence(timeout: Self.launchTimeout))
         skipButton.tap()
 
         // The AI-mode page is shown with its Finish button.
         let finish = app.buttons["onboardingFinishButton"]
-        XCTAssertTrue(finish.waitForExistence(timeout: Self.uiTimeout))
+        XCTAssertTrue(finish.waitForExistence(timeout: Self.launchTimeout))
 
         // Finish completes onboarding and reveals the reader. "Skip for now" seeds the demo
         // library (`ScreenshotSeed`), so the reader is showing demo content here, not the empty
