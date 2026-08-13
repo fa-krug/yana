@@ -12,7 +12,7 @@ struct ArticleStoreIncrementalTests {
 
     private func makeStore(_ fixture: LibraryFixture.Handle) -> ArticleStore {
         let cache = SummaryIndexCache(fileURL: fixture.directory.appendingPathComponent("idx.plist"))
-        return ArticleStore(container: fixture.container, cache: cache, anchorProvider: { nil })
+        return ArticleStore(container: fixture.container, cache: cache, anchorProvider: { (nil, nil) })
     }
 
     /// Wait for the store to settle on an expected count (the refresh is debounced + off-main).

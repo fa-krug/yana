@@ -48,7 +48,7 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
 
         let model = TimelineModel(settings: settings)
         model.configure(modelContext: context, store: store)
@@ -193,7 +193,7 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)
@@ -244,7 +244,7 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)
@@ -282,7 +282,7 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)

@@ -10,9 +10,10 @@ import SwiftData
 /// dedup key, so two feeds can share an identifier; an unscoped identifier fetch could resolve the
 /// wrong article across feeds).
 ///
-/// Fallback: a one-row `identifier` fetch only when `persistentID` is nil (a cache-rehydrated
-/// summary, where encode → decode drops the runtime id) — so the reader never lands on a blank
-/// page for a known article.
+/// Fallback (when `persistentID` is nil -- a cache-rehydrated summary, where encode → decode drops
+/// the runtime id): a one-row `serverID` fetch when the summary carries one (globally unique once
+/// synced, so still immune to the cross-feed collision above), else a one-row `identifier` fetch --
+/// so the reader never lands on a blank page for a known article.
 @MainActor
 enum ArticleResolution {
     static func resolve(_ summary: ArticleSummary, in context: ModelContext) -> Article? {
@@ -21,7 +22,16 @@ enum ArticleResolution {
             descriptor.fetchLimit = 1
             if let article = try? context.fetch(descriptor).first { return article }
         }
+        if let serverID = summary.serverID, let article = fetchByServerID(serverID, in: context) {
+            return article
+        }
         return fetchByIdentifier(summary.identifier, in: context)
+    }
+
+    static func fetchByServerID(_ serverID: Int, in context: ModelContext) -> Article? {
+        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == serverID })
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
     }
 
     static func fetchByIdentifier(_ identifier: String, in context: ModelContext) -> Article? {

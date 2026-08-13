@@ -17,11 +17,13 @@ struct ArticleStoreTests {
         return SummaryIndexCache(fileURL: url)
     }
 
-    private func insertArticle(_ id: String, into context: ModelContext, date: Date) {
-        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)")
+    private func insertArticle(_ id: String, into context: ModelContext, date: Date, serverID: Int? = nil) {
+        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)-\(serverID.map(String.init) ?? "x")")
         let article = Article(title: id, identifier: id, url: id)
         article.feed = feed
         article.date = date
+        article.createdAt = date
+        article.serverID = serverID
         context.insert(feed); context.insert(article)
     }
 
@@ -89,7 +91,7 @@ struct ArticleStoreTests {
         let store = ArticleStore(
             container: container,
             cache: tempCache(),                          // empty → cold cache
-            anchorProvider: { "a50" }
+            anchorProvider: { ("a50", nil) }
         )
         await store.bootstrap()
 
@@ -107,7 +109,7 @@ struct ArticleStoreTests {
         let store = ArticleStore(
             container: container,
             cache: tempCache(),                           // cold cache → anchor window path
-            anchorProvider: { "a50" }
+            anchorProvider: { ("a50", nil) }
         )
         await store.publishFastDataset()
 
@@ -115,5 +117,33 @@ struct ArticleStoreTests {
         #expect(store.summaries.count == 51)              // 2*radius+1, NOT the full 100
         #expect(store.summaries.first?.identifier == "a25")
         #expect(store.summaries.last?.identifier == "a75")
+    }
+
+    /// `identifier` is only a per-feed dedup key -- two different feeds can share the same source
+    /// URL. The cold-cache anchor window must center on the anchor's `serverID` when one is known,
+    /// not on whichever same-identifier row the (unsorted-by-recency) identifier match happens to
+    /// resolve to first -- otherwise the very first frame after a cold launch could be built around
+    /// a completely different article's neighborhood.
+    @Test func publishFastDatasetWindowDisambiguatesArticlesThatShareAnIdentifierAcrossFeeds() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        seed(100, into: context)                                          // a0…a99, dates 1…100
+        insertArticle("dup", into: context, date: Date(timeIntervalSince1970: 10), serverID: 201)  // near a9
+        insertArticle("dup", into: context, date: Date(timeIntervalSince1970: 90), serverID: 202)  // near a89
+        try context.save()
+
+        let store = ArticleStore(
+            container: container,
+            cache: tempCache(),                           // cold cache → anchor window path
+            anchorProvider: { ("dup", 202) }               // the serverID-202 copy, near a89
+        )
+        await store.publishFastDataset()
+
+        #expect(store.hasLoaded == true)
+        #expect(store.summaries.contains { $0.serverID == 202 })
+        // Centered near date 90 (a64…a99), not near date 10 (which the identifier-only match --
+        // picking whichever "dup" row sorts first by createdAt -- would have wrongly resolved to).
+        #expect(store.summaries.first?.identifier == "a64")
+        #expect(store.summaries.last?.identifier == "a99")
     }
 }

@@ -25,7 +25,7 @@ struct SyncReactionMainThreadTests {
         let fixture = try LibraryFixture.make(articleCount: 4000)
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         let cache = SummaryIndexCache(fileURL: fixture.directory.appendingPathComponent("idx.plist"))
-        let store = ArticleStore(container: fixture.container, cache: cache, anchorProvider: { nil })
+        let store = ArticleStore(container: fixture.container, cache: cache, anchorProvider: { (nil, nil) })
 
         let stall = await MainActorResponsiveness.measuring {
             await store.refreshNow()
@@ -41,7 +41,7 @@ struct SyncReactionMainThreadTests {
         defer { try? FileManager.default.removeItem(at: fixture.directory) }
         // No disk cache file, so this takes the anchor-window DB path.
         let cache = SummaryIndexCache(fileURL: fixture.directory.appendingPathComponent("absent.plist"))
-        let store = ArticleStore(container: fixture.container, cache: cache, anchorProvider: { nil })
+        let store = ArticleStore(container: fixture.container, cache: cache, anchorProvider: { (nil, nil) })
 
         let stall = await MainActorResponsiveness.measuring {
             await store.publishFastDataset()
@@ -73,7 +73,7 @@ struct SyncReactionMainThreadTests {
         let feedID = try #require(try context.fetch(FetchDescriptor<Feed>()).first).persistentModelID
 
         let cache = SummaryIndexCache(fileURL: fixture.directory.appendingPathComponent("idx.plist"))
-        let store = ArticleStore(container: fixture.container, cache: cache, anchorProvider: { nil })
+        let store = ArticleStore(container: fixture.container, cache: cache, anchorProvider: { (nil, nil) })
         store.start()
         try? await Task.sleep(for: .seconds(1))
 

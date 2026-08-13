@@ -23,15 +23,15 @@ actor ArticleSummaryLoader {
     /// Anchor-centered slice for the cold-cache fast path: the ~`2*radius+1` articles around the
     /// saved anchor (inclusive), ascending. Falls back to the newest `2*radius+1` when there is no
     /// anchor or it is gone. Same light columns / prefetch as `load()`.
-    func loadWindow(around anchorID: String?, radius: Int) throws -> [ArticleSummary] {
+    func loadWindow(around anchorID: String?, serverID: Int? = nil, radius: Int) throws -> [ArticleSummary] {
         // The window splits on `createdAt` (`>= anchorCreatedAt` newer, `< anchorCreatedAt`
         // older). Under exact-timestamp ties the anchor may not land in the truncated window; that
         // is acceptable and self-healing — this is only the transient cold-cache first-paint set,
-        // and the full load (ms later) plus reanchor-by-identifier resolves the true position
-        // regardless.
+        // and the full load (ms later) plus reanchor-by-serverID/identifier resolves the true
+        // position regardless.
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
 
-        if let anchorID, let anchorCreatedAt = try anchorCreatedAt(for: anchorID) {
+        if let anchorCreatedAt = try anchorCreatedAt(identifier: anchorID, serverID: serverID) {
             var newerD = lightDescriptor(
                 predicate: #Predicate { $0.createdAt >= anchorCreatedAt }, order: .forward
             )
@@ -80,7 +80,18 @@ actor ArticleSummaryLoader {
         return try modelContext.fetch(descriptor).map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 
-    private func anchorCreatedAt(for identifier: String) throws -> Date? {
+    /// Resolves the saved anchor's `createdAt`. Prefers `serverID` (globally unique once synced)
+    /// over `identifier` (only a per-feed dedup key -- two different feeds can share one, which
+    /// could otherwise center this cold-start window on the wrong feed's article) -- see
+    /// `TimelineIdentifiable.stableKey`.
+    private func anchorCreatedAt(identifier: String?, serverID: Int?) throws -> Date? {
+        if let serverID {
+            var d = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == serverID })
+            d.fetchLimit = 1
+            d.propertiesToFetch = [\.createdAt]
+            if let found = try modelContext.fetch(d).first { return found.createdAt }
+        }
+        guard let identifier else { return nil }
         var d = FetchDescriptor<Article>(
             predicate: #Predicate { $0.identifier == identifier },
             sortBy: [SortDescriptor(\.createdAt, order: .forward)]
@@ -130,7 +141,10 @@ final class ArticleStore {
 
     private let container: ModelContainer
     private let cache: SummaryIndexCache
-    private let anchorProvider: () -> String?
+    /// Supplies the saved timeline anchor for the cold-cache fast path. Returns both `identifier`
+    /// and `serverID` (see `TimelineIdentifiable.stableKey`'s doc comment) so `loadWindow` can
+    /// disambiguate two feeds sharing the same `identifier`.
+    private let anchorProvider: () -> (identifier: String?, serverID: Int?)
     private var observer: NSObjectProtocol?
 
     /// Rows reported by saves since the last refresh, folded together. Drained by the coalescer.
@@ -155,7 +169,10 @@ final class ArticleStore {
     init(
         container: ModelContainer,
         cache: SummaryIndexCache = .shared,
-        anchorProvider: @escaping () -> String? = { AppSettings().timelineAnchorIdentifier }
+        anchorProvider: @escaping () -> (identifier: String?, serverID: Int?) = {
+            let settings = AppSettings()
+            return (settings.timelineAnchorIdentifier, settings.timelineAnchorServerID)
+        }
     ) {
         self.container = container
         self.cache = cache
@@ -228,7 +245,7 @@ final class ArticleStore {
                 await OffMainActor.run(priority: .userInitiated) {
                     let loader = ArticleSummaryLoader(modelContainer: container)
                     return (try? await loader.loadWindow(
-                        around: anchor, radius: Self.windowRadius
+                        around: anchor.identifier, serverID: anchor.serverID, radius: Self.windowRadius
                     )) ?? []
                 }
             }

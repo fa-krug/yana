@@ -5,9 +5,12 @@ import SwiftData
 final class Article {
     // Cold-path fetches sort/filter by these: createdAt drives the anchor window, full index
     // load, fetchNewest, and SyncWriter's oldest-first content-backfill order; date is fetched for
-    // display only; identifier drives the one-row fetchByIdentifier lookup; serverID drives
-    // SyncWriter's upsert/removal/content-backfill lookups and breaks createdAt ties in the
-    // timeline sort. Without an index each is a full table scan over the retained library.
+    // display only; identifier drives the one-row fetchByIdentifier lookup (a per-feed dedup key,
+    // not globally unique); serverID drives SyncWriter's upsert/removal/content-backfill lookups,
+    // ArticleResolution's fetchByServerID, and every timeline anchor/pin/pager lookup that prefers
+    // it over identifier (see TimelineIdentifiable.stableKey) -- it's globally unique once synced,
+    // so it also breaks createdAt ties in the timeline sort. Without an index each is a full table
+    // scan over the retained library.
     // Single-column (no query filters on both together). Additive metadata — SwiftData handles it
     // via lightweight migration.
     // Only one #Index macro is allowed per @Model, so every indexed keypath group lives here.
