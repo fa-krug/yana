@@ -22,6 +22,18 @@ protocol TimelineIdentifiable {
     var serverID: Int? { get }
 }
 
+extension TimelineIdentifiable {
+    /// A lookup key that's actually unique across the whole library, unlike `identifier` alone --
+    /// `identifier` is only a per-feed dedup key (the source article's URL/GUID), so two different
+    /// feeds can share one, and a plain identifier match can silently resolve to the wrong feed's
+    /// article. Prefers `serverID` (globally unique once synced); falls back to `identifier` only
+    /// when there's no `serverID` yet (unsynced debug/screenshot fixture data), where a collision
+    /// isn't a real-world concern.
+    var stableKey: String {
+        serverID.map { "s\($0)" } ?? identifier
+    }
+}
+
 extension Article: TimelineFilterable {
     /// Tag membership is a live join, not the old per-article snapshot: `Article.tags` is never
     /// populated by `SyncWriter` any more (tag membership lives on `Feed.tagIDs`, refreshed from
@@ -97,7 +109,15 @@ enum StarredFilter {
 /// Resolves an item `identifier` to its index in the currently displayed list.
 /// Returns `nil` when the identifier is missing.
 enum TimelinePageIndex {
-    static func index<T: TimelineIdentifiable>(of identifier: String?, in items: [T]) -> Int? {
+    /// Prefers an exact `serverID` match when one is supplied -- `identifier` alone is only a
+    /// per-feed dedup key (see `TimelineIdentifiable.stableKey`), so two different feeds can share
+    /// one and a plain identifier lookup can resolve to the wrong feed's article. Falls back to
+    /// `identifier` when no `serverID` is available on the caller's side (e.g. a Mac sidebar click,
+    /// which only ever hands back the `List` row's tag value).
+    static func index<T: TimelineIdentifiable>(of identifier: String?, serverID: Int? = nil, in items: [T]) -> Int? {
+        if let serverID {
+            return items.firstIndex { $0.serverID == serverID }
+        }
         guard let identifier else { return nil }
         return items.firstIndex { $0.identifier == identifier }
     }
@@ -107,8 +127,8 @@ enum TimelinePageIndex {
 /// to the last item (the newest unread article, or the newest read article if none are unread)
 /// when missing.
 enum TimelineAnchor {
-    static func index<T: TimelineIdentifiable>(for identifier: String?, in items: [T]) -> Int {
-        TimelinePageIndex.index(of: identifier, in: items) ?? max(0, items.count - 1)
+    static func index<T: TimelineIdentifiable>(for identifier: String?, serverID: Int? = nil, in items: [T]) -> Int {
+        TimelinePageIndex.index(of: identifier, serverID: serverID, in: items) ?? max(0, items.count - 1)
     }
 }
 
@@ -130,15 +150,14 @@ enum TimelineAnchor {
 /// `createdAt` never changes again, so its settled position is permanent -- unlike a `date`-keyed
 /// reinsertion, which could land a stale, already-read article between the two rows the user just
 /// navigated between, corrupting "back" navigation. `identifier` is only a per-feed dedup key (see
-/// `SummaryIndexMerge`'s doc comment) so a pin could in principle match the wrong one of two
-/// same-identifier rows from different feeds; this is an accepted, pre-existing limitation of using
-/// `identifier` as a lookup key throughout this file, not something new here.
+/// `SummaryIndexMerge`'s doc comment) so a pin lookup prefers `pinningServerID` (globally unique
+/// once synced) when supplied, falling back to `pinnedIdentifier` only when no `serverID` is known
+/// -- see `TimelinePageIndex.index`.
 enum TimelinePinning {
     static func apply<T: TimelineIdentifiable & TimelineFilterable>(
-        to articles: [T], pinning pinnedIdentifier: String?
+        to articles: [T], pinning pinnedIdentifier: String?, pinningServerID: Int? = nil
     ) -> [T] {
-        guard let pinnedIdentifier,
-              let pinnedIndex = articles.firstIndex(where: { $0.identifier == pinnedIdentifier }),
+        guard let pinnedIndex = TimelinePageIndex.index(of: pinnedIdentifier, serverID: pinningServerID, in: articles),
               articles[pinnedIndex].filterRead
         else { return articles }
 

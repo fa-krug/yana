@@ -165,7 +165,8 @@ struct ReaderScreen: View {
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
             starredOnly: settings.starredOnly,
-            anchorIdentifier: settings.timelineAnchorIdentifier
+            anchorIdentifier: settings.timelineAnchorIdentifier,
+            anchorServerID: settings.timelineAnchorServerID
         )
         filteredArticles = resolved.articles
         guard !resolved.articles.isEmpty else { return }   // wait for a non-empty delivery to anchor
@@ -297,6 +298,8 @@ struct ReaderScreen: View {
                 ArticleListView(
                     currentArticleID: filteredArticles.indices.contains(appState.currentIndex)
                         ? filteredArticles[appState.currentIndex].identifier : nil,
+                    currentArticleServerID: filteredArticles.indices.contains(appState.currentIndex)
+                        ? filteredArticles[appState.currentIndex].serverID : nil,
                     onSelect: openArticle,
                     uiState: appState.articleListState
                 )
@@ -340,7 +343,7 @@ struct ReaderScreen: View {
     /// change is reflected, then resolve by identifier (not a stale index) and dismiss the sheet.
     private func openArticle(_ summary: ArticleSummary) {
         recomputeFilter()
-        if let i = TimelinePageIndex.index(of: summary.identifier, in: filteredArticles) {
+        if let i = TimelinePageIndex.index(of: summary.identifier, serverID: summary.serverID, in: filteredArticles) {
             appState.currentIndex = i
             anchorController.recordOpenedArticle(summary)
             if let article = ArticleResolution.resolve(summary, in: modelContext) {

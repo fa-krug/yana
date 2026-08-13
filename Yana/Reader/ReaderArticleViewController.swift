@@ -147,8 +147,11 @@ final class ReaderArticleViewController: UIViewController,
     private static let prewarmRadius = 1
     private static let pageCacheCapacity = 6
 
-    /// Reused page controllers keyed by article identifier; revisiting a recent article is then
-    /// instant (no re-render). LRU eviction bounds the number of live hosting controllers.
+    /// Reused page controllers keyed by `ArticleSummary.stableKey` (not the raw `identifier`, which
+    /// is only a per-feed dedup key -- two different feeds can share one, and keying the cache on it
+    /// would let one article's cached page get served back for a completely different article).
+    /// Revisiting a recent article is then instant (no re-render). LRU eviction bounds the number of
+    /// live hosting controllers.
     private let pageCache = LRUCache<String, ReaderBlockViewController>(capacity: pageCacheCapacity)
 
     /// Last observed travel direction, used to bias prewarming toward where the user is going.
@@ -274,7 +277,7 @@ final class ReaderArticleViewController: UIViewController,
         for i in PrewarmPlan.indices(current: index, count: articles.count,
                                      radius: Self.prewarmRadius, direction: lastDirection)
         where articles.indices.contains(i) {
-            pageCache.removeValue(for: articles[i].identifier)
+            pageCache.removeValue(for: articles[i].stableKey)
         }
         // Re-assert the current page so the pager re-queries (and adopts) the rebuilt neighbors.
         pageController.setViewControllers([displayed], direction: .forward, animated: false)
@@ -466,17 +469,19 @@ final class ReaderArticleViewController: UIViewController,
         applyPopulatedChrome()
         let target = clamp(index)
         let displayedID = displayedPage?.article.identifier
-        let targetID = articles.indices.contains(target) ? articles[target].identifier : nil
+        let displayedKey = displayedPage?.article.stableKey
+        let targetKey = articles.indices.contains(target) ? articles[target].stableKey : nil
         self.index = target
 
-        if displayedID == targetID {
+        if displayedKey == targetKey {
             // The displayed article is unchanged, but the timeline may have mutated around it: a
             // refresh appends newly fetched articles next to the current page (when parked on the
             // newest article they land right after it). `UIPageViewController` cached its adjacent
             // pages when this article was set and won't re-query until the displayed page changes,
             // so those new neighbors stay unswipeable — the user is stuck until they navigate away
             // and back. Re-assert the current page when its neighbors changed to force the re-query.
-            if let displayed = displayedPage, neighborIDs(of: displayedID) != wiredNeighborIDs {
+            if let displayed = displayedPage,
+               neighborIDs(of: displayedID, serverID: displayedPage?.article.serverID) != wiredNeighborIDs {
                 pageController.setViewControllers([displayed], direction: .forward, animated: false)
                 recordWiredNeighbors()
             }
@@ -520,9 +525,10 @@ final class ReaderArticleViewController: UIViewController,
         }
     }
 
-    /// Identifiers immediately before/after the page for `identifier` in the current timeline.
-    private func neighborIDs(of identifier: String?) -> (before: String?, after: String?) {
-        guard let i = TimelinePageIndex.index(of: identifier, in: articles) else { return (nil, nil) }
+    /// Identifiers immediately before/after the page for `identifier`/`serverID` in the current
+    /// timeline.
+    private func neighborIDs(of identifier: String?, serverID: Int? = nil) -> (before: String?, after: String?) {
+        guard let i = TimelinePageIndex.index(of: identifier, serverID: serverID, in: articles) else { return (nil, nil) }
         let before = i > 0 ? articles[i - 1].identifier : nil
         let after = i < articles.count - 1 ? articles[i + 1].identifier : nil
         return (before, after)
@@ -530,7 +536,7 @@ final class ReaderArticleViewController: UIViewController,
 
     /// Snapshot the displayed article's neighbors after the pager has (re)wired its adjacent pages.
     private func recordWiredNeighbors() {
-        wiredNeighborIDs = neighborIDs(of: displayedPage?.article.identifier)
+        wiredNeighborIDs = neighborIDs(of: displayedPage?.article.identifier, serverID: displayedPage?.article.serverID)
     }
 
     private func clamp(_ i: Int) -> Int { min(max(i, 0), max(0, articles.count - 1)) }
@@ -542,7 +548,7 @@ final class ReaderArticleViewController: UIViewController,
     private func makePage(for index: Int) -> ReaderBlockViewController? {
         guard articles.indices.contains(index) else { return nil }
         let summary = articles[index]
-        if let cached = pageCache.value(for: summary.identifier) { return cached }
+        if let cached = pageCache.value(for: summary.stableKey) { return cached }
         guard let article = resolveArticle?(summary) else { return nil }
         let vc = ReaderBlockViewController(
             article: article,
@@ -551,7 +557,7 @@ final class ReaderArticleViewController: UIViewController,
             onRequestShowBars: { [weak self] in self?.applyFullscreen(false, animated: true) }
         )
         vc.hideBarsTapZonesActive(settings.articleFullscreenEnabled && isFullscreenAvailable)
-        pageCache.insert(vc, for: summary.identifier)
+        pageCache.insert(vc, for: summary.stableKey)
         return vc
     }
 
@@ -731,14 +737,16 @@ final class ReaderArticleViewController: UIViewController,
     func pageViewController(_ pageViewController: UIPageViewController,
                             viewControllerBefore viewController: UIViewController) -> UIViewController? {
         guard let vc = viewController as? ReaderBlockViewController,
-              let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles), i > 0 else { return nil }
+              let i = TimelinePageIndex.index(of: vc.article.identifier, serverID: vc.article.serverID, in: articles),
+              i > 0 else { return nil }
         return makePage(for: i - 1)
     }
 
     func pageViewController(_ pageViewController: UIPageViewController,
                             viewControllerAfter viewController: UIViewController) -> UIViewController? {
         guard let vc = viewController as? ReaderBlockViewController,
-              let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles), i < articles.count - 1 else { return nil }
+              let i = TimelinePageIndex.index(of: vc.article.identifier, serverID: vc.article.serverID, in: articles),
+              i < articles.count - 1 else { return nil }
         return makePage(for: i + 1)
     }
 
@@ -747,7 +755,7 @@ final class ReaderArticleViewController: UIViewController,
     func pageViewController(_ pageViewController: UIPageViewController,
                             willTransitionTo pendingViewControllers: [UIViewController]) {
         if let next = pendingViewControllers.first as? ReaderBlockViewController,
-           let target = TimelinePageIndex.index(of: next.article.identifier, in: articles) {
+           let target = TimelinePageIndex.index(of: next.article.identifier, serverID: next.article.serverID, in: articles) {
             // Warm the lead image of the page being swiped to, in case a fast swipe outran the
             // ±1 prewarm — so its header is ready by the time the swipe settles.
             preloadLeadImage(of: next.article)
@@ -769,7 +777,8 @@ final class ReaderArticleViewController: UIViewController,
             DispatchQueue.main.async { [weak self] in self?.reconcileIfIdle() }
         }
         guard completed, let vc = displayedPage,
-              let i = TimelinePageIndex.index(of: vc.article.identifier, in: articles) else { return }
+              let i = TimelinePageIndex.index(of: vc.article.identifier, serverID: vc.article.serverID, in: articles)
+        else { return }
         // Reading aloud is tied to the article that was visible when it started; a new page means a
         // new article, so stop rather than keep narrating the one the user swiped away from.
         speech.stop()
@@ -786,7 +795,7 @@ final class ReaderArticleViewController: UIViewController,
     @objc private func handleMemoryWarning() {
         // Keep only the live ±1 window so the current page and its immediate neighbors survive.
         let live = PrewarmPlan.indices(current: index, count: articles.count, radius: 1, direction: .none) + [index]
-        let keep = Set(live.filter { articles.indices.contains($0) }.map { articles[$0].identifier })
+        let keep = Set(live.filter { articles.indices.contains($0) }.map { articles[$0].stableKey })
         _ = pageCache.trim(toKeep: keep)
     }
 

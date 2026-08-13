@@ -48,7 +48,7 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
 
         let model = TimelineModel(settings: settings)
         model.configure(modelContext: context, store: store)
@@ -193,7 +193,7 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)
@@ -221,6 +221,45 @@ struct TimelineModelTests {
         #expect(settings.pendingRemoteReadingPosition == nil)
     }
 
+    // MARK: - Self-heal reanchor across duplicate identifiers
+
+    /// `Article.identifier` is only a per-feed dedup key -- two different feeds can share the same
+    /// source URL. A background timeline mutation (sync landing, a refresh) re-resolves the saved
+    /// anchor via the private `reanchorToCurrentArticle`, reached through the second-and-later
+    /// `applyTimeline()` call; without `timelineAnchorServerID` disambiguating it, that lookup could
+    /// snap the sidebar/reader to a completely different feed's article sharing the anchor's
+    /// identifier string -- the exact "going back jumps to a completely other place" bug this pins.
+    @Test func applyTimelineReanchorDisambiguatesArticlesThatShareAnIdentifierAcrossFeeds() async throws {
+        let settings = freshSettings()
+        let container = try makeContainer()
+        let context = container.mainContext
+        let feedX = Feed(name: "FeedX", aggregator: "feedContent", identifier: "fx")
+        let feedY = Feed(name: "FeedY", aggregator: "feedContent", identifier: "fy")
+        let dupInFeedX = Article(title: "dup", identifier: "dup", url: "https://x.com/dup")
+        dupInFeedX.date = Date(timeIntervalSince1970: 1); dupInFeedX.feed = feedX; dupInFeedX.serverID = 1
+        let dupInFeedY = Article(title: "dup", identifier: "dup", url: "https://x.com/dup")
+        dupInFeedY.date = Date(timeIntervalSince1970: 2); dupInFeedY.feed = feedY; dupInFeedY.serverID = 2
+        context.insert(feedX); context.insert(feedY); context.insert(dupInFeedX); context.insert(dupInFeedY)
+        try context.save()
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        await store.refreshNow()
+
+        let model = TimelineModel(settings: settings)
+        model.configure(modelContext: context, store: store)
+        model.applyTimeline()   // first load: didRestoreAnchor flips true
+
+        // Simulate the anchor having been recorded against FeedY's copy (serverID 2).
+        settings.timelineAnchorIdentifier = "dup"
+        settings.timelineAnchorServerID = 2
+
+        model.applyTimeline()   // second call: recomputeFilter() + reanchorToCurrentArticle()
+
+        #expect(model.selectedSummary?.serverID == 2, "must reanchor to FeedY's copy, not FeedX's same-identifier row")
+    }
+
     // MARK: - clampIndex scroll bump (review finding 4)
 
     /// Review finding 4: a filter toggle that shrinks the timeline past the current selection moves
@@ -243,7 +282,7 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { nil })
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)

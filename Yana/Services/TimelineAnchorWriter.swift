@@ -24,6 +24,7 @@ final class TimelineAnchorWriter {
     /// click, Next/Previous Article, or picking an article from the list.
     func record(_ summary: ArticleSummary) {
         settings.timelineAnchorIdentifier = summary.identifier
+        settings.timelineAnchorServerID = summary.serverID
         ReadingPositionSync.shared.schedulePush(articleServerID: summary.serverID, settings: settings)
     }
 }

@@ -47,4 +47,21 @@ struct TimelinePageIndexTests {
         #expect(TimelineAnchor.index(for: nil, in: list) == 1)
     }
 
+    /// `identifier` is only a per-feed dedup key -- two different feeds can share the exact same
+    /// source URL/GUID. When a `serverID` is supplied it must win over a same-identifier row
+    /// belonging to a different feed's article, rather than the lookup silently resolving to
+    /// whichever duplicate happens to come first in the array.
+    @Test func serverIDDisambiguatesArticlesThatShareAnIdentifierAcrossFeeds() {
+        let firstFeedArticle = article("https://example.com/shared")
+        firstFeedArticle.serverID = 1
+        let secondFeedArticle = article("https://example.com/shared")
+        secondFeedArticle.serverID = 2
+        let list = [firstFeedArticle, secondFeedArticle]
+
+        #expect(TimelinePageIndex.index(of: "https://example.com/shared", serverID: 2, in: list) == 1)
+        #expect(TimelinePageIndex.index(of: "https://example.com/shared", serverID: 1, in: list) == 0)
+        // No serverID supplied: falls back to the (ambiguous) identifier match -- the first one.
+        #expect(TimelinePageIndex.index(of: "https://example.com/shared", in: list) == 0)
+    }
+
 }
