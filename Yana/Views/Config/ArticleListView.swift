@@ -48,28 +48,26 @@ struct ArticleListView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(ArticleStore.self) private var store
+    @Environment(ArticleListPreparer.self) private var preparer
 
     @State private var settings = AppSettings()
     @State private var summaryToDelete: ArticleSummary?
 
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
-    /// Browsing reads the in-memory index; a search swaps in predicate-fetched results. Both run
-    /// through the shared tag/feed filter so the list stays a subset of the reader timeline. While
-    /// browsing (not searching), the currently-open article's row is pinned ahead of the read block
-    /// if it's been marked read (see `TimelinePinning`) so opening the list right after finishing an
-    /// article doesn't show it jump to the bottom of the read section. Search results are sorted by
-    /// date alone (no read/unread blocks to jump between), so pinning is skipped there.
+    /// Browsing reads `preparer.browsingArticles` — already tag/feed/starred-filtered and pinned to
+    /// the current article, kept continuously current in the background (see
+    /// `ArticleListPreparer`'s doc comment) rather than recomputed here on first appearance. A
+    /// search instead re-filters its own predicate-fetched matches through the same tag/feed/
+    /// starred chain (a search fetch has no notion of the timeline filter) and skips pinning, since
+    /// search results are sorted by date alone with no read/unread blocks to jump between.
     private var results: [ArticleSummary] {
-        let base = uiState.searchResults ?? store.summaries
-        let byTag = TagFilter.apply(to: base,
+        guard let searchResults = uiState.searchResults else { return preparer.browsingArticles }
+        let byTag = TagFilter.apply(to: searchResults,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        guard uiState.searchResults == nil else { return canonical }
-        return TimelinePinning.apply(to: canonical, pinning: currentArticleID)
+        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }
