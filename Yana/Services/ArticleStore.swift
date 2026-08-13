@@ -158,6 +158,13 @@ final class ArticleStore {
     /// through any other instance.
     @ObservationIgnored private let settings = AppSettings()
     @ObservationIgnored private var defaultsObserver: NSObjectProtocol?
+    /// The filter/anchor values `browsingArticles` last saw. `UserDefaults.didChangeNotification`
+    /// fires for every write in the process, not just these six keys, and carries no indication of
+    /// which key actually changed -- so `handleDefaultsChange` snapshot-compares them itself and
+    /// skips the O(n) filter/pin pass whenever none of them moved (a Mac sidebar-width drag, a
+    /// reading-position sync timestamp, an article-text-size change, etc. would otherwise re-filter
+    /// the entire library on every one of those unrelated writes).
+    @ObservationIgnored private var lastFilterSnapshot: FilterSnapshot?
 
     /// Rows reported by saves since the last refresh, folded together. Drained by the coalescer.
     @ObservationIgnored private var pending = LibraryChangeSet()
@@ -219,7 +226,7 @@ final class ArticleStore {
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.recomputeBrowsingArticles() }
+            Task { @MainActor [weak self] in self?.handleDefaultsChange() }
         }
         Task { await bootstrap() }
     }
@@ -361,9 +368,41 @@ final class ArticleStore {
         cacheCoalescer?.schedule()
     }
 
+    /// The filter/anchor values `recomputeBrowsingArticles` reads, for `handleDefaultsChange`'s
+    /// before/after comparison.
+    private struct FilterSnapshot: Equatable {
+        let disabledTagNames: Set<String>
+        let includeUntagged: Bool
+        let disabledFeedNames: Set<String>
+        let starredOnly: Bool
+        let timelineAnchorIdentifier: String?
+        let timelineAnchorServerID: Int?
+    }
+
+    private func currentFilterSnapshot() -> FilterSnapshot {
+        FilterSnapshot(
+            disabledTagNames: settings.disabledTagNames,
+            includeUntagged: settings.includeUntagged,
+            disabledFeedNames: settings.disabledFeedNames,
+            starredOnly: settings.starredOnly,
+            timelineAnchorIdentifier: settings.timelineAnchorIdentifier,
+            timelineAnchorServerID: settings.timelineAnchorServerID
+        )
+    }
+
+    /// A `UserDefaults` write landed somewhere in the process. Only re-derive `browsingArticles`
+    /// when one of the six values it actually depends on moved — see `lastFilterSnapshot`'s doc
+    /// comment for why this check exists at all.
+    private func handleDefaultsChange() {
+        let snapshot = currentFilterSnapshot()
+        guard snapshot != lastFilterSnapshot else { return }
+        recomputeBrowsingArticles()
+    }
+
     /// Re-derive `browsingArticles` from the current `summaries` and filter settings. Called
     /// whenever either changes — see `browsingArticles`'s doc comment.
     private func recomputeBrowsingArticles() {
+        lastFilterSnapshot = currentFilterSnapshot()
         let byTag = TagFilter.apply(
             to: summaries,
             disabledTagNames: settings.disabledTagNames,
