@@ -12,3 +12,11 @@ struct RunStatusResponse: Decodable, Equatable, Sendable {
 
     var isRunning: Bool { status == "running" }
 }
+
+/// `GET`/`PATCH /api/v1/reading-position`'s response shape -- shared by `SyncEngine`'s pull and
+/// `ArticleActions`' push, which otherwise independently declared the identical struct. Also the
+/// shape `JobEventPayload.readingPosition` mirrors (minus the nullability -- see its doc comment).
+struct ReadingPositionWire: Decodable, Sendable {
+    let articleId: Int?
+    let updatedAt: Date?
+}
