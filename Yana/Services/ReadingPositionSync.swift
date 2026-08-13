@@ -58,17 +58,12 @@ final class ReadingPositionSync {
     }
 
     /// Retries a not-yet-acknowledged position push. Called by `SyncEngine` alongside
-    /// `PendingWriteQueue.flush`, before the normal pull. A no-op when nothing is queued; a
-    /// failure here leaves the entry queued for the next sync pass.
+    /// `PendingWriteQueue.flush`, before the normal pull. A no-op when nothing is queued; delegates
+    /// to `push`, whose failure path re-queues the same id -- a no-op re-write when it fails again,
+    /// but the entry stays explicitly queued rather than relying on it never having been cleared.
     static func flushPending(client: YanaAPIClient, settings: AppSettings) async {
         guard let articleServerID = settings.pendingReadingPositionPush else { return }
-        do {
-            let updatedAt = try await ArticleActions(client: client).setReadingPosition(articleServerID: articleServerID)
-            settings.pendingReadingPositionPush = nil
-            if let updatedAt { settings.readingPositionUpdatedAt = updatedAt }
-        } catch {
-            // leave queued
-        }
+        await shared.push(articleServerID: articleServerID, client: client, settings: settings)
     }
 
     /// Stashes a remote position update for the reader to apply at its next fresh session --
@@ -83,5 +78,27 @@ final class ReadingPositionSync {
         if let known = settings.readingPositionUpdatedAt, known >= updatedAt { return }
         settings.readingPositionUpdatedAt = updatedAt
         settings.pendingRemoteReadingPosition = articleId
+    }
+
+    /// Resolves a reading position pulled from another paired device (`applyRemoteUpdate` above)
+    /// against `articles`, applying it as the new local anchor if it resolves. Consumes the pending
+    /// value either way (resolved or not) so a stale/unsyncable remote position isn't retried
+    /// forever. Call ONLY from the first-load branch of applying the timeline -- a fresh session,
+    /// before the user has navigated -- never mid-session, which would yank the user off the
+    /// article they're actively reading.
+    ///
+    /// Deliberately does NOT call `schedulePush`/`TimelineAnchorWriter.record`: this is the read
+    /// side of the sync, and pushing the value straight back would let two open devices trade
+    /// anchor writes forever. It updates `timelineAnchorIdentifier`/`timelineAnchorServerID`
+    /// directly instead, so subsequent self-heal reanchoring still resolves to the right article
+    /// without re-triggering a push. Shared by `ReaderAnchorController` (iOS) and `TimelineModel`
+    /// (Mac) so this no-ping-pong guarantee lives in one place, not two copies that could drift.
+    static func jumpToSyncedTimelinePosition(in articles: [ArticleSummary], settings: AppSettings) -> Int? {
+        guard let articleID = settings.pendingRemoteReadingPosition else { return nil }
+        settings.pendingRemoteReadingPosition = nil
+        guard let index = articles.firstIndex(where: { $0.serverID == articleID }) else { return nil }
+        settings.timelineAnchorIdentifier = articles[index].identifier
+        settings.timelineAnchorServerID = articleID
+        return index
     }
 }

@@ -107,7 +107,7 @@ struct OnboardingServerPage: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
-                card {
+                onboardingCard {
                     // A plain `TextField` placeholder here renders link-blue, not the standard
                     // gray placeholder color — iOS auto-styles a `.keyboardType(.URL)` field's
                     // placeholder as a hyperlink when the placeholder text itself parses as a
@@ -146,7 +146,7 @@ struct OnboardingServerPage: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                card {
+                onboardingCard {
                     if state.isPaired {
                         Label("Signed in", systemImage: "checkmark.seal.fill")
                             .foregroundStyle(.green)
@@ -168,13 +168,6 @@ struct OnboardingServerPage: View {
         .padding(.vertical, 32)
         .frame(maxWidth: 480)
         .frame(maxWidth: .infinity)
-    }
-
-    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     /// `URL(string:)` alone isn't enough validation: a host-only address like

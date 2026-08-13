@@ -25,7 +25,14 @@ actor ArticleDeduplicator {
         var removed = 0
         for duplicates in byServerID.values where duplicates.count > 1 {
             let sorted = duplicates.sorted { $0.createdAt < $1.createdAt }
+            let kept = sorted[0]
             for extra in sorted.dropFirst() {
+                // Reconcile onto the surviving row before deleting the duplicate -- a star or
+                // read mark that only landed on this copy (from before the overlapping-sync bug
+                // that created the duplicate was fixed) must not be silently reverted by keeping
+                // the other, un-starred/unread copy.
+                if extra.starred { kept.starred = true }
+                if extra.read { kept.setRead(true) }
                 modelContext.delete(extra)
                 removed += 1
             }

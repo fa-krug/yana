@@ -1,6 +1,20 @@
 import Foundation
 import SwiftUI
 
+/// Search text, debounced query, matched results, and the filter-sheet flag for the article list
+/// sheet (`ArticleListView`). Owned by `AppState` — which outlives the sheet's own presentation
+/// cycle — rather than held as the view's local `@State`, so dismissing and reopening the list
+/// doesn't discard an in-progress search or force the sheet to repaint from an empty state before
+/// the search reruns: it reappears already showing its last query and results.
+@MainActor
+@Observable
+final class ArticleListUIState {
+    var searchText = ""
+    var debouncedSearch = ""
+    var searchResults: [ArticleSummary]?
+    var showFilter = false
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -21,4 +35,6 @@ final class AppState {
     /// reader behind `InitialSyncLoadingView` -- see `InitialSyncGate`. Never true again once
     /// `AppSettings.hasCompletedInitialSync` is set.
     var isPerformingInitialSync = false
+    /// Survives across the article list sheet's dismiss/reopen cycle — see `ArticleListUIState`.
+    let articleListState = ArticleListUIState()
 }

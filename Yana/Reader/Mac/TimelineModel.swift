@@ -145,18 +145,19 @@ final class TimelineModel {
 
     // MARK: - Filtering / anchor (mirrors ReaderScreen)
 
+    /// Adopt `store.browsingArticles` — already tag/feed/starred-filtered and pinned to the
+    /// currently-displayed article, kept current by `ArticleStore` itself rather than re-derived
+    /// here from `store.summaries` a second time (this used to duplicate `ArticleStore`'s own
+    /// filter/pin chain verbatim). Forces a synchronous refresh first rather than trusting
+    /// `browsingArticles` to already be current -- `MacRootView` only calls this from a change
+    /// already observed on `store.browsingArticles` itself in production, but this is also called
+    /// directly (and `ArticleStore.start()` is never running) in `TimelineModelTests`, which mutate
+    /// `AppSettings` directly and need the recompute to happen on demand, not on a background
+    /// observer that was never armed.
     func recomputeFilter() {
         guard let store else { return }
-        let byTag = TagFilter.apply(
-            to: store.summaries,
-            disabledTagNames: settings.disabledTagNames,
-            includeUntagged: settings.includeUntagged
-        )
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = TimelinePinning.apply(
-            to: canonical, pinning: settings.timelineAnchorIdentifier, pinningServerID: settings.timelineAnchorServerID
-        )
+        store.refreshBrowsingArticles()
+        filteredArticles = store.browsingArticles
     }
 
     /// First load: filter + park on the saved anchor in one pass. Subsequent deliveries refilter and
@@ -188,19 +189,14 @@ final class TimelineModel {
     }
 
     /// Applies a reading position pulled from another paired device (see
-    /// `AppSettings.pendingRemoteReadingPosition`), if it resolves against `articles`. Consumes the
-    /// pending value either way (resolved or not) so a stale/unsyncable remote position isn't
-    /// retried forever. Call ONLY from `applyTimeline`'s first-load branch -- never mid-session,
-    /// which would yank the user off the article they're actively reading. Mirrors
-    /// `ReaderAnchorController.jumpToSyncedTimelinePosition` on iOS; see its doc comment for why
-    /// this must never call `anchorWriter.record`.
+    /// `AppSettings.pendingRemoteReadingPosition`), if it resolves against `articles`. Call ONLY
+    /// from `applyTimeline`'s first-load branch -- never mid-session, which would yank the user off
+    /// the article they're actively reading. Delegates to
+    /// `ReadingPositionSync.jumpToSyncedTimelinePosition`, shared with `ReaderAnchorController`
+    /// (iOS) so the no-ping-pong guarantee (see that method's doc comment; it's why this must never
+    /// call `anchorWriter.record`) lives in one place.
     private func jumpToSyncedTimelinePosition(in articles: [ArticleSummary]) -> Int? {
-        guard let articleID = settings.pendingRemoteReadingPosition else { return nil }
-        settings.pendingRemoteReadingPosition = nil
-        guard let index = articles.firstIndex(where: { $0.serverID == articleID }) else { return nil }
-        settings.timelineAnchorIdentifier = articles[index].identifier
-        settings.timelineAnchorServerID = articleID
-        return index
+        ReadingPositionSync.jumpToSyncedTimelinePosition(in: articles, settings: settings)
     }
 
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention

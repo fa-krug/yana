@@ -48,7 +48,13 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        // `settings` is also handed to `ArticleStore` (not just `TimelineModel`) so
+        // `store.browsingArticles` -- which `TimelineModel.recomputeFilter()` now reads directly --
+        // filters/pins against this test's isolated suite rather than real `UserDefaults.standard`.
+        let store = ArticleStore(
+            container: container, cache: SummaryIndexCache(fileURL: cacheURL), settings: settings,
+            anchorProvider: { (nil, nil) }
+        )
 
         let model = TimelineModel(settings: settings)
         model.configure(modelContext: context, store: store)
@@ -193,7 +199,10 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        let store = ArticleStore(
+            container: container, cache: SummaryIndexCache(fileURL: cacheURL), settings: settings,
+            anchorProvider: { (nil, nil) }
+        )
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)
@@ -244,7 +253,10 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        let store = ArticleStore(
+            container: container, cache: SummaryIndexCache(fileURL: cacheURL), settings: settings,
+            anchorProvider: { (nil, nil) }
+        )
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)
@@ -282,7 +294,10 @@ struct TimelineModelTests {
 
         let cacheURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
-        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        let store = ArticleStore(
+            container: container, cache: SummaryIndexCache(fileURL: cacheURL), settings: settings,
+            anchorProvider: { (nil, nil) }
+        )
         await store.refreshNow()
 
         let model = TimelineModel(settings: settings)
