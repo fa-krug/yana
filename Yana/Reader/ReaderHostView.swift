@@ -144,17 +144,9 @@ struct ReaderScreen: View {
 
     /// Re-filter `store.summaries`, then pin the currently-displayed article's position (see
     /// `TimelinePinning`) so marking it read doesn't reshuffle the timeline out from under the user.
+    /// Shared with `TimelineModel` (Mac) via `ReaderActions.recomputeFilter`.
     private func recomputeFilter() {
-        let byTag = TagFilter.apply(
-            to: store.summaries,
-            disabledTagNames: settings.disabledTagNames,
-            includeUntagged: settings.includeUntagged
-        )
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = TimelinePinning.apply(
-            to: canonical, pinning: settings.timelineAnchorIdentifier, pinningServerID: settings.timelineAnchorServerID
-        )
+        filteredArticles = ReaderActions.recomputeFilter(summaries: store.summaries, settings: settings)
     }
 
     /// First load: filter + position on the saved anchor in one pass, so the reader is built
@@ -185,14 +177,8 @@ struct ReaderScreen: View {
 
     private var hasServer: Bool { AuthenticatedClient.current() != nil }
 
-    /// `.server` mode degrades gracefully on its own but still needs an actual pairing to reach
-    /// the server; `.appleIntelligence` only needs on-device availability, independent of pairing.
-    private var aiReady: Bool {
-        switch settings.aiMode {
-        case .server: hasServer
-        case .appleIntelligence: AISummaryReadiness.isReady(mode: .appleIntelligence)
-        }
-    }
+    /// See `ReaderActions.aiReady`, shared with `TimelineModel` (Mac).
+    private var aiReady: Bool { ReaderActions.aiReady(mode: settings.aiMode) }
 
     private var showDemoBanner: Bool {
         settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner && !hasServer
@@ -358,6 +344,9 @@ struct ReaderScreen: View {
         appState.showArticleList = false
     }
 
+    /// Server-interaction sequencing shared with `TimelineModel` (Mac) via `ReaderActions.summarize`;
+    /// this keeps the provider-resolution guard and the resulting UI state (isSummarizing, toast,
+    /// reloadToken) local, since those are exactly where the two platforms legitimately differ.
     private func summarize(_ article: Article) {
         guard !isSummarizing else { return }
         let provider: AISummaryProvider
@@ -371,13 +360,12 @@ struct ReaderScreen: View {
         }
         isSummarizing = true
         Task {
-            let summary = await provider.summarize(content: article.plainText, title: article.title)
+            let result = await ReaderActions.summarize(article, using: provider, modelContext: modelContext)
             isSummarizing = false
-            if let summary {
-                article.summary = summary
-                try? modelContext.save()
+            switch result {
+            case .saved:
                 reloadToken += 1
-            } else {
+            case .failed:
                 toast = ToastMessage(
                     text: String(localized: "Could not summarize this article. Please try again."),
                     style: .error
@@ -432,32 +420,22 @@ struct ReaderScreen: View {
     /// later retry of this exact article).
     private func forceUpdateArticle(_ article: Article) {
         guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
-        let feedName = article.feed?.name
         UpdateActivity.shared.restart {
-            do {
-                let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
-                guard !Task.isCancelled else { return }
-                let applied = await UpdateAndSync.pollForReloadedContent(
-                    jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client,
-                    visibleArticle: article
-                )
-                guard !Task.isCancelled else { return }
-                if applied {
-                    // Re-render the visible page: the reload refreshed the article's content, but
-                    // the reader only re-renders when reloadToken changes (same as summarize).
-                    // Without this bump, Reload silently updates the DB while the page keeps
-                    // showing stale content.
-                    reloadToken += 1
-                    toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
-                    Haptics.impact(.light)
-                } else {
-                    toast = ToastMessage(
-                        text: String(localized: "Could not reload this article. Please try again."),
-                        style: .error
-                    )
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
+            let result = await ReaderActions.forceUpdateArticle(
+                article, serverID: serverID, client: client, container: modelContext.container
+            )
+            switch result {
+            case .cancelled:
+                return
+            case .applied(let feedName):
+                // Re-render the visible page: the reload refreshed the article's content, but
+                // the reader only re-renders when reloadToken changes (same as summarize).
+                // Without this bump, Reload silently updates the DB while the page keeps
+                // showing stale content.
+                reloadToken += 1
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+                Haptics.impact(.light)
+            case .failed:
                 toast = ToastMessage(
                     text: String(localized: "Could not reload this article. Please try again."),
                     style: .error
@@ -475,17 +453,16 @@ struct ReaderScreen: View {
             return
         }
         UpdateActivity.shared.restart {
-            do {
-                let runId = try await ArticleActions(client: client).updateAll()
-                guard !Task.isCancelled else { return }
-                let result = await UpdateAndSync.pollForFreshContent(
-                    runId: runId, container: modelContext.container, client: client, settings: settings
-                )
-                guard !Task.isCancelled else { return }
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: result.newCount, feedName: nil))
+            let result = await ReaderActions.triggerRefresh(
+                client: client, container: modelContext.container, settings: settings
+            )
+            switch result {
+            case .cancelled:
+                return
+            case .applied(let newCount):
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
                 Haptics.impact(.light)
-            } catch {
-                guard !Task.isCancelled else { return }
+            case .failed:
                 toast = ToastMessage(
                     text: String(localized: "Could not check for updates. Please try again."),
                     style: .error

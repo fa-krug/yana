@@ -134,29 +134,15 @@ final class TimelineModel {
         scrollTarget = SidebarScrollRequest(id: id, token: (scrollTarget?.token ?? 0) + 1)
     }
 
-    /// `.server` mode degrades gracefully on its own but still needs an actual pairing to reach
-    /// the server; `.appleIntelligence` only needs on-device availability, independent of pairing.
-    var aiReady: Bool {
-        switch settings.aiMode {
-        case .server: hasServer
-        case .appleIntelligence: AISummaryReadiness.isReady(mode: .appleIntelligence)
-        }
-    }
+    /// See `ReaderActions.aiReady`, shared with `ReaderScreen` (iOS).
+    var aiReady: Bool { ReaderActions.aiReady(mode: settings.aiMode) }
 
     // MARK: - Filtering / anchor (mirrors ReaderScreen)
 
+    /// See `ReaderActions.recomputeFilter`, shared with `ReaderScreen` (iOS).
     func recomputeFilter() {
         guard let store else { return }
-        let byTag = TagFilter.apply(
-            to: store.summaries,
-            disabledTagNames: settings.disabledTagNames,
-            includeUntagged: settings.includeUntagged
-        )
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        filteredArticles = TimelinePinning.apply(
-            to: canonical, pinning: settings.timelineAnchorIdentifier, pinningServerID: settings.timelineAnchorServerID
-        )
+        filteredArticles = ReaderActions.recomputeFilter(summaries: store.summaries, settings: settings)
     }
 
     /// First load: filter + park on the saved anchor in one pass. Subsequent deliveries refilter and
@@ -268,6 +254,9 @@ final class TimelineModel {
         openOnServerArticleID = serverID
     }
 
+    /// Server-interaction sequencing shared with `ReaderScreen` (iOS) via `ReaderActions.summarize`;
+    /// this keeps the provider-resolution guard and the resulting state (isSummarizing, toast,
+    /// reloadToken) local, since those are exactly where the two platforms legitimately differ.
     func summarize(_ article: Article) {
         guard let modelContext, !isSummarizing else { return }
         let provider: AISummaryProvider
@@ -281,13 +270,12 @@ final class TimelineModel {
         }
         isSummarizing = true
         Task {
-            let summary = await provider.summarize(content: article.plainText, title: article.title)
+            let result = await ReaderActions.summarize(article, using: provider, modelContext: modelContext)
             isSummarizing = false
-            if let summary {
-                article.summary = summary
-                try? modelContext.save()
+            switch result {
+            case .saved:
                 self.reloadToken += 1
-            } else {
+            case .failed:
                 self.toast = ToastMessage(
                     text: String(localized: "Could not summarize this article. Please try again."),
                     style: .error
@@ -306,27 +294,17 @@ final class TimelineModel {
               let client = AuthenticatedClient.current(),
               let serverID = article.serverID
         else { return }
-        let feedName = article.feed?.name
         UpdateActivity.shared.restart {
-            do {
-                let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
-                guard !Task.isCancelled else { return }
-                let applied = await UpdateAndSync.pollForReloadedContent(
-                    jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client,
-                    visibleArticle: article
-                )
-                guard !Task.isCancelled else { return }
-                if applied {
-                    self.reloadToken += 1
-                    self.toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
-                } else {
-                    self.toast = ToastMessage(
-                        text: String(localized: "Could not reload this article. Please try again."),
-                        style: .error
-                    )
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
+            let result = await ReaderActions.forceUpdateArticle(
+                article, serverID: serverID, client: client, container: modelContext.container
+            )
+            switch result {
+            case .cancelled:
+                return
+            case .applied(let feedName):
+                self.reloadToken += 1
+                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+            case .failed:
                 self.toast = ToastMessage(
                     text: String(localized: "Could not reload this article. Please try again."),
                     style: .error
@@ -345,16 +323,15 @@ final class TimelineModel {
             return
         }
         UpdateActivity.shared.restart {
-            do {
-                let runId = try await ArticleActions(client: client).updateAll()
-                guard !Task.isCancelled else { return }
-                let result = await UpdateAndSync.pollForFreshContent(
-                    runId: runId, container: modelContext.container, client: client, settings: self.settings
-                )
-                guard !Task.isCancelled else { return }
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: result.newCount, feedName: nil))
-            } catch {
-                guard !Task.isCancelled else { return }
+            let result = await ReaderActions.triggerRefresh(
+                client: client, container: modelContext.container, settings: self.settings
+            )
+            switch result {
+            case .cancelled:
+                return
+            case .applied(let newCount):
+                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
+            case .failed:
                 self.toast = ToastMessage(
                     text: String(localized: "Could not check for updates. Please try again."),
                     style: .error
