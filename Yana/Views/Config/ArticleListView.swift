@@ -25,21 +25,18 @@ struct ArticleListView: View {
 
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
-    /// Browsing reads the in-memory index; a search swaps in predicate-fetched results. Both run
-    /// through the shared tag/feed filter so the list stays a subset of the reader timeline. While
-    /// browsing (not searching), the currently-open article's row is pinned ahead of the read block
-    /// if it's been marked read (see `TimelinePinning`) so opening the list right after finishing an
-    /// article doesn't show it jump to the bottom of the read section. Search results are sorted by
-    /// date alone (no read/unread blocks to jump between), so pinning is skipped there.
+    /// Browsing reads the in-memory index (already in the timeline's canonical
+    /// `(createdAt, serverID)` order — see `TimelineOrder`); a search swaps in predicate-fetched
+    /// results. Both run through the shared tag/feed filter so the list stays a subset of the reader
+    /// timeline, and since filtering only removes rows, browsing shows exactly the reader's order —
+    /// including the row for the article currently open, which stays put when it is marked read.
     private var results: [ArticleSummary] {
         let base = searchResults ?? store.summaries
         let byTag = TagFilter.apply(to: base,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        guard searchResults == nil else { return canonical }
-        return TimelinePinning.apply(to: canonical, pinning: currentArticleID, pinningServerID: currentArticleServerID)
+        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }

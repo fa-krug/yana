@@ -175,8 +175,9 @@ source and issue board live at
   `Article.serverID: Int?` is the sync identity `SyncWriter` upserts/removes/backfills by.
   `Article.hasContent: Bool` tracks whether `/articles/:id/content` has landed yet for this row,
   driving the sync engine's backfill retry. `Article.read: Bool` and `Article.readRank: Int` track
-  read state and drive primary timeline sort (never assign directly — use `Article.setRead(_:)`
-  instead). `Article.blocks` (computed from `blockData`) is unchanged
+  read state, which is display-only and deliberately takes no part in the timeline's order (see
+  **Key patterns**); never assign either directly — use `Article.setRead(_:)`
+  instead. `Article.blocks` (computed from `blockData`) is unchanged
   from before — see **Reader**.
 - **Networking** (`Yana/Networking/`): `YanaAPIClient` (a thin typed wrapper over every
   `/api/v1/**` route — `get`/`patch`/`post`/`getRaw`, Bearer-token auth, ISO-8601 date decoding,
@@ -386,7 +387,7 @@ source and issue board live at
   so the user-driven push path (`saveAnchor`/`recordOpenedArticle`/`selection`/`moveSelection`) and the
   self-heal/remote-apply read paths (`reanchorIndex`/`reanchorToCurrentArticle`/
   `jumpToSyncedTimelinePosition`) stay distinguishable in tests. Every one of these position-resolution
-  lookups (`TimelinePageIndex.index`, `TimelineAnchor.index`, `TimelinePinning.apply`, the reader
+  lookups (`TimelinePageIndex.index`, `TimelineAnchor.index`, `TimelineOrder.isOrderedBefore`, the reader
   pager's neighbor/page-cache lookups in `ReaderArticleViewController`) prefers an exact `serverID`
   match over `identifier` when one is available (`TimelineIdentifiable.stableKey` in
   `Yana/Utilities/TimelineFiltering.swift`): `Article.identifier` is only a per-feed dedup key, so two
@@ -526,26 +527,34 @@ source and issue board live at
   back up as API calls. `AuthenticatedClient.current() == nil` ("not paired") is treated as a normal,
   silent state throughout — sync, background refresh, and the reader's action handlers all no-op
   rather than error.
-- **Read state drives the primary sort:** the timeline sorts by `Article.readRank` (0=read,
-  1=unread) then `Article.date` — the original article date reported by the source, not the
-  device's import/sync time (`Article.createdAt`, which still exists but only drives
-  `SyncWriter`'s content-backfill order) — read articles first (oldest→newest), then unread
-  articles (oldest→newest), so the next unvisited article is always the boundary between the two
-  blocks.
-  An article is marked read automatically the moment it becomes the current/displayed one: an iOS
-  pager swipe completing, opening it from the article list, or a Mac sidebar selection change
-  (`ArticleWrites.markRead`).
-  While the currently-displayed article remains current, its position in every sorted timeline view
-  (the iOS reader pager, the Mac sidebar, and the article list's browsing mode) is pinned as if it
-  were still unread even after `read` flips to `true` — see `TimelinePinning`
-  (`Yana/Utilities/TimelineFiltering.swift`) — so marking it read doesn't visibly reshuffle the list
-  out from under the user; it settles into its true read-block position only once the user
-  navigates to a different article.
-  The server can upgrade a synced article from unread to read (read
-  on another device) but a sync pass can never downgrade an already-locally-read article back to
-  unread (`SyncWriter.upsertSummaries`'s upgrade-only rule) — this prevents a racing sync from
-  reordering the list under the user's finger. Starring remains a separate, orthogonal
-  `Article.starred` boolean with its own "Starred Only" quick-filter, unaffected by read state.
+- **The timeline mirrors the server's append-only order, and nothing else reorders it:** the single
+  source of truth is `TimelineOrder` (`Yana/Utilities/TimelineFiltering.swift`) —
+  `Article.createdAt` ascending (the server's own insertion-order key) with `Article.serverID` as
+  the tiebreak. Every ordering site must agree with it: `ArticleSummaryLoader`'s `SortDescriptor`s
+  (`load()` and `lightDescriptor`), `SummaryIndexMerge`'s splice, and the filters (which only ever
+  remove rows, never reorder). Three rules, each of which was violated at some point and produced a
+  timeline that reshuffled under the user:
+  - **Read state must not sort.** It used to be the primary key (`Article.readRank`, read block
+    first, then unread), so an article moved between blocks the instant it was marked read — which
+    happens the moment it becomes current. Every swipe therefore reordered the list, back-navigation
+    landed on a different article each time, and paging back through already-read history was
+    incoherent. `readRank` still exists and is still kept in sync by `Article.setRead(_:)`, but only
+    so the stored schema is unchanged; nothing sorts by it. The band-aid this replaces,
+    `TimelinePinning` (which lifted the displayed article back to its as-if-unread slot), is deleted.
+  - **`Article.date` must not sort.** It's the feed's own publish timestamp, display-only, and a feed
+    can backfill it out of order, which would retroactively move an article the user already paged past.
+  - **`serverID` is a required tiebreak, not a nicety.** The server stamps `createdAt` with
+    whole-second precision (`unixepoch()`), so one aggregation run gives hundreds of articles the same
+    value; without the tiebreak those ties have no defined order and the DB's arbitrary choice need
+    not match `TimelineOrder`'s, so a single splice could reorder a whole batch.
+
+  An article is still marked read automatically the moment it becomes the current/displayed one (an
+  iOS pager swipe completing, opening it from the article list, or a Mac sidebar selection change —
+  `ArticleWrites.markRead`); that is now purely a display/badge change. The server can upgrade a
+  synced article from unread to read (read on another device) but a sync pass can never downgrade an
+  already-locally-read article back to unread (`SyncWriter.upsertSummaries`'s upgrade-only rule).
+  Starring is a separate, orthogonal `Article.starred` boolean with its own "Starred Only"
+  quick-filter, and likewise never affects order.
 - **Tags are a live join, not a snapshot:** `Feed.tagIDs` is refreshed from the server on every
   `/feeds` fetch, and the timeline's tag/feed/starred filtering (`Yana/Utilities/TimelineFiltering.swift`
   — `TagFilter`/`FeedFilter`/`StarredFilter`, applied identically to the full `Article` and the
@@ -586,7 +595,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  rework's completion, 367 tests across 93 suites, all passing.
+  this change, 406 tests, all passing (`-only-testing:YanaTests`).
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap
@@ -670,7 +679,7 @@ source and issue board live at
 ### Core (MVP)
 1. **Device pairing** — pair with a self-hosted Yana Server via a WebView-based sign-in flow; store the resulting Bearer token in Keychain
 2. **Server-driven aggregation** — the server fetches & parses feeds; this app syncs the resulting articles/feeds down via `/api/v1/articles/sync` and `/api/v1/feeds`, storing everything locally in SwiftData for offline access
-3. **Endless timeline** — single stream of all articles ordered by import date, swiped both directions, position remembered (device-local)
+3. **Endless timeline** — single stream of all articles in the server's own append-only order (`createdAt`, then `serverID`; see **Key patterns**), swiped both directions, position remembered (device-local)
 4. **Tag filter** — filter the timeline by toggling tags (all on by default; includes an "Untagged" entry); tag membership is a live join to the feed's current server-side tags, not a per-article snapshot
 5. **Article detail** — render the article's native `[Block]` body (arriving pre-parsed from the server) in the swipe reader
 6. **Starred** — star/unstar an article (`Article.starred`, a plain boolean synced via `PATCH /articles/:id`); starred articles are exempt from server-side retention

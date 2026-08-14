@@ -50,12 +50,12 @@ their images eagerly, so once you've synced, everything works with no connection
 the actual feed/tag setup and AI provider configuration happens on the server's web UI, opened
 from Settings › Manage Feeds & Tags.
 
-The home screen is an endless timeline of every article: read ones first, oldest to newest,
-then unread ones the same way, so the boundary between the two blocks is always the next
-thing worth reading. Swipe in either direction and it remembers where you left off. A filter
-button lets you toggle tags on and off — tag membership always reflects the feed's current
-state on the server rather than a snapshot from when the article arrived — plus a "Starred
-Only" switch.
+The home screen is an endless timeline of every article, in the order your server added them,
+oldest first, with new articles arriving at the end. That order is fixed: reading an article
+never moves it, so swiping back always lands on the article you came from, and it remembers
+where you left off between launches. A filter button lets you toggle tags on and off, and tag
+membership always reflects the feed's current state on the server rather than a snapshot from
+when the article arrived, plus there's a "Starred Only" switch.
 
 Pulling down on the reader triggers a full refresh on the server ("Update All"); swiping an
 article or using the reader's overflow menu re-fetches just that one ("Reload"). Both work the

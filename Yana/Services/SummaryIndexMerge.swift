@@ -4,20 +4,20 @@ import SwiftData
 /// Splices a small set of changed/removed rows into the timeline index, so a save costs work
 /// proportional to what changed rather than to the size of the library.
 ///
-/// The index is the `(readRank, createdAt)`-ascending order `ArticleSummaryLoader.load()`
-/// produces (read oldest→newest, then unread oldest→newest — see `Article.readRank`), and this
-/// preserves it: one linear merge pass, no re-sort. Rows are identified by `persistentID` —
-/// `identifier` is only a per-feed dedup key, so two feeds can legitimately share one.
+/// The index is the `(createdAt, serverID)`-ascending order `ArticleSummaryLoader.load()` produces
+/// (the server's own append-only sequence — see `TimelineOrder`), and this preserves it: one linear
+/// merge pass, no re-sort. Rows are identified by `persistentID` — `identifier` is only a per-feed
+/// dedup key, so two feeds can legitimately share one.
 ///
 /// Pure, so the ordering rules below are unit-tested without a store.
 enum SummaryIndexMerge {
 
-    /// Apply `changed` (re-read rows) and `removed` (deleted rows) to a `(readRank, createdAt)`
-    /// ascending index -- read articles (oldest→newest), then unread articles (oldest→newest).
+    /// Apply `changed` (re-read rows) and `removed` (deleted rows) to a `(createdAt, serverID)`
+    /// ascending index.
     ///
-    /// Ties keep the incoming row *after* the existing ones. SQLite gives no guarantee for tied sort
-    /// keys either, and inserts are jittered across a window (`ArticleUpsert.importJitterWindow`), so
-    /// exact ties are rare; a later full reconcile settles any disagreement.
+    /// A full tie (same `createdAt` *and* same `serverID`) keeps the incoming row after the existing
+    /// one; that can only happen for rows the server hasn't given an id yet (debug/screenshot
+    /// fixtures), and a later full reconcile settles any disagreement.
     static func apply(
         to index: [ArticleSummary],
         changed: [ArticleSummary],
@@ -48,17 +48,13 @@ enum SummaryIndexMerge {
         return merged
     }
 
-    /// The timeline's canonical ordering: read (oldest→newest) before unread (oldest→newest).
-    /// `Bool` has no `Comparable` conformance, so this can't be a tuple `<` -- written out
-    /// explicitly. Internal (not `private`) so other callers assembling a `(readRank, createdAt)`
-    /// window from multiple fetches -- e.g. `ArticleSummaryLoader.loadWindow`'s anchor-relative
-    /// older/newer split -- can re-sort against this same single source of truth instead of
-    /// re-deriving the rule. The secondary key defers to `TimelineOrder` (`createdAt`, then
-    /// `serverID`) -- never `date`, the feed's own publish timestamp, which a feed can backfill out
-    /// of chronological order.
+    /// The timeline's canonical ordering, deferring wholesale to `TimelineOrder` (`createdAt`, then
+    /// `serverID`) -- read state deliberately plays no part, see that type's doc comment. Internal
+    /// (not `private`) so other callers assembling an index from multiple fetches -- e.g.
+    /// `ArticleSummaryLoader.loadWindow`'s anchor-relative older/newer split -- can sort against this
+    /// same single source of truth instead of re-deriving the rule.
     static func isOrderedBefore(_ a: ArticleSummary, _ b: ArticleSummary) -> Bool {
-        if a.isRead != b.isRead { return a.isRead && !b.isRead }
-        return TimelineOrder.isOrderedBefore(a, b)
+        TimelineOrder.isOrderedBefore(a, b)
     }
 
     /// Whether `index` can be spliced at all. A disk-cache-hydrated index carries no

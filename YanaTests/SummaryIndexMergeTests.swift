@@ -91,7 +91,11 @@ struct SummaryIndexMergeTests {
         #expect(SummaryIndexMerge.isSpliceable([]))
     }
 
-    @Test func mergeOrdersReadBeforeUnreadRegardlessOfCreatedAt() throws {
+    /// Read state must not order anything: a read row and an unread row merge purely by `createdAt`.
+    /// This is the splice-level guard on the reported bug -- the merge used to hoist read rows into
+    /// their own leading block, so marking the displayed article read moved it (and shifted every
+    /// index after it) on every single swipe.
+    @Test func mergeIgnoresReadStateAndOrdersByCreatedAt() throws {
         let (container, _, _) = try Self.rows(0)
         let context = ModelContext(container)
         let feed = try context.fetch(FetchDescriptor<Feed>()).first!
@@ -113,8 +117,7 @@ struct SummaryIndexMergeTests {
         let merged = SummaryIndexMerge.apply(
             to: [], changed: [ArticleSummary(unreadOld), ArticleSummary(readNew)], removed: []
         )
-        // readNew is read (rank 0) and unreadOld is unread (rank 1) -- read must come first even
-        // though unreadOld's createdAt is earlier.
-        #expect(merged.map(\.identifier) == ["rn", "uo"])
+        // Ordered by createdAt alone: unreadOld (0) before readNew (100).
+        #expect(merged.map(\.identifier) == ["uo", "rn"])
     }
 }

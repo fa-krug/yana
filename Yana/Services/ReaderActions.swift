@@ -23,9 +23,10 @@ enum ReaderActions {
         }
     }
 
-    /// Re-filters `summaries` by the reader's tag/feed/starred filter, then pins the currently-
-    /// displayed article's position (see `TimelinePinning`) so marking it read doesn't reshuffle
-    /// the timeline out from under the user.
+    /// Re-filters `summaries` by the reader's tag/feed/starred filter. Filtering only ever *removes*
+    /// rows -- it never reorders -- so the result keeps `ArticleStore`'s canonical
+    /// `(createdAt, serverID)` order (see `TimelineOrder`), which is what makes the reader's
+    /// forward/back navigation symmetric no matter what the user marks read along the way.
     static func recomputeFilter(summaries: [ArticleSummary], settings: AppSettings) -> [ArticleSummary] {
         let byTag = TagFilter.apply(
             to: summaries,
@@ -33,10 +34,7 @@ enum ReaderActions {
             includeUntagged: settings.includeUntagged
         )
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let canonical = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        return TimelinePinning.apply(
-            to: canonical, pinning: settings.timelineAnchorIdentifier, pinningServerID: settings.timelineAnchorServerID
-        )
+        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     enum SummarizeResult { case saved, failed }

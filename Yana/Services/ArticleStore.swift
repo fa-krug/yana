@@ -7,11 +7,11 @@ import SwiftData
 actor ArticleSummaryLoader {
     func load() throws -> [ArticleSummary] {
         var descriptor = FetchDescriptor<Article>(
-            sortBy: [SortDescriptor(\.readRank, order: .forward), SortDescriptor(\.createdAt, order: .forward)]
+            sortBy: [SortDescriptor(\.createdAt, order: .forward), SortDescriptor(\.serverID, order: .forward)]
         )
         // Only the light columns; the heavy body fields (`blockData`/`plainText`/`summary`) and the
         // legacy `content` stay unfetched.
-        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.readRank]
+        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.serverID]
         descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         let rows = try StartupTrace.measure("fullLoad.fetch") { try modelContext.fetch(descriptor) }
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
@@ -44,12 +44,12 @@ actor ArticleSummaryLoader {
             olderD.fetchLimit = radius
             let older = try modelContext.fetch(olderD)
 
-            // `newer`/`older` are two separate fetches split on `createdAt` alone, so a read row
-            // with a later `createdAt` can land in `newer` alongside genuinely-adjacent unread
-            // rows (and vice versa for `older`) -- the naive concatenation below is not
-            // guaranteed to match `lightDescriptor`'s `(readRank, createdAt)` order. Re-sort with
-            // the same comparator `SummaryIndexMerge` uses so this transient cold-start window
-            // never visibly mis-orders read/unread blocks before the full reconcile lands.
+            // `newer`/`older` are two separate fetches split on `createdAt` alone, so same-second
+            // rows can land on either side of the split regardless of their `serverID` -- the naive
+            // concatenation below is not guaranteed to match `lightDescriptor`'s
+            // `(createdAt, serverID)` order. Re-sort with the same comparator `SummaryIndexMerge`
+            // uses so this transient cold-start window never visibly mis-orders a batch before the
+            // full reconcile lands.
             return (Array(older.reversed()) + newer)
                 .map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
                 .sorted(by: SummaryIndexMerge.isOrderedBefore)
@@ -101,16 +101,16 @@ actor ArticleSummaryLoader {
         return try modelContext.fetch(d).first?.createdAt
     }
 
-    /// A `createdAt`-sorted descriptor restricted to the light timeline columns, with `feed`/`tags`
-    /// prefetched — the same shape `load()` uses, factored out for the windowed fetches.
+    /// A `(createdAt, serverID)`-sorted descriptor restricted to the light timeline columns, with
+    /// `feed`/`tags` prefetched — the same shape `load()` uses, factored out for the windowed fetches.
     private func lightDescriptor(
         predicate: Predicate<Article>?, order: SortOrder
     ) -> FetchDescriptor<Article> {
         var d = FetchDescriptor<Article>(
             predicate: predicate,
-            sortBy: [SortDescriptor(\.readRank, order: order), SortDescriptor(\.createdAt, order: order)]
+            sortBy: [SortDescriptor(\.createdAt, order: order), SortDescriptor(\.serverID, order: order)]
         )
-        d.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.readRank]
+        d.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.serverID]
         d.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
         return d
     }
