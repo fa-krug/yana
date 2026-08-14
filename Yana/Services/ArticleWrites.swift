@@ -27,7 +27,7 @@ enum ArticleWrites {
     /// (e.g. swiping back over it).
     static func markRead(_ article: Article, modelContext: ModelContext, settings: AppSettings = AppSettings()) {
         guard !article.read else { return }
-        article.setRead(true)
+        article.read = true
         try? modelContext.save()
         guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
         Task {

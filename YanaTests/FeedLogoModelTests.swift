@@ -6,7 +6,7 @@ import Testing
 @Suite("Feed.logoImageHash")
 struct FeedLogoModelTests {
     @Test func defaultsToNilAndIsSettable() {
-        let feed = Feed(name: "A", aggregator: "feedContent", identifier: "https://e.com/f.xml")
+        let feed = Feed(name: "A", identifier: "https://e.com/f.xml")
         #expect(feed.logoImageHash == nil)
         feed.logoImageHash = "abc123"
         #expect(feed.logoImageHash == "abc123")

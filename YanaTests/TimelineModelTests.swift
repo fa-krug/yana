@@ -26,7 +26,7 @@ struct TimelineModelTests {
     }
 
     private func insertArticle(_ id: String, into context: ModelContext, date: Date, serverID: Int? = nil) {
-        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)")
+        let feed = Feed(name: "Acme", identifier: "f-\(id)")
         let article = Article(title: id, identifier: id, url: "https://x.com/\(id)")
         article.date = date
         article.feed = feed
@@ -233,8 +233,8 @@ struct TimelineModelTests {
         let settings = freshSettings()
         let container = try makeContainer()
         let context = container.mainContext
-        let feedX = Feed(name: "FeedX", aggregator: "feedContent", identifier: "fx")
-        let feedY = Feed(name: "FeedY", aggregator: "feedContent", identifier: "fy")
+        let feedX = Feed(name: "FeedX", identifier: "fx")
+        let feedY = Feed(name: "FeedY", identifier: "fy")
         let dupInFeedX = Article(title: "dup", identifier: "dup", url: "https://x.com/dup")
         dupInFeedX.date = Date(timeIntervalSince1970: 1); dupInFeedX.feed = feedX; dupInFeedX.serverID = 1
         let dupInFeedY = Article(title: "dup", identifier: "dup", url: "https://x.com/dup")
@@ -271,8 +271,8 @@ struct TimelineModelTests {
         let settings = freshSettings()
         let container = try makeContainer()
         let context = container.mainContext
-        let feedA = Feed(name: "FeedA", aggregator: "feedContent", identifier: "fa")
-        let feedB = Feed(name: "FeedB", aggregator: "feedContent", identifier: "fb")
+        let feedA = Feed(name: "FeedA", identifier: "fa")
+        let feedB = Feed(name: "FeedB", identifier: "fb")
         let a = Article(title: "a", identifier: "a", url: "https://x.com/a")
         a.date = Date(timeIntervalSince1970: 1); a.feed = feedA
         let b = Article(title: "b", identifier: "b", url: "https://x.com/b")

@@ -17,14 +17,13 @@ struct SyncWriterTests {
         let container = try makeContainer()
         let writer = SyncWriter(modelContainer: container)
         let feedID = await writer.replaceFeeds([
-            SyncFeedWire(id: 1, name: "Test Feed", aggregator: "feed_content", identifier: "f1",
-                         enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+            SyncFeedWire(id: 1, name: "Test Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
         ]).first
 
         let now = Date.now
         let ids = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                    date: now, author: "Jane", icon: nil, read: false, starred: false,
+                                    date: now, author: "Jane", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         #expect(ids.count == 1)
@@ -56,7 +55,7 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "https://example.com/a",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         let inserted = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
@@ -64,7 +63,7 @@ struct SyncWriterTests {
 
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "https://example.com/a-moved",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now.addingTimeInterval(60))
         ])
         let updated = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
@@ -80,7 +79,7 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Original", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         let doc = try JSONDecoder().decode(WireDocument.self, from: #"{"version":1,"blocks":[]}"#.data(using: .utf8)!)
@@ -89,7 +88,7 @@ struct SyncWriterTests {
 
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Updated Title", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now.addingTimeInterval(60))
         ])
         #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.hasContent == false)
@@ -105,14 +104,11 @@ struct SyncWriterTests {
         let container = try makeContainer()
         let writer = SyncWriter(modelContainer: container)
         _ = await writer.replaceFeeds([
-            SyncFeedWire(id: 1, name: "Feed One", aggregator: "feed_content", identifier: "f1",
-                         enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now),
-            SyncFeedWire(id: 2, name: "Feed Two", aggregator: "feed_content", identifier: "f2",
-                         enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now),
+            SyncFeedWire(id: 1, name: "Feed One", identifier: "f1", tagIds: [], logoImageHash: nil),
+            SyncFeedWire(id: 2, name: "Feed Two", identifier: "f2", tagIds: [], logoImageHash: nil),
         ])
         _ = await writer.replaceFeeds([
-            SyncFeedWire(id: 1, name: "Feed One", aggregator: "feed_content", identifier: "f1",
-                         enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+            SyncFeedWire(id: 1, name: "Feed One", identifier: "f1", tagIds: [], logoImageHash: nil)
         ])
         let feeds = try container.mainContext.fetch(FetchDescriptor<Feed>())
         #expect(feeds.map(\.name) == ["Feed One"])
@@ -158,14 +154,14 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Original", identifier: "art-100",
-                                    date: now, author: "Jane", icon: nil, read: false, starred: false,
+                                    date: now, author: "Jane", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         let originalCreatedAt = try container.mainContext.fetch(FetchDescriptor<Article>()).first!.createdAt
 
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Updated Title", identifier: "art-100",
-                                    date: now, author: "Jane", icon: nil, read: false, starred: true,
+                                    date: now, author: "Jane", read: false, starred: true,
                                     createdAt: now, updatedAt: now.addingTimeInterval(60))
         ])
         let updated = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
@@ -180,7 +176,7 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Gone Soon", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         await writer.applyRemovals([100])
@@ -194,7 +190,7 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Body Coming", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         let doc = try JSONDecoder().decode(WireDocument.self, from: #"""
@@ -213,9 +209,9 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "A", identifier: "a", date: now,
-                                    author: "", icon: nil, read: false, starred: false, createdAt: now, updatedAt: now),
+                                    author: "", read: false, starred: false, createdAt: now, updatedAt: now),
             SyncArticleSummaryWire(id: 101, feedId: 1, name: "B", identifier: "b", date: now,
-                                    author: "", icon: nil, read: false, starred: false, createdAt: now, updatedAt: now),
+                                    author: "", read: false, starred: false, createdAt: now, updatedAt: now),
         ])
         let doc = try JSONDecoder().decode(WireDocument.self, from: #"{"version":1,"blocks":[]}"#.data(using: .utf8)!)
         _ = await writer.applyContent(articleServerID: 100, document: doc)
@@ -233,18 +229,18 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         let article = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
-        article.setRead(true)
+        article.read = true
         try container.mainContext.save()
 
         // A later sync page reports this article as unread (e.g. a stale cache on the server, or a
         // race with another client) -- the local read state must survive.
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now.addingTimeInterval(60))
         ])
         #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
@@ -257,12 +253,12 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: false, starred: false,
+                                    date: now, author: "", read: false, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: true, starred: false,
+                                    date: now, author: "", read: true, starred: false,
                                     createdAt: now, updatedAt: now.addingTimeInterval(60))
         ])
         #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
@@ -275,7 +271,7 @@ struct SyncWriterTests {
         let now = Date.now
         _ = await writer.upsertSummaries([
             SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                    date: now, author: "", icon: nil, read: true, starred: false,
+                                    date: now, author: "", read: true, starred: false,
                                     createdAt: now, updatedAt: now)
         ])
         #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
@@ -289,7 +285,7 @@ struct SyncWriterTests {
         let writer = SyncWriter(modelContainer: container)
         let context = container.mainContext
 
-        let feed = Feed(name: "Test Feed", aggregator: "feed_content", identifier: "1")
+        let feed = Feed(name: "Test Feed", identifier: "1")
         feed.logoImageHash = "logo-hash"
         context.insert(feed)
 

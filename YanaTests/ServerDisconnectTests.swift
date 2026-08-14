@@ -14,7 +14,7 @@ struct ServerDisconnectTests {
 
     @Test func disconnectClearsCredentialsWipesLibraryAndEntersDemoMode() throws {
         let context = try inMemoryContext()
-        let feed = Feed(name: "Paired Feed", aggregator: "feedContent", identifier: "paired://feed")
+        let feed = Feed(name: "Paired Feed", identifier: "paired://feed")
         context.insert(feed)
         let article = Article(
             title: "Paired Article", identifier: "paired://article/0",
@@ -86,7 +86,7 @@ struct ServerDisconnectTests {
 
     @Test func disconnectTwiceInARowIsSafe() throws {
         let context = try inMemoryContext()
-        let feed = Feed(name: "Paired Feed", aggregator: "feedContent", identifier: "paired://feed")
+        let feed = Feed(name: "Paired Feed", identifier: "paired://feed")
         context.insert(feed)
         let article = Article(
             title: "Paired Article", identifier: "paired://article/0",

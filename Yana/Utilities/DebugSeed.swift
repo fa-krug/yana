@@ -14,7 +14,7 @@ enum DebugSeed {
         guard let raw = ProcessInfo.processInfo.environment["YANA_SEED_ARTICLES"],
               let count = Int(raw), count > 0 else { return }
 
-        let feed = Feed(name: "Seed Feed", aggregator: "feedContent", identifier: "seed://feed")
+        let feed = Feed(name: "Seed Feed", identifier: "seed://feed")
         context.insert(feed)
 
         var anchorIdentifier: String?
@@ -29,7 +29,7 @@ enum DebugSeed {
                 date: seededDate,
                 author: "Author \(i % 7)"
             )
-            article.blocks = BlockParser.blocks(fromHTML: body(i))
+            article.blocks = body(i)
             article.createdAt = seededDate
             article.feed = feed
             context.insert(article)
@@ -45,15 +45,17 @@ enum DebugSeed {
         }
     }
 
-    private static func body(_ i: Int) -> String {
-        let paragraphs = (0..<8).map { p in
-            "<p>Paragraph \(p) of seeded article \(i). " +
-            String(repeating: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ", count: 6) +
-            "</p>"
-        }.joined()
-        // No external <img> — a network round-trip would gate WKWebView's didFinish and pollute
-        // the cold-start paint measurement with latency the app does not control.
-        return "<h1>Seeded Article \(i)</h1>" + paragraphs
+    /// Authored as `[Block]` directly — the same shape the server delivers. No image block: a
+    /// network round-trip would pollute the cold-start paint measurement with latency the app
+    /// does not control.
+    private static func body(_ i: Int) -> [Block] {
+        var blocks: [Block] = [.heading(level: 1, runs: [InlineRun(text: "Seeded Article \(i)")])]
+        for p in 0..<8 {
+            let text = "Paragraph \(p) of seeded article \(i). " +
+                String(repeating: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ", count: 6)
+            blocks.append(.paragraph([InlineRun(text: text)]))
+        }
+        return blocks
     }
 }
 #endif

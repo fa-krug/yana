@@ -59,7 +59,7 @@ struct TagFilterView: View {
 
 /// The `@Query`-owning half of `TagFilterView`, split out from the parent's local toggle mirrors.
 private struct TagFilterListContent: View {
-    @Query(sort: \Tag.sortOrder) private var tags: [Tag]
+    @Query(sort: \Tag.name) private var tags: [Tag]
     @Query(sort: \Feed.name) private var feeds: [Feed]
     @Binding var disabledTags: Set<String>
     @Binding var disabledFeeds: Set<String>

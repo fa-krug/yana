@@ -177,12 +177,11 @@ struct UpdateAndSyncTests {
             let container = try makeContainer()
             let writer = SyncWriter(modelContainer: container)
             _ = await writer.replaceFeeds([
-                SyncFeedWire(id: 1, name: "Feed", aggregator: "feed_content", identifier: "f1",
-                             enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
             ])
             _ = await writer.upsertSummaries([
                 SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                        date: .now, author: "", icon: nil, read: false, starred: false,
+                                        date: .now, author: "", read: false, starred: false,
                                         createdAt: .now, updatedAt: .now)
             ])
 
@@ -250,12 +249,11 @@ struct UpdateAndSyncTests {
             let container = try makeContainer()
             let writer = SyncWriter(modelContainer: container)
             _ = await writer.replaceFeeds([
-                SyncFeedWire(id: 1, name: "Feed", aggregator: "feed_content", identifier: "f1",
-                             enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
             ])
             _ = await writer.upsertSummaries([
                 SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                        date: .now, author: "", icon: nil, read: false, starred: false,
+                                        date: .now, author: "", read: false, starred: false,
                                         createdAt: .now, updatedAt: .now)
             ])
 
@@ -300,12 +298,11 @@ struct UpdateAndSyncTests {
             let container = try makeContainer()
             let writer = SyncWriter(modelContainer: container)
             _ = await writer.replaceFeeds([
-                SyncFeedWire(id: 1, name: "Feed", aggregator: "feed_content", identifier: "f1",
-                             enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
             ])
             _ = await writer.upsertSummaries([
                 SyncArticleSummaryWire(id: 100, feedId: 1, name: "Hello", identifier: "art-100",
-                                        date: .now, author: "", icon: nil, read: false, starred: false,
+                                        date: .now, author: "", read: false, starred: false,
                                         createdAt: .now, updatedAt: .now)
             ])
 
@@ -357,12 +354,11 @@ struct UpdateAndSyncTests {
             let container = try makeContainer()
             let writer = SyncWriter(modelContainer: container)
             _ = await writer.replaceFeeds([
-                SyncFeedWire(id: 1, name: "Feed", aggregator: "feed_content", identifier: "f1",
-                             enabled: true, dailyLimit: 20, tagIds: [], logoImageHash: nil, updatedAt: .now)
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
             ])
             _ = await writer.upsertSummaries([
                 SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old Title", identifier: "art-100",
-                                        date: .now, author: "", icon: nil, read: false, starred: false,
+                                        date: .now, author: "", read: false, starred: false,
                                         createdAt: .now, updatedAt: .now)
             ])
 

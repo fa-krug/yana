@@ -12,7 +12,7 @@ struct ArticleSummaryLoaderTests {
     }
 
     private func seed(_ count: Int, into context: ModelContext) {
-        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
+        let feed = Feed(name: "Acme", identifier: "f")
         context.insert(feed)
         for i in 0..<count {
             let a = Article(title: "a\(i)", identifier: "a\(i)", url: "a\(i)")
@@ -65,7 +65,7 @@ struct ArticleSummaryLoaderTests {
             FetchDescriptor<Article>(sortBy: [SortDescriptor(\.createdAt, order: .forward)])
         )
         for article in [all[2], all[9], all[11], all[18]] {
-            article.setRead(true)
+            article.read = true
         }
         try container.mainContext.save()
 

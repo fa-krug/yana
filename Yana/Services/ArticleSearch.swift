@@ -1,21 +1,12 @@
 import Foundation
 import SwiftData
 
-/// Case/diacritic-insensitive substring search across an article's title, body text (`plainText`,
-/// the blocks flattened to visible text), author, and source feed name. In-memory filtering is fine
-/// given retention keeps the article set bounded (~one month).
+/// Case/diacritic-insensitive search across an article's title, body text (`plainText`, the blocks
+/// flattened to visible text), author, and source feed name. Runs entirely as a SwiftData
+/// `#Predicate` fetch — there is deliberately no in-memory matcher any more, so the iOS list and the
+/// Mac sidebar cannot drift apart in what they consider a match.
 @MainActor
 enum ArticleSearch {
-    static func matches(_ article: Article, query: String) -> Bool {
-        let haystacks = [article.title, article.plainText, article.author, article.feed?.name ?? ""]
-        return StringMatch.matches(anyOf: haystacks, query: query)
-    }
-
-    static func filter(_ articles: [Article], query: String) -> [Article] {
-        guard let q = StringMatch.normalize(query) else { return articles }
-        return articles.filter { matches($0, query: q) }
-    }
-
     /// Runs the predicate-backed `FetchDescriptor` search (title/body/author/feed name, sorted by
     /// date ascending, only the fields the timeline row needs) and maps the matches through
     /// `ArticleSummary`'s tag-name lookup. Shared by `ArticleListView` (iOS) and `MacRootView`'s
@@ -25,8 +16,8 @@ enum ArticleSearch {
             predicate: ArticleListSearch.predicate(for: query),
             sortBy: [SortDescriptor(\.date, order: .forward)]
         )
-        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
-        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        descriptor.propertiesToFetch = ArticleSummary.fetchedProperties
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed]
         let matches = (try? modelContext.fetch(descriptor)) ?? []
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
         return matches.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }

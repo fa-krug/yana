@@ -5,7 +5,7 @@ import Testing
 /// Pins the chunk → per-chunk-summary → reduce-if-multiple-chunks math extracted from the former
 /// `AppleIntelligenceProcessor` (Task 16). These tests are carried over from the deleted
 /// `AppleIntelligenceProcessorTests`/`AppleIntelligenceSummaryTests`, adapted to call
-/// `AppleIntelligenceChunkedSummarizer.summarize(html:title:generator:)` directly instead of
+/// `AppleIntelligenceChunkedSummarizer.summarize(text:title:generator:)` directly instead of
 /// through the now-deleted `AppleIntelligenceProcessor.process(_:ai:)`/`AIOptions`/
 /// `AggregatedArticle` machinery.
 @Suite("AppleIntelligenceChunkedSummarizer")
@@ -45,10 +45,10 @@ struct AppleIntelligenceChunkedSummarizerTests {
         }
         gen.reduceTransform = { _ in "[REDUCED_CONTENT]" }
 
-        let blockA = "<p>AAAA" + String(repeating: "a", count: 1397) + "</p>"
-        let blockB = "<p>BBBB" + String(repeating: "b", count: 1397) + "</p>"
-        let html = blockA + blockB
-        let summary = await AppleIntelligenceChunkedSummarizer.summarize(html: html, title: "orig", generator: gen)
+        let paragraphA = "AAAA" + String(repeating: "a", count: 1397)
+        let paragraphB = "BBBB" + String(repeating: "b", count: 1397)
+        let text = paragraphA + "\n\n" + paragraphB
+        let summary = await AppleIntelligenceChunkedSummarizer.summarize(text: text, title: "orig", generator: gen)
 
         let reduceCalls = gen.calls.filter { $0.instructions == AppleIntelligenceChunkedSummarizer.reduceInstructions }
         #expect(reduceCalls.count == 1)
@@ -58,7 +58,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
     @Test func singleChunkSkipsReduce() async {
         let gen = RecordingGenerator()
         gen.mapTransform = { _ in "short summary" }
-        let summary = await AppleIntelligenceChunkedSummarizer.summarize(html: "<p>short</p>", title: "orig", generator: gen)
+        let summary = await AppleIntelligenceChunkedSummarizer.summarize(text: "short", title: "orig", generator: gen)
 
         let reduceCalls = gen.calls.filter { $0.instructions == AppleIntelligenceChunkedSummarizer.reduceInstructions }
         #expect(reduceCalls.count == 0)
@@ -76,7 +76,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
                 throw NSError(domain: "test", code: 1)
             }
         }
-        let summary = await AppleIntelligenceChunkedSummarizer.summarize(html: "<p>body</p>", title: "T", generator: ThrowingGenerator())
+        let summary = await AppleIntelligenceChunkedSummarizer.summarize(text: "body", title: "T", generator: ThrowingGenerator())
         #expect(summary == nil)
     }
 
@@ -94,8 +94,8 @@ struct AppleIntelligenceChunkedSummarizerTests {
                 "a real summary"
             }
         }
-        let body = "<p>The quick brown fox jumps over the lazy dog.</p>"
-        let summary = await AppleIntelligenceChunkedSummarizer.summarize(html: body, title: "T", generator: StructurePreservingGenerator())
+        let body = "The quick brown fox jumps over the lazy dog."
+        let summary = await AppleIntelligenceChunkedSummarizer.summarize(text: body, title: "T", generator: StructurePreservingGenerator())
         #expect(summary == "a real summary")
     }
 }

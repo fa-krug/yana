@@ -53,6 +53,6 @@ struct AppleIntelligenceSummaryProvider: AISummaryProvider {
 
     func summarize(content: String, title: String) async -> String? {
         guard generator.availability == .available else { return nil }
-        return await AppleIntelligenceChunkedSummarizer.summarize(html: content, title: title, generator: generator)
+        return await AppleIntelligenceChunkedSummarizer.summarize(text: content, title: title, generator: generator)
     }
 }

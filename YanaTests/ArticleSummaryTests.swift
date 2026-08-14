@@ -20,7 +20,7 @@ struct ArticleSummaryTests {
         let context = try makeContext()
         let news = Yana.Tag(name: "News")
         news.serverID = 1
-        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
+        let feed = Feed(name: "Acme", identifier: "f")
         feed.tagIDs = [1]
         let article = Article(title: "Hello", identifier: "a1", url: "u",
                               date: .now, author: "Ada")
@@ -46,7 +46,7 @@ struct ArticleSummaryTests {
         let context = try makeContext()
         let tech = Yana.Tag(name: "Tech")
         tech.serverID = 1
-        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f")
+        let feed = Feed(name: "Acme", identifier: "f")
         feed.tagIDs = [1]
         let article = Article(title: "T", identifier: "a2", url: "u")
         article.feed = feed
@@ -63,7 +63,7 @@ struct ArticleSummaryTests {
     @Test func isReadMirrorsArticleRead() throws {
         let context = try makeContext()
         let article = Article(title: "T", identifier: "id-1", url: "https://x.com/1")
-        article.setRead(true)
+        article.read = true
         context.insert(article)
         try context.save()
 
@@ -74,7 +74,7 @@ struct ArticleSummaryTests {
     @Test func isReadRoundTripsThroughCoding() throws {
         let context = try makeContext()
         let article = Article(title: "T", identifier: "id-2", url: "https://x.com/2")
-        article.setRead(true)
+        article.read = true
         context.insert(article)
         try context.save()
 

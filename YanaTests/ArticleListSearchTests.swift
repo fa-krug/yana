@@ -43,7 +43,7 @@ struct ArticleListSearchTests {
 
     @Test func matchesFeedName() throws {
         let context = try makeContext()
-        let feed = Feed(name: "TechRadar", aggregator: "feedContent", identifier: "f1")
+        let feed = Feed(name: "TechRadar", identifier: "f1")
         context.insert(feed)
         let matched = Article(title: "Some Title", identifier: "a1", url: "https://example.com/a1", author: "Ed")
         matched.feed = feed

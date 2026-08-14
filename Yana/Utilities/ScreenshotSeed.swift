@@ -188,24 +188,25 @@ enum ScreenshotSeed {
         var tagsByName: [String: Tag] = [:]
 
         for (feedIndex, spec) in feedSpecs.enumerated() {
-            let feed = Feed(name: spec.name, aggregator: "feedContent", identifier: spec.identifier)
+            let feed = Feed(name: spec.name, identifier: spec.identifier)
 
             let logoData = ScreenshotLogoFactory.png(monogram: spec.monogram, colorHex: spec.tagColorHex)
             feed.logoImageHash = await ImageStore.shared.storeData(logoData, ext: "png")
             context.insert(feed)
 
+            // Tag membership is the live `Feed.tagIDs` -> `Tag.serverID` join. A local-only fixture
+            // has no server to assign ids, so it mints its own stable ones (the tag's insertion
+            // order); nothing in a screenshot run ever syncs, so these can't collide with real ids.
             let tag: Tag
             if let existingTag = tagsByName[spec.tagName] {
                 tag = existingTag
             } else {
                 tag = Tag(name: spec.tagName, colorHex: spec.tagColorHex)
+                tag.serverID = tagsByName.count + 1
                 context.insert(tag)
                 tagsByName[spec.tagName] = tag
             }
-            // `Feed.tagIDs` is now the server's own tag ids, which a local-only fixture has none
-            // of -- there's no server round-trip to assign real ones, so feed-level tag membership
-            // is simply left empty here (mechanical compile fix only, not a fixture redesign; see
-            // task-12-brief.md). The per-article `tags` snapshot below is unaffected.
+            if let tagServerID = tag.serverID { feed.tagIDs = [tagServerID] }
 
             for (articleIndex, articleSpec) in spec.articles.enumerated() {
                 let identifier = "screenshot://\(feedIndex)/\(articleIndex)"
@@ -213,9 +214,12 @@ enum ScreenshotSeed {
                 let leadData = ScreenshotImageFactory.jpeg(index: globalIndex)
                 let leadHash = await ImageStore.shared.storeData(leadData, ext: "jpg")
 
-                var html = "<img src=\"yana-img://\(leadHash)\" alt=\"\">"
+                // Authored as `[Block]` directly, the same shape the server delivers. The lead
+                // image must stay the FIRST block: that is what `Article.leadImageRef` is derived
+                // from, and what the reader's `LeadImageReveal` gate warms.
+                var blocks: [Block] = [.image(ref: "yana-img://\(leadHash)", caption: [])]
                 for paragraph in articleSpec.bodyParagraphs {
-                    html += "<p>\(paragraph)</p>"
+                    blocks.append(.paragraph([InlineRun(text: paragraph)]))
                 }
 
                 let when = Date(timeIntervalSinceNow: -Double(globalIndex) * 5400)
@@ -227,10 +231,9 @@ enum ScreenshotSeed {
                     author: articleSpec.author,
                     summary: articleSpec.summary
                 )
-                article.blocks = BlockParser.blocks(fromHTML: html)
+                article.blocks = blocks
                 article.createdAt = when
                 article.feed = feed
-                article.tags = [tag]
                 context.insert(article)
                 articleIdentifiers.append(identifier)
 

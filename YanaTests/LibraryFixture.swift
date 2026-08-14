@@ -28,18 +28,19 @@ enum LibraryFixture {
         )
         let context = ModelContext(container)
 
-        let tags = (0..<tagCount).map { Tag(name: "Tag\($0)", sortOrder: $0) }
-        tags.forEach { context.insert($0) }
+        let tags: [Tag] = (0..<tagCount).map { i in
+            let tag = Tag(name: "Tag\(i)")
+            tag.serverID = i + 1
+            context.insert(tag)
+            return tag
+        }
+        // Tag membership is the live `Feed.tagIDs` -> `Tag.serverID` join, so it lives on the feed;
+        // articles carry no tag column at all.
         let feeds: [Feed] = (0..<feedCount).map { i in
-            let feed = Feed(name: "Feed \(i)", aggregator: "feedContent",
-                            identifier: "https://example.com/feed\(i).xml")
+            let feed = Feed(name: "Feed \(i)", identifier: "https://example.com/feed\(i).xml")
+            feed.tagIDs = [tags[i % tagCount], tags[(i + 1) % tagCount]].compactMap(\.serverID)
             context.insert(feed)
             return feed
-        }
-        // Feed no longer owns a live `[Tag]` relationship (tag membership moved server-side),
-        // so the per-feed tag snapshot used to build each article's own `tags` is tracked locally.
-        let feedTagAssignments: [[Tag]] = (0..<feedCount).map { i in
-            [tags[i % tagCount], tags[(i + 1) % tagCount]]
         }
 
         // ~8 KB of body per article, so the store is the size a real library reaches.
@@ -56,9 +57,6 @@ enum LibraryFixture {
             )
             article.createdAt = article.date
             article.feed = feed
-            article.tags = feedTagAssignments[feedIndex]
-            article.syncFeedIdentifier = feed.identifier
-            article.syncAggregatorType = feed.aggregator
             article.plainText = body
             article.blockData = Data(body.utf8)
             context.insert(article)

@@ -19,7 +19,7 @@ struct TimelinePageIndexTests {
     /// Builds a real `ArticleSummary` (backed by a real `Article`/`Feed`) so `uid` is the actual
     /// `ArticleUID.make` derivation rather than a hand-rolled string.
     private func summary(_ id: String, feedIdentifier: String = "f", in context: ModelContext) -> ArticleSummary {
-        let feed = Feed(name: "Feed", aggregator: "feedContent", identifier: feedIdentifier)
+        let feed = Feed(name: "Feed", identifier: feedIdentifier)
         let article = Article(title: id, identifier: id, url: "https://x.com/\(id)")
         article.feed = feed
         context.insert(feed); context.insert(article)

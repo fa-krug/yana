@@ -166,19 +166,25 @@ source and issue board live at
   `AppSettings` (the preferences store, including the `AIMode` enum), `UpdateInterval` (per-device
   background-refresh schedule), and `ServerMigrationEligibility` (pure state machine for the
   one-time "Yana now requires a server" notice shown to devices that finished onboarding before this
-  rework shipped). `Feed.aggregator: String` is the server's aggregator key (e.g. `"reddit"`,
-  `"heise"`), display-only — nothing client-side branches on it, since there is no native feed
-  creation/editing left to special-case. `Feed.tagIDs: [Int]` is a **live** join to the server's tag
-  ids, refreshed on every `/feeds` fetch (unlike the old per-article tag snapshot this replaced, tag
-  membership always reflects the feed's current server-side state — see **Key patterns**).
+  rework shipped). **These models store only what this client actually renders.** A `Feed` is a
+  name, the server's id (as `identifier`), a `logoImageHash` and `tagIDs`; the wire's `aggregator`,
+  `enabled`, `dailyLimit` and `updatedAt` are feed *configuration*, owned by the server and edited
+  in its web UI, so `SyncFeedWire` does not even decode them. `Feed.tagIDs: [Int]` is a **live**
+  join to the server's tag ids, refreshed on every `/feeds` fetch (unlike the old per-article tag
+  snapshot this replaced, tag membership always reflects the feed's current server-side state — see
+  **Key patterns**); there is deliberately **no** `Article.tags` relationship and no `Tag.articles`
+  inverse, because the join is the only tag mechanism.
   `Article.starred: Bool` is a plain field (no more built-in "Starred" tag or `Tag.isBuiltIn`).
   `Article.serverID: Int?` is the sync identity `SyncWriter` upserts/removes/backfills by.
   `Article.hasContent: Bool` tracks whether `/articles/:id/content` has landed yet for this row,
-  driving the sync engine's backfill retry. `Article.read: Bool` and `Article.readRank: Int` track
-  read state, which is display-only and deliberately takes no part in the timeline's order (see
-  **Key patterns**); never assign either directly — use `Article.setRead(_:)`
-  instead. `Article.blocks` (computed from `blockData`) is unchanged
-  from before — see **Reader**.
+  driving the sync engine's backfill retry. `Article.read: Bool` is read state: display-only, and it
+  deliberately takes no part in the timeline's order (see **Key patterns**). Assign it directly —
+  the old `readRank: Int` sort mirror and its `setRead(_:)` setter are gone, along with the index
+  every sync insert used to maintain for it. `Article.blocks` (computed from `blockData`) is
+  unchanged from before — see **Reader**.
+  **When adding a column here, check something reads it.** A batch of write-only columns
+  (`Article.iconURL`/`syncFeedIdentifier`/`syncAggregatorType`, `Tag.sortOrder`/`createdAt`, the
+  four `Feed` config fields above) accumulated by being mirrored from the wire and never rendered.
 - **Networking** (`Yana/Networking/`): `YanaAPIClient` (a thin typed wrapper over every
   `/api/v1/**` route — `get`/`patch`/`post`/`getRaw`, Bearer-token auth, ISO-8601 date decoding,
   decodes the server's `{ error: { code, message } }` envelope into `YanaAPIError` on failure) and
@@ -235,10 +241,10 @@ source and issue board live at
 - **Sync** (`Yana/Services/SyncEngine.swift`, `Yana/Services/SyncWriter.swift`): the orchestrator +
   write-path pair that replaced `AggregationService`/`AggregationWriter` and the entire
   `Yana/Aggregators/` tree (deleted wholesale — no more `AggregatorType`, `AggregatorOptions`,
-  per-source scraper types, or `AggregatorRegistry`). `Yana/Services/ArticleSearch.swift` (the
-  older in-memory case/diacritic-insensitive matcher) survived the deletion but is now exercised
-  only by its own tests — production search runs through `ArticleListSearch`'s `#Predicate`-backed
-  fetch instead (see **Views** below); it predates this rework and isn't part of its scope.
+  per-source scraper types, or `AggregatorRegistry`). `Yana/Services/ArticleSearch.swift` is now
+  only `searchSummaries` over `ArticleListSearch`'s `#Predicate`-backed fetch (see **Views** below);
+  the in-memory `matches`/`filter` matcher it used to also carry, and the `StringMatch`/`NameSearch`
+  helpers behind it, were orphaned by that move and are deleted.
   `SyncEngine.sync()` (`@MainActor`)
   first flushes any pending writes in `PendingWriteQueue`, then replaces the local `Feed` mirror
   wholesale from `GET /api/v1/feeds` (small, unpaginated — no incremental-delta protocol needed
@@ -315,8 +321,8 @@ source and issue board live at
   `AIMode.server` and `.appleIntelligence` — replacing the deleted 6-provider network AI stack
   (`AIClient`, `AIProcessor`, `AIReadiness`, per-provider Keychain keys, `CredentialTester`'s
   Reddit/YouTube/AI-verification functions, and the `CredentialTestControls`/`CredentialTest`
-  Settings-UI helper it drove — only the shared `CredentialTestError` enum survives, used by
-  nothing but its own tests). `ServerAISummaryProvider` calls
+  Settings-UI helper it drove — including the `CredentialTestError` enum, which outlived that
+  deletion for a while with no caller left and is now gone too). `ServerAISummaryProvider` calls
   `POST /api/v1/ai/prompt` with a fixed summarize prompt against whatever provider the server is
   configured with; any failure (rate limit, no provider configured, provider error) degrades to
   `nil` — "no summary available" is an expected, silent outcome, never a user-facing error.
@@ -325,7 +331,14 @@ source and issue board live at
   improve-writing/translate paths and their `AIOptions`/`AggregatedArticle` plumbing are gone): the
   same chunk → per-chunk-summary → reduce map-reduce over the ~4096-token on-device context window,
   now with hardcoded generation knobs (temperature 0.3, 2000 max tokens) since the settings that used
-  to feed them were deleted along with the network stack. `AISummaryReadiness.isReady(mode:)` gates
+  to feed them were deleted along with the network stack. **This path is plain text end to end.**
+  `ReaderActions` has always passed `Article.plainText`, but the summarizer used to call itself
+  `summarize(html:)` and run that text through a SwiftSoup chrome-stripper and an HTML-element
+  chunker. Both were left over from when bodies were HTML, and the chunker's HTML split found no
+  elements in plain text, so it took its fallback and returned the whole article as ONE chunk —
+  the map-reduce never ran and long articles overflowed the context window. `ArticleChunker` now
+  splits on the blank lines `BlockParser.plainText` actually emits
+  (`ArticleChunkerTests.plainTextArticleIsActuallyChunked` pins this). `AISummaryReadiness.isReady(mode:)` gates
   whether the reader's "Summarize" action is offered at all — `.server` is always ready (it degrades
   gracefully on its own), `.appleIntelligence` needs `AppleIntelligenceClient().availability == .available`
   since showing the button with no usable model is worse than hiding it.
@@ -430,14 +443,15 @@ source and issue board live at
   browser via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer;
   matches the article's detected language, keeps playing when locked/backgrounded, wires up Now
   Playing / remote controls). **Where blocks come from now:** production content arrives already
-  parsed into `[Block]` from the server via `BlockWireDecoding`'s `WireDocument` — `BlockParser`
-  (`Yana/Reader/BlockParser.swift`, relocated here from the deleted `Aggregators/Utils/` since it's
-  still load-bearing) no longer runs at import time. It still does two things: `BlockParser.plainText`
-  derives every article's search/read-aloud plain-text surface from its blocks regardless of origin
-  (set by the `Article.blocks` setter), and `BlockParser.blocks(fromHTML:)` now runs only for
-  `BlockMigration`'s one-time sweep converting any surviving pre-migration legacy-HTML articles
-  (`Article.content`) into native blocks, and for the DEBUG-only `DebugSeed`/`ScreenshotSeed` fixtures
-  that still author their content as HTML for convenience.
+  parsed into `[Block]` from the server via `BlockWireDecoding`'s `WireDocument`.
+  **There is no HTML anywhere in this client any more, and no HTML parser.** `BlockParser`
+  (`Yana/Reader/BlockParser.swift`) is now only `plainText(_:)`, which flattens any `[Block]` body
+  to the search/read-aloud surface (set by the `Article.blocks` setter) — load-bearing for every
+  article. Its former `blocks(fromHTML:)` half, the `Article.content` column it read, the
+  `BlockMigration` sweep that drove it, and the **SwiftSoup dependency** behind it are all deleted;
+  the DEBUG-only `DebugSeed`/`ScreenshotSeed` fixtures now author `[Block]` values directly, the
+  same shape the server delivers. If you find yourself wanting an HTML parser here, the content
+  should be arriving from the server as blocks instead.
 - **Views** (`Yana/Views/`): feed/tag/AI-provider **management moved entirely to the server's own
   web UI**. `ManagementWebView` (`Yana/Views/ManagementWebView.swift`) hosts it in a `WKWebView`
   reusing the pairing flow's persistent cookie session (`WKWebsiteDataStore.default()`) so a user who
@@ -504,9 +518,13 @@ source and issue board live at
 - `Yana/YanaApp.swift` — app entry point; owns the shared `AppContainer.shared` `ModelContainer`
   (`Feed`/`Tag`/`Article` only — no `cloudKitDatabase` configuration) and an `AppDelegate`
   (`UIApplicationDelegateAdaptor`) that registers/schedules background refresh on launch. The scene's
-  `.task` runs `BlockMigration` off the launch path, then — if `AuthenticatedClient.current()`
-  resolves a client — a foreground `SyncEngine.sync()`, swallowing any error (a spotty connection at
-  launch must never block first paint or crash the app).
+  `.task` starts `ArticleStore` and then — if `AuthenticatedClient.current()`
+  resolves a client — runs a foreground `SyncEngine.sync()`, swallowing any error (a spotty
+  connection at launch must never block first paint or crash the app). It deliberately runs **no**
+  data-repair sweeps: the `BlockMigration` (legacy HTML → blocks) and `ArticleDedup` (duplicate
+  `serverID` rows) passes that used to run here on every launch were self-terminating fixes for
+  bugs that no longer exist, and the dedup pass re-read the whole article table each launch to find
+  nothing. Gate any future one-off repair behind a one-shot `AppSettings` flag instead.
 - `Yana/ContentView.swift` — root view (opens directly into the reader on iPhone/iPad; `MacRootView`
   on the Mac idiom). Presents `WelcomeView` for onboarding/re-pairing and
   `ServerMigrationNoticeView` for the one-time pre-migration notice, both gated and skippable under
@@ -538,8 +556,8 @@ source and issue board live at
     first, then unread), so an article moved between blocks the instant it was marked read — which
     happens the moment it becomes current. Every swipe therefore reordered the list, back-navigation
     landed on a different article each time, and paging back through already-read history was
-    incoherent. `readRank` still exists and is still kept in sync by `Article.setRead(_:)`, but only
-    so the stored schema is unchanged; nothing sorts by it. The band-aid this replaces,
+    incoherent. The `readRank` mirror column, its index, and the `Article.setRead(_:)` setter that
+    maintained it are all deleted — assign `Article.read` directly. The band-aid this replaces,
     `TimelinePinning` (which lifted the displayed article back to its as-if-unread slot), is deleted.
   - **`Article.date` must not sort.** It's the feed's own publish timestamp, display-only, and a feed
     can backfill it out of order, which would retroactively move an article the user already paged past.
@@ -578,6 +596,15 @@ source and issue board live at
   happens entirely in the server's web UI now.
 - **SwiftData source of truth, sync writes it:** `SyncEngine`/`SyncWriter` write; views read
   lightweight metadata via `ArticleStore` (backed by SwiftData) rather than per-view `@Query`s.
+- **`propertiesToFetch` is a partial fault, not a projection — under-listing it costs more than
+  listing nothing.** A column left out is not skipped; it is filled by a per-row fault the first
+  time anything touches it. The light timeline descriptors once omitted `serverID`/`starred`/`read`
+  while `ArticleSummary.init` read all three, so the full index load faulted once per row. Every
+  descriptor that builds summaries now uses `ArticleSummary.fetchedProperties`; keep that list in
+  lockstep with the initializer. The heavy body columns (`blockData`/`plainText`/`summary`/
+  `content`) are the ones that must genuinely stay out. The same applies to
+  `relationshipKeyPathsForPrefetching`: prefetch only relationships something reads — those
+  descriptors used to prefetch the never-populated `Article.tags` on every fetch.
 - **Swift 6:** strict concurrency with `@MainActor` annotations throughout.
 - **`@ModelActor` runs on its caller's thread — always wrap it in `OffMainActor.run`.** A
   `@ModelActor` does **not** own a background queue: SwiftData's `DefaultSerialModelExecutor` runs
@@ -595,7 +622,11 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  this change, 406 tests, all passing (`-only-testing:YanaTests`).
+  change, 381 tests in 90 suites, all passing. (The drop from 406 is the dead-code and
+  legacy-HTML passes: suites that only exercised orphaned helpers — `CredentialTesterTests`,
+  `NameSearchTests`, `ArticleSearchTests`, `CrossFadeTests`, `UpdateProgressTests`,
+  `ArticleHeaderLogoTests` — plus `BlockParserTests`/`GiphyBlockReproTests`, which covered the
+  deleted HTML→blocks parser, went with the code they tested.)
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap

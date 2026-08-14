@@ -459,7 +459,7 @@ private struct MacSidebarView: View {
 /// iOS). A pull-down `Menu` of toggles that write straight to the shared `AppSettings` filter.
 private struct MacFilterBar: View {
     let settings: AppSettings
-    @Query(sort: \Tag.sortOrder) private var tags: [Tag]
+    @Query(sort: \Tag.name) private var tags: [Tag]
     @Query(sort: \Feed.name) private var feeds: [Feed]
 
     private var isFiltering: Bool { settings.isTimelineFilterActive }

@@ -26,21 +26,21 @@ struct ArticleListFilteringTests {
 
     @Test func searchThenTagFilterCompose() throws {
         let context = try makeContext()
-        let techFeed = Feed(name: "Tech Feed", aggregator: "feedContent", identifier: "tech")
+        let techFeed = Feed(name: "Tech Feed", identifier: "tech")
         techFeed.tagIDs = [1]
-        let foodFeed = Feed(name: "Food Feed", aggregator: "feedContent", identifier: "food")
+        let foodFeed = Feed(name: "Food Feed", identifier: "food")
         foodFeed.tagIDs = [2]
         let techTag = Tag(name: "Tech"); techTag.serverID = 1
         let foodTag = Tag(name: "Food"); foodTag.serverID = 2
         context.insert(techFeed); context.insert(foodFeed)
         context.insert(techTag); context.insert(foodTag)
 
-        let articles = [
-            article(title: "Swift news", feed: techFeed, in: context),
-            article(title: "Swift cooking", feed: foodFeed, in: context),
-            article(title: "Rust news", feed: techFeed, in: context),
-        ]
-        let searched = ArticleSearch.filter(articles, query: "swift") // -> 2 articles
+        _ = article(title: "Swift news", feed: techFeed, in: context)
+        _ = article(title: "Swift cooking", feed: foodFeed, in: context)
+        _ = article(title: "Rust news", feed: techFeed, in: context)
+        try context.save()
+
+        let searched = ArticleSearch.searchSummaries(query: "swift", in: context) // -> 2 articles
         let filtered = TagFilter.apply(to: searched, disabledTagNames: ["Food"], includeUntagged: true)
         #expect(filtered.count == 1)
         #expect(filtered.first?.title == "Swift news")
@@ -48,10 +48,11 @@ struct ArticleListFilteringTests {
 
     @Test func untaggedExcludedWhenFlagOff() throws {
         let context = try makeContext()
-        let feed = Feed(name: "Feed", aggregator: "feedContent", identifier: "f")
+        let feed = Feed(name: "Feed", identifier: "f")
         context.insert(feed)
-        let articles = [article(title: "Swift", feed: feed, in: context)]
-        let searched = ArticleSearch.filter(articles, query: "swift")
+        _ = article(title: "Swift", feed: feed, in: context)
+        try context.save()
+        let searched = ArticleSearch.searchSummaries(query: "swift", in: context)
         #expect(TagFilter.apply(to: searched, disabledTagNames: [], includeUntagged: false).isEmpty)
     }
 }

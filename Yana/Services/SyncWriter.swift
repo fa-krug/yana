@@ -8,23 +8,23 @@ struct SyncArticleSummaryWire: Decodable, Sendable {
     let identifier: String
     let date: Date
     let author: String
-    let icon: String?
     let read: Bool
     let starred: Bool
     let createdAt: Date
     let updatedAt: Date
 }
 
+/// The subset of the server's feed shape this client actually mirrors. The response also carries
+/// `aggregator`, `enabled`, `dailyLimit` and `updatedAt`; all four are feed *configuration*, owned
+/// and acted on by the server (and edited in its web UI), so nothing here renders them and they are
+/// deliberately not decoded. Extra keys in the JSON are ignored by `Decodable`, so dropping them is
+/// forwards-compatible.
 struct SyncFeedWire: Decodable, Sendable {
     let id: Int
     let name: String
-    let aggregator: String
     let identifier: String
-    let enabled: Bool
-    let dailyLimit: Int
     let tagIds: [Int]
     let logoImageHash: String?
-    let updatedAt: Date
 }
 
 /// The server's `TagWire` shape (`GET /api/v1/tags`): `{ id, name, color }`.
@@ -78,7 +78,7 @@ actor SyncWriter {
                 article.url = summary.identifier
                 article.starred = summary.starred
                 if summary.read {
-                    article.setRead(true)
+                    article.read = true
                 }
                 article.feed = feed
                 // A content update on the server (title/body edit, or just a re-fetch that
@@ -91,11 +91,11 @@ actor SyncWriter {
             } else {
                 let article = Article(
                     title: summary.name, identifier: summary.identifier, url: summary.identifier,
-                    date: summary.date, author: summary.author, iconURL: summary.icon
+                    date: summary.date, author: summary.author
                 )
                 article.serverID = summary.id
                 article.starred = summary.starred
-                article.setRead(summary.read)
+                article.read = summary.read
                 article.createdAt = summary.createdAt
                 article.feed = feed
                 modelContext.insert(article)
@@ -156,16 +156,11 @@ actor SyncWriter {
                 let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.identifier == idString })
                 return try? modelContext.fetch(descriptor).first
             },
-            makeNew: { wire in Feed(name: wire.name, aggregator: wire.aggregator, identifier: String(wire.id),
-                                     dailyLimit: wire.dailyLimit, enabled: wire.enabled) },
+            makeNew: { wire in Feed(name: wire.name, identifier: String(wire.id)) },
             apply: { feed, wire in
                 feed.name = wire.name
-                feed.aggregator = wire.aggregator
-                feed.enabled = wire.enabled
-                feed.dailyLimit = wire.dailyLimit
                 feed.tagIDs = wire.tagIds
                 feed.logoImageHash = wire.logoImageHash
-                feed.updatedAt = wire.updatedAt
             }
         )
         // `/feeds` is a full, unpaginated snapshot -- a feed missing from this response was

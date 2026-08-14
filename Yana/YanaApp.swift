@@ -131,12 +131,12 @@ struct YanaApp: App {
                 .task {
                     StartupTrace.event("scene.task.begin")
                     articleStore.start()
-                    // Convert any pre-migration articles still holding legacy HTML into native
-                    // blocks, off the launch/render path. No-op once the backlog is cleared.
-                    BlockMigration.run(container: AppContainer.shared)
-                    // One-time cleanup of duplicate Article rows left behind by overlapping
-                    // pre-fix sync() calls (see ArticleDedup's doc comment). No-op once cleared.
-                    ArticleDedup.run(container: AppContainer.shared)
+                    // NOTE: two one-time repair sweeps used to run here on EVERY launch -- a
+                    // legacy-HTML -> blocks conversion and a duplicate-Article cleanup. Both were
+                    // self-terminating fixes for bugs that no longer exist, and the dedup sweep in
+                    // particular re-read the entire article table on each launch just to find
+                    // nothing. Don't reintroduce a permanent launch-time sweep for a transient data
+                    // fix; if one is ever needed again, gate it behind a one-shot AppSettings flag.
                     // Pull the server's article/feed state on every foreground launch. `nil` from
                     // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error.
                     // Routed through `InitialSyncGate`: on every launch after the device's first
