@@ -7,7 +7,6 @@ private struct ReadResponse: Decodable { let id: Int; let read: Bool }
 private struct ReloadResponse: Decodable { let jobId: Int }
 private struct AggregateResponse: Decodable { let runId: Int }
 private struct ReadingPositionBody: Encodable { let articleId: Int }
-private struct ReadingPositionResponse: Decodable { let articleId: Int?; let updatedAt: Date? }
 
 /// Thin façade over the article-mutating parts of the API, so UI code doesn't construct
 /// `YanaAPIClient` calls inline. Read paths (sync, content, feeds) live in `SyncEngine` instead --
@@ -54,7 +53,7 @@ final class ArticleActions {
     /// last-writer-wins comparison `SyncEngine.syncReadingPosition` makes against a later pull.
     @discardableResult
     func setReadingPosition(articleServerID: Int) async throws -> Date? {
-        let response: ReadingPositionResponse = try await client.patch(
+        let response: ReadingPositionWire = try await client.patch(
             "/api/v1/reading-position", body: ReadingPositionBody(articleId: articleServerID)
         )
         return response.updatedAt

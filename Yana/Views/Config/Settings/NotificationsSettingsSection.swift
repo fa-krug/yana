@@ -3,7 +3,7 @@ import SwiftUI
 /// New-article notification toggle, with a denied-permission alert.
 struct NotificationsSettingsSection: View {
     @Environment(ArticleStore.self) private var store
-    @State private var settings = AppSettings()
+    @Bindable private var settings = AppSettings()
     @State private var showNotificationDeniedAlert = false
 
     var body: some View {
@@ -13,8 +13,7 @@ struct NotificationsSettingsSection: View {
                 set: { newValue in
                     if newValue {
                         Task {
-                            let granted = await NotificationService().requestAuthorization()
-                            settings.notificationsEnabled = granted
+                            let granted = await NotificationService.enable(.newArticles, settings: settings)
                             if !granted { showNotificationDeniedAlert = true }
                         }
                     } else {
@@ -30,8 +29,7 @@ struct NotificationsSettingsSection: View {
                 set: { newValue in
                     if newValue {
                         Task {
-                            let granted = await NotificationService().requestAuthorization()
-                            settings.showUnreadBadge = granted
+                            let granted = await NotificationService.enable(.unreadBadge, settings: settings)
                             UnreadBadgeUpdater.refresh(summaries: store.summaries, settings: settings)
                             if !granted { showNotificationDeniedAlert = true }
                         }

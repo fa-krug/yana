@@ -3,14 +3,11 @@ import SwiftUI
 
 /// Reader preferences: text size, font, live preview, system-browser toggle, read-aloud voice.
 struct ReaderSettingsSection: View {
-    @State private var settings = AppSettings()
+    @Bindable private var settings = AppSettings()
 
     var body: some View {
         Section {
-            Picker(selection: Binding(
-                get: { settings.articleTextSize },
-                set: { settings.articleTextSize = $0 }
-            )) {
+            Picker(selection: $settings.articleTextSize) {
                 ForEach(ArticleTextSize.allCases) { size in
                     Text(size.displayName).tag(size)
                 }
@@ -19,10 +16,7 @@ struct ReaderSettingsSection: View {
                     .labelStyle(.tintedIcon(.indigo))
             }
 
-            Picker(selection: Binding(
-                get: { settings.articleFont },
-                set: { settings.articleFont = $0 }
-            )) {
+            Picker(selection: $settings.articleFont) {
                 ForEach(ArticleFont.allCases) { font in
                     Text(font.displayName).tag(font)
                 }
@@ -37,18 +31,12 @@ struct ReaderSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(Text("Text size preview"))
 
-            Toggle(isOn: Binding(
-                get: { settings.useSystemBrowser },
-                set: { settings.useSystemBrowser = $0 }
-            )) {
+            Toggle(isOn: $settings.useSystemBrowser) {
                 Label(String(localized: "Use System Browser"), systemImage: "safari")
                     .labelStyle(.tintedIcon(.indigo))
             }
 
-            Picker(selection: Binding(
-                get: { settings.preferredVoiceIdentifier },
-                set: { settings.preferredVoiceIdentifier = $0 }
-            )) {
+            Picker(selection: $settings.preferredVoiceIdentifier) {
                 Text("Automatic").tag(String?.none)
                 ForEach(installedVoices, id: \.identifier) { voice in
                     Text(voiceLabel(voice)).tag(String?.some(voice.identifier))

@@ -121,6 +121,9 @@ struct SyncEngineTests {
                 if request.url!.path == "/api/v1/tags" {
                     return (response, #"{"tags":[]}"#.data(using: .utf8)!)
                 }
+                if request.url!.path == "/api/v1/reading-position" {
+                    return (response, #"{"articleId":null,"updatedAt":null}"#.data(using: .utf8)!)
+                }
                 if request.url!.path.hasSuffix("/content") {
                     return (response, #"{"version":1,"blocks":[]}"#.data(using: .utf8)!)
                 }
@@ -174,6 +177,9 @@ struct SyncEngineTests {
                 }
                 if request.url!.path == "/api/v1/tags" {
                     return (response, #"{"tags":[]}"#.data(using: .utf8)!)
+                }
+                if request.url!.path == "/api/v1/reading-position" {
+                    return (response, #"{"articleId":null,"updatedAt":null}"#.data(using: .utf8)!)
                 }
                 if request.url!.path.hasSuffix("/content") {
                     return (response, #"{"version":1,"blocks":[]}"#.data(using: .utf8)!)

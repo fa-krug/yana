@@ -436,15 +436,7 @@ private struct MacSidebarView: View {
     private func runSearch() async {
         let q = debouncedSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { searchResults = nil; return }
-        var descriptor = FetchDescriptor<Article>(
-            predicate: ArticleListSearch.predicate(for: q),
-            sortBy: [SortDescriptor(\.date, order: .forward)]
-        )
-        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt]
-        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
-        let matches = (try? modelContext.fetch(descriptor)) ?? []
-        let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
-        searchResults = matches.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
+        searchResults = ArticleSearch.searchSummaries(query: q, in: modelContext)
     }
 }
 

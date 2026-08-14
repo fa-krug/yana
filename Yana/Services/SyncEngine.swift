@@ -17,8 +17,6 @@ private struct SyncPage: Decodable {
 
 private struct FeedsResponse: Decodable { let feeds: [SyncFeedWire] }
 private struct TagsResponse: Decodable { let tags: [SyncTagWire] }
-private struct ReadingPositionWire: Decodable { let articleId: Int?; let updatedAt: Date? }
-
 enum SyncEngineError: Error, Equatable {
     /// The server returned `resyncRequired` on `SyncEngine.maxConsecutiveResyncAttempts`
     /// consecutive attempts within one `sync()` call. A single resync is the server telling us
