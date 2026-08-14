@@ -19,12 +19,12 @@ struct UnreadBadgeUpdaterTests {
     ) throws -> ArticleSummary {
         let container = try ModelContainer(for: Article.self, Feed.self, Tag.self, configurations: .init(isStoredInMemoryOnly: true))
         let context = container.mainContext
-        let feed = Feed(name: feedName, aggregator: "feedContent", identifier: identifier + "-feed")
+        let feed = Feed(name: feedName, identifier: identifier + "-feed")
         context.insert(feed)
         let article = Article(title: identifier, identifier: identifier, url: "https://x.com/\(identifier)")
         article.feed = feed
         article.starred = isStarred
-        article.setRead(isRead)
+        article.read = isRead
         context.insert(article)
         try context.save()
         return ArticleSummary(article)

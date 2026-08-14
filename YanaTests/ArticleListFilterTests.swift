@@ -19,14 +19,15 @@ struct ArticleListFilterTests {
 
     @Test func listResultsAreSubsetAndJumpResolves() throws {
         let ctx = try makeContext()
-        let feedA = Feed(name: "Alpha", aggregator: "feedContent", identifier: "a")
-        let feedB = Feed(name: "Beta", aggregator: "feedContent", identifier: "b")
+        let feedA = Feed(name: "Alpha", identifier: "a")
+        let feedB = Feed(name: "Beta", identifier: "b")
         ctx.insert(feedA); ctx.insert(feedB)
         let a1 = Article(title: "Alpha one", identifier: "a1", url: "https://a/1")
         let a2 = Article(title: "Beta two", identifier: "b2", url: "https://b/2")
         ctx.insert(a1); ctx.insert(a2)
         a1.feed = feedA
         a2.feed = feedB
+        try ctx.save()
         let all = [a1, a2]
 
         // Reader filter: disable feed "Beta".
@@ -40,7 +41,7 @@ struct ArticleListFilterTests {
         // List results (same filter + a matching search).
         let listResults = FeedFilter.apply(
             to: TagFilter.apply(
-                to: ArticleSearch.filter(all, query: "Alpha"),
+                to: ArticleSearch.searchSummaries(query: "Alpha", in: ctx),
                 disabledTagNames: [], includeUntagged: true),
             disabledFeedNames: disabledFeeds
         )
@@ -62,14 +63,14 @@ struct ArticleListFilterTests {
     /// where an article was.
     @Test func browsingKeepsCanonicalOrderRegardlessOfReadState() throws {
         let ctx = try makeContext()
-        let feed = Feed(name: "Alpha", aggregator: "feedContent", identifier: "f")
+        let feed = Feed(name: "Alpha", identifier: "f")
         ctx.insert(feed)
         let a = Article(title: "a", identifier: "a", url: "https://x/a")
         a.createdAt = Date(timeIntervalSince1970: 1); a.feed = feed
         let b = Article(title: "b", identifier: "b", url: "https://x/b")
-        b.createdAt = Date(timeIntervalSince1970: 2); b.feed = feed; b.setRead(true)
+        b.createdAt = Date(timeIntervalSince1970: 2); b.feed = feed; b.read = true
         let c = Article(title: "c", identifier: "c", url: "https://x/c")
-        c.createdAt = Date(timeIntervalSince1970: 3); c.feed = feed; c.setRead(true)
+        c.createdAt = Date(timeIntervalSince1970: 3); c.feed = feed; c.read = true
         let d = Article(title: "d", identifier: "d", url: "https://x/d")
         d.createdAt = Date(timeIntervalSince1970: 4); d.feed = feed
         ctx.insert(a); ctx.insert(b); ctx.insert(c); ctx.insert(d)

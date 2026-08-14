@@ -426,7 +426,7 @@ struct SyncEngineTests {
             // removed by this sync pass (referencing "orphaned-hash") -- both images already on
             // disk, as if a prior sync had prefetched them.
             let context = container.mainContext
-            let feed = Feed(name: "Test Feed", aggregator: "feed_content", identifier: "1")
+            let feed = Feed(name: "Test Feed", identifier: "1")
             context.insert(feed)
             let kept = Article(title: "Kept", identifier: "kept", url: "kept")
             kept.serverID = 200

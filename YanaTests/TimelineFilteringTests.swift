@@ -20,7 +20,7 @@ struct TimelineFilteringTests {
     /// all be inserted for the join to resolve anything.
     private func article(_ id: String, tagIDs: [Int], in context: ModelContext) -> Article {
         let a = Article(title: id, identifier: id, url: "https://x.com/\(id)")
-        let feed = Feed(name: "Feed-\(id)", aggregator: "feedContent", identifier: "feed-\(id)")
+        let feed = Feed(name: "Feed-\(id)", identifier: "feed-\(id)")
         feed.tagIDs = tagIDs
         a.feed = feed
         context.insert(feed)
@@ -62,7 +62,7 @@ struct TimelineFilteringTests {
     @Test func filterReadMirrorsReadOnArticleAndSummary() throws {
         let context = try makeContext()
         let a = article("a", tagIDs: [], in: context)
-        a.setRead(true)
+        a.read = true
         #expect(a.filterRead == true)
 
         let summary = ArticleSummary(a)

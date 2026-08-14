@@ -11,8 +11,8 @@ actor ArticleSummaryLoader {
         )
         // Only the light columns; the heavy body fields (`blockData`/`plainText`/`summary`) and the
         // legacy `content` stay unfetched.
-        descriptor.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.serverID]
-        descriptor.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        descriptor.propertiesToFetch = ArticleSummary.fetchedProperties
+        descriptor.relationshipKeyPathsForPrefetching = [\.feed]
         let rows = try StartupTrace.measure("fullLoad.fetch") { try modelContext.fetch(descriptor) }
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
         return StartupTrace.measure("fullLoad.map") {
@@ -60,12 +60,6 @@ actor ArticleSummaryLoader {
         return try modelContext.fetch(newestD).reversed().map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
     }
 
-    /// How many `Article` rows the store holds. A single SQL aggregate — cheap enough to run as a
-    /// probe on every CloudKit merge notification, which a full re-read is not.
-    func articleCount() throws -> Int {
-        try modelContext.fetchCount(FetchDescriptor<Article>())
-    }
-
     /// The summaries for a specific set of rows — the incremental refresh path. Rows that no longer
     /// exist are simply absent from the result, so a race with a concurrent delete resolves as a
     /// removal rather than an error. Same light columns / prefetch as `load()`.
@@ -110,8 +104,8 @@ actor ArticleSummaryLoader {
             predicate: predicate,
             sortBy: [SortDescriptor(\.createdAt, order: order), SortDescriptor(\.serverID, order: order)]
         )
-        d.propertiesToFetch = [\.title, \.identifier, \.author, \.date, \.createdAt, \.serverID]
-        d.relationshipKeyPathsForPrefetching = [\.feed, \.tags]
+        d.propertiesToFetch = ArticleSummary.fetchedProperties
+        d.relationshipKeyPathsForPrefetching = [\.feed]
         return d
     }
 }

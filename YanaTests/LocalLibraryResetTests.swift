@@ -13,16 +13,17 @@ struct LocalLibraryResetTests {
 
     @Test func wipeDeletesArticlesFeedsAndTagsAndClearsTheAnchor() throws {
         let context = try inMemoryContext()
-        let feed = Feed(name: "Demo Feed", aggregator: "feedContent", identifier: "demo://feed")
+        let feed = Feed(name: "Demo Feed", identifier: "demo://feed")
         context.insert(feed)
         let tag = Yana.Tag(name: "Demo", colorHex: "#2E77D0")
+        tag.serverID = 1
         context.insert(tag)
+        feed.tagIDs = [1]
         let article = Article(
             title: "Demo Article", identifier: "demo://article/0",
             url: "https://example.com", date: .now, author: "Someone"
         )
         article.feed = feed
-        article.tags = [tag]
         context.insert(article)
         try context.save()
 

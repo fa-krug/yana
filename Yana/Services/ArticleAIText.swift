@@ -1,24 +1,20 @@
 import Foundation
-import SwiftSoup
 
-/// Pure, `Sendable` text helpers used by `AppleIntelligenceChunkedSummarizer`: HTML chrome
-/// stripping, the content-size cap, and the summarize-task instruction string.
+/// Pure, `Sendable` text helpers used by `AppleIntelligenceChunkedSummarizer`: the content-size cap
+/// and the summarize-task instruction string.
+///
+/// A `stripChrome(_:)` helper used to live here too, removing `header`/`footer`/`nav`/`script`/
+/// `style` from article HTML via SwiftSoup. Its only caller feeds it `Article.plainText`, so it was
+/// parsing plain text as HTML and handing back that text wrapped in `<html><head></head><body>…`
+/// boilerplate — chrome the model then had to read past. Article bodies have not been HTML on this
+/// client since blocks arrived pre-parsed from the server, so it is gone.
 enum ArticleAIText {
-    /// Upper bound on characters of article HTML sent to any model.
+    /// Upper bound on characters of article text sent to any model.
     static let maxContentChars = 50_000
 
     /// Truncate to the character budget (no-op when already within it).
-    static func cap(_ html: String) -> String {
-        html.count <= maxContentChars ? html : String(html.prefix(maxContentChars))
-    }
-
-    /// Remove header/footer/nav/script/style; return the sanitized document HTML.
-    static func stripChrome(_ html: String) throws -> String {
-        let doc = try SwiftSoup.parse(html)
-        for tag in ["header", "footer", "nav", "script", "style"] {
-            try doc.select(tag).remove()
-        }
-        return try doc.html()
+    static func cap(_ text: String) -> String {
+        text.count <= maxContentChars ? text : String(text.prefix(maxContentChars))
     }
 
     static let summarizeInstruction =

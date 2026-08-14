@@ -17,19 +17,19 @@ struct ModelTests {
 
     @Test func insertAndFetchFeed() throws {
         let context = try makeContext()
-        let feed = Feed(name: "Swift Blog", aggregator: "feedContent", identifier: "https://swift.org/atom.xml")
+        let feed = Feed(name: "Swift Blog", identifier: "https://swift.org/atom.xml")
         context.insert(feed)
         try context.save()
 
         let feeds = try context.fetch(FetchDescriptor<Feed>())
         #expect(feeds.count == 1)
         #expect(feeds.first?.name == "Swift Blog")
-        #expect(feeds.first?.aggregator == "feedContent")
+        #expect(feeds.first?.identifier == "https://swift.org/atom.xml")
     }
 
     @Test func deletingFeedCascadesToArticles() throws {
         let context = try makeContext()
-        let feed = Feed(name: "F", aggregator: "feedContent", identifier: "https://x.com/feed")
+        let feed = Feed(name: "F", identifier: "https://x.com/feed")
         let article = Article(
             title: "Post", identifier: "https://x.com/1", url: "https://x.com/1",
             date: .now, author: "A"

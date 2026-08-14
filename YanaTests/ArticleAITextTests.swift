@@ -9,13 +9,4 @@ struct ArticleAITextTests {
         #expect(ArticleAIText.cap("short") == "short")
     }
 
-    @Test func stripChromeRemovesChrome() throws {
-        let html = "<header>h</header><p>body</p><footer>f</footer><script>x</script>"
-        let cleaned = try ArticleAIText.stripChrome(html)
-        #expect(cleaned.contains("body"))
-        #expect(!cleaned.contains("<header>"))
-        #expect(!cleaned.contains("<footer>"))
-        #expect(!cleaned.contains("<script>"))
-    }
-
 }

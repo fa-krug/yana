@@ -53,18 +53,18 @@ struct ArticleResolutionTests {
     @Test func resolveSeesBackgroundUpdatedBody() async throws {
         let container = try makeContainer()
         let main = ModelContext(container)
-        let feed = Feed(name: "A", aggregator: "feedContent", identifier: "a")
+        let feed = Feed(name: "A", identifier: "a")
         main.insert(feed)
-        let article = Article(title: "OLD", identifier: "id1", url: "u", date: .now, author: "", iconURL: nil)
+        let article = Article(title: "OLD", identifier: "id1", url: "u", date: .now, author: "")
         article.feed = feed
-        article.blocks = BlockParser.blocks(fromHTML: "<p>old</p>", baseURL: nil)
+        article.blocks = [.paragraph([InlineRun(text: "old")])]
         main.insert(article); try main.save()
         let summary = ArticleSummary(article)
 
         // Simulate a background aggregation write via a sibling context (mirrors the writer path).
         let sibling = ModelContext(container)
         if let a = sibling.model(for: article.persistentModelID) as? Article {
-            a.blocks = BlockParser.blocks(fromHTML: "<p>new body</p>", baseURL: nil)
+            a.blocks = [.paragraph([InlineRun(text: "new body")])]
             try sibling.save()
         }
 
@@ -78,16 +78,16 @@ struct ArticleResolutionTests {
     @Test func resolveDisambiguatesCrossFeedIdentifierCollision() async throws {
         let context = try makeContext()
 
-        let feedA = Feed(name: "A", aggregator: "feedContent", identifier: "A")
-        let feedB = Feed(name: "B", aggregator: "feedContent", identifier: "B")
+        let feedA = Feed(name: "A", identifier: "A")
+        let feedB = Feed(name: "B", identifier: "B")
         context.insert(feedA); context.insert(feedB)
 
         let articleA = Article(title: "Title A", identifier: "shared-id", url: "uA")
         articleA.feed = feedA
-        articleA.blocks = BlockParser.blocks(fromHTML: "<p>body A</p>", baseURL: nil)
+        articleA.blocks = [.paragraph([InlineRun(text: "body A")])]
         let articleB = Article(title: "Title B", identifier: "shared-id", url: "uB")
         articleB.feed = feedB
-        articleB.blocks = BlockParser.blocks(fromHTML: "<p>body B</p>", baseURL: nil)
+        articleB.blocks = [.paragraph([InlineRun(text: "body B")])]
         context.insert(articleA); context.insert(articleB)
         try context.save()
 
@@ -105,8 +105,8 @@ struct ArticleResolutionTests {
     @Test func resolveFallbackDisambiguatesCrossFeedIdentifierCollisionByServerID() async throws {
         let context = try makeContext()
 
-        let feedA = Feed(name: "A", aggregator: "feedContent", identifier: "A")
-        let feedB = Feed(name: "B", aggregator: "feedContent", identifier: "B")
+        let feedA = Feed(name: "A", identifier: "A")
+        let feedB = Feed(name: "B", identifier: "B")
         context.insert(feedA); context.insert(feedB)
 
         let articleA = Article(title: "Title A", identifier: "shared-id", url: "uA")

@@ -97,7 +97,7 @@ struct ArticleStoreIncrementalTests {
         await wait(for: store, toReach: 200)
         let before = store.summaries
 
-        context.insert(Tag(name: "Fresh Tag", sortOrder: 99))
+        context.insert(Tag(name: "Fresh Tag"))
         try context.save()
         try? await Task.sleep(for: .milliseconds(600))
 

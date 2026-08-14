@@ -18,14 +18,14 @@ struct SummaryIndexMergeTests {
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         let context = ModelContext(container)
-        let feed = Feed(name: "F", aggregator: "feedContent", identifier: "f")
+        let feed = Feed(name: "F", identifier: "f")
         context.insert(feed)
         var articles: [Article] = []
         for i in 0..<count {
             let a = Article(title: "A\(i)", identifier: "a\(i)", url: "u\(i)",
                             date: Date(timeIntervalSince1970: Double(count - i)))
             a.createdAt = Date(timeIntervalSince1970: Double(i) * 10)
-            a.setRead(read)
+            a.read = read
             a.feed = feed
             context.insert(a)
             articles.append(a)
@@ -109,7 +109,7 @@ struct SummaryIndexMergeTests {
         let readNew = Article(title: "ReadNew", identifier: "rn", url: "u",
                               date: Date(timeIntervalSince1970: 100))
         readNew.createdAt = Date(timeIntervalSince1970: 100)
-        readNew.setRead(true)
+        readNew.read = true
         readNew.feed = feed
         context.insert(readNew)
         try context.save()

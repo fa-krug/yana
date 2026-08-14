@@ -15,7 +15,7 @@ struct ArticleWritesTests {
     @Test func markReadIsANoOpWhenAlreadyRead() throws {
         let context = try makeContext()
         let article = Article(title: "T", identifier: "id", url: "https://x.com/1")
-        article.setRead(true)
+        article.read = true
         context.insert(article)
         try context.save()
 

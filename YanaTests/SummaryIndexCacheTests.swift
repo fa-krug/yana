@@ -13,7 +13,7 @@ struct SummaryIndexCacheTests {
     }
 
     private func makeSummary(_ id: String, in context: ModelContext) throws -> ArticleSummary {
-        let feed = Feed(name: "Acme", aggregator: "feedContent", identifier: "f-\(id)")
+        let feed = Feed(name: "Acme", identifier: "f-\(id)")
         let article = Article(title: id, identifier: id, url: id)
         article.feed = feed
         context.insert(feed); context.insert(article)

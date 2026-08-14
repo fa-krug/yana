@@ -27,7 +27,7 @@ struct TimelineOrderingTests {
         a.createdAt = createdAt
         a.date = date
         a.serverID = serverID
-        a.setRead(read)
+        a.read = read
         context.insert(a)
         return a
     }
@@ -92,7 +92,7 @@ struct TimelineOrderingTests {
         let second = try context.fetch(
             FetchDescriptor<Article>(predicate: #Predicate { $0.identifier == "a1" })
         ).first!
-        second.setRead(true)
+        second.read = true
         try context.save()
 
         #expect(try context.fetch(timelineDescriptor()).map(\.identifier) == before)
@@ -115,7 +115,7 @@ struct TimelineOrderingTests {
         let index = articles.map { ArticleSummary($0) }
 
         // Swipe forward from a2 to a3: a3 becomes current and is marked read.
-        articles[3].setRead(true)
+        articles[3].read = true
         try context.save()
         let spliced = SummaryIndexMerge.apply(
             to: index, changed: [ArticleSummary(articles[3])], removed: []

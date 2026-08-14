@@ -2,9 +2,9 @@ import Foundation
 
 /// A closed, typed article-body block. Article bodies are stored as a JSON-encoded `[Block]`
 /// (on `Article.blockData`) and rendered natively in SwiftUI — there is never an inline WebView in
-/// the body. Any source node that does not map to one of these cases is **dropped** during
-/// conversion (see `BlockParser`); tables, forms, scripts and unmodelled chrome fall through to
-/// nothing.
+/// the body. Blocks arrive already parsed from the server (`BlockWireDecoding`), which is where any
+/// unmodelled source markup (tables, forms, scripts, chrome) is dropped; the client never parses
+/// markup itself.
 enum Block: Codable, Sendable, Equatable {
     /// A run of styled inline text (the common body paragraph).
     case paragraph([InlineRun])

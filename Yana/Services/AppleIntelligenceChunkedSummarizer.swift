@@ -20,13 +20,15 @@ enum AppleIntelligenceChunkedSummarizer {
     static let temperature = 0.3
     static let maxTokens = 2000
 
-    /// Summarize HTML via chunk → per-chunk summary → reduce into one summary string. Carried
-    /// over verbatim (minus the outer `AIOptions`/`AggregatedArticle` plumbing) from the former
-    /// `AppleIntelligenceProcessor.summarize(html:title:)` -- same chunk → per-chunk
-    /// `generateSummary` map → reduce-if-multiple-chunks logic.
-    static func summarize(html: String, title: String, generator: ArticleGenerating) async -> String? {
-        let clean = ArticleAIText.cap((try? ArticleAIText.stripChrome(html)) ?? html)
-        let chunks = ArticleChunker.chunk(html: clean,
+    /// Summarize article text via chunk → per-chunk summary → reduce into one summary string.
+    ///
+    /// Takes plain text (`Article.plainText`), which is what the only caller has always passed.
+    /// The parameter used to be named `html` and was run through an HTML chrome-stripper first --
+    /// see `ArticleAIText` and `ArticleChunker` for why that was not just redundant but actively
+    /// defeated the chunking below.
+    static func summarize(text: String, title: String, generator: ArticleGenerating) async -> String? {
+        let clean = ArticleAIText.cap(text)
+        let chunks = ArticleChunker.chunk(text: clean,
                                           budgetTokens: contentBudgetTokens,
                                           tokenCount: generator.tokenCount)
         do {
@@ -34,7 +36,7 @@ enum AppleIntelligenceChunkedSummarizer {
             for chunk in chunks {
                 let result = try await generator.generateSummary(
                     instructions: summaryInstructions,
-                    prompt: prompt(title: title, html: chunk),
+                    prompt: prompt(title: title, text: chunk),
                     temperature: temperature,
                     maxTokens: maxTokens
                 )
@@ -43,7 +45,7 @@ enum AppleIntelligenceChunkedSummarizer {
             guard partials.count > 1 else { return partials.first }
             return try await generator.generateSummary(
                 instructions: reduceInstructions,
-                prompt: prompt(title: title, html: ArticleAIText.cap(partials.joined(separator: "\n"))),
+                prompt: prompt(title: title, text: ArticleAIText.cap(partials.joined(separator: "\n\n"))),
                 temperature: temperature,
                 maxTokens: maxTokens
             )
@@ -55,13 +57,13 @@ enum AppleIntelligenceChunkedSummarizer {
     // MARK: - Prompt assembly (guided generation: no JSON-format boilerplate needed)
 
     static let summaryInstructions =
-        "You summarize article content provided as HTML. " + ArticleAIText.summarizeInstruction
+        "You summarize article content. " + ArticleAIText.summarizeInstruction
 
     static let reduceInstructions =
         "You combine several partial article summaries into one concise summary. "
         + ArticleAIText.summarizeInstruction
 
-    static func prompt(title: String, html: String) -> String {
-        "Title: \(title)\n\nContent (HTML):\n\(html)"
+    static func prompt(title: String, text: String) -> String {
+        "Title: \(title)\n\nContent:\n\(text)"
     }
 }

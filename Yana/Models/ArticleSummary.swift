@@ -90,6 +90,20 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
 }
 
 extension ArticleSummary {
+    /// Exactly the `Article` columns `init(_:tagNamesByID:)` reads, for every light
+    /// `FetchDescriptor` that builds summaries (`ArticleSummaryLoader`, `ArticleSearch`).
+    ///
+    /// Keep this in lockstep with that initializer. `propertiesToFetch` is a *partial fault*: a
+    /// column left out here is not simply skipped, it is filled by a per-row fault the first time
+    /// something touches it. Omitting `serverID`/`starred`/`read` therefore cost a round trip per
+    /// row on the full index load rather than saving anything. The heavy body columns
+    /// (`blockData`/`plainText`/`summary`/`content`) are the ones that genuinely must stay out.
+    /// Computed rather than a `static let`: `PartialKeyPath<Article>` is not `Sendable` (its root
+    /// is a `@Model` class), so a stored static would not pass Swift 6's global-state check.
+    static var fetchedProperties: [PartialKeyPath<Article>] {
+        [\.title, \.identifier, \.author, \.date, \.createdAt, \.serverID, \.starred, \.read]
+    }
+
     /// Server-id -> name lookup for every synced `Tag`, for resolving a `Feed.tagIDs` list into
     /// display names at construction time. `/tags` is small and unpaginated (mirrors `/feeds`),
     /// so fetching every row per call is cheap; built with a plain loop rather than
