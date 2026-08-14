@@ -110,6 +110,7 @@ struct YanaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(appState: appState)
+                .environment(appState)
                 .environment(articleStore)
                 .environment(appSettings)
                 .onChange(of: scenePhase) { _, phase in
@@ -185,6 +186,7 @@ struct YanaApp: App {
         // instead of creating a duplicate.
         WindowGroup(id: WindowID.settings, for: Bool.self) { _ in
             MacSettingsWindow(appState: appState)
+                .environment(appState)
                 .environment(articleStore)
                 .environment(appSettings)
         }
@@ -197,6 +199,7 @@ struct YanaApp: App {
         // the Settings window above: bind `for: Bool.self` and always open/pass the constant `true`.
         WindowGroup(id: WindowID.welcome, for: Bool.self) { _ in
             WelcomeWindowRoot(appState: appState)
+                .environment(appState)
                 .environment(articleStore)
                 .environment(appSettings)
         }

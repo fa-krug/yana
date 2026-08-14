@@ -618,7 +618,13 @@ source and issue board live at
   exists. Any test asserting on an empty library (or a short Settings form) must therefore pass
   **`-UITEST_RESET_LIBRARY`** (`Yana/Utilities/UITestReset.swift`, DEBUG-only: wipes
   articles/feeds/tags and both timeline anchors at launch, before the seeds run). Without it a test
-  passes alone and fails in a full run.
+  passes alone and fails in a full run. `ScreenshotSeed` also installs a **fake pairing**
+  (`serverBaseURL` in `UserDefaults` + a fixture token in the Keychain, so the screenshot run's
+  Settings form shows the "Manage Feeds & Tags" row), and neither of those lives in the SwiftData
+  store — so the same reset also clears the token, `serverBaseURL`, `hasSkippedServerPairing`, and
+  `hasCompletedInitialSync`. A test launched with this argument is therefore **unpaired**: don't
+  assert on pairing-gated UI such as the `settings.manage` row (use the unconditional
+  `settings.server` row to prove Settings opened).
 - **Scrolling the Settings form in a UI test:** don't use `app.swipeUp()`. It swipes from the screen
   centre, which lands on control rows and drags a *control value* instead of scrolling, so the form
   stalls and later sections are never reached (an intermittent failure). Use

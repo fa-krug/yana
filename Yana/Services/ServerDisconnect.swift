@@ -36,6 +36,12 @@ enum ServerDisconnect {
         // session still sees it explain the newly-appeared demo content.
         settings.hasDismissedDemoBanner = false
 
+        // The mirror is empty again, so whenever this device next pairs, that sync is once more a
+        // full historical backlog -- exactly what `InitialSyncGate` exists to block the reader
+        // behind. Leaving this set is what made the loading screen silently not appear on a
+        // remove-then-re-add.
+        settings.hasCompletedInitialSync = false
+
         Task {
             await ScreenshotSeed.seed(into: context)
         }
