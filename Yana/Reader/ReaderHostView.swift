@@ -113,12 +113,11 @@ struct ReaderScreen: View {
     @Bindable var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
+    @Environment(AppSettings.self) private var settings
 
     init(appState: AppState) {
         self.appState = appState
     }
-
-    @State private var settings = AppSettings()
 
     @State private var didRestoreAnchor = false
     @State private var toast: ToastMessage?

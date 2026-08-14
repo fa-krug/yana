@@ -9,7 +9,9 @@ struct YanaAPIError: Error, Equatable, Decodable {
 
 enum YanaAPIClientError: Error, Equatable {
     case transport
-    case decoding
+    /// Carries the underlying `DecodingError`'s description (e.g. which key/type mismatched) so a
+    /// server-side wire-shape change surfaces as an actionable message instead of a bare case.
+    case decoding(String)
     case unauthorized
     case server(YanaAPIError)
 }

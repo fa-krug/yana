@@ -6,10 +6,11 @@ import SwiftUI
 /// device." When Apple Intelligence is selected, shows the live on-device availability so the user
 /// understands why the "Summarize" action might still be unavailable.
 struct AIModeSettingsSection: View {
-    @Bindable private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     @State private var appleIntelligenceStatus: AppleIntelligenceAvailability?
 
     var body: some View {
+        @Bindable var settings = settings
         Section {
             Picker("AI Mode", selection: $settings.aiMode) {
                 ForEach(AIMode.allCases) { mode in

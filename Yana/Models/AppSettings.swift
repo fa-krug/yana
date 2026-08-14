@@ -36,6 +36,20 @@ final class AppSettings {
         ])
     }
 
+    /// Reads a `UserDefaults` integer that distinguishes "unset" from the value `0`, unlike
+    /// `UserDefaults.integer(forKey:)`'s bare `0` default. Shared by the three optional-`Int`
+    /// settings below (`timelineAnchorServerID`, `pendingRemoteReadingPosition`,
+    /// `pendingReadingPositionPush`), which otherwise repeated this exact nil-check.
+    private func optionalInt(forKey key: String) -> Int? {
+        defaults.object(forKey: key) == nil ? nil : defaults.integer(forKey: key)
+    }
+
+    /// Writes an optional `Int` as either the value itself or a removed key (so a later
+    /// `optionalInt(forKey:)` reads back `nil`, not `0`).
+    private func setOptionalInt(_ value: Int?, forKey key: String) {
+        if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+    }
+
     private enum Key {
         static let updateInterval = "settings.updateInterval"
         static let notificationsEnabled = "settings.notificationsEnabled"
@@ -279,17 +293,8 @@ final class AppSettings {
     /// an anchor saved before this field existed, or for unsynced fixture data; those fall back to
     /// the identifier-only lookup.
     var timelineAnchorServerID: Int? {
-        get {
-            access(keyPath: \.timelineAnchorServerID)
-            return defaults.object(forKey: Key.timelineAnchorServerID) == nil
-                ? nil : defaults.integer(forKey: Key.timelineAnchorServerID)
-        }
-        set {
-            withMutation(keyPath: \.timelineAnchorServerID) {
-                if let newValue { defaults.set(newValue, forKey: Key.timelineAnchorServerID) }
-                else { defaults.removeObject(forKey: Key.timelineAnchorServerID) }
-            }
-        }
+        get { access(keyPath: \.timelineAnchorServerID); return optionalInt(forKey: Key.timelineAnchorServerID) }
+        set { withMutation(keyPath: \.timelineAnchorServerID) { setOptionalInt(newValue, forKey: Key.timelineAnchorServerID) } }
     }
 
     // MARK: Reading position sync
@@ -308,17 +313,8 @@ final class AppSettings {
     /// `applyTimeline`'s first-load branch) -- never applied mid-session, which would yank the user
     /// off the article they're actively reading. `nil` once consumed.
     var pendingRemoteReadingPosition: Int? {
-        get {
-            access(keyPath: \.pendingRemoteReadingPosition)
-            return defaults.object(forKey: Key.pendingRemoteReadingPosition) == nil
-                ? nil : defaults.integer(forKey: Key.pendingRemoteReadingPosition)
-        }
-        set {
-            withMutation(keyPath: \.pendingRemoteReadingPosition) {
-                if let newValue { defaults.set(newValue, forKey: Key.pendingRemoteReadingPosition) }
-                else { defaults.removeObject(forKey: Key.pendingRemoteReadingPosition) }
-            }
-        }
+        get { access(keyPath: \.pendingRemoteReadingPosition); return optionalInt(forKey: Key.pendingRemoteReadingPosition) }
+        set { withMutation(keyPath: \.pendingRemoteReadingPosition) { setOptionalInt(newValue, forKey: Key.pendingRemoteReadingPosition) } }
     }
     /// A local reading-position push that failed (offline, or a real server error) and needs
     /// retry -- the server article id to (re)send. Retried opportunistically alongside
@@ -328,16 +324,7 @@ final class AppSettings {
     /// single field, always overwritten by the newest attempt, is simpler and correct.
     /// Device-local -- never synced.
     var pendingReadingPositionPush: Int? {
-        get {
-            access(keyPath: \.pendingReadingPositionPush)
-            return defaults.object(forKey: Key.pendingReadingPositionPush) == nil
-                ? nil : defaults.integer(forKey: Key.pendingReadingPositionPush)
-        }
-        set {
-            withMutation(keyPath: \.pendingReadingPositionPush) {
-                if let newValue { defaults.set(newValue, forKey: Key.pendingReadingPositionPush) }
-                else { defaults.removeObject(forKey: Key.pendingReadingPositionPush) }
-            }
-        }
+        get { access(keyPath: \.pendingReadingPositionPush); return optionalInt(forKey: Key.pendingReadingPositionPush) }
+        set { withMutation(keyPath: \.pendingReadingPositionPush) { setOptionalInt(newValue, forKey: Key.pendingReadingPositionPush) } }
     }
 }

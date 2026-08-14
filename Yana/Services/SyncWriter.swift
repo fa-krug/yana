@@ -147,13 +147,18 @@ actor SyncWriter {
     /// have no other natural identity worth keeping client-side any more.
     @discardableResult
     func replaceFeeds(_ feeds: [SyncFeedWire]) -> [PersistentIdentifier] {
-        var touched: [PersistentIdentifier] = []
         var seenIdentifiers = Set<String>()
-        for wire in feeds {
-            let idString = String(wire.id)
-            seenIdentifiers.insert(idString)
-            let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.identifier == idString })
-            if let feed = try? modelContext.fetch(descriptor).first {
+        let touched = upsertAndPrune(
+            feeds,
+            fetchExisting: { wire in
+                let idString = String(wire.id)
+                seenIdentifiers.insert(idString)
+                let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.identifier == idString })
+                return try? modelContext.fetch(descriptor).first
+            },
+            makeNew: { wire in Feed(name: wire.name, aggregator: wire.aggregator, identifier: String(wire.id),
+                                     dailyLimit: wire.dailyLimit, enabled: wire.enabled) },
+            apply: { feed, wire in
                 feed.name = wire.name
                 feed.aggregator = wire.aggregator
                 feed.enabled = wire.enabled
@@ -161,69 +166,85 @@ actor SyncWriter {
                 feed.tagIDs = wire.tagIds
                 feed.logoImageHash = wire.logoImageHash
                 feed.updatedAt = wire.updatedAt
-                touched.append(feed.persistentModelID)
-            } else {
-                let feed = Feed(name: wire.name, aggregator: wire.aggregator, identifier: idString,
-                                 dailyLimit: wire.dailyLimit, enabled: wire.enabled)
-                feed.tagIDs = wire.tagIds
-                feed.logoImageHash = wire.logoImageHash
-                feed.updatedAt = wire.updatedAt
-                modelContext.insert(feed)
-                touched.append(feed.persistentModelID)
             }
-        }
+        )
         // `/feeds` is a full, unpaginated snapshot -- a feed missing from this response was
         // deleted server-side, so its local mirror (and, via the model's cascade delete rule,
         // its articles) must go too. Without this, a deleted feed keeps showing in
         // `TagFilterView`'s Feeds section forever, since this method is otherwise upsert-only.
-        if let existing = try? modelContext.fetch(FetchDescriptor<Feed>()) {
-            for feed in existing where !seenIdentifiers.contains(feed.identifier) {
-                modelContext.delete(feed)
-            }
-        }
+        pruneMissing(FetchDescriptor<Feed>()) { !seenIdentifiers.contains($0.identifier) }
         try? modelContext.save()
         return touched
     }
 
     /// Full replace-by-upsert of every tag the server returned, mirroring `replaceFeeds`'s shape
-    /// exactly (`/tags` is small and unpaginated too). Populates `Tag.serverID`, which
-    /// `ArticleSummary.tagNameLookup`/`Article.filterTagNames` (`TimelineFiltering.swift`) join
-    /// against `Feed.tagIDs` to resolve an article's tag names -- tag membership is a live join
-    /// now, not a per-article snapshot, so this is the one write path that keeps the `Tag` table
-    /// itself current. Without it `TagFilterView`'s Tags section stays permanently empty and
-    /// every article reads as "untagged."
+    /// exactly (`/tags` is small and unpaginated too) via the same `upsertAndPrune`/`pruneMissing`
+    /// helpers. Populates `Tag.serverID`, which `ArticleSummary.tagNameLookup`/
+    /// `Article.filterTagNames` (`TimelineFiltering.swift`) join against `Feed.tagIDs` to resolve
+    /// an article's tag names -- tag membership is a live join now, not a per-article snapshot, so
+    /// this is the one write path that keeps the `Tag` table itself current. Without it
+    /// `TagFilterView`'s Tags section stays permanently empty and every article reads as
+    /// "untagged."
     @discardableResult
     func syncTags(_ tags: [SyncTagWire]) -> [PersistentIdentifier] {
-        var touched: [PersistentIdentifier] = []
         var seenServerIDs = Set<Int>()
-        for wire in tags {
-            seenServerIDs.insert(wire.id)
-            let targetServerID = wire.id
-            let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.serverID == targetServerID })
-            if let tag = try? modelContext.fetch(descriptor).first {
+        let touched = upsertAndPrune(
+            tags,
+            fetchExisting: { wire in
+                seenServerIDs.insert(wire.id)
+                let targetServerID = wire.id
+                let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.serverID == targetServerID })
+                return try? modelContext.fetch(descriptor).first
+            },
+            makeNew: { wire in let tag = Tag(name: wire.name, colorHex: wire.color); tag.serverID = wire.id; return tag },
+            apply: { tag, wire in
                 tag.name = wire.name
                 tag.colorHex = wire.color
-                touched.append(tag.persistentModelID)
-            } else {
-                let tag = Tag(name: wire.name, colorHex: wire.color)
-                tag.serverID = wire.id
-                modelContext.insert(tag)
-                touched.append(tag.persistentModelID)
             }
-        }
+        )
         // Same full-replace rule `replaceFeeds` follows: drop any local `Tag` the server no
         // longer returns (deleted server-side, or a leftover from before this rework ever wrote
         // a `serverID` at all).
-        if let existing = try? modelContext.fetch(FetchDescriptor<Tag>()) {
-            for tag in existing {
-                guard let serverID = tag.serverID, seenServerIDs.contains(serverID) else {
-                    modelContext.delete(tag)
-                    continue
-                }
-            }
+        pruneMissing(FetchDescriptor<Tag>()) { tag in
+            guard let serverID = tag.serverID else { return true }
+            return !seenServerIDs.contains(serverID)
         }
         try? modelContext.save()
         return touched
+    }
+
+    /// Upserts every `wire` element: `fetchExisting` locates (and, as a side effect, records into
+    /// the caller's "seen" set) a matching local model, `apply` updates it in place, and `makeNew`
+    /// constructs+inserts one when no match exists. Shared by `replaceFeeds`/`syncTags`, which
+    /// otherwise independently repeated this exact upsert shape.
+    private func upsertAndPrune<Wire, Model: PersistentModel>(
+        _ wires: [Wire], fetchExisting: (Wire) -> Model?, makeNew: (Wire) -> Model, apply: (Model, Wire) -> Void
+    ) -> [PersistentIdentifier] {
+        var touched: [PersistentIdentifier] = []
+        for wire in wires {
+            let model: Model
+            if let existing = fetchExisting(wire) {
+                model = existing
+            } else {
+                model = makeNew(wire)
+                modelContext.insert(model)
+            }
+            // Applied uniformly to both branches -- `makeNew` only needs to satisfy the
+            // model's required init parameters; every other field (tags, logo, `updatedAt`, ...)
+            // is set here so a new row ends up with exactly the same state an existing one does.
+            apply(model, wire)
+            touched.append(model.persistentModelID)
+        }
+        return touched
+    }
+
+    /// Deletes every row from `descriptor` for which `shouldPrune` is true. Shared by
+    /// `replaceFeeds`/`syncTags`'s "drop what the server's full snapshot no longer lists" pass.
+    private func pruneMissing<Model: PersistentModel>(_ descriptor: FetchDescriptor<Model>, shouldPrune: (Model) -> Bool) {
+        guard let existing = try? modelContext.fetch(descriptor) else { return }
+        for model in existing where shouldPrune(model) {
+            modelContext.delete(model)
+        }
     }
 
     /// Every `ImageStore` content hash still referenced by a locally-known article's blocks or a

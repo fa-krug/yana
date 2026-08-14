@@ -11,7 +11,7 @@ import SwiftUI
 struct WelcomeWindowRoot: View {
     @Bindable var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         WelcomeView(onFinish: {

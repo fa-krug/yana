@@ -6,8 +6,7 @@ struct ContentView: View {
 
     @Environment(\.openWindow) private var openWindow
     @Environment(ArticleStore.self) private var store
-
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
 
     /// Suppress the first-launch welcome during UI-test / screenshot runs so it never covers the
     /// reader the tests assert against.
@@ -39,7 +38,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if isMac {
-                MacRootView(appState: appState)
+                MacRootView(appState: appState, settings: settings)
             } else if appState.isPerformingInitialSync {
                 InitialSyncLoadingView()
             } else {

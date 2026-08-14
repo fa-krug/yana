@@ -8,7 +8,7 @@ import SwiftUI
 /// instead, so every onboarding step reads consistently. The icon/title/subtitle header for this
 /// step lives in `WelcomeView.header`, fixed in position across every step, not drawn here.
 struct OnboardingAIModePage: View {
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     @State private var appleIntelligenceStatus: AppleIntelligenceAvailability?
 
     var body: some View {
@@ -72,4 +72,5 @@ struct OnboardingAIModePage: View {
 
 #Preview {
     OnboardingAIModePage()
+        .environment(AppSettings())
 }

@@ -7,7 +7,7 @@ struct SettingsScreenView: View {
     var onShowServerNotice: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     @State private var toast: ToastMessage?
 
     var body: some View {

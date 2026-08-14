@@ -3,7 +3,7 @@ import SwiftUI
 /// New-article notification toggle, with a denied-permission alert.
 struct NotificationsSettingsSection: View {
     @Environment(ArticleStore.self) private var store
-    @Bindable private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     @State private var showNotificationDeniedAlert = false
 
     var body: some View {

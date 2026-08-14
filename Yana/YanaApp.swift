@@ -111,6 +111,7 @@ struct YanaApp: App {
         WindowGroup {
             ContentView(appState: appState)
                 .environment(articleStore)
+                .environment(appSettings)
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .background:
@@ -185,6 +186,7 @@ struct YanaApp: App {
         WindowGroup(id: WindowID.settings, for: Bool.self) { _ in
             MacSettingsWindow(appState: appState)
                 .environment(articleStore)
+                .environment(appSettings)
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 620)
@@ -196,6 +198,7 @@ struct YanaApp: App {
         WindowGroup(id: WindowID.welcome, for: Bool.self) { _ in
             WelcomeWindowRoot(appState: appState)
                 .environment(articleStore)
+                .environment(appSettings)
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 640)
@@ -207,6 +210,7 @@ struct YanaApp: App {
 
         WindowGroup(id: WindowID.serverNotice, for: Bool.self) { _ in
             ServerMigrationNoticeWindowRoot(appState: appState)
+                .environment(appSettings)
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 680, height: 640)

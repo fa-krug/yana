@@ -27,7 +27,7 @@ struct OnboardingServerPage: View {
         self._state = State(initialValue: state)
     }
 
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     @State private var serverURLText = ""
     /// The server address this device is actually paired against. Editing the field away from
     /// this value resets `state.isPaired`, so changing the URL always reverts the form to "no
@@ -219,4 +219,5 @@ struct OnboardingServerPage: View {
 
 #Preview {
     OnboardingServerPage(onPaired: {})
+        .environment(AppSettings())
 }
