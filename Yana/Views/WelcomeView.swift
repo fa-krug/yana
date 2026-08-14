@@ -280,4 +280,5 @@ private struct WelcomeIntroPage: View {
 
 #Preview {
     WelcomeView(onFinish: {})
+        .environment(AppSettings())
 }

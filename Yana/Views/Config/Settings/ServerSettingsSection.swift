@@ -5,7 +5,7 @@ import SwiftUI
 /// drives) as a sheet — changing servers always requires signing in again, since the Bearer
 /// token in Keychain is only valid against the server that issued it.
 struct ServerSettingsSection: View {
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     @State private var isChangingServer = false
 
     var body: some View {
@@ -48,4 +48,5 @@ struct ServerSettingsSection: View {
 
 #Preview {
     Form { ServerSettingsSection() }
+        .environment(AppSettings())
 }

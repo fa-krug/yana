@@ -16,8 +16,7 @@ struct ArticleListView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
-
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     @State private var searchText = ""
     @State private var debouncedSearch = ""
     @State private var searchResults: [ArticleSummary]? = nil

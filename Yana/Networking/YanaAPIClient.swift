@@ -59,18 +59,19 @@ struct YanaAPIClient: Sendable {
             }
             throw YanaAPIClientError.server(envelope.error)
         }
-        guard let decoded = try? Self.responseDecoder.decode(T.self, from: data) else {
-            throw YanaAPIClientError.decoding
+        do {
+            return try Self.responseDecoder.decode(T.self, from: data)
+        } catch {
+            throw YanaAPIClientError.decoding("\(error)")
         }
-        return decoded
     }
 
     /// Every server response encodes `Date` fields as ISO 8601 strings (e.g.
     /// `"2026-01-01T00:00:00Z"`, per `yana-server`'s JSON serialization) -- never the
     /// `JSONDecoder` default of a `Double` seconds-since-2001 offset. Without this strategy any
     /// wire type with a `Date` property (`SyncArticleSummaryWire`, `SyncFeedWire`, ...) fails to
-    /// decode on every real response, silently surfacing as `YanaAPIClientError.decoding` (the
-    /// `try?` above swallows the underlying `DecodingError.typeMismatch`).
+    /// decode on every real response, surfacing as `YanaAPIClientError.decoding` -- its associated
+    /// string carries the underlying `DecodingError.typeMismatch`'s description.
     private static let responseDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601

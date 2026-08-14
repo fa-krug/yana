@@ -7,7 +7,7 @@ struct ServerMigrationNoticeWindowRoot: View {
     @Bindable var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         ServerMigrationNoticeView(onDismiss: {

@@ -3,9 +3,10 @@ import SwiftUI
 
 /// Reader preferences: text size, font, live preview, system-browser toggle, read-aloud voice.
 struct ReaderSettingsSection: View {
-    @Bindable private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
+        @Bindable var settings = settings
         Section {
             Picker(selection: $settings.articleTextSize) {
                 ForEach(ArticleTextSize.allCases) { size in

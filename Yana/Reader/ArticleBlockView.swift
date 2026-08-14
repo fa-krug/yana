@@ -358,7 +358,7 @@ private struct BlockNodeView: View {
                 .fixedSize(horizontal: false, vertical: true)
         case .heading(let level, let runs):
             Text(attributedString(from: runs))
-                .font(.system(size: headingSize(level), weight: .bold))
+                .font(.system(size: ReaderAttributedText.headingSize(bodySize, level), weight: .bold))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
         case .list(let ordered, let items):
@@ -426,15 +426,6 @@ private struct BlockNodeView: View {
 
     private func openExternal(_ urlString: String) {
         if let url = URL(string: urlString) { onOpenLink(url) }
-    }
-
-    private func headingSize(_ level: Int) -> CGFloat {
-        switch level {
-        case 1: return bodySize * 1.5
-        case 2: return bodySize * 1.3
-        case 3: return bodySize * 1.15
-        default: return bodySize * 1.05
-        }
     }
 }
 

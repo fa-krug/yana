@@ -10,7 +10,7 @@ struct MacSettingsWindow: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @State private var selection: SettingsPane? = .general
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
 
     /// The Manage pane hosts a WebView pointed at the paired server's own web UI — with no
     /// paired server there's nothing to load and the pane renders a blank white rectangle

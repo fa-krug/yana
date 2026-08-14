@@ -155,8 +155,9 @@ enum ReaderAttributedText {
         return result
     }
 
-    /// Body-relative heading point size, mirroring `BlockNodeView.headingSize` so coalesced and
-    /// standalone headings match.
+    /// Body-relative heading point size. Shared by both standalone headings (`BlockNodeView`,
+    /// nested inside a list/blockquote) and coalesced top-level headings (`StaticTextRun`) so the
+    /// fast-Text-to-SelectableText swap never reflows.
     static func headingSize(_ baseSize: CGFloat, _ level: Int) -> CGFloat {
         switch level {
         case 1: return baseSize * 1.5

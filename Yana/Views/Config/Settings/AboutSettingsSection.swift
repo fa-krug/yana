@@ -6,7 +6,7 @@ struct AboutSettingsSection: View {
     var onRestartOnboarding: () -> Void = {}
     var onShowServerNotice: () -> Void = {}
 
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
 
     var body: some View {
         Section {

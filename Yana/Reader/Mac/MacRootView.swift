@@ -13,9 +13,9 @@ struct MacRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
     @Environment(\.openWindow) private var openWindow
+    @Environment(AppSettings.self) private var settings
 
-    @State private var model = TimelineModel()
-    @State private var settings = AppSettings()
+    @State private var model: TimelineModel
     @State private var speech = ReaderSpeechController()
     @FocusState private var focusedPane: MacFocusPane?
     /// Keep the article-list sidebar open by default (and after relaunch) — it is the primary
@@ -29,6 +29,14 @@ struct MacRootView: View {
     /// Creating a feed is a sheet here too (matching Add Tag and the Feeds pane), not the separate
     /// window it used to be — this window is simply where the empty-library and sidebar CTAs live.
     @State private var showingCreateFeed = false
+
+    /// `TimelineModel` needs its `AppSettings` at construction time (its `anchorWriter` captures it
+    /// immediately), before `@Environment` is resolved -- so the shared instance is threaded through
+    /// here as a plain init parameter instead, sourced from `ContentView`'s own `@Environment`.
+    init(appState: AppState, settings: AppSettings) {
+        self.appState = appState
+        _model = State(initialValue: TimelineModel(settings: settings))
+    }
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -208,23 +216,30 @@ struct MacRootView: View {
                     .keyboardShortcut(",", modifiers: .command)
                 if model.selectedSummary != nil {
                     Divider()
-                    if model.aiReady {
+                    let article = model.selectedArticle()
+                    let config = ReaderMenuBuilder.config(
+                        hasURL: !(article?.url.isEmpty ?? true), aiReady: model.aiReady,
+                        hasServerArticle: model.hasServer && article?.serverID != nil
+                    )
+                    if config.showSummarize {
                         Button {
-                            if let article = model.selectedArticle() { model.summarize(article) }
+                            if let article { model.summarize(article) }
                         } label: { Label("Summarize", systemImage: "sparkles") }
                             .disabled(model.isSummarizing)
                     }
-                    if model.hasServer {
+                    if config.showReload {
                         Button {
-                            if let article = model.selectedArticle() { model.forceUpdateArticle(article) }
+                            if let article { model.forceUpdateArticle(article) }
                         } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
                     }
-                    Button {
-                        if let article = model.selectedArticle() { model.copyLink(article) }
-                    } label: { Label("Copy link", systemImage: "link") }
-                    if model.hasServer {
+                    if config.showCopyLink {
                         Button {
-                            if let article = model.selectedArticle() { model.openOnServer(article) }
+                            if let article { model.copyLink(article) }
+                        } label: { Label("Copy link", systemImage: "link") }
+                    }
+                    if config.showOpenOnServer {
+                        Button {
+                            if let article { model.openOnServer(article) }
                         } label: { Label("Open on Server", systemImage: "server.rack") }
                     }
                 }
@@ -552,8 +567,14 @@ private struct MacArticleRow: View {
     }
 
     @ViewBuilder private var contextMenuItems: some View {
+        let article = model.resolve(summary)
+        let config = ReaderMenuBuilder.config(
+            hasURL: !(article?.url.isEmpty ?? true), aiReady: model.aiReady,
+            hasServerArticle: model.hasServer && article?.serverID != nil
+        )
+
         Button {
-            if let article = model.resolve(summary) { model.toggleStar(article) }
+            if let article { model.toggleStar(article) }
         } label: {
             Label(summary.isStarred ? "Unstar" : "Star",
                   systemImage: summary.isStarred ? "star.slash" : "star")
@@ -563,31 +584,33 @@ private struct MacArticleRow: View {
         // the app for.
         if model.hasServer {
             Button {
-                if let article = model.resolve(summary) { model.openWebsite(article) }
+                if let article { model.openWebsite(article) }
             } label: { Label("Open in Browser", systemImage: "safari") }
         }
 
-        Button {
-            if let article = model.resolve(summary) { model.copyLink(article) }
-        } label: { Label("Copy link", systemImage: "link") }
-
-        if model.hasServer {
+        if config.showCopyLink {
             Button {
-                if let article = model.resolve(summary) { model.openOnServer(article) }
+                if let article { model.copyLink(article) }
+            } label: { Label("Copy link", systemImage: "link") }
+        }
+
+        if config.showOpenOnServer {
+            Button {
+                if let article { model.openOnServer(article) }
             } label: { Label("Open on Server", systemImage: "server.rack") }
         }
 
         Divider()
 
-        if model.hasServer {
+        if config.showReload {
             Button {
-                if let article = model.resolve(summary) { model.forceUpdateArticle(article) }
+                if let article { model.forceUpdateArticle(article) }
             } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
         }
 
-        if model.aiReady {
+        if config.showSummarize {
             Button {
-                if let article = model.resolve(summary) { model.summarize(article) }
+                if let article { model.summarize(article) }
             } label: { Label("Summarize", systemImage: "sparkles") }
                 .disabled(model.isSummarizing)
         }

@@ -7,7 +7,7 @@ import SwiftUI
 struct TagFilterView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var settings = AppSettings()
+    @Environment(AppSettings.self) private var settings
     /// Local mirrors so toggles animate; synced to settings on change.
     @State private var disabledTags: Set<String> = []
     @State private var disabledFeeds: Set<String> = []
