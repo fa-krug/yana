@@ -123,59 +123,32 @@ enum TimelinePageIndex {
     }
 }
 
-/// Resolves the persisted timeline anchor to an index in the displayed list, falling back
-/// to the last item (the newest unread article, or the newest read article if none are unread)
-/// when missing.
+/// Resolves the persisted timeline anchor to an index in the displayed list, falling back to the
+/// last item (the most recently added article) when missing.
 enum TimelineAnchor {
     static func index<T: TimelineIdentifiable>(for identifier: String?, serverID: Int? = nil, in items: [T]) -> Int {
         TimelinePageIndex.index(of: identifier, serverID: serverID, in: items) ?? max(0, items.count - 1)
     }
 }
 
-/// Reinserts the currently-displayed article's row at the position it would occupy if it were
-/// still unread, whenever it has actually been marked read. `ArticleWrites.markRead` sets the
-/// `read` flag the instant an article becomes current (pager swipe, list-open, sidebar selection),
-/// which would otherwise immediately move that row from the unread block into the read block --
-/// reshuffling the timeline out from under the user mid-navigation. This is a pure, stateless
-/// transform recomputed fresh from `articles` every call (never a diff against a remembered
-/// previous array), so it can't drift the way a history-dependent merge can: it's correct
-/// regardless of what changed underneath it (filter toggles, sync-driven insertions/removals,
-/// reopening the list).
+/// The timeline's one and only ordering rule: `createdAt` ascending (the server's own append-only
+/// insertion order), then `serverID` as a tiebreak. It is deliberately independent of read state,
+/// starred state, and `date`:
 ///
-/// `articles` must already be in canonical `(isRead, createdAt)` order -- the read block first,
-/// oldest to newest, then the unread block, oldest to newest -- the same order `TagFilter`/
-/// `FeedFilter`/`StarredFilter` preserve from `ArticleStore.summaries` (see `Article.readRank`).
-/// Reinsertion is keyed on `TimelineOrder` (`createdAt`, server insertion order), never `date` (the
-/// feed's own, possibly-backfilled publish timestamp): once an article is read and unpinned, its
-/// `createdAt` never changes again, so its settled position is permanent -- unlike a `date`-keyed
-/// reinsertion, which could land a stale, already-read article between the two rows the user just
-/// navigated between, corrupting "back" navigation. `identifier` is only a per-feed dedup key (see
-/// `SummaryIndexMerge`'s doc comment) so a pin lookup prefers `pinningServerID` (globally unique
-/// once synced) when supplied, falling back to `pinnedIdentifier` only when no `serverID` is known
-/// -- see `TimelinePageIndex.index`.
-enum TimelinePinning {
-    static func apply<T: TimelineIdentifiable & TimelineFilterable>(
-        to articles: [T], pinning pinnedIdentifier: String?, pinningServerID: Int? = nil
-    ) -> [T] {
-        guard let pinnedIndex = TimelinePageIndex.index(of: pinnedIdentifier, serverID: pinningServerID, in: articles),
-              articles[pinnedIndex].filterRead
-        else { return articles }
-
-        var result = articles
-        let pinned = result.remove(at: pinnedIndex)
-        let unreadStart = result.firstIndex(where: { !$0.filterRead }) ?? result.count
-        let insertionIndex = result[unreadStart...].firstIndex {
-            TimelineOrder.isOrderedBefore(pinned, $0)
-        } ?? result.count
-        result.insert(pinned, at: insertionIndex)
-        return result
-    }
-}
-
-/// The timeline's canonical secondary ordering key: `createdAt` ascending, then `serverID` as a
-/// tiebreak for same-second inserts. Shared by `TimelinePinning` and `SummaryIndexMerge` so both
-/// always agree on where an article settles once it is no longer pinned -- a single source of
-/// truth is what keeps "back" navigation stable across a pin handoff.
+/// * **Read state must not order anything.** The timeline used to sort read articles ahead of unread
+///   ones, so an article changing to read jumped from one block to the other. Since an article is
+///   marked read the instant it becomes current, every swipe reordered the list under the user:
+///   swiping forward and then back landed on a different article each time, and back-navigating
+///   through already-read articles was incoherent. Read state is now display-only.
+/// * **`date` must not order anything.** A feed can backfill a publish date out of chronological
+///   order, which would retroactively move an article the user had already navigated past.
+/// * **`serverID` is required, not cosmetic.** The server stamps `createdAt` with whole-second
+///   precision, so one aggregation run gives hundreds of articles the same value; without the
+///   tiebreak those ties have no defined order, and the DB's arbitrary choice need not match this
+///   comparator's, which is how a single splice could reshuffle a whole batch.
+///
+/// Every ordering site keys off this: `ArticleSummaryLoader`'s fetch descriptors (which must use the
+/// matching `SortDescriptor`s) and `SummaryIndexMerge`'s splice.
 enum TimelineOrder {
     static func isOrderedBefore<T: TimelineIdentifiable>(_ a: T, _ b: T) -> Bool {
         if a.createdAt != b.createdAt { return a.createdAt < b.createdAt }

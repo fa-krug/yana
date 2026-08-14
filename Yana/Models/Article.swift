@@ -7,10 +7,12 @@ final class Article {
     // load, fetchNewest, and SyncWriter's oldest-first content-backfill order; date is fetched for
     // display only; identifier drives the one-row fetchByIdentifier lookup (a per-feed dedup key,
     // not globally unique); serverID drives SyncWriter's upsert/removal/content-backfill lookups,
-    // ArticleResolution's fetchByServerID, and every timeline anchor/pin/pager lookup that prefers
+    // ArticleResolution's fetchByServerID, and every timeline anchor/pager lookup that prefers
     // it over identifier (see TimelineIdentifiable.stableKey) -- it's globally unique once synced,
-    // so it also breaks createdAt ties in the timeline sort. Without an index each is a full table
-    // scan over the retained library.
+    // so it also breaks createdAt ties in the timeline sort. readRank is indexed only for
+    // historical reasons (it no longer sorts anything -- see its doc comment); dropping the index
+    // would be a schema change for no gain. Without an index each is a full table scan over the
+    // retained library.
     // Single-column (no query filters on both together). Additive metadata — SwiftData handles it
     // via lightweight migration.
     // Only one #Index macro is allowed per @Model, so every indexed keypath group lives here.
@@ -50,26 +52,26 @@ final class Article {
     var summary: String = ""
     /// When this article was first synced to this device -- mirrors the server's own `createdAt`
     /// (its stable, append-only, backfill-proof insertion order key; see `SyncWriter`'s wire
-    /// decode). Not shown in the UI, but drives the timeline's own sort order (`ArticleStore`,
-    /// `SummaryIndexMerge`, `TimelinePinning`) as well as `SyncWriter`'s oldest-first
-    /// content-backfill order, and is preserved across updates so neither a re-fetch nor a
-    /// backfilled `date` can ever reorder an article once synced -- this is what makes "back"
-    /// navigation land on a stable, identical-across-devices article every time.
+    /// decode). Not shown in the UI, but it IS the timeline's sort order, together with `serverID` as
+    /// a tiebreak (`ArticleStore`, `SummaryIndexMerge`, `TimelineOrder`), and it also drives
+    /// `SyncWriter`'s oldest-first content-backfill order. Preserved across updates, so neither a
+    /// re-fetch nor a backfilled `date` can ever reorder an article once synced -- this is what makes
+    /// "back" navigation land on a stable, identical-across-devices article every time.
     var createdAt: Date = Date.now
 
     var starred: Bool = false
-    /// Whether the server (or a local mark-as-read) considers this article read. Drives the
-    /// timeline's primary sort key via `readRank` — see that property's doc comment. Never assign
+    /// Whether the server (or a local mark-as-read) considers this article read. Display state only:
+    /// it deliberately takes no part in the timeline's order (see `TimelineOrder`). Never assign
     /// this directly; always go through `setRead(_:)` so `readRank` stays in sync (SwiftData's
     /// `@Model` macro fully owns this property's accessors, so a `didSet` here is not an option —
     /// same reason `blocks` below is a separate plain computed property rather than an observer on
     /// `blockData`).
     var read: Bool = false
-    /// Mirrors `read` as a `SortDescriptor`-sortable key: `0` when read, `1` when unread. Exists only
-    /// because `Bool` does not conform to `Comparable`, so `SortDescriptor(\.read)` cannot compile —
-    /// every fetch that orders the timeline sorts by this ascending, then by `createdAt` ascending,
-    /// giving "read (oldest→newest), then unread (oldest→newest)". Kept in sync with `read`
-    /// exclusively by `setRead(_:)`.
+    /// Mirrors `read` as a `SortDescriptor`-sortable key (`0` read, `1` unread), since `Bool` is not
+    /// `Comparable`. **No longer part of any timeline sort** — read state used to be the timeline's
+    /// primary sort key, which reordered the list under the user on every swipe (see `TimelineOrder`
+    /// for the full reasoning). Retained, still kept in sync by `setRead(_:)`, purely so the stored
+    /// schema is unchanged for existing installs; a new sort must never use it.
     var readRank: Int = 1
     /// Whether this article's content has been synced yet (`false` right after its summary
     /// arrives from `/articles/sync`, `true` once `/articles/:id/content` succeeds). Drives the

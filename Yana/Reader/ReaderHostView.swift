@@ -141,8 +141,8 @@ struct ReaderScreen: View {
     /// property initializers can't reference `self.settings`.
     private var anchorController: ReaderAnchorController { ReaderAnchorController(settings: settings) }
 
-    /// Re-filter `store.summaries`, then pin the currently-displayed article's position (see
-    /// `TimelinePinning`) so marking it read doesn't reshuffle the timeline out from under the user.
+    /// Re-filter `store.summaries`. Filtering never reorders (see `TimelineOrder`), so the pager's
+    /// order is stable no matter what the user marks read while navigating.
     /// Shared with `TimelineModel` (Mac) via `ReaderActions.recomputeFilter`.
     private func recomputeFilter() {
         filteredArticles = ReaderActions.recomputeFilter(summaries: store.summaries, settings: settings)
