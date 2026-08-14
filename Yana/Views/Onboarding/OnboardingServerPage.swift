@@ -28,6 +28,11 @@ struct OnboardingServerPage: View {
     }
 
     @Environment(AppSettings.self) private var settings
+    /// Needed only to hand `PairingSync` the pieces `InitialSyncGate` runs on, so the first sync
+    /// against the newly paired server blocks behind `InitialSyncLoadingView` from here too --
+    /// not just from the launch/onboarding-finish path in `ContentView`/`YanaApp`.
+    @Environment(AppState.self) private var appState
+    @Environment(ArticleStore.self) private var articleStore
     @State private var serverURLText = ""
     /// The server address this device is actually paired against. Editing the field away from
     /// this value resets `state.isPaired`, so changing the URL always reverts the form to "no
@@ -86,7 +91,9 @@ struct OnboardingServerPage: View {
                         } else {
                             // No separate "Continue" step in Settings' re-pair sheet: pairing
                             // success IS the completion point, so reset + resync right here.
-                            PairingSync.resetAndFullSync()
+                            PairingSync.resetAndFullSync(
+                                appState: appState, articleStore: articleStore, settings: settings
+                            )
                             onPaired()
                         }
                     },
@@ -203,7 +210,9 @@ struct OnboardingServerPage: View {
     /// paired server, then advance.
     private func primaryAction() {
         if state.isPaired {
-            PairingSync.resetAndFullSync()
+            PairingSync.resetAndFullSync(
+                appState: appState, articleStore: articleStore, settings: settings
+            )
             onPaired()
             return
         }
@@ -219,5 +228,7 @@ struct OnboardingServerPage: View {
 
 #Preview {
     OnboardingServerPage(onPaired: {})
+        .environment(AppState())
+        .environment(ArticleStore(container: AppContainer.shared))
         .environment(AppSettings())
 }

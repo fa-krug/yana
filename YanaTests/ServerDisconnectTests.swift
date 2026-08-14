@@ -44,6 +44,26 @@ struct ServerDisconnectTests {
         #expect(try context.fetch(FetchDescriptor<Feed>()).allSatisfy { $0.identifier != "paired://feed" })
     }
 
+    /// Removing the server connection has to make the *next* pairing's sync a first sync again:
+    /// the whole historical backlog lands afresh, so `InitialSyncGate` must block the reader
+    /// behind `InitialSyncLoadingView` for it exactly as it did on the device's original pairing.
+    /// Leaving `hasCompletedInitialSync` set is what made the loading screen silently not appear
+    /// after remove-then-re-add.
+    @Test func disconnectClearsTheInitialSyncCompletionFlag() throws {
+        let context = try inMemoryContext()
+        let settings = AppSettings()
+        settings.hasCompletedInitialSync = true
+        defer {
+            settings.serverBaseURL = ""
+            settings.hasSkippedServerPairing = false
+            settings.hasCompletedInitialSync = false
+        }
+
+        ServerDisconnect.disconnect(settings: settings, context: context)
+
+        #expect(settings.hasCompletedInitialSync == false)
+    }
+
     @Test func disconnectWhenNeverPairedIsHarmlessNoOp() throws {
         let context = try inMemoryContext()
 
