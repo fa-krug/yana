@@ -29,7 +29,14 @@ struct ManagementWebView: View {
                     Task { await resolveLoadURL() }
                 }
             } else if let loadURL {
+                // Extends under the navigation bar (and the bottom safe area) so the bar's scroll
+                // edge effect has content to fade over -- laid out inside the safe area instead,
+                // the web view stops short of the bar and its opaque background reads as a solid
+                // bar across the top. The web view's own `contentInsetAdjustmentBehavior` keeps the
+                // page's content clear of the bar, so nothing is actually hidden underneath it.
+                // `.container` (not `.all`) so keyboard avoidance still applies to server forms.
                 ManagementWKWebView(url: loadURL, diagnostic: $diagnostic)
+                    .ignoresSafeArea(.container, edges: [.top, .bottom])
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -254,7 +261,7 @@ private struct ManagementWKWebView: UIViewRepresentable {
                 forMainFrameOnly: true
             )
         )
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = ScrollTrackingWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         #if DEBUG
         // Lets Safari's Develop menu attach to this web view on a connected device, which is the
@@ -270,6 +277,35 @@ private struct ManagementWKWebView: UIViewRepresentable {
         guard context.coordinator.requestedURL != url else { return }
         context.coordinator.requestedURL = url
         webView.load(URLRequest(url: url))
+    }
+}
+
+/// A `WKWebView` that hands its scroll view to the enclosing view controller, so the navigation
+/// bar tracks *this* scroll view for its scroll edge effect -- the progressive glass fade every
+/// other sheet in the app gets for free from its SwiftUI `ScrollView`/`Form`.
+///
+/// UIKit's automatic content-scroll-view detection does not find it: a `UIViewRepresentable`'s view
+/// is buried several layers down inside SwiftUI's own hosting views, not a direct descendant the
+/// bar will adopt. With nothing tracked, the bar can never resolve to its scrolled appearance and
+/// renders a flat opaque background instead of glass. `setContentScrollView` is the documented way
+/// to say so explicitly.
+private final class ScrollTrackingWebView: WKWebView {
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil, let controller = enclosingViewController else { return }
+        controller.setContentScrollView(scrollView, for: .top)
+        controller.setContentScrollView(scrollView, for: .bottom)
+    }
+
+    /// The first view controller up the responder chain -- the `UIHostingController` SwiftUI put
+    /// this subtree in, which is what the navigation bar reflects.
+    private var enclosingViewController: UIViewController? {
+        var responder: UIResponder? = next
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
     }
 }
 
