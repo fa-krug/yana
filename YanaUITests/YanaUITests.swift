@@ -117,7 +117,7 @@ final class YanaUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(settingsButton.waitForExistence(timeout: Self.uiTimeout))
         settingsButton.tap()
-        // Probe on the Server row, not "Manage Feeds & Tags": the manage row only renders while
+        // Probe on the Server row, not "Manage Server": the manage row only renders while
         // `AuthenticatedClient.current()` resolves a paired device (see `SettingsScreenView`), and
         // `-UITEST_RESET_LIBRARY` deliberately leaves this launch unpaired. The Server row is
         // unconditional, so it means "Settings opened" either way.

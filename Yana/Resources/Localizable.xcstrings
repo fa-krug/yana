@@ -489,13 +489,13 @@
         }
       }
     },
-    "Add, edit, and organize your feeds and tags on the server.": {
-      "comment": "Footer under the Settings entry point into the server's feed/tag management WebView.",
+    "Open your server's web interface to manage feeds, tags, and everything else.": {
+      "comment": "Footer under the Settings entry point into the server's web UI.",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Feeds und Tags auf dem Server hinzufügen, bearbeiten und organisieren."
+            "value": "Die Weboberfläche des Servers öffnen, um Feeds, Tags und alles Weitere zu verwalten."
           }
         }
       }
@@ -1778,13 +1778,13 @@
         }
       }
     },
-    "Manage Feeds & Tags": {
-      "comment": "Settings entry point (and Mac settings pane title) that opens the server's feed/tag management WebView.",
+    "Manage Server": {
+      "comment": "Settings entry point (and Mac settings pane title) that opens the server's web UI.",
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Feeds & Tags verwalten"
+            "value": "Server verwalten"
           }
         }
       }

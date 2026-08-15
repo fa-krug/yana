@@ -163,7 +163,7 @@ enum ScreenshotSeed {
     @MainActor
     static func seedIfRequested(into context: ModelContext) async {
         guard ProcessInfo.processInfo.arguments.contains(launchArgument) else { return }
-        // Fake a paired state so Settings' "Manage Feeds & Tags" row (gated on
+        // Fake a paired state so Settings' "Manage Server" row (gated on
         // `AuthenticatedClient.current(settings:)`, see `SettingsScreenView`) is visible in the
         // `03_Feeds` shot. Safe: the fixture never actually navigates into `ManagementWebView`
         // (which would need a real network round-trip), it only asserts the row exists.

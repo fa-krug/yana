@@ -20,7 +20,7 @@ enum SettingsPane: String, CaseIterable, Identifiable {
         switch self {
         case .general: "General"
         case .reader: "Reader"
-        case .manage: "Manage Feeds & Tags"
+        case .manage: "Manage Server"
         case .ai: "AI"
         case .about: "About"
         }

@@ -14,7 +14,7 @@ import SwiftData
 ///
 /// The same leak applies to the *fake pairing* `ScreenshotSeed.seedIfRequested` installs (a
 /// `serverBaseURL` in `UserDefaults` plus a fixture token in the Keychain, so the screenshot run's
-/// Settings form shows the "Manage Feeds & Tags" row). Neither lives in the SwiftData store, so
+/// Settings form shows the "Manage Server" row). Neither lives in the SwiftData store, so
 /// wiping the library alone left the next test class launching into a device that still looked
 /// paired -- which is what made `testOnboardingStepsAndFinish` fail only in a full run: the server
 /// step renders its footer button as `onboardingServerContinueButton` rather than

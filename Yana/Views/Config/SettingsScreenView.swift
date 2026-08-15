@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// iOS settings: a single scrolling Form. "Manage Feeds & Tags" pushes the server's own web UI;
+/// iOS settings: a single scrolling Form. "Manage Server" pushes the server's own web UI (its root,
+/// so the server's own navigation decides what the user lands on);
 /// every other group is a reusable section view shared with the Mac two-pane settings window.
 struct SettingsScreenView: View {
     var onRestartOnboarding: () -> Void = {}
@@ -54,12 +55,12 @@ struct SettingsScreenView: View {
             NavigationLink {
                 ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
             } label: {
-                Label("Manage Feeds & Tags", systemImage: "list.bullet.rectangle")
+                Label("Manage Server", systemImage: "list.bullet.rectangle")
                     .labelStyle(.tintedIcon(.orange))
             }
             .accessibilityIdentifier("settings.manage")
         } footer: {
-            Text("Add, edit, and organize your feeds and tags on the server.")
+            Text("Open your server's web interface to manage feeds, tags, and everything else.")
         }
     }
 }

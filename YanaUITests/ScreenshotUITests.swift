@@ -51,7 +51,7 @@ final class ScreenshotUITests: XCTestCase {
         // unreliable to XCUITest mid-transition (hit point resolves to {-1, -1}).
         Thread.sleep(forTimeInterval: 1.0)
 
-        // Shot 3 — Settings, showing the "Manage Feeds & Tags" row. Feed/tag management now
+        // Shot 3 — Settings, showing the "Manage Server" row. Feed/tag management now
         // lives in the server's own web UI (ManagementWebView); drilling into it would load a
         // live network page, which the offline fixture can't do deterministically, so the shot
         // is the Settings screen itself with that row visible.
@@ -68,7 +68,7 @@ final class ScreenshotUITests: XCTestCase {
         XCTAssertTrue(settingsItem.waitForExistence(timeout: 10), "Settings menu item missing")
         settingsItem.tap()
         let manage = app.buttons["settings.manage"]
-        XCTAssertTrue(manage.waitForExistence(timeout: 10), "Manage Feeds & Tags row missing")
+        XCTAssertTrue(manage.waitForExistence(timeout: 10), "Manage Server row missing")
         Thread.sleep(forTimeInterval: 1.0)
         snapshot("03_Feeds")
 

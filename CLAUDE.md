@@ -455,8 +455,9 @@ source and issue board live at
 - **Views** (`Yana/Views/`): feed/tag/AI-provider **management moved entirely to the server's own
   web UI**. `ManagementWebView` (`Yana/Views/ManagementWebView.swift`) hosts it in a `WKWebView`
   reusing the pairing flow's persistent cookie session (`WKWebsiteDataStore.default()`) so a user who
-  just paired isn't asked to log in again; `SettingsScreenView`'s "Manage Feeds & Tags" row and the
-  Mac's create-feed sheet both push/present it at different paths (`/feeds`, `/feeds/new`).
+  just paired isn't asked to log in again; `SettingsScreenView`'s "Manage Server" row and the
+  Mac's create-feed sheet both push/present it at different paths (the site root `/` -- the view's
+  default -- and `/feeds/new`).
   `FeedsView`/`TagsView`/`FeedEditorView`/`FeedEditorModel`/`AggregatorOptionsForm`/`SelectorListView`/
   `SelectorSuggester` and the four AI-provider/Reddit/YouTube Settings sections are all **deleted**;
   so is OPML import/export (`OPMLCodec`/`FeedPortability`) — there is no client-side feed
@@ -660,7 +661,7 @@ source and issue board live at
   articles/feeds/tags and both timeline anchors at launch, before the seeds run). Without it a test
   passes alone and fails in a full run. `ScreenshotSeed` also installs a **fake pairing**
   (`serverBaseURL` in `UserDefaults` + a fixture token in the Keychain, so the screenshot run's
-  Settings form shows the "Manage Feeds & Tags" row), and neither of those lives in the SwiftData
+  Settings form shows the "Manage Server" row), and neither of those lives in the SwiftData
   store — so the same reset also clears the token, `serverBaseURL`, `hasSkippedServerPairing`, and
   `hasCompletedInitialSync`. A test launched with this argument is therefore **unpaired**: don't
   assert on pairing-gated UI such as the `settings.manage` row (use the unconditional

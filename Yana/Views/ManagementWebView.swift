@@ -14,7 +14,7 @@ import WebKit
 /// `docs/superpowers/plans/2026-08-11-webview-session-bootstrap-client.md`.
 struct ManagementWebView: View {
     let serverBaseURL: URL
-    var path: String = "/feeds"
+    var path: String = "/"
     var title: LocalizedStringKey? = "Manage"
     /// Shows a leading back-chevron toolbar button that dismisses this view. For the two call
     /// sites that present this as the root of their own sheet-local `NavigationStack` (create
