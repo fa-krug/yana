@@ -4526,6 +4526,46 @@
           }
         }
       }
+    },
+    "Try Again": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut versuchen"
+          }
+        }
+      }
+    },
+    "The server returned an error.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server hat einen Fehler zurückgegeben."
+          }
+        }
+      }
+    },
+    "The page stopped responding.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Seite reagiert nicht mehr."
+          }
+        }
+      }
+    },
+    "The page loaded but did not display anything.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Seite wurde geladen, zeigt aber nichts an."
+          }
+        }
+      }
     }
   },
   "version": "1.1"
