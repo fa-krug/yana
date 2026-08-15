@@ -210,12 +210,25 @@ private struct ManagementWKWebView: UIViewRepresentable {
         /// Surfacing it would put an error screen over a load that is actually still progressing.
         private func report(_ error: Error, phase: String) {
             let nsError = error as NSError
-            ManagementWebViewLog.record("\(phase) failed: \(nsError.domain) \(nsError.code) -- \(nsError.localizedDescription)")
+            // The URL WebKit was actually trying to reach when it failed -- distinct from the URL
+            // this representable asked it to load, since a same-origin redirect (the server's own
+            // 302 off the bootstrap token, or `/login?next=...`) can fail on a *later* hop this
+            // code never explicitly requested. `WebKitErrorCannotUseRestrictedPort` in particular
+            // is a client-side pre-connect block on the port in that URL, not a network failure,
+            // so seeing which URL tripped it is the only way to know which hop carries the bad port.
+            let failingURL = (nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String)
+                .flatMap { URL(string: $0) }?.redactingToken
+                ?? (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.redactingToken
+            ManagementWebViewLog.record(
+                "\(phase) failed: \(nsError.domain) \(nsError.code) -- \(nsError.localizedDescription)"
+                    + (failingURL.map { " -- failing URL: \($0)" } ?? " -- no failing URL in userInfo")
+            )
             guard !(nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled) else { return }
             onDiagnostic(
                 ManagementWebViewDiagnostic(
                     summary: error.localizedDescription,
                     detail: "\(nsError.domain) \(nsError.code) (\(phase))"
+                        + (failingURL.map { "\n\($0)" } ?? "")
                 )
             )
         }
