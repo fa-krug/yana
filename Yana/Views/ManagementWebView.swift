@@ -15,10 +15,21 @@ import WebKit
 struct ManagementWebView: View {
     let serverBaseURL: URL
     var path: String = "/feeds"
-    var title: LocalizedStringKey = "Manage"
+    var title: LocalizedStringKey? = "Manage"
+    /// Shows a leading back-chevron toolbar button that dismisses this view. For the two call
+    /// sites that present this as the root of their own sheet-local `NavigationStack` (create
+    /// feed, view article) there is no pushed-from screen to supply an automatic back button, so
+    /// one is added explicitly; the pushed usage from Settings already gets one for free from its
+    /// enclosing stack and leaves this `false`.
+    var showsBackButton: Bool = false
 
+    @Environment(\.dismiss) private var dismiss
     @State private var loadURL: URL?
     @State private var diagnostic: ManagementWebViewDiagnostic?
+    /// The live web view, handed up by `ManagementWKWebView` once created, purely so the back
+    /// button below can query/drive its back-forward list -- this view never otherwise touches it.
+    @State private var webView: WKWebView?
+    @State private var canGoBack = false
 
     var body: some View {
         Group {
@@ -35,15 +46,32 @@ struct ManagementWebView: View {
                 // bar across the top. The web view's own `contentInsetAdjustmentBehavior` keeps the
                 // page's content clear of the bar, so nothing is actually hidden underneath it.
                 // `.container` (not `.all`) so keyboard avoidance still applies to server forms.
-                ManagementWKWebView(url: loadURL, diagnostic: $diagnostic)
+                ManagementWKWebView(url: loadURL, diagnostic: $diagnostic, webView: $webView, canGoBack: $canGoBack)
                     .ignoresSafeArea(.container, edges: [.top, .bottom])
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle(title)
+        .navigationTitle(title ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if showsBackButton {
+                ToolbarItem(placement: .navigation) {
+                    // Goes back a page within the server's web UI while there's in-page history to
+                    // unwind (matching the edge-swipe gesture `allowsBackForwardNavigationGestures`
+                    // enables below), and only dismisses this sheet once there's nowhere left to go.
+                    Button {
+                        if canGoBack {
+                            webView?.goBack()
+                        } else {
+                            dismiss()
+                        }
+                    } label: { Image(systemName: "chevron.backward") }
+                        .accessibilityLabel(Text(canGoBack ? "Back" : "Close"))
+                }
+            }
+        }
         .task { await resolveLoadURL() }
     }
 
@@ -123,6 +151,8 @@ struct ManagementWebView: View {
 private struct ManagementWKWebView: UIViewRepresentable {
     let url: URL
     @Binding var diagnostic: ManagementWebViewDiagnostic?
+    @Binding var webView: WKWebView?
+    @Binding var canGoBack: Bool
 
     /// Tracks the last URL this representable itself asked the `WKWebView` to load -- deliberately
     /// distinct from the web view's own live `.url`, which changes on every in-page navigation
@@ -138,9 +168,17 @@ private struct ManagementWKWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var requestedURL: URL?
         let onDiagnostic: (ManagementWebViewDiagnostic) -> Void
+        let onCanGoBackChange: (Bool) -> Void
+        /// Keeps the KVO registration alive for as long as this coordinator lives -- letting it
+        /// deallocate would silently stop delivering `canGoBack` updates.
+        var canGoBackObservation: NSKeyValueObservation?
 
-        init(onDiagnostic: @escaping (ManagementWebViewDiagnostic) -> Void) {
+        init(
+            onDiagnostic: @escaping (ManagementWebViewDiagnostic) -> Void,
+            onCanGoBackChange: @escaping (Bool) -> Void
+        ) {
             self.onDiagnostic = onDiagnostic
+            self.onCanGoBackChange = onCanGoBackChange
         }
 
         /// Receives `window.onerror` / `unhandledrejection` from `ManagementWebViewProbe.script`.
@@ -242,12 +280,19 @@ private struct ManagementWKWebView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        // `$diagnostic` is captured once, at coordinator-creation time; a `Binding` onto `@State`
-        // stays valid for the lifetime of the view's storage, which outlives this web view.
-        let binding = $diagnostic
-        return Coordinator { value in
-            MainActor.assumeIsolated { binding.wrappedValue = value }
-        }
+        // `$diagnostic`/`$canGoBack` are captured once, at coordinator-creation time; a `Binding`
+        // onto `@State` stays valid for the lifetime of the view's storage, which outlives this web
+        // view.
+        let diagnosticBinding = $diagnostic
+        let canGoBackBinding = $canGoBack
+        return Coordinator(
+            onDiagnostic: { value in
+                MainActor.assumeIsolated { diagnosticBinding.wrappedValue = value }
+            },
+            onCanGoBackChange: { value in
+                MainActor.assumeIsolated { canGoBackBinding.wrappedValue = value }
+            }
+        )
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -263,13 +308,27 @@ private struct ManagementWKWebView: UIViewRepresentable {
         )
         let webView = ScrollTrackingWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        // Enables the standard Safari-style edge-swipe to go back/forward through the server web
+        // UI's own page history, matching the toolbar back button's behavior below.
+        webView.allowsBackForwardNavigationGestures = true
         #if DEBUG
         // Lets Safari's Develop menu attach to this web view on a connected device, which is the
         // only way to read the page's own console/network state from outside the app.
         webView.isInspectable = true
         #endif
         context.coordinator.requestedURL = url
+        // No `.initial`: `canGoBack` starts false, matching this view's own `@State` default, and
+        // firing the callback synchronously here (inside `makeUIView`, itself part of a SwiftUI
+        // view update) would trip the same "modifying state during view update" warning as above.
+        context.coordinator.canGoBackObservation = webView.observe(\.canGoBack, options: [.new]) {
+            observedWebView, _ in
+            context.coordinator.onCanGoBackChange(observedWebView.canGoBack)
+        }
         webView.load(URLRequest(url: url))
+        // Deferred a tick: assigning straight into the `@State`-backed binding here would mutate
+        // SwiftUI state mid-view-update (`makeUIView` runs as part of one), which triggers SwiftUI's
+        // "Modifying state during view update" runtime warning.
+        DispatchQueue.main.async { self.webView = webView }
         return webView
     }
 

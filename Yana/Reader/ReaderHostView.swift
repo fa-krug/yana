@@ -266,7 +266,9 @@ struct ReaderScreen: View {
             NavigationStack {
                 ManagementWebView(
                     serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
-                    path: "/feeds/new"
+                    path: "/feeds/new",
+                    title: nil,
+                    showsBackButton: true
                 )
             }
         }
@@ -279,7 +281,8 @@ struct ReaderScreen: View {
                     ManagementWebView(
                         serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
                         path: "/articles/\(id)",
-                        title: "Article"
+                        title: nil,
+                        showsBackButton: true
                     )
                 }
             }
