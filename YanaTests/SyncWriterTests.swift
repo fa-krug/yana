@@ -18,7 +18,7 @@ struct SyncWriterTests {
         let writer = SyncWriter(modelContainer: container)
         let feedID = await writer.replaceFeeds([
             SyncFeedWire(id: 1, name: "Test Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
-        ]).first
+        ]).touched.first
 
         let now = Date.now
         let ids = await writer.upsertSummaries([
@@ -184,6 +184,26 @@ struct SyncWriterTests {
         #expect(remaining.isEmpty)
     }
 
+    /// `SyncEngine.performSync`'s prune gate needs to know how many rows were ACTUALLY deleted
+    /// locally, separately from `removed.count` (the number of ids the server listed) -- a removal
+    /// id with no local match (e.g. already deleted by a prior partial sync) must not count toward
+    /// "something was orphaned."
+    @Test func applyRemovalsReturnsDeletedCount() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 1, feedId: 1, name: "One", identifier: "art-1",
+                                    date: now, author: "", read: false, starred: false,
+                                    createdAt: now, updatedAt: now),
+            SyncArticleSummaryWire(id: 2, feedId: 1, name: "Two", identifier: "art-2",
+                                    date: now, author: "", read: false, starred: false,
+                                    createdAt: now, updatedAt: now),
+        ])
+        let deleted = await writer.applyRemovals([1, 99])
+        #expect(deleted == 1)
+    }
+
     @Test func applyContentDecodesBlocksAndMarksHasContent() async throws {
         let container = try makeContainer()
         let writer = SyncWriter(modelContainer: container)
@@ -275,6 +295,21 @@ struct SyncWriterTests {
                                     createdAt: now, updatedAt: now)
         ])
         #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).first!.read == true)
+    }
+
+    /// `SyncEngine.performSync`'s prune gate also needs to know how many *feeds* a `replaceFeeds`
+    /// call pruned (a feed disappearing cascade-deletes its articles' images too).
+    @Test func replaceFeedsReportsPrunedFeeds() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        _ = await writer.replaceFeeds([
+            SyncFeedWire(id: 1, name: "Feed One", identifier: "f1", tagIds: [], logoImageHash: nil),
+            SyncFeedWire(id: 2, name: "Feed Two", identifier: "f2", tagIds: [], logoImageHash: nil),
+        ])
+        let second = await writer.replaceFeeds([
+            SyncFeedWire(id: 1, name: "Feed One", identifier: "f1", tagIds: [], logoImageHash: nil)
+        ])
+        #expect(second.prunedFeeds == 1)
     }
 
     /// `SyncEngine.pruneOrphanedImages`'s "still needed" set: every article's body-image hashes

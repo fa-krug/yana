@@ -160,6 +160,11 @@ struct ArticleListView: View {
                     if let article = article(for: summary) {
                         modelContext.delete(article)
                         try? modelContext.save()
+                        // This is a local-only removal `/articles/sync`'s `removed` list will never
+                        // report, so it can't trip `SyncEngine.performSync`'s prune gate on its own --
+                        // flag it explicitly so the next sync's `pruneOrphanedImages` pass catches
+                        // any image this was the last reference to.
+                        settings.imagePruneNeeded = true
                         Haptics.notify(.success)
                     }
                 }

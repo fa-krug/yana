@@ -104,9 +104,13 @@ final class SyncEngine {
         await ReadingPositionSync.flushPending(client: client, settings: settings)
 
         var totalNew = 0, totalUpdated = 0, totalRemoved = 0
+        // Tracks rows ACTUALLY deleted locally, distinct from `totalRemoved` (which mirrors the
+        // server's `removed` list verbatim for `SyncResult`'s user-facing count). A removal id
+        // with no local match doesn't orphan anything, so it must not trip the prune gate below.
+        var actuallyDeleted = 0
         var resyncAttempts = 0
 
-        try await syncFeeds()
+        let prunedFeeds = try await syncFeeds()
         try await syncTags()
         await syncReadingPosition()
 
@@ -137,7 +141,7 @@ final class SyncEngine {
             let writer = SyncWriter(modelContainer: container)
             _ = await OffMainActor.run { await writer.upsertSummaries(newSummaries) }
             _ = await OffMainActor.run { await writer.upsertSummaries(updatedSummaries) }
-            await OffMainActor.run { await writer.applyRemovals(removed) }
+            actuallyDeleted += await OffMainActor.run { await writer.applyRemovals(removed) }
 
             totalNew += newSummaries.count
             totalUpdated += updatedSummaries.count
@@ -161,15 +165,25 @@ final class SyncEngine {
         }
 
         try await backfillMissingContent()
-        await pruneOrphanedImages()
+        // Pruning requires decoding every local article body (see SyncWriter.referencedImageHashes),
+        // so it runs only when this pass could actually have orphaned something: a server-side
+        // removal landed, a feed disappeared, or a local swipe-to-delete flagged it since last time.
+        if actuallyDeleted > 0 || prunedFeeds > 0 || settings.imagePruneNeeded {
+            await pruneOrphanedImages()
+            settings.imagePruneNeeded = false
+        }
 
         return SyncResult(newCount: totalNew, updatedCount: totalUpdated, removedCount: totalRemoved)
     }
 
-    private func syncFeeds() async throws {
+    /// Returns how many local feeds this pass pruned (a feed the server stopped returning) --
+    /// `performSync`'s prune gate needs that count alongside `actuallyDeleted`, since a feed's
+    /// cascade-delete can orphan its articles' images without any entry in `/articles/sync`'s
+    /// `removed` list.
+    private func syncFeeds() async throws -> Int {
         let response: FeedsResponse = try await client.get("/api/v1/feeds")
         let writer = SyncWriter(modelContainer: container)
-        _ = await OffMainActor.run { await writer.replaceFeeds(response.feeds) }
+        let result = await OffMainActor.run { await writer.replaceFeeds(response.feeds) }
 
         let logoHashes = Set(response.feeds.compactMap(\.logoImageHash))
         let client = client
@@ -177,6 +191,7 @@ final class SyncEngine {
         await runBounded(Array(logoHashes), maxConcurrency: maxConcurrentContentFetches) { hash in
             _ = await imageStore.fetchIfNeeded(hash: hash, client: client)
         }
+        return result.prunedFeeds
     }
 
     /// Sibling to `syncFeeds()`: `/tags` is small and unpaginated the same way, and populating

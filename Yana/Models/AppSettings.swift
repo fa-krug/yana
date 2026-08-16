@@ -83,6 +83,8 @@ final class AppSettings {
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
         // Initial sync
         static let hasCompletedInitialSync = "settings.hasCompletedInitialSync"
+        // Image prune gate
+        static let imagePruneNeeded = "settings.imagePruneNeeded"
         // Demo mode (skipped server pairing)
         static let hasSkippedServerPairing = "settings.hasSkippedServerPairing"
         static let hasDismissedDemoBanner = "settings.hasDismissedDemoBanner"
@@ -246,6 +248,17 @@ final class AppSettings {
     var hasCompletedInitialSync: Bool {
         get { access(keyPath: \.hasCompletedInitialSync); return defaults.bool(forKey: Key.hasCompletedInitialSync) }
         set { withMutation(keyPath: \.hasCompletedInitialSync) { defaults.set(newValue, forKey: Key.hasCompletedInitialSync) } }
+    }
+
+    // MARK: Image prune gate
+    /// Set when a local swipe-to-delete (or similar client-only removal) could have orphaned an
+    /// image -- `SyncWriter.referencedImageHashes()` decodes every article body, so
+    /// `SyncEngine.performSync`'s `pruneOrphanedImages` pass only runs when this flag is set, a
+    /// server-side removal landed, or a feed was pruned; otherwise every sync would pay that cost
+    /// for nothing. Reset to `false` the moment a prune actually runs. Device-local -- never synced.
+    var imagePruneNeeded: Bool {
+        get { access(keyPath: \.imagePruneNeeded); return defaults.bool(forKey: Key.imagePruneNeeded) }
+        set { withMutation(keyPath: \.imagePruneNeeded) { defaults.set(newValue, forKey: Key.imagePruneNeeded) } }
     }
 
     // MARK: Demo mode

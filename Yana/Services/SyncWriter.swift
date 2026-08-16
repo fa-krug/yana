@@ -130,23 +130,38 @@ actor SyncWriter {
     /// runtime crash a `try?` around the fetch would silently swallow into "removals did
     /// nothing". Caught by actually running `SyncWriterTests` (see task-9-report.md), not by
     /// reading the code -- it compiles cleanly.
-    func applyRemovals(_ serverIDs: [Int]) {
-        guard !serverIDs.isEmpty else { return }
+    ///
+    /// Returns the count actually deleted locally (not necessarily `serverIDs.count` -- a removal
+    /// id with no local match, e.g. already gone from a prior partial sync, is a normal, harmless
+    /// case). `SyncEngine.performSync` uses this count -- not the number of ids the server listed
+    /// -- to decide whether `pruneOrphanedImages` needs to run this pass; the user-facing
+    /// `SyncResult.removedCount` total still reports the listed count, unchanged.
+    @discardableResult
+    func applyRemovals(_ serverIDs: [Int]) -> Int {
+        guard !serverIDs.isEmpty else { return 0 }
+        var deleted = 0
         for id in serverIDs {
-            let descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == id })
+            var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == id })
+            descriptor.fetchLimit = 1
             if let article = try? modelContext.fetch(descriptor).first {
                 modelContext.delete(article)
+                deleted += 1
             }
         }
         try? modelContext.save()
+        return deleted
     }
 
     /// Full replace-by-upsert of every feed the server returned (the `/feeds` response is small
     /// and unpaginated, so there's no incremental-delta protocol to speak of here -- unlike
     /// articles). Stores the server's feed id as `Feed.identifier` (string form), since feeds
     /// have no other natural identity worth keeping client-side any more.
+    ///
+    /// Returns both the touched rows and how many local feeds this pass pruned -- the latter feeds
+    /// `SyncEngine.performSync`'s prune gate, since a disappearing feed cascade-deletes its
+    /// articles' images too and that can orphan hashes `pruneOrphanedImages` needs to catch.
     @discardableResult
-    func replaceFeeds(_ feeds: [SyncFeedWire]) -> [PersistentIdentifier] {
+    func replaceFeeds(_ feeds: [SyncFeedWire]) -> (touched: [PersistentIdentifier], prunedFeeds: Int) {
         var seenIdentifiers = Set<String>()
         let touched = upsertAndPrune(
             feeds,
@@ -167,9 +182,9 @@ actor SyncWriter {
         // deleted server-side, so its local mirror (and, via the model's cascade delete rule,
         // its articles) must go too. Without this, a deleted feed keeps showing in
         // `TagFilterView`'s Feeds section forever, since this method is otherwise upsert-only.
-        pruneMissing(FetchDescriptor<Feed>()) { !seenIdentifiers.contains($0.identifier) }
+        let prunedFeeds = pruneMissing(FetchDescriptor<Feed>()) { !seenIdentifiers.contains($0.identifier) }
         try? modelContext.save()
-        return touched
+        return (touched, prunedFeeds)
     }
 
     /// Full replace-by-upsert of every tag the server returned, mirroring `replaceFeeds`'s shape
@@ -233,13 +248,20 @@ actor SyncWriter {
         return touched
     }
 
-    /// Deletes every row from `descriptor` for which `shouldPrune` is true. Shared by
-    /// `replaceFeeds`/`syncTags`'s "drop what the server's full snapshot no longer lists" pass.
-    private func pruneMissing<Model: PersistentModel>(_ descriptor: FetchDescriptor<Model>, shouldPrune: (Model) -> Bool) {
-        guard let existing = try? modelContext.fetch(descriptor) else { return }
+    /// Deletes every row from `descriptor` for which `shouldPrune` is true, returning how many
+    /// were deleted. Shared by `replaceFeeds`/`syncTags`'s "drop what the server's full snapshot
+    /// no longer lists" pass; `syncTags` discards the count, `replaceFeeds` reports it onward.
+    @discardableResult
+    private func pruneMissing<Model: PersistentModel>(
+        _ descriptor: FetchDescriptor<Model>, shouldPrune: (Model) -> Bool
+    ) -> Int {
+        guard let existing = try? modelContext.fetch(descriptor) else { return 0 }
+        var pruned = 0
         for model in existing where shouldPrune(model) {
             modelContext.delete(model)
+            pruned += 1
         }
+        return pruned
     }
 
     /// Every `ImageStore` content hash still referenced by a locally-known article's blocks or a
