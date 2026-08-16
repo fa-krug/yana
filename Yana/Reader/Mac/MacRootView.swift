@@ -448,7 +448,7 @@ private struct MacSidebarView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            MacFilterBar(settings: settings)
+            MacFilterBar(settings: settings, onCreateFeed: onCreateFeed)
         }
         .task(id: searchText) {
             try? await Task.sleep(nanoseconds: 250_000_000)
@@ -500,54 +500,66 @@ private struct MacSidebarView: View {
 /// iOS). A pull-down `Menu` of toggles that write straight to the shared `AppSettings` filter.
 private struct MacFilterBar: View {
     let settings: AppSettings
+    let onCreateFeed: () -> Void
     @Query(sort: \Tag.name) private var tags: [Tag]
     @Query(sort: \Feed.name) private var feeds: [Feed]
 
     private var isFiltering: Bool { settings.isTimelineFilterActive }
 
     var body: some View {
-        Menu {
-            toggle(String(localized: "Starred Only"), isOn: settings.starredOnly) {
-                settings.starredOnly = $0
-            }
-            Section("Tags") {
-                ForEach(tags) { tag in
-                    toggle(tag.name, isOn: !settings.disabledTagNames.contains(tag.name)) { active in
-                        var set = settings.disabledTagNames
-                        if active { set.remove(tag.name) } else { set.insert(tag.name) }
-                        settings.disabledTagNames = set
+        HStack {
+            Menu {
+                toggle(String(localized: "Starred Only"), isOn: settings.starredOnly) {
+                    settings.starredOnly = $0
+                }
+                Section("Tags") {
+                    ForEach(tags) { tag in
+                        toggle(tag.name, isOn: !settings.disabledTagNames.contains(tag.name)) { active in
+                            var set = settings.disabledTagNames
+                            if active { set.remove(tag.name) } else { set.insert(tag.name) }
+                            settings.disabledTagNames = set
+                        }
+                    }
+                    toggle(String(localized: "Untagged"), isOn: settings.includeUntagged) {
+                        settings.includeUntagged = $0
                     }
                 }
-                toggle(String(localized: "Untagged"), isOn: settings.includeUntagged) {
-                    settings.includeUntagged = $0
-                }
-            }
-            if !feeds.isEmpty {
-                Section("Feeds") {
-                    ForEach(feeds) { feed in
-                        toggle(feed.name, isOn: !settings.disabledFeedNames.contains(feed.name)) { active in
-                            var set = settings.disabledFeedNames
-                            if active { set.remove(feed.name) } else { set.insert(feed.name) }
-                            settings.disabledFeedNames = set
+                if !feeds.isEmpty {
+                    Section("Feeds") {
+                        ForEach(feeds) { feed in
+                            toggle(feed.name, isOn: !settings.disabledFeedNames.contains(feed.name)) { active in
+                                var set = settings.disabledFeedNames
+                                if active { set.remove(feed.name) } else { set.insert(feed.name) }
+                                settings.disabledFeedNames = set
+                            }
                         }
                     }
                 }
-            }
-            if isFiltering {
-                Divider()
-                Button("Clear All") {
-                    settings.disabledTagNames = []
-                    settings.disabledFeedNames = []
-                    settings.includeUntagged = true
-                    settings.starredOnly = false
+                if isFiltering {
+                    Divider()
+                    Button("Clear All") {
+                        settings.disabledTagNames = []
+                        settings.disabledFeedNames = []
+                        settings.includeUntagged = true
+                        settings.starredOnly = false
+                    }
                 }
+            } label: {
+                Label("Filter", systemImage: isFiltering
+                      ? "line.3.horizontal.decrease.circle.fill"
+                      : "line.3.horizontal.decrease.circle")
             }
-        } label: {
-            Label("Filter", systemImage: isFiltering
-                  ? "line.3.horizontal.decrease.circle.fill"
-                  : "line.3.horizontal.decrease.circle")
+            .menuStyle(.borderlessButton)
+
+            Spacer()
+
+            Button(action: onCreateFeed) {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(Text("Add Feed"))
+            .help(Text("Add Feed"))
         }
-        .menuStyle(.borderlessButton)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)

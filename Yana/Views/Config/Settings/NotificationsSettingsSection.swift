@@ -46,7 +46,11 @@ struct NotificationsSettingsSection: View {
         .alert("Notifications Disabled", isPresented: $showNotificationDeniedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
+            #if targetEnvironment(macCatalyst)
+            Text("Enable notifications for Yana in System Settings under Notifications.")
+            #else
             Text("Enable notifications for Yana in the Settings app to get alerts about new articles.")
+            #endif
         }
     }
 }

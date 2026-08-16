@@ -52,7 +52,11 @@ struct ReaderSettingsSection: View {
         } header: {
             Text("Reader")
         } footer: {
+            #if targetEnvironment(macCatalyst)
+            Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. To add more voices, open System Settings, then Accessibility, then Spoken Content.")
+            #else
             Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. To add more natural voices, open Settings → Accessibility → Live Speech → Add Preferred Voice…")
+            #endif
         }
     }
 

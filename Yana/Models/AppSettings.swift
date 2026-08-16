@@ -94,6 +94,7 @@ final class AppSettings {
         static let hasDismissedServerMigrationNotice = "settings.hasDismissedServerMigrationNotice"
         // Mac window layout (device-local, never synced)
         static let macSidebarWidth = "settings.macSidebarWidth"
+        static let macSettingsPane = "settings.macSettingsPane"
     }
 
     /// The Mac window's remembered sidebar column width (device-local, never synced — window layout
@@ -101,6 +102,14 @@ final class AppSettings {
     var macSidebarWidth: Double {
         get { access(keyPath: \.macSidebarWidth); return defaults.double(forKey: Key.macSidebarWidth) }
         set { withMutation(keyPath: \.macSidebarWidth) { defaults.set(newValue, forKey: Key.macSidebarWidth) } }
+    }
+
+    /// The Mac Settings window's remembered sidebar pane, stored as `SettingsPane.rawValue`
+    /// (device-local, never synced — window state is per-device). Empty string means "unset →
+    /// fall back to `.general`".
+    var macSettingsPane: String {
+        get { access(keyPath: \.macSettingsPane); return defaults.string(forKey: Key.macSettingsPane) ?? "" }
+        set { withMutation(keyPath: \.macSettingsPane) { defaults.set(newValue, forKey: Key.macSettingsPane) } }
     }
 
     /// Per-device background aggregation cadence. Device-local — never synced. `.off` = pure mirror.

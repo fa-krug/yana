@@ -47,8 +47,14 @@ struct MacSettingsWindow: View {
         .toggleStyle(.switch)
         .accessibilityIdentifier("mac.settings.window")
         .frame(minWidth: 700, minHeight: 560)
-        .onAppear { resetSelectionIfUnavailable() }
+        .onAppear {
+            if let restored = SettingsPane(rawValue: settings.macSettingsPane) { selection = restored }
+            resetSelectionIfUnavailable()
+        }
         .onChange(of: settings.serverBaseURL) { resetSelectionIfUnavailable() }
+        .onChange(of: selection) { _, pane in
+            settings.macSettingsPane = pane?.rawValue ?? ""
+        }
     }
 
     private func resetSelectionIfUnavailable() {
