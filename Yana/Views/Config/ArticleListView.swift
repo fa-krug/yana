@@ -57,6 +57,7 @@ struct ArticleListView: View {
 
     var body: some View {
         let results = results
+        let isPaired = AuthenticatedClient.current() != nil
         let currentItemID = results.first { isCurrent($0) }?.id
         return ManagedList(
             items: results,
@@ -80,7 +81,7 @@ struct ArticleListView: View {
                 }
                 .tint(.yellow)
                 // Dropped while unpaired/demo: there's no server to reload this article against.
-                if AuthenticatedClient.current() != nil {
+                if isPaired {
                     Button {
                         guard let article = article(for: summary),
                               let client = AuthenticatedClient.current(),

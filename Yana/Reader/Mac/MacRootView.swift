@@ -569,51 +569,46 @@ private struct MacArticleRow: View {
             .padding(.horizontal, -6)
     }
 
+    // Resolved lazily inside each action: `contextMenu` evaluates this builder at ROW-BODY
+    // time for every visible row, so a SwiftData fetch or Keychain read here is paid per
+    // scrolled row, not per right-click (audit finding). `model.hasServer`/`model.aiReady`
+    // still call `AuthenticatedClient.current()` once each per row body, but that's cheap
+    // after Task 1's Keychain caching; the `resolve(summary)` fetch and the per-article
+    // gating that used to run through `ReaderMenuBuilder.config` now only happen on click.
     @ViewBuilder private var contextMenuItems: some View {
-        let article = model.resolve(summary)
-        let config = ReaderMenuBuilder.config(
-            hasURL: !(article?.url.isEmpty ?? true), aiReady: model.aiReady,
-            hasServerArticle: model.hasServer && article?.serverID != nil
-        )
+        let hasServer = model.hasServer
 
         Button {
-            if let article { model.toggleStar(article) }
+            if let article = model.resolve(summary) { model.toggleStar(article) }
         } label: {
             Label(summary.isStarred ? "Unstar" : "Star",
                   systemImage: summary.isStarred ? "star.slash" : "star")
         }
 
-        // Dropped while unpaired/demo: those articles' `url`s aren't real pages worth leaving
-        // the app for.
-        if model.hasServer {
+        // Dropped while unpaired/demo: there's no server to open/reload/copy a real link for.
+        if hasServer {
             Button {
-                if let article { model.openWebsite(article) }
+                if let article = model.resolve(summary) { model.openWebsite(article) }
             } label: { Label("Open in Browser", systemImage: "safari") }
-        }
-
-        if config.showCopyLink {
             Button {
-                if let article { model.copyLink(article) }
+                if let article = model.resolve(summary) { model.copyLink(article) }
+            } label: { Label("Copy link", systemImage: "link") }
+            Button {
+                if let article = model.resolve(summary) { model.openOnServer(article) }
+            } label: { Label("Open on Server", systemImage: "server.rack") }
+            Divider()
+            Button {
+                if let article = model.resolve(summary) { model.forceUpdateArticle(article) }
+            } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+        } else {
+            Button {
+                if let article = model.resolve(summary) { model.copyLink(article) }
             } label: { Label("Copy link", systemImage: "link") }
         }
 
-        if config.showOpenOnServer {
+        if model.aiReady {
             Button {
-                if let article { model.openOnServer(article) }
-            } label: { Label("Open on Server", systemImage: "server.rack") }
-        }
-
-        Divider()
-
-        if config.showReload {
-            Button {
-                if let article { model.forceUpdateArticle(article) }
-            } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
-        }
-
-        if config.showSummarize {
-            Button {
-                if let article { model.summarize(article) }
+                if let article = model.resolve(summary) { model.summarize(article) }
             } label: { Label("Summarize", systemImage: "sparkles") }
                 .disabled(model.isSummarizing)
         }
