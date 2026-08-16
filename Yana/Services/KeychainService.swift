@@ -70,7 +70,12 @@ enum KeychainService: Sendable {
     @discardableResult
     static func deleteDeviceToken() -> Bool {
         let ok = delete(key: deviceTokenKey)
-        deviceTokenCache.withLock { $0 = .some(nil) }
+        // Only invalidate to "known absent" on genuine success -- delete(key:) already treats
+        // errSecItemNotFound as success, so `ok == false` means a real failure (e.g. the device
+        // is locked) and the token is still in the Keychain. Clearing the cache anyway would make
+        // every loadDeviceToken() for the rest of the session wrongly report "unpaired" from a
+        // stale cache instead of re-querying (review finding).
+        if ok { deviceTokenCache.withLock { $0 = .some(nil) } }
         return ok
     }
 }

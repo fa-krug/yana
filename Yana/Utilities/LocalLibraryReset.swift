@@ -28,5 +28,11 @@ enum LocalLibraryReset {
         // Force a full resync next time — an opaque cursor from the wiped mirror would otherwise
         // resume from a delta and the wiped articles would never come back.
         AppSettings().syncCursor = nil
+        // Every image this wiped library referenced (article bodies, feed logos) is now
+        // unreferenced -- flag the same gate SyncEngine.pruneOrphanedImages checks, since this
+        // bulk delete bypasses the removed/updated counters that would otherwise trip it (review
+        // finding: a disconnect or re-pair otherwise never trips the prune, leaking every cached
+        // image from the old library indefinitely).
+        AppSettings().imagePruneNeeded = true
     }
 }
