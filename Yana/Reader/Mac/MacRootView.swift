@@ -87,6 +87,22 @@ struct MacRootView: View {
                 }
             }
         }
+        .alert(
+            String(localized: "Delete Article?"),
+            isPresented: Binding(
+                get: { model.summaryPendingDelete != nil },
+                set: { if !$0 { model.summaryPendingDelete = nil } }
+            )
+        ) {
+            if let summary = model.summaryPendingDelete {
+                Button(String(localized: "Delete"), role: .destructive) { model.deleteArticle(summary) }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            if let summary = model.summaryPendingDelete {
+                Text(String(localized: "Delete \u{201C}\(summary.title)\u{201D}? This cannot be undone."))
+            }
+        }
         .toast($model.toast)
         // Scene-wide (not tied to which view has focus) so ⌘↑/⌘↓ move the article even when the
         // UIKit reader in the detail pane holds first responder.
@@ -219,8 +235,10 @@ struct MacRootView: View {
         // rather than an upright oval.
         ToolbarItem(placement: .primaryAction) {
             Menu {
+                // ⌘, is now claimed by the app-menu Settings item (`YanaCommands`'s
+                // `.appSettings` command group) — this button keeps the action but not the shortcut,
+                // so only one control claims it.
                 Button { openWindow(id: WindowID.settings, value: true) } label: { Label("Settings", systemImage: "gearshape") }
-                    .keyboardShortcut(",", modifiers: .command)
                 if model.selectedSummary != nil {
                     Divider()
                     let article = model.selectedArticle()
@@ -333,6 +351,8 @@ private struct MacSidebarView: View {
     @State private var searchText = ""
     @State private var debouncedSearch = ""
     @State private var searchResults: [ArticleSummary]?
+    /// Focused by the ⌘F Find command (`model.searchFocusToken`) via the `.onChange` below.
+    @FocusState private var searchFieldFocused: Bool
     /// Drives `.scrollPosition(id:)` below. Mirrors `model.scrollTarget.id` — see that modifier's
     /// `.onChange` for why a repeated request for the same id still needs to reach the List.
     @State private var scrollAnchorID: String?
@@ -415,6 +435,8 @@ private struct MacSidebarView: View {
         // on-brand and adapts to light/dark; iOS is untouched (this is the Mac window).
         .tint(Self.selectionTint)
         .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
+        .searchFocused($searchFieldFocused)
+        .onChange(of: model.searchFocusToken) { _, _ in searchFieldFocused = true }
         .overlay {
             if displayed.isEmpty {
                 if searchText.isEmpty {
@@ -629,6 +651,9 @@ private struct MacArticleRow: View {
             Button {
                 if let article = model.resolve(summary) { model.openWebsite(article) }
             } label: { Label("Open in Browser", systemImage: "safari") }
+            if let url = URL(string: summary.identifier), url.scheme == "http" || url.scheme == "https" {
+                ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+            }
             Button {
                 if let article = model.resolve(summary) { model.copyLink(article) }
             } label: { Label("Copy link", systemImage: "link") }
@@ -651,6 +676,11 @@ private struct MacArticleRow: View {
             } label: { Label("Summarize", systemImage: "sparkles") }
                 .disabled(model.isSummarizing)
         }
+
+        Divider()
+        Button(role: .destructive) {
+            model.summaryPendingDelete = summary
+        } label: { Label("Delete", systemImage: "trash") }
     }
 }
 

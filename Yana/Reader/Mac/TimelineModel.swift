@@ -42,6 +42,11 @@ final class TimelineModel {
     /// Server-side article id to view in `ManagementWebView`, set by `openOnServer`; `nil` means
     /// the sheet `MacRootView` binds to this is dismissed.
     var openOnServerArticleID: Int?
+    /// Bumped by the Find menu command; `MacSidebarView` observes it and focuses the search field.
+    private(set) var searchFocusToken = 0
+    /// Set from a row's Delete context item; `MacRootView` presents the confirmation alert
+    /// bound to it (a context-menu button cannot present its own alert).
+    var summaryPendingDelete: ArticleSummary?
 
     private let settings: AppSettings
     private var didRestoreAnchor = false
@@ -112,6 +117,19 @@ final class TimelineModel {
     func resolve(_ summary: ArticleSummary) -> Article? {
         guard let modelContext else { return nil }
         return ArticleResolution.resolve(summary, in: modelContext)
+    }
+
+    /// Bumps `searchFocusToken` so `MacSidebarView` moves keyboard focus to its search field.
+    func requestSearchFocus() { searchFocusToken += 1 }
+
+    /// Deletes the article locally (no server call — matches the iOS `ArticleListView` swipe-to-
+    /// delete, which is also local-only) and flags the same orphaned-image prune gate Task 3 added,
+    /// since deleting an article can leave its images unreferenced.
+    func deleteArticle(_ summary: ArticleSummary) {
+        guard let modelContext, let article = resolve(summary) else { return }
+        modelContext.delete(article)
+        try? modelContext.save()
+        settings.imagePruneNeeded = true
     }
 
     /// Move the selection by `offset` (±1) and persist the new anchor. Powers the

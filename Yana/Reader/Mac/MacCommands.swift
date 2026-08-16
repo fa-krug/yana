@@ -22,12 +22,26 @@ extension FocusedValues {
 struct YanaCommands: Commands {
     @FocusedValue(\.timelineModel) private var model
     @FocusedValue(\.readerSpeech) private var speech
+    @Environment(\.openWindow) private var openWindow
 
     private var navDisabled: Bool { model == nil }
 
     var body: some Commands {
         // No multi-window on Mac, so drop the default New Window / New item menu slot.
         CommandGroup(replacing: .newItem) {}
+
+        // The toolbar overflow menu's own Settings item drops its shortcut so this is the single
+        // claimant of ⌘, (Mac finding 8).
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings…") { openWindow(id: WindowID.settings, value: true) }
+                .keyboardShortcut(",", modifiers: .command)
+        }
+
+        CommandGroup(replacing: .textEditing) {
+            Button("Find") { model?.requestSearchFocus() }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(model == nil)
+        }
 
         CommandMenu("Article") {
             Button("Update all") { model?.triggerRefresh() }
@@ -56,6 +70,10 @@ struct YanaCommands: Commands {
             Button(speechTitle) { toggleSpeech() }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(model?.selectedSummary == nil)
+
+            Button("Summarize") { if let a = model?.selectedArticle() { model?.summarize(a) } }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(model?.selectedSummary == nil || model?.isSummarizing == true || model?.aiReady != true)
 
             Divider()
 
