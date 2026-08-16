@@ -548,11 +548,21 @@ private struct MacArticleRow: View {
         HStack(alignment: .top, spacing: 12) {
             FeedLogoView(hash: summary.feedLogoHash, size: 34)
             VStack(alignment: .leading, spacing: 5) {
-                Text(summary.title)
-                    .font(.headline)
-                    .lineLimit(3)
-                    .lineSpacing(1.5)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top, spacing: 6) {
+                    if !summary.isRead {
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 5)
+                            .accessibilityLabel(Text("Unread"))
+                    }
+                    Text(summary.title)
+                        .font(.headline)
+                        .foregroundStyle(titleColor)
+                        .lineLimit(3)
+                        .lineSpacing(1.5)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack(spacing: 6) {
                     if !summary.feedName.isEmpty {
                         Text(summary.feedName).fontWeight(.medium).foregroundStyle(feedNameColor)
@@ -578,6 +588,12 @@ private struct MacArticleRow: View {
     /// on the selected row it would disappear into its own background. Invert it there to the white
     /// the system already draws the rest of the selected row's text in.
     private var feedNameColor: Color { isSelected ? .white : Color.accentColor }
+
+    /// Read titles recede like a mail client's; the selected row keeps the system's white text.
+    private var titleColor: Color {
+        if isSelected { return .white }
+        return summary.isRead ? Color.secondary : Color.primary
+    }
 
     @ViewBuilder private var hoverBackground: some View {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
