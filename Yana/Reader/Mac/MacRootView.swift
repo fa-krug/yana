@@ -454,7 +454,7 @@ private struct MacSidebarView: View {
     private func runSearch() async {
         let q = debouncedSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { searchResults = nil; return }
-        searchResults = ArticleSearch.searchSummaries(query: q, in: modelContext)
+        searchResults = await ArticleSearch.searchSummaries(query: q, container: modelContext.container)
     }
 }
 

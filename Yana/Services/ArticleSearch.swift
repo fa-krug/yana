@@ -1,17 +1,13 @@
 import Foundation
 import SwiftData
 
-/// Case/diacritic-insensitive search across an article's title, body text (`plainText`, the blocks
-/// flattened to visible text), author, and source feed name. Runs entirely as a SwiftData
-/// `#Predicate` fetch — there is deliberately no in-memory matcher any more, so the iOS list and the
-/// Mac sidebar cannot drift apart in what they consider a match.
-@MainActor
-enum ArticleSearch {
-    /// Runs the predicate-backed `FetchDescriptor` search (title/body/author/feed name, sorted by
-    /// date ascending, only the fields the timeline row needs) and maps the matches through
-    /// `ArticleSummary`'s tag-name lookup. Shared by `ArticleListView` (iOS) and `MacRootView`'s
-    /// sidebar (Mac) so both searches stay predicate-for-predicate identical.
-    static func searchSummaries(query: String, in modelContext: ModelContext) -> [ArticleSummary] {
+/// The predicate fetch runs on this `@ModelActor`, hopped off-main via `OffMainActor.run` --
+/// `plainText` is the heaviest column in the store and `localizedStandardContains` over it must
+/// never run on the main thread (audit P9). `ArticleListSearch` stays the single predicate
+/// source, shared with nothing else changed.
+@ModelActor
+actor ArticleSearcher {
+    func searchSummaries(query: String) -> [ArticleSummary] {
         var descriptor = FetchDescriptor<Article>(
             predicate: ArticleListSearch.predicate(for: query),
             sortBy: [SortDescriptor(\.date, order: .forward)]
@@ -21,6 +17,24 @@ enum ArticleSearch {
         let matches = (try? modelContext.fetch(descriptor)) ?? []
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
         return matches.map { ArticleSummary($0, tagNamesByID: tagNamesByID) }
+    }
+}
+
+/// Case/diacritic-insensitive search across an article's title, body text (`plainText`, the blocks
+/// flattened to visible text), author, and source feed name. Runs entirely as a SwiftData
+/// `#Predicate` fetch — there is deliberately no in-memory matcher any more, so the iOS list and the
+/// Mac sidebar cannot drift apart in what they consider a match.
+@MainActor
+enum ArticleSearch {
+    /// Runs the predicate-backed `FetchDescriptor` search (title/body/author/feed name, sorted by
+    /// date ascending, only the fields the timeline row needs) on an `ArticleSearcher` off the main
+    /// thread, and maps the matches through `ArticleSummary`'s tag-name lookup. Shared by
+    /// `ArticleListView` (iOS) and `MacRootView`'s sidebar (Mac) so both searches stay
+    /// predicate-for-predicate identical. Results come from a different `ModelContext` than the
+    /// caller's, but `ArticleSummary` is a `Sendable` value snapshot, so nothing downstream changes.
+    static func searchSummaries(query: String, container: ModelContainer) async -> [ArticleSummary] {
+        let searcher = ArticleSearcher(modelContainer: container)
+        return await OffMainActor.run { await searcher.searchSummaries(query: query) }
     }
 }
 

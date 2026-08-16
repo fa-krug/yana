@@ -195,7 +195,7 @@ struct ArticleListView: View {
     private func runSearch() async {
         let q = debouncedSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { searchResults = nil; return }
-        searchResults = ArticleSearch.searchSummaries(query: q, in: modelContext)
+        searchResults = await ArticleSearch.searchSummaries(query: q, container: modelContext.container)
     }
 
     /// The Mac's roomier rows read better with a touch more space between title and subline;

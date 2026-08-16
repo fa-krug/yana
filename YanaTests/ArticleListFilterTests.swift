@@ -9,16 +9,20 @@ struct ArticleListFilterTests {
     /// Mirrors ArticleListView.results: search → TagFilter → FeedFilter, using the same
     /// AppSettings-backed filter values the reader uses. The list's results must be a subset
     /// of the reader's filtered timeline so a tapped article always resolves to an index.
-    private func makeContext() throws -> ModelContext {
-        let container = try ModelContainer(
+    private func makeContainer() throws -> ModelContainer {
+        try ModelContainer(
             for: Article.self, Feed.self, Tag.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
-        return ModelContext(container)
     }
 
-    @Test func listResultsAreSubsetAndJumpResolves() throws {
-        let ctx = try makeContext()
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try makeContainer())
+    }
+
+    @Test func listResultsAreSubsetAndJumpResolves() async throws {
+        let container = try makeContainer()
+        let ctx = ModelContext(container)
         let feedA = Feed(name: "Alpha", identifier: "a")
         let feedB = Feed(name: "Beta", identifier: "b")
         ctx.insert(feedA); ctx.insert(feedB)
@@ -39,9 +43,10 @@ struct ArticleListFilterTests {
             disabledFeedNames: disabledFeeds
         )
         // List results (same filter + a matching search).
+        let searched = await ArticleSearch.searchSummaries(query: "Alpha", container: container)
         let listResults = FeedFilter.apply(
             to: TagFilter.apply(
-                to: ArticleSearch.searchSummaries(query: "Alpha", in: ctx),
+                to: searched,
                 disabledTagNames: [], includeUntagged: true),
             disabledFeedNames: disabledFeeds
         )

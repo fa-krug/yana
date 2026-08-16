@@ -6,12 +6,15 @@ import Testing
 @MainActor
 @Suite("ArticleListFiltering")
 struct ArticleListFilteringTests {
-    private func makeContext() throws -> ModelContext {
-        let container = try ModelContainer(
+    private func makeContainer() throws -> ModelContainer {
+        try ModelContainer(
             for: Article.self, Feed.self, Tag.self,
             configurations: .init(isStoredInMemoryOnly: true)
         )
-        return ModelContext(container)
+    }
+
+    private func makeContext() throws -> ModelContext {
+        ModelContext(try makeContainer())
     }
 
     /// Tag membership is a live join from `feed?.tagIDs` against synced `Tag.serverID`s (not the
@@ -24,8 +27,9 @@ struct ArticleListFilteringTests {
         return a
     }
 
-    @Test func searchThenTagFilterCompose() throws {
-        let context = try makeContext()
+    @Test func searchThenTagFilterCompose() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
         let techFeed = Feed(name: "Tech Feed", identifier: "tech")
         techFeed.tagIDs = [1]
         let foodFeed = Feed(name: "Food Feed", identifier: "food")
@@ -40,19 +44,20 @@ struct ArticleListFilteringTests {
         _ = article(title: "Rust news", feed: techFeed, in: context)
         try context.save()
 
-        let searched = ArticleSearch.searchSummaries(query: "swift", in: context) // -> 2 articles
+        let searched = await ArticleSearch.searchSummaries(query: "swift", container: container) // -> 2 articles
         let filtered = TagFilter.apply(to: searched, disabledTagNames: ["Food"], includeUntagged: true)
         #expect(filtered.count == 1)
         #expect(filtered.first?.title == "Swift news")
     }
 
-    @Test func untaggedExcludedWhenFlagOff() throws {
-        let context = try makeContext()
+    @Test func untaggedExcludedWhenFlagOff() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
         let feed = Feed(name: "Feed", identifier: "f")
         context.insert(feed)
         _ = article(title: "Swift", feed: feed, in: context)
         try context.save()
-        let searched = ArticleSearch.searchSummaries(query: "swift", in: context)
+        let searched = await ArticleSearch.searchSummaries(query: "swift", container: container)
         #expect(TagFilter.apply(to: searched, disabledTagNames: [], includeUntagged: false).isEmpty)
     }
 }
