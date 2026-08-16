@@ -33,7 +33,9 @@ enum DevicePairing {
         let nextString = next.url?.absoluteString ?? ""
 
         var login = URLComponents(url: serverBaseURL, resolvingAgainstBaseURL: false)!
-        login.path = "/login"
+        // Append, don't replace: a server reverse-proxied under a path prefix keeps it (audit U6).
+        let basePath = login.path.hasSuffix("/") ? String(login.path.dropLast()) : login.path
+        login.path = basePath + "/login"
         login.queryItems = [URLQueryItem(name: "next", value: nextString)]
         return login.url!
     }

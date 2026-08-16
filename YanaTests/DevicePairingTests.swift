@@ -70,4 +70,16 @@ struct DevicePairingTests {
         let session = DevicePairing.makeSession(randomState: { "fixed-value" })
         #expect(session.state == "fixed-value")
     }
+
+    @Test func pairingURLPreservesBasePath() {
+        let base = URL(string: "https://host.example/yana")!
+        let url = DevicePairing.pairingURL(serverBaseURL: base, session: session, deviceName: "d")
+        #expect(url.path == "/yana/login")
+    }
+
+    @Test func pairingURLHandlesTrailingSlashBase() {
+        let base = URL(string: "https://host.example/yana/")!
+        let url = DevicePairing.pairingURL(serverBaseURL: base, session: session, deviceName: "d")
+        #expect(url.path == "/yana/login")
+    }
 }
