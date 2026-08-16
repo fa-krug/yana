@@ -629,15 +629,24 @@ final class ReaderArticleViewController: UIViewController,
             image: UIImage(systemName: "gearshape")
         ) { [weak self] _ in self?.onShowSettings?() }
 
+        let updateAction: UIAction? = (hasServer && onRefresh != nil) ? UIAction(
+            title: String(localized: "Update all"),
+            image: UIImage(systemName: "arrow.clockwise")
+        ) { [weak self] _ in self?.onRefresh?() } : nil
+
         // Zero-state (no article): only Settings is meaningful.
         guard let article = currentArticle() else {
-            return [UIMenu(title: "", options: .displayInline, children: [settingsAction])]
+            return [UIMenu(title: "", options: .displayInline, children: [updateAction, settingsAction].compactMap { $0 })]
         }
         let config = ReaderMenuBuilder.config(
             hasURL: !article.url.isEmpty, aiReady: aiReady,
             hasServerArticle: hasServer && article.serverID != nil
         )
         var actions: [UIMenuElement] = []
+
+        if let updateAction {
+            actions.append(updateAction)
+        }
 
         if config.showReload {
             actions.append(UIAction(
