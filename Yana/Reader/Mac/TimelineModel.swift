@@ -230,6 +230,14 @@ final class TimelineModel {
         ArticleWrites.toggleStar(article, modelContext: modelContext)
     }
 
+    /// Manual Mark as Read/Unread, flipping based on the article's CURRENT read state. Toggles
+    /// locally right away (optimistic) via `ArticleWrites`; queued for retry rather than rolled
+    /// back on failure. Silently local-only when not paired.
+    func toggleRead(_ article: Article) {
+        guard let modelContext else { return }
+        ArticleWrites.setRead(article, read: !article.read, modelContext: modelContext)
+    }
+
     func copyLink(_ article: Article) {
         #if canImport(UIKit)
         UIPasteboard.general.string = article.url

@@ -35,6 +35,17 @@ struct ArticleWritesTests {
         #expect(article.read == true)
     }
 
+    @Test func setReadCanMarkUnread() throws {
+        let context = try makeContext()
+        let article = Article(title: "T", identifier: "id", url: "https://x.com/1")
+        article.read = true
+        context.insert(article)
+        try context.save()
+
+        ArticleWrites.setRead(article, read: false, modelContext: context)
+        #expect(article.read == false)
+    }
+
     @Test func toggleStarFlipsLocallyWhenNotPaired() throws {
         let context = try makeContext()
         let article = Article(title: "T", identifier: "id", url: "https://x.com/1")

@@ -617,6 +617,13 @@ private struct MacArticleRow: View {
                   systemImage: summary.isStarred ? "star.slash" : "star")
         }
 
+        Button {
+            if let article = model.resolve(summary) { model.toggleRead(article) }
+        } label: {
+            Label(summary.isRead ? "Mark as Unread" : "Mark as Read",
+                  systemImage: summary.isRead ? "circle.fill" : "circle")
+        }
+
         // Dropped while unpaired/demo: there's no server to open/reload/copy a real link for.
         if hasServer {
             Button {

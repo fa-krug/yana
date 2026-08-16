@@ -26,15 +26,21 @@ enum ArticleWrites {
     /// already-read article, and because a page can be "displayed" more than once in a session
     /// (e.g. swiping back over it).
     static func markRead(_ article: Article, modelContext: ModelContext, settings: AppSettings = AppSettings()) {
-        guard !article.read else { return }
-        article.read = true
+        setRead(article, read: true, modelContext: modelContext, settings: settings)
+    }
+
+    /// General read-state setter backing `markRead` and the manual Mark as Read/Unread controls.
+    /// No-ops when the article already matches `read`, for the same reasons as `markRead`.
+    static func setRead(_ article: Article, read: Bool, modelContext: ModelContext, settings: AppSettings = AppSettings()) {
+        guard article.read != read else { return }
+        article.read = read
         try? modelContext.save()
         guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
         Task {
             do {
-                try await ArticleActions(client: client).setRead(true, articleServerID: serverID)
+                try await ArticleActions(client: client).setRead(read, articleServerID: serverID)
             } catch {
-                PendingWriteQueue.enqueue(PendingWrite(articleServerID: serverID, field: .read(true)), settings: settings)
+                PendingWriteQueue.enqueue(PendingWrite(articleServerID: serverID, field: .read(read)), settings: settings)
             }
         }
     }

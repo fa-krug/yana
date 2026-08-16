@@ -49,6 +49,10 @@ struct YanaCommands: Commands {
                 .keyboardShortcut("d", modifiers: .command)
                 .disabled(model?.selectedSummary == nil)
 
+            Button(readToggleTitle) { if let a = model?.selectedArticle() { model?.toggleRead(a) } }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .disabled(model?.selectedSummary == nil)
+
             Button(speechTitle) { toggleSpeech() }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(model?.selectedSummary == nil)
@@ -68,6 +72,10 @@ struct YanaCommands: Commands {
 
     private var starTitle: LocalizedStringKey {
         (model?.selectedSummary?.isStarred ?? false) ? "Unstar" : "Star"
+    }
+
+    private var readToggleTitle: LocalizedStringKey {
+        (model?.selectedSummary?.isRead ?? false) ? "Mark as Unread" : "Mark as Read"
     }
 
     private var speechTitle: LocalizedStringKey {
