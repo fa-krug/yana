@@ -104,9 +104,9 @@ final class MacScreenshotUITests: XCTestCase {
         // occluding window bleeding in, which is why 01_Reader is reused as the base.
         let settingsWindow = try openSettings(in: app)
 
-        try selectPane("feeds", in: app)
+        try selectPane("manage", in: app)
         Thread.sleep(forTimeInterval: Self.logoSettle)
-        assertPlausibleSettingsWindow(settingsWindow, pane: "feeds")
+        assertPlausibleSettingsWindow(settingsWindow, pane: "manage")
         attach(settingsWindow.screenshot(), named: "03_Feeds.overlay.png",
                expectedPixelSize: nil)
 
