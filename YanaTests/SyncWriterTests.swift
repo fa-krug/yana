@@ -338,4 +338,17 @@ struct SyncWriterTests {
         let hashes = await writer.referencedImageHashes()
         #expect(hashes == ["logo-hash", "body-hash"])
     }
+
+    @Test func articleTitleFetchesByServerID() async throws {
+        // seed one article with serverID 7, title "Hello" via upsertSummaries
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 7, feedId: 1, name: "Hello", identifier: "art-7",
+                                    date: Date.now, author: "", read: false, starred: false,
+                                    createdAt: Date.now, updatedAt: Date.now)
+        ])
+        #expect(await writer.articleTitle(serverID: 7) == "Hello")
+        #expect(await writer.articleTitle(serverID: 8) == nil)
+    }
 }

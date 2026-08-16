@@ -299,4 +299,14 @@ actor SyncWriter {
             return (article.persistentModelID, serverID)
         }
     }
+
+    /// The current title for a synced article, for the reload path's post-sync title refresh --
+    /// keeps that read on this actor (hopped off-main by the caller via OffMainActor.run) instead
+    /// of a main-actor ModelContext fetch.
+    func articleTitle(serverID: Int) -> String? {
+        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == serverID })
+        descriptor.fetchLimit = 1
+        descriptor.propertiesToFetch = [\.title]
+        return try? modelContext.fetch(descriptor).first?.title
+    }
 }

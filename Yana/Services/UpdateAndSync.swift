@@ -166,7 +166,7 @@ enum UpdateAndSync {
         _ = try? await engine.sync()
 
         if let visibleArticle, visibleArticle.serverID == articleServerID {
-            let freshTitle = ArticleResolution.fetchByServerID(articleServerID, in: ModelContext(container))?.title
+            let freshTitle = await OffMainActor.run { await writer.articleTitle(serverID: articleServerID) }
             if let freshTitle, freshTitle != visibleArticle.title {
                 visibleArticle.title = freshTitle
                 try? visibleArticle.modelContext?.save()
