@@ -257,10 +257,10 @@ final class SyncEngine {
                 // is fetched right alongside its content, not just the lead image on first open
                 // (see `LeadImageReveal`'s bounded on-demand fallback for the rare case this
                 // hasn't landed yet -- a stale/incomplete backfill, not the common path).
-                await withTaskGroup(of: Void.self) { group in
-                    for hash in Block.imageHashes(in: document.blocks) {
-                        group.addTask { _ = await imageStore.fetchIfNeeded(hash: hash, client: client) }
-                    }
+                // Bounded like everything else in this pass: the outer content loop already runs 6 wide,
+                // so an image-heavy article must not multiply that by its image count (audit P4).
+                await runBounded(Array(Block.imageHashes(in: document.blocks)), maxConcurrency: 2) { hash in
+                    _ = await imageStore.fetchIfNeeded(hash: hash, client: client)
                 }
             } catch YanaAPIClientError.unauthorized {
                 // This loop swallows every other failure by design (see the doc comment above),
