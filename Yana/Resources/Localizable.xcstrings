@@ -511,34 +511,102 @@
         }
       }
     },
-    "Added %lld new %@ from “%@”.": {
+    "Added %lld new articles from “%@”.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$lld neue %2$@ von „%3$@“ hinzugefügt."
+            "value": "%#@articleCount@ von „%2$@“ hinzugefügt."
+          },
+          "substitutions": {
+            "articleCount": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg neuer Artikel"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg neue Artikel"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "en": {
           "stringUnit": {
-            "state": "new",
-            "value": "Added %1$lld new %2$@ from “%3$@”."
+            "state": "translated",
+            "value": "Added %#@articleCount@ from “%2$@”."
+          },
+          "substitutions": {
+            "articleCount": {
+              "argNum": 1,
+              "formatSpecifier": "lld",
+              "variations": {
+                "plural": {
+                  "one": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg new article"
+                    }
+                  },
+                  "other": {
+                    "stringUnit": {
+                      "state": "translated",
+                      "value": "%arg new articles"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
-    "Added %lld new %@.": {
+    "Added %lld new articles.": {
       "localizations": {
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld neue %2$@ hinzugefügt."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld neuer Artikel hinzugefügt."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld neue Artikel hinzugefügt."
+                }
+              }
+            }
           }
         },
         "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "Added %1$lld new %2$@."
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Added %lld new article."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Added %lld new articles."
+                }
+              }
+            }
           }
         }
       }
@@ -2930,26 +2998,6 @@
         }
       }
     },
-    "article": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Artikel"
-          }
-        }
-      }
-    },
-    "articles": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Artikel"
-          }
-        }
-      }
-    },
     "Clear": {
       "localizations": {
         "de": {
@@ -3348,6 +3396,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Willkommen bei Yana"
+          }
+        }
+      }
+    },
+    "Connect to Your Server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit dem eigenen Server verbinden"
+          }
+        }
+      }
+    },
+    "Choose Your AI": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "KI auswählen"
+          }
+        }
+      }
+    },
+    "A quick update on what changed, and your options.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein kurzer Überblick über die Änderungen und die verfügbaren Optionen."
           }
         }
       }
@@ -4464,14 +4542,26 @@
         }
       }
     },
-    "Summarize, improve, or translate articles — via your server's AI provider, or entirely on-device with Apple Intelligence.": {
+    "Summarize articles with your server's AI provider, or entirely on-device with Apple Intelligence.": {
       "comment": "Feature detail on the welcome onboarding page.",
       "isCommentAutoGenerated": true,
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fasse Artikel zusammen, verbessere oder übersetze sie – über den KI-Anbieter deines Servers oder vollständig auf dem Gerät mit Apple Intelligence."
+            "value": "Artikel zusammenfassen, mit dem KI-Anbieter des Servers oder komplett auf dem Gerät mit Apple Intelligence."
+          }
+        }
+      }
+    },
+    "Summarize articles with your server's AI provider or with Apple Intelligence on this device.": {
+      "comment": "Subtitle on the onboarding AI-mode step.",
+      "isCommentAutoGenerated": true,
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artikel zusammenfassen, mit dem KI-Anbieter des Servers oder mit Apple Intelligence auf diesem Gerät."
           }
         }
       }

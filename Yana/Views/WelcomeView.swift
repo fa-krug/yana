@@ -35,7 +35,7 @@ struct WelcomeView: View {
             switch self {
             case .welcome: "Your own private feed reader — all your sources, gathered on your server."
             case .server: "Yana needs a Yana Server to sign in and sync your feeds."
-            case .aiMode: "Summarize, improve, or translate articles using your server's AI provider or Apple Intelligence on this device."
+            case .aiMode: "Summarize articles with your server's AI provider or with Apple Intelligence on this device."
             }
         }
     }
@@ -237,7 +237,7 @@ private struct WelcomeIntroPage: View {
             icon: "sparkles",
             tint: .purple,
             title: "Optional AI",
-            detail: "Summarize, improve, or translate articles — via your server's AI provider, or entirely on-device with Apple Intelligence."
+            detail: "Summarize articles with your server's AI provider, or entirely on-device with Apple Intelligence."
         ),
     ]
 

@@ -90,6 +90,28 @@ struct PluralAgreementTests {
 
 
 
+    /// `RefreshOutcome.message` used to splice a separately-localized bare noun ("article"/
+    /// "articles") into a template string, which can't agree grammatically in German ("1 neue
+    /// Artikel" instead of "1 neuer Artikel"). It now uses two whole-string plural-keyed templates
+    /// directly, with the count as the sole (or first) substitution argument.
+    @Test func addedNewArticlesAgreesInBothLanguages() throws {
+        #expect(try en("Added \(1) new articles.") == "Added 1 new article.")
+        #expect(try en("Added \(2) new articles.") == "Added 2 new articles.")
+        #expect(try de("Added \(1) new articles.") == "1 neuer Artikel hinzugefügt.")
+        #expect(try de("Added \(2) new articles.") == "2 neue Artikel hinzugefügt.")
+    }
+
+    @Test func addedNewArticlesFromFeedAgreesInBothLanguages() throws {
+        #expect(try en("Added \(1) new articles from “\("Heise")”.")
+                == "Added 1 new article from “Heise”.")
+        #expect(try en("Added \(2) new articles from “\("Heise")”.")
+                == "Added 2 new articles from “Heise”.")
+        #expect(try de("Added \(1) new articles from “\("Heise")”.")
+                == "1 neuer Artikel von „Heise“ hinzugefügt.")
+        #expect(try de("Added \(2) new articles from “\("Heise")”.")
+                == "2 neue Artikel von „Heise“ hinzugefügt.")
+    }
+
     /// The notification title already handled English through `inflect: true` automatic grammar
     /// agreement, with an explicit `de` block. Pinned so a catalog edit can't quietly break it.
     @Test func newArticleNotificationTitleAgrees() throws {
