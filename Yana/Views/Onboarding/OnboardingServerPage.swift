@@ -81,7 +81,7 @@ struct OnboardingServerPage: View {
                 DevicePairingView(
                     serverBaseURL: url,
                     onPaired: { token in
-                        settings.serverBaseURL = serverURLText
+                        settings.serverBaseURL = trimmedServerURLText
                         KeychainService.saveDeviceToken(token)
                         isPairing = false
                         isURLFieldFocused = false
@@ -89,7 +89,7 @@ struct OnboardingServerPage: View {
                         if isOnboardingFlow {
                             // Deferred to the "Continue" tap (`primaryAction`) — see its comment.
                             state.isPaired = true
-                            pairedURLText = serverURLText
+                            pairedURLText = trimmedServerURLText
                         } else {
                             // No separate "Continue" step in Settings' re-pair sheet: pairing
                             // success IS the completion point, so reset + resync right here.
@@ -145,8 +145,10 @@ struct OnboardingServerPage: View {
                             .onSubmit(signIn)
                     }
                 }
-                if !serverURLText.isEmpty, validatedServerURL == nil {
-                    Text("Enter a full address, including https://.")
+                if !trimmedServerURLText.isEmpty, validatedServerURL == nil {
+                    Text(trimmedServerURLText.lowercased().hasPrefix("http")
+                         ? "This doesn't look like a valid server address."
+                         : "Enter a full address, including https://.")
                         .font(.footnote)
                         .foregroundStyle(.red)
                         .padding(.horizontal, 4)
@@ -202,12 +204,21 @@ struct OnboardingServerPage: View {
     /// "about:blank" instead of failing loudly. Requiring an http/https scheme and a host catches
     /// that before it ever reaches the pairing flow.
     private var validatedServerURL: URL? {
-        guard let url = URL(string: serverURLText),
+        guard let url = URL(string: trimmedServerURLText),
               let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
               url.host?.isEmpty == false else {
             return nil
         }
         return url
+    }
+
+    /// A pasted address often carries a trailing space or newline, which fails `URL(string:)`
+    /// outright and used to surface the misleading "add https://" message even when the scheme
+    /// was already there. Trimming here — and using this everywhere validation/persistence
+    /// happens — means the raw `TextField` binding (`serverURLText`) stays untouched so the user
+    /// can still see/edit exactly what they typed.
+    private var trimmedServerURLText: String {
+        serverURLText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Lets the URL field's return key trigger the same action as tapping "Sign In", so pairing
