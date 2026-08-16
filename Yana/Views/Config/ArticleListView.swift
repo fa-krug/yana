@@ -22,6 +22,7 @@ struct ArticleListView: View {
     @State private var searchResults: [ArticleSummary]? = nil
     @State private var showFilter = false
     @State private var summaryToDelete: ArticleSummary?
+    @State private var toast: ToastMessage?
 
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
@@ -71,7 +72,7 @@ struct ArticleListView: View {
             searchText: $searchText,
             emptyTitle: "No Articles",
             emptyIcon: "tray",
-            emptyDescription: "No articles yet. Add feeds, then pull to refresh.",
+            emptyDescription: "No articles yet. Update all from the reader, or add feeds on your server.",
             onDelete: { offsets in
                 guard let summary = offsets.map({ results[$0] }).first else { return }
                 summaryToDelete = summary
@@ -95,25 +96,19 @@ struct ArticleListView: View {
                               let serverID = article.serverID
                         else { return }
                         UpdateActivity.shared.restart {
-                            do {
-                                let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
-                                guard !Task.isCancelled else { return }
-                                // See `UpdateAndSync.pollForReloadedContent`'s doc comment: this
-                                // deliberately re-fetches this one article's content directly rather
-                                // than going through `SyncEngine`'s generic `hasContent`-gated
-                                // backfill, which a premature fetch during the poll window could
-                                // permanently lock out of any later retry. `article` is registered on
-                                // this view's `modelContext`, the same context the reader (presented
-                                // from) reads from -- pass it as `visibleArticle` so a reload of the
-                                // currently-open (or previously-viewed) article updates that live
-                                // object too, not just the store.
-                                await UpdateAndSync.pollForReloadedContent(
-                                    jobId: jobId, articleServerID: serverID, container: modelContext.container, client: client,
-                                    visibleArticle: article
+                            let result = await ReaderActions.forceUpdateArticle(
+                                article, serverID: serverID, client: client, container: modelContext.container
+                            )
+                            switch result {
+                            case .cancelled:
+                                return
+                            case .applied(let feedName):
+                                toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+                            case .failed:
+                                toast = ToastMessage(
+                                    text: String(localized: "Could not reload this article. Please try again."),
+                                    style: .error
                                 )
-                            } catch {
-                                // Matches the pre-server behavior of swallowing a failed reload
-                                // silently -- this swipe action has no toast/error surface.
                             }
                         }
                     } label: {
@@ -152,8 +147,15 @@ struct ArticleListView: View {
             }
             ToolbarItem(placement: .topBarLeading) {
                 if isUpdating {
-                    Button { UpdateActivity.shared.cancel() } label: { ProgressView() }
-                        .accessibilityLabel(Text("Stop updating"))
+                    Button { UpdateActivity.shared.cancel() } label: {
+                        ZStack {
+                            ProgressView()
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityLabel(Text("Stop updating"))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -162,9 +164,12 @@ struct ArticleListView: View {
                           ? "line.3.horizontal.decrease.circle.fill"
                           : "line.3.horizontal.decrease.circle")
                 }
+                .accessibilityLabel(Text("Filter articles"))
+                .accessibilityValue(isFilterActive ? Text("Filter active") : Text(""))
             }
         }
         .sheet(isPresented: $showFilter) { TagFilterView() }
+        .toast($toast)
         .alert(
             String(localized: "Delete Article?"),
             isPresented: Binding(get: { summaryToDelete != nil }, set: { if !$0 { summaryToDelete = nil } })

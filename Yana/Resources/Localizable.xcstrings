@@ -1160,6 +1160,16 @@
         }
       }
     },
+    "Filter active": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter aktiv"
+          }
+        }
+      }
+    },
     "Filter articles": {
       "localizations": {
         "de": {
@@ -2997,12 +3007,12 @@
         }
       }
     },
-    "No articles yet. Add feeds, then pull to refresh.": {
+    "No articles yet. Update all from the reader, or add feeds on your server.": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Noch keine Artikel. Feeds hinzufügen und dann zum Aktualisieren ziehen."
+            "value": "Noch keine Artikel. Im Reader „Alle aktualisieren“ ausführen oder Feeds auf dem Server hinzufügen."
           }
         }
       }
