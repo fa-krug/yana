@@ -294,7 +294,9 @@ struct ReaderScreen: View {
                         ? filteredArticles[appState.currentIndex].identifier : nil,
                     currentArticleServerID: filteredArticles.indices.contains(appState.currentIndex)
                         ? filteredArticles[appState.currentIndex].serverID : nil,
-                    onSelect: openArticle
+                    onSelect: openArticle,
+                    store: store,
+                    settings: settings
                 )
             }
         }

@@ -90,10 +90,9 @@ source and issue board live at
 - 4-shot set (numeric key = App Store order): `01_Reader` (main window — sidebar + hero article)
   → `02_Search` (sidebar search for "battery") → `03_Feeds` (Settings › Manage) → `04_AI`
   (Settings › AI). Keep these keys in sync between `MacScreenshotUITests.swift` and `MAC_SHOTS`
-  in the Fastfile. **Same known stale-identifier debt as the iPhone lane:** the test still selects
-  the Settings sidebar pane by its old raw value `"feeds"` (`mac.settings.pane.feeds`), but
-  `SettingsPane` (`Yana/Reader/Mac/WindowID.swift`) no longer has a `.feeds` case — the pane set is
-  now `general, reader, manage, ai, about`. Not fixed by this plan; see **Tests**.
+  in the Fastfile. The test now selects the Settings sidebar pane by its current raw value
+  (`mac.settings.pane.manage`), matching `SettingsPane`'s (`Yana/Reader/Mac/WindowID.swift`) actual
+  pane set — `general, reader, manage, ai, about`, with no `.feeds` case any more.
 - Shots are **plain captures — no device frame, no gradient, no captions** (the Mac App Store
   convention). Localization comes from the app chrome itself, forced via `-AppleLanguages` /
   `-AppleLocale` launch arguments.
@@ -491,8 +490,10 @@ source and issue board live at
   should be arriving from the server as blocks instead.
 - **Views** (`Yana/Views/`): feed/tag/AI-provider **management moved entirely to the server's own
   web UI**. `ManagementWebView` (`Yana/Views/ManagementWebView.swift`) hosts it in a `WKWebView`
-  reusing the pairing flow's persistent cookie session (`WKWebsiteDataStore.default()`) so a user who
-  just paired isn't asked to log in again; `SettingsScreenView`'s "Manage Server" row and the
+  that bootstraps a fresh, short-lived, single-use server session on every appearance — see
+  **Auth / device pairing** above for the full `POST /api/v1/auth/webview-session-token` /
+  `GET /webview-session?token=...` exchange this drives, and why it replaced the earlier reused-
+  cookie-session approach; `SettingsScreenView`'s "Manage Server" row and the
   Mac's create-feed sheet both push/present it at different paths (the site root `/` -- the view's
   default -- and `/feeds/new`).
   `FeedsView`/`TagsView`/`FeedEditorView`/`FeedEditorModel`/`AggregatorOptionsForm`/`SelectorListView`/
@@ -689,16 +690,17 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 381 tests in 90 suites, all passing. (The drop from 406 is the dead-code and
-  legacy-HTML passes: suites that only exercised orphaned helpers — `CredentialTesterTests`,
-  `NameSearchTests`, `ArticleSearchTests`, `CrossFadeTests`, `UpdateProgressTests`,
-  `ArticleHeaderLogoTests` — plus `BlockParserTests`/`GiphyBlockReproTests`, which covered the
-  deleted HTML→blocks parser, went with the code they tested.) The audit-fix batch since then added
-  further coverage in existing and new suites — `InitialSyncGateTests` (the retry/give-up state
-  machine and its `syncOnce` seam), `ArticleWritesTests` (`setRead`'s no-op-when-unchanged and
+  change, 404 tests in 92 suites, all passing. (An earlier pass had dropped to 381 tests in 90
+  suites from a prior 406 by deleting dead-code and legacy-HTML suites — ones that only exercised
+  orphaned helpers such as `CredentialTesterTests`, `NameSearchTests`, `ArticleSearchTests`,
+  `CrossFadeTests`, `UpdateProgressTests`, `ArticleHeaderLogoTests`, plus
+  `BlockParserTests`/`GiphyBlockReproTests`, which covered the deleted HTML→blocks parser and went
+  with the code they tested.) The audit-fix batch since then added further coverage in existing and
+  new suites — `InitialSyncGateTests` (the retry/give-up state machine and its `syncOnce` seam, a
+  new suite) among them — plus `ArticleWritesTests` (`setRead`'s no-op-when-unchanged and
   queue-on-failure behavior), `DevicePairingTests` (`classify`'s four failure modes), and
-  `BackgroundRefreshManagerTests` (the Mac loop's re-arm/cancel-on-`.off` behavior) among them —
-  without changing the overall suite count.
+  `BackgroundRefreshManagerTests` (the Mac loop's re-arm/cancel-on-`.off` behavior), bringing the
+  suite back up to its current 404/92.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap

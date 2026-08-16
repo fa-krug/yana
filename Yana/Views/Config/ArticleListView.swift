@@ -35,17 +35,42 @@ struct ArticleListView: View {
     /// Cached, not computed (mirrors `MacSidebarView.displayed`, audit P7): `body` re-runs on every
     /// searchable keystroke and every store publish; the three filter passes only need to re-run
     /// when one of their real inputs changes.
-    @State private var results: [ArticleSummary] = []
+    ///
+    /// Seeded from the caller's own `store`/`settings` at `init` time (see the designated `init`
+    /// below), not left as an empty default filled only by `.onAppear`: `ManagedList` seeds its
+    /// hide-until-scrolled `revealed` state from whether `scrollToID` is non-nil at ITS construction
+    /// time, and `scrollToID` here is derived from `results`. An empty starting value would make
+    /// `currentItemID` `nil` on the very first `body` pass, permanently missing that one-shot reveal
+    /// gate and silently breaking "open the list already parked on the current article."
+    @State private var results: [ArticleSummary]
+
+    init(currentArticleID: String?,
+         currentArticleServerID: Int? = nil,
+         onSelect: @escaping (ArticleSummary) -> Void,
+         store: ArticleStore,
+         settings: AppSettings) {
+        self.currentArticleID = currentArticleID
+        self.currentArticleServerID = currentArticleServerID
+        self.onSelect = onSelect
+        self._results = State(initialValue: Self.filteredResults(base: store.summaries, settings: settings))
+    }
+
+    /// The shared tag/feed/starred filter chain, factored out so both the designated `init` (which
+    /// seeds `results` before `@Environment` is even resolved) and `recomputeResults()` (which reads
+    /// it afterward) apply the exact same rules.
+    private static func filteredResults(base: [ArticleSummary], settings: AppSettings) -> [ArticleSummary] {
+        let byTag = TagFilter.apply(to: base,
+                                    disabledTagNames: settings.disabledTagNames,
+                                    includeUntagged: settings.includeUntagged)
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
+        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+    }
 
     /// Recomputes the cached `results` from its real inputs. Called from the `onChange`/`onAppear`
     /// handlers attached to `body`, never from `body` itself.
     private func recomputeResults() {
         let base = searchResults ?? store.summaries
-        let byTag = TagFilter.apply(to: base,
-                                    disabledTagNames: settings.disabledTagNames,
-                                    includeUntagged: settings.includeUntagged)
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        results = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        results = Self.filteredResults(base: base, settings: settings)
     }
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }

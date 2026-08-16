@@ -505,6 +505,10 @@ private struct MacFilterBar: View {
     @Query(sort: \Feed.name) private var feeds: [Feed]
 
     private var isFiltering: Bool { settings.isTimelineFilterActive }
+    /// Matches `MacEmptyLibraryView.isPaired`/`TimelineModel.hasServer`: an unpaired/demo-mode
+    /// device has no `serverBaseURL` to point the "Add Feed" web view at, so it's dropped here for
+    /// the same reason the empty-library CTA drops it.
+    private var isPaired: Bool { AuthenticatedClient.current() != nil }
 
     var body: some View {
         HStack {
@@ -553,12 +557,16 @@ private struct MacFilterBar: View {
 
             Spacer()
 
-            Button(action: onCreateFeed) {
-                Image(systemName: "plus")
+            // Dropped while unpaired/demo, matching `MacEmptyLibraryView`: there is no server to
+            // point `ManagementWebView(path: "/feeds/new")` at.
+            if isPaired {
+                Button(action: onCreateFeed) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(Text("Add Feed"))
+                .help(Text("Add Feed"))
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(Text("Add Feed"))
-            .help(Text("Add Feed"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
