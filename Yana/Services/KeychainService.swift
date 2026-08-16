@@ -1,7 +1,14 @@
 import Foundation
+import os
 
 enum KeychainService: Sendable {
     private static let deviceTokenKey = "device_session_token"
+
+    /// One-slot cache for the device token. `.none` = not yet read from Keychain;
+    /// `.some(nil)` = read and absent; `.some(.some(t))` = read and present.
+    /// Lock-protected because `deleteDeviceToken` is called off-main from
+    /// `SyncEngine.backfillMissingContent`'s bounded task group.
+    private static let deviceTokenCache = OSAllocatedUnfairLock<String??>(initialState: nil)
 
     @discardableResult
     static func save(key: String, value: String) -> Bool {
@@ -47,10 +54,23 @@ enum KeychainService: Sendable {
     }
 
     @discardableResult
-    static func saveDeviceToken(_ token: String) -> Bool { save(key: deviceTokenKey, value: token) }
+    static func saveDeviceToken(_ token: String) -> Bool {
+        let ok = save(key: deviceTokenKey, value: token)
+        if ok { deviceTokenCache.withLock { $0 = .some(token) } }
+        return ok
+    }
 
-    static func loadDeviceToken() -> String? { load(key: deviceTokenKey) }
+    static func loadDeviceToken() -> String? {
+        if let cached = deviceTokenCache.withLock({ $0 }) { return cached }
+        let loaded = load(key: deviceTokenKey)
+        deviceTokenCache.withLock { $0 = .some(loaded) }
+        return loaded
+    }
 
     @discardableResult
-    static func deleteDeviceToken() -> Bool { delete(key: deviceTokenKey) }
+    static func deleteDeviceToken() -> Bool {
+        let ok = delete(key: deviceTokenKey)
+        deviceTokenCache.withLock { $0 = .some(nil) }
+        return ok
+    }
 }

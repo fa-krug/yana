@@ -16,4 +16,16 @@ struct KeychainServiceTests {
         KeychainService.deleteDeviceToken()
         #expect(KeychainService.loadDeviceToken() == nil)
     }
+
+    @Test func deviceTokenCacheTracksSaveAndDelete() {
+        KeychainService.deleteDeviceToken()
+        #expect(KeychainService.loadDeviceToken() == nil)
+        KeychainService.saveDeviceToken("token-a")
+        #expect(KeychainService.loadDeviceToken() == "token-a")
+        #expect(KeychainService.loadDeviceToken() == "token-a")   // second read: cache path
+        KeychainService.saveDeviceToken("token-b")
+        #expect(KeychainService.loadDeviceToken() == "token-b")
+        KeychainService.deleteDeviceToken()
+        #expect(KeychainService.loadDeviceToken() == nil)
+    }
 }
