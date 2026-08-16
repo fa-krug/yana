@@ -251,7 +251,6 @@ final class SyncEngine {
         await runBounded(serverIDs, maxConcurrency: maxConcurrentContentFetches) { serverID in
             do {
                 let document: WireDocument = try await client.get("/api/v1/articles/\(serverID)/content")
-                let writer = SyncWriter(modelContainer: container)
                 _ = await writer.applyContent(articleServerID: serverID, document: document)
                 // Eager, not lazy-on-render: every image the article's body actually references
                 // is fetched right alongside its content, not just the lead image on first open

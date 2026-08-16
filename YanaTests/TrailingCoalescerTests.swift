@@ -71,4 +71,16 @@ struct TrailingCoalescerTests {
         try await Task.sleep(for: .milliseconds(150))
         #expect(counter.runs == 2)
     }
+
+    @Test func maxDelayFiresDuringAContinuousBurst() async throws {
+        var fires = 0
+        let coalescer = TrailingCoalescer(interval: .milliseconds(50), maxDelay: .milliseconds(120)) { fires += 1 }
+        // Schedule every 20ms for 300ms: the 50ms quiet period never elapses,
+        // so without maxDelay this would fire zero times during the burst.
+        for _ in 0..<15 {
+            coalescer.schedule()
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(fires >= 1)
+    }
 }

@@ -182,7 +182,7 @@ final class ArticleStore {
     /// `cloudKitDatabase`, so there is no below-SwiftData remote-merge path left to observe).
     func start() {
         guard observer == nil else { return }
-        refreshCoalescer = TrailingCoalescer(interval: .milliseconds(200)) { [weak self] in
+        refreshCoalescer = TrailingCoalescer(interval: .milliseconds(200), maxDelay: .seconds(1)) { [weak self] in
             await self?.applyPending()
         }
         cacheCoalescer = TrailingCoalescer(interval: Self.cacheWriteDelay) { [weak self] in

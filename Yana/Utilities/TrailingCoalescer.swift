@@ -16,19 +16,34 @@ import Foundation
 @MainActor
 final class TrailingCoalescer {
     private let interval: Duration
+    /// Optional ceiling: during a continuous trigger burst (each schedule() restarting the
+    /// quiet-period timer), fire anyway once this much time has passed since the burst began,
+    /// so a long sync burst can't starve the action indefinitely (audit P10).
+    private let maxDelay: Duration?
     private let action: () async -> Void
     private var debounce: Task<Void, Never>?
     private var isRunning = false
     private var pending = false
+    private var burstStart: ContinuousClock.Instant?
 
-    init(interval: Duration, action: @escaping () async -> Void) {
+    init(interval: Duration, maxDelay: Duration? = nil, action: @escaping () async -> Void) {
         self.interval = interval
+        self.maxDelay = maxDelay
         self.action = action
     }
 
     /// Register a trigger. Restarts the quiet-period timer; the action runs once triggers stop for
-    /// `interval`.
+    /// `interval`. If `maxDelay` is set and this burst has already run that long since its first
+    /// trigger, fires immediately instead of restarting the timer again.
     func schedule() {
+        let now = ContinuousClock.now
+        if burstStart == nil { burstStart = now }
+        if let maxDelay, let start = burstStart, now - start >= maxDelay {
+            debounce?.cancel()
+            debounce = nil
+            Task { [weak self] in await self?.fire() }
+            return
+        }
         debounce?.cancel()
         let interval = interval
         debounce = Task { [weak self] in
@@ -47,6 +62,7 @@ final class TrailingCoalescer {
     }
 
     private func fire() async {
+        burstStart = nil
         guard !isRunning else { pending = true; return }
         isRunning = true
         await action()
