@@ -128,6 +128,26 @@ struct BackgroundRefreshManagerTests {
         }
     }
 
+    @Test func doesNotNotifyWhenPostsNotificationIsFalse() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let client = stubClient(newArticleCount: 1)
+            let settings = freshSettings(notificationsEnabled: true)
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            let notifier = FakeNotifier(authorized: true)
+
+            // Even though notifications are enabled, authorized, and there are new articles --
+            // the Mac path passes `postsNotification: false` while the window is focused (audit
+            // U4), and that must suppress the notification entirely.
+            await BackgroundRefreshManager.runRefresh(
+                engine: engine, notifier: notifier, settings: settings, postsNotification: false)
+
+            #expect(notifier.postedCounts.isEmpty)
+            let articles = try container.mainContext.fetch(FetchDescriptor<Article>())
+            #expect(articles.count == 1)
+        }
+    }
+
     @Test func doesNotNotifyWhenNotAuthorized() async throws {
         try await MockURLProtocol.lock.withLock {
             let container = try makeContainer()

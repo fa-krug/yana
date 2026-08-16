@@ -95,8 +95,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             self?.backgroundRefresh.runNow()
         }
     }
+
+    /// Run one refresh immediately when the window regains focus (audit U4) — the Mac's
+    /// repeating loop only fires on its own interval, so a user returning to the app after a
+    /// while sees stale content until the next tick without this.
+    @MainActor func refreshOnFocus() { backgroundRefresh.runNow() }
     #endif
 
+    /// Re-arm scheduling after the user changes the update interval -- on iOS the next BGTask
+    /// re-schedules itself, but the Mac loop is armed once at launch and never re-read the
+    /// setting (audit U4).
+    @MainActor func rearmBackgroundRefresh() { backgroundRefresh.schedule() }
 }
 
 @main
@@ -124,9 +133,15 @@ struct YanaApp: App {
                         ReadingPositionLiveSync.shared.stop()
                     case .active:
                         ReadingPositionLiveSync.shared.start(settings: appSettings)
+                        #if targetEnvironment(macCatalyst)
+                        appDelegate.refreshOnFocus()
+                        #endif
                     default:
                         break
                     }
+                }
+                .onChange(of: appSettings.updateInterval) { _, _ in
+                    appDelegate.rearmBackgroundRefresh()
                 }
                 .task {
                     StartupTrace.event("scene.task.begin")

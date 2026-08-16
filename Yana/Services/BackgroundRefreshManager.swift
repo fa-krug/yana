@@ -1,6 +1,7 @@
 import BackgroundTasks
 import Foundation
 import SwiftData
+import UIKit
 
 /// Best-effort periodic aggregation via `BGAppRefreshTask`. Registered once at launch,
 /// scheduled at `AppSettings.updateInterval`, and re-scheduled after every run.
@@ -62,15 +63,21 @@ final class BackgroundRefreshManager {
     /// user has opted in, the system authorized it, and the run pulled down at least one new
     /// article summary. A failed sync (e.g. offline, expired pairing) is swallowed here — a
     /// failed background run must never crash the app.
+    ///
+    /// `postsNotification` lets a caller suppress the notification even though every other
+    /// condition is met — used on the Mac to stay silent while the user is looking directly at
+    /// the window (audit U4): a "new articles arrived" system notification is pointless noise
+    /// when the app is already frontmost.
     @MainActor
     static func runRefresh(
         engine: SyncEngine,
         notifier: Notifying = NotificationService(),
-        settings: AppSettings = AppSettings()
+        settings: AppSettings = AppSettings(),
+        postsNotification: Bool = true
     ) async {
         guard let result = try? await engine.sync() else { return }
         let inserted = result.newCount
-        guard settings.notificationsEnabled, inserted > 0 else { return }
+        guard postsNotification, settings.notificationsEnabled, inserted > 0 else { return }
         let authorized = await notifier.isAuthorized()
         guard NewArticleNotification.shouldNotify(
             enabled: settings.notificationsEnabled,
@@ -107,7 +114,10 @@ final class BackgroundRefreshManager {
         Task { @MainActor in
             guard let client = AuthenticatedClient.current() else { return }   // not paired yet
             let engine = SyncEngine(container: container, client: client)
-            await Self.runRefresh(engine: engine)
+            await Self.runRefresh(
+                engine: engine,
+                postsNotification: UIApplication.shared.applicationState != .active
+            )
         }
     }
 
@@ -137,7 +147,14 @@ final class BackgroundRefreshManager {
     /// the app-refresh task keeps lightweight feeds current frequently, while the processing task
     /// is the long window that lets AI-heavy feeds finish their AI pass instead of being dropped.
     func schedule() {
-        guard let seconds = secondsProvider() else { return }
+        guard let seconds = secondsProvider() else {
+            #if targetEnvironment(macCatalyst)
+            // Interval switched to .off while a loop is armed: kill it (audit U4).
+            macRefreshLoop?.cancel()
+            macRefreshLoop = nil
+            #endif
+            return
+        }
         onScheduleAttempt()
         #if targetEnvironment(macCatalyst)
         scheduleMac(seconds: seconds)
@@ -173,7 +190,10 @@ final class BackgroundRefreshManager {
                 guard !Task.isCancelled, let self else { break }
                 guard let client = AuthenticatedClient.current() else { continue }   // not paired yet
                 let engine = SyncEngine(container: self.container, client: client)
-                await Self.runRefresh(engine: engine)
+                await Self.runRefresh(
+                    engine: engine,
+                    postsNotification: UIApplication.shared.applicationState != .active
+                )
             }
         }
     }
