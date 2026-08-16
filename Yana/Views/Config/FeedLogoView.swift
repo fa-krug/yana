@@ -1,20 +1,11 @@
 import SwiftUI
 import UIKit
 
-/// Loads a cached logo image by content hash from an `ImageStore`, fetching it from the server on
-/// a cache miss. Returns nil for a nil/missing hash or unreadable file.
-enum FeedLogo {
-    @MainActor
-    static func image(forHash hash: String?, client: YanaAPIClient, in store: ImageStore = .shared) async -> UIImage? {
-        guard let hash else { return nil }
-        _ = await store.fetchIfNeeded(hash: hash, client: client)
-        let url = await store.fileURL(forHash: hash)
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return UIImage(data: data)
-    }
-}
-
 /// A small rounded feed logo, with a neutral placeholder when no logo is cached yet.
+///
+/// Feed logos go through the same decoded-bitmap cache as article images (`ReaderImageCache`:
+/// off-main decode, downsampling, byte-limited `NSCache`) instead of a per-row main-thread
+/// `Data(contentsOf:)` + `UIImage(data:)` with no cache (audit P8).
 struct FeedLogoView: View {
     let hash: String?
     var size: CGFloat = 28
@@ -36,8 +27,13 @@ struct FeedLogoView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityLabel(Text("Feed logo"))
         .task(id: hash) {
-            guard let client = AuthenticatedClient.current() else { return }
-            image = await FeedLogo.image(forHash: hash, client: client)
+            guard let hash else { image = nil; return }
+            // Sync eagerly mirrors logos, but cover the cache-miss case (fresh install
+            // mid-sync) exactly like before.
+            if let client = AuthenticatedClient.current() {
+                _ = await ImageStore.shared.fetchIfNeeded(hash: hash, client: client)
+            }
+            image = await ReaderImageCache.shared.image(for: "yana-img://\(hash)")
         }
     }
 }
