@@ -30,13 +30,21 @@ struct ArticleListView: View {
     /// results. Both run through the shared tag/feed filter so the list stays a subset of the reader
     /// timeline, and since filtering only removes rows, browsing shows exactly the reader's order —
     /// including the row for the article currently open, which stays put when it is marked read.
-    private var results: [ArticleSummary] {
+    ///
+    /// Cached, not computed (mirrors `MacSidebarView.displayed`, audit P7): `body` re-runs on every
+    /// searchable keystroke and every store publish; the three filter passes only need to re-run
+    /// when one of their real inputs changes.
+    @State private var results: [ArticleSummary] = []
+
+    /// Recomputes the cached `results` from its real inputs. Called from the `onChange`/`onAppear`
+    /// handlers attached to `body`, never from `body` itself.
+    private func recomputeResults() {
         let base = searchResults ?? store.summaries
         let byTag = TagFilter.apply(to: base,
                                     disabledTagNames: settings.disabledTagNames,
                                     includeUntagged: settings.includeUntagged)
         let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        results = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
     private var isFilterActive: Bool { settings.isTimelineFilterActive }
@@ -56,7 +64,6 @@ struct ArticleListView: View {
     }
 
     var body: some View {
-        let results = results
         let isPaired = AuthenticatedClient.current() != nil
         let currentItemID = results.first { isCurrent($0) }?.id
         return ManagedList(
@@ -130,6 +137,13 @@ struct ArticleListView: View {
             debouncedSearch = searchText
         }
         .task(id: debouncedSearch) { await runSearch() }
+        .onAppear { recomputeResults() }
+        .onChange(of: store.summaries) { _, _ in recomputeResults() }
+        .onChange(of: searchResults) { _, _ in recomputeResults() }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeResults() }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeResults() }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeResults() }
+        .onChange(of: settings.starredOnly) { _, _ in recomputeResults() }
         .navigationTitle("Articles")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
