@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(ArticleStore.self) private var store
     @Environment(AppSettings.self) private var settings
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Suppress the first-launch welcome during UI-test / screenshot runs so it never covers the
     /// reader the tests assert against.
@@ -108,6 +109,14 @@ struct ContentView: View {
             if !migrationNoticeWillShow {
                 presentWelcomeIfNeeded()
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // A session revoked while backgrounded (or while this window sat open on the Mac)
+            // must re-prompt on return, not at next relaunch (audit U2).
+            if phase == .active { presentWelcomeIfNeeded() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .yanaSessionInvalidated).receive(on: RunLoop.main)) { _ in
+            presentWelcomeIfNeeded()
         }
     }
 

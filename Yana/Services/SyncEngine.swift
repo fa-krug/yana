@@ -15,6 +15,13 @@ private struct SyncPage: Decodable {
     let resyncRequired: Bool?
 }
 
+extension Notification.Name {
+    /// Posted when a sync discovers the stored device token has been revoked/expired and
+    /// deletes it. ContentView re-runs its re-pairing gate on receipt so the user is prompted
+    /// now, not at the next relaunch (audit U2).
+    static let yanaSessionInvalidated = Notification.Name("yanaSessionInvalidated")
+}
+
 private struct FeedsResponse: Decodable { let feeds: [SyncFeedWire] }
 private struct TagsResponse: Decodable { let tags: [SyncTagWire] }
 enum SyncEngineError: Error, Equatable {
@@ -95,6 +102,7 @@ final class SyncEngine {
             // `ContentView`'s existing re-pairing gate (`AuthenticatedClient.current() == nil`)
             // picks that up on the next app-foreground/launch check -- no new UI needed here.
             KeychainService.deleteDeviceToken()
+            NotificationCenter.default.post(name: .yanaSessionInvalidated, object: nil)
             throw YanaAPIClientError.unauthorized
         }
     }
@@ -270,6 +278,7 @@ final class SyncEngine {
                 // get their chance, and the next sync attempt will fail fast on `syncFeeds()`
                 // once the token is gone.
                 KeychainService.deleteDeviceToken()
+                NotificationCenter.default.post(name: .yanaSessionInvalidated, object: nil)
             } catch {
                 // Leave hasContent == false; picked up again on the next sync pass.
             }
