@@ -225,7 +225,8 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
             return voice
         }
         let recognizer = NLLanguageRecognizer()
-        recognizer.processString(text)
+        // Language detection needs a couple of sentences, not the whole article (audit).
+        recognizer.processString(String(text.prefix(2000)))
         if let code = recognizer.dominantLanguage?.rawValue, let voice = installedVoice(for: code) {
             return voice
         }

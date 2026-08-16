@@ -13,12 +13,22 @@ enum UnreadBadgeUpdater {
     /// counts unread among the result. Split out from `refresh` so it's testable without touching
     /// `UNUserNotificationCenter`.
     static func count(from summaries: [ArticleSummary], settings: AppSettings) -> Int {
-        let byTag = TagFilter.apply(
-            to: summaries, disabledTagNames: settings.disabledTagNames, includeUntagged: settings.includeUntagged
-        )
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        let filtered = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
-        return filtered.filter { !$0.isRead }.count
+        let disabledTags = settings.disabledTagNames
+        let includeUntagged = settings.includeUntagged
+        let disabledFeeds = settings.disabledFeedNames
+        let starredOnly = settings.starredOnly
+        var count = 0
+        for s in summaries where !s.isRead {
+            if starredOnly && !s.isStarred { continue }
+            if !s.feedName.isEmpty && disabledFeeds.contains(s.feedName) { continue }
+            if s.tagNames.isEmpty {
+                if !includeUntagged { continue }
+            } else if !s.tagNames.contains(where: { !disabledTags.contains($0) }) {
+                continue
+            }
+            count += 1
+        }
+        return count
     }
 
     /// Recomputes and pushes the system badge, or clears it when the setting is off.
