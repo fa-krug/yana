@@ -202,10 +202,10 @@ struct MacRootView: View {
                     Button {
                         if let article = model.selectedArticle() { model.openWebsite(article) }
                     } label: {
-                        Label("Open Page", systemImage: "safari").macToolbarIcon()
+                        Label("Open in Browser", systemImage: "safari").macToolbarIcon()
                     }
                     .disabled(model.selectedSummary == nil)
-                    .help(Text("Open Page"))
+                    .help(Text("Open in Browser"))
                 }
 
                 if model.hasServer {

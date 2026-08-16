@@ -240,7 +240,10 @@ final class TimelineModel {
     /// expectation is the system browser, so this opens the URL directly rather than an in-app sheet.
     func openWebsite(_ article: Article) {
         #if canImport(UIKit)
-        guard let url = URL(string: article.url) else { return }
+        // Same guard as iOS (ReaderArticleViewController.openInBrowser): article.url is
+        // server-supplied feed data, so never hand a non-web scheme to LSOpen (audit).
+        guard let url = URL(string: article.url),
+              url.scheme == "http" || url.scheme == "https" else { return }
         UIApplication.shared.open(url)
         #endif
     }

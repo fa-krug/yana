@@ -32,10 +32,13 @@ struct ReaderSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(Text("Text size preview"))
 
+            #if !targetEnvironment(macCatalyst)
+            // The Mac always opens the default browser (TimelineModel.openWebsite), so the toggle would lie there.
             Toggle(isOn: $settings.useSystemBrowser) {
                 Label(String(localized: "Use System Browser"), systemImage: "safari")
                     .labelStyle(.tintedIcon(.indigo))
             }
+            #endif
 
             Picker(selection: $settings.preferredVoiceIdentifier) {
                 Text("Automatic").tag(String?.none)
