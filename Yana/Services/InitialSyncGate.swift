@@ -23,31 +23,39 @@ enum InitialSyncGate {
     /// forever; giving up here does NOT mark the sync complete, so the very next foreground/launch
     /// retries the gate from scratch instead of quietly accepting a partial mirror.
     private static let maxAttempts = 5
-    private static let retryDelay: Duration = .seconds(3)
 
     static func run(
         container: ModelContainer,
         client: YanaAPIClient,
         articleStore: ArticleStore,
         appState: AppState,
-        settings: AppSettings
+        settings: AppSettings,
+        retryDelay: Duration = .seconds(3),
+        syncOnce: (() async throws -> Void)? = nil
     ) async {
+        let sync: () async throws -> Void = syncOnce ?? {
+            _ = try await SyncEngine(container: container, client: client).sync()
+        }
+
         guard !settings.hasCompletedInitialSync else {
-            _ = try? await SyncEngine(container: container, client: client).sync()
+            try? await sync()
             return
         }
 
         appState.isPerformingInitialSync = true
+        appState.initialSyncFailed = false
         var succeeded = false
+        var unauthorized = false
         for attempt in 0..<maxAttempts {
             do {
-                _ = try await SyncEngine(container: container, client: client).sync()
+                try await sync()
                 succeeded = true
                 break
             } catch YanaAPIClientError.unauthorized {
                 // The token was just deleted by `SyncEngine.sync()` itself (session revoked from
                 // another device, or expired) -- retrying with the same now-dead client can only
                 // fail again. Give up; `ContentView`'s re-pairing gate picks this up on its own.
+                unauthorized = true
                 break
             } catch {
                 guard attempt < maxAttempts - 1 else { break }
@@ -61,6 +69,10 @@ enum InitialSyncGate {
             // `refreshNow()` is what actually settles `summaries` before the gate lifts.
             await articleStore.refreshNow()
             settings.hasCompletedInitialSync = true
+        } else if !unauthorized {
+            // Unauthorized routes through the re-pairing gate instead (Task 16); everything else
+            // is "couldn't reach the server" and gets an explicit retry state (audit U3).
+            appState.initialSyncFailed = true
         }
         appState.isPerformingInitialSync = false
     }

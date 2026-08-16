@@ -130,7 +130,11 @@ struct MacRootView: View {
     }
 
     @ViewBuilder private var detail: some View {
-        if model.filteredArticles.isEmpty {
+        if appState.isPerformingInitialSync {
+            InitialSyncLoadingView()
+        } else if appState.initialSyncFailed, !settings.hasCompletedInitialSync {
+            InitialSyncFailedView { retryInitialSync() }
+        } else if model.filteredArticles.isEmpty {
             MacEmptyLibraryView(
                 isPaired: AuthenticatedClient.current() != nil,
                 onCreateFeed: { showingCreateFeed = true },
@@ -287,6 +291,18 @@ struct MacRootView: View {
     private var restoredSidebarWidth: CGFloat {
         let stored = CGFloat(settings.macSidebarWidth)
         return stored > 0 ? SidebarWidth.clamp(stored) : SidebarWidth.ideal
+    }
+
+    /// Retries the blocking first-sync gate after `InitialSyncFailedView`'s "Try Again" button.
+    private func retryInitialSync() {
+        guard let client = AuthenticatedClient.current() else { return }
+        appState.initialSyncFailed = false
+        Task {
+            await InitialSyncGate.run(
+                container: AppContainer.shared, client: client,
+                articleStore: store, appState: appState, settings: settings
+            )
+        }
     }
 
     /// Start narrating the selected article when idle; otherwise pause/resume. Speech is owned at the

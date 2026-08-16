@@ -42,6 +42,8 @@ struct ContentView: View {
                 MacRootView(appState: appState, settings: settings)
             } else if appState.isPerformingInitialSync {
                 InitialSyncLoadingView()
+            } else if appState.initialSyncFailed, !settings.hasCompletedInitialSync {
+                InitialSyncFailedView { retryInitialSync() }
             } else {
                 ReaderScreen(appState: appState)
             }
@@ -155,6 +157,20 @@ struct ContentView: View {
             openWindow(id: WindowID.welcome, value: true)
         } else {
             appState.showWelcome = true
+        }
+    }
+
+    /// Retries the blocking first-sync gate after `InitialSyncFailedView`'s "Try Again" button.
+    /// No-ops if the device isn't actually paired (shouldn't happen -- this state is only reachable
+    /// after a successful pairing -- but matches every other call site's nil-client handling).
+    private func retryInitialSync() {
+        guard let client = AuthenticatedClient.current() else { return }
+        appState.initialSyncFailed = false
+        Task {
+            await InitialSyncGate.run(
+                container: AppContainer.shared, client: client,
+                articleStore: store, appState: appState, settings: settings
+            )
         }
     }
 }

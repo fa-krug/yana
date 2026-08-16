@@ -21,4 +21,8 @@ final class AppState {
     /// reader behind `InitialSyncLoadingView` -- see `InitialSyncGate`. Never true again once
     /// `AppSettings.hasCompletedInitialSync` is set.
     var isPerformingInitialSync = false
+    /// True when the device's very first sync exhausted its retries without completing --
+    /// drives the "couldn't reach your server" state with a Retry (audit U3). Cleared when a
+    /// retry starts. Meaningless once `hasCompletedInitialSync` is set.
+    var initialSyncFailed = false
 }

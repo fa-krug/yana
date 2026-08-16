@@ -4549,6 +4549,26 @@
         }
       }
     },
+    "Couldn't Reach Your Server": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server nicht erreichbar"
+          }
+        }
+      }
+    },
+    "Pairing succeeded, but your articles couldn't be loaded. Check your connection and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Kopplung war erfolgreich, aber die Artikel konnten nicht geladen werden. Bitte die Verbindung prüfen und es erneut versuchen."
+          }
+        }
+      }
+    },
     "The server returned an error.": {
       "localizations": {
         "de": {
