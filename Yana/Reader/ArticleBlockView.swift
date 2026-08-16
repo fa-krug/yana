@@ -683,7 +683,11 @@ private struct RefreshableIfAvailable: ViewModifier {
         if let onRefresh {
             content.refreshable {
                 onRefresh()
+                // Let restart() actually begin before sampling isUpdating...
                 try? await Task.sleep(nanoseconds: 400_000_000)
+                // ...then keep the system spinner up until the run really finishes, instead
+                // of lying with a fixed 400ms dismissal while the poll runs ~30s (audit U5).
+                await UpdateActivity.shared.waitUntilIdle()
             }
         } else {
             content

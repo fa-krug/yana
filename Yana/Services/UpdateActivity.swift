@@ -52,4 +52,14 @@ final class UpdateActivity {
     /// Cancel the current update, if any. The operation unwinds on its next
     /// `Task.isCancelled` check and `run`'s `defer` rebalances the in-flight count.
     func cancel() { current?.cancel() }
+
+    /// Await the end of the current update burst, bounded. Polling (not a continuation chain)
+    /// keeps this trivially correct against restart()'s cancel-and-replace behavior; the poll is
+    /// coarse because its only consumer is the pull-to-refresh gesture spinner (audit U5).
+    func waitUntilIdle(pollInterval: Duration = .milliseconds(200), timeout: Duration = .seconds(35)) async {
+        let deadline = ContinuousClock.now + timeout
+        while isUpdating, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: pollInterval)
+        }
+    }
 }

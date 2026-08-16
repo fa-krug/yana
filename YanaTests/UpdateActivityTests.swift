@@ -76,4 +76,19 @@ struct UpdateActivityTests {
         await task.value
         #expect(activity.isUpdating == false)
     }
+
+    @Test func waitUntilIdleReturnsImmediatelyWhenIdle() async {
+        let activity = UpdateActivity()
+        let start = ContinuousClock.now
+        await activity.waitUntilIdle(pollInterval: .milliseconds(10), timeout: .seconds(1))
+        #expect(ContinuousClock.now - start < .milliseconds(500))
+    }
+
+    @Test func waitUntilIdleOutlivesARunningUpdate() async {
+        let activity = UpdateActivity()
+        let task = activity.restart { try? await Task.sleep(for: .milliseconds(100)) }
+        await activity.waitUntilIdle(pollInterval: .milliseconds(10), timeout: .seconds(2))
+        #expect(!activity.isUpdating)
+        _ = await task.value
+    }
 }
