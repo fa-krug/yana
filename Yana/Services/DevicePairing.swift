@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Foundation
 
 /// The in-memory state for one pairing attempt. Never persisted — a server-minted state would
@@ -49,5 +50,28 @@ enum DevicePairing {
         }
         guard echoedState == session.state else { return .stateMismatch }
         return .success(token: token)
+    }
+}
+
+enum PairingFailure: Equatable { case cancelled, sessionFailed, stateMismatch, malformedCallback }
+enum PairingOutcome: Equatable { case paired(token: String), failed(PairingFailure) }
+
+extension DevicePairing {
+    /// Pure classification of an ASWebAuthenticationSession completion, so the four genuinely
+    /// different failure modes (user cancel, session/transport failure, anti-forgery state
+    /// mismatch, malformed callback) stop collapsing into one silent "cancelled" (audit U1).
+    static func classify(callbackURL: URL?, error: (any Error)?, session: DevicePairingSession) -> PairingOutcome {
+        if let error {
+            if let authError = error as? ASWebAuthenticationSessionError, authError.code == .canceledLogin {
+                return .failed(.cancelled)
+            }
+            return .failed(.sessionFailed)
+        }
+        guard let callbackURL else { return .failed(.cancelled) }
+        switch handleCallback(callbackURL, session: session) {
+        case .success(let token): return .paired(token: token)
+        case .stateMismatch: return .failed(.stateMismatch)
+        case .malformedCallback: return .failed(.malformedCallback)
+        }
     }
 }

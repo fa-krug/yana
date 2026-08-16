@@ -20,6 +20,7 @@ struct DevicePairingView: View {
     let serverBaseURL: URL
     let onPaired: (String) -> Void
     let onCancel: () -> Void
+    let onFailed: (PairingFailure) -> Void
 
     @State private var coordinator = DevicePairingCoordinator()
 
@@ -28,9 +29,17 @@ struct DevicePairingView: View {
         // nothing of our own to show underneath it.
         Color.clear
             .onAppear {
-                coordinator.start(serverBaseURL: serverBaseURL, onPaired: onPaired, onCancel: onCancel)
+                coordinator.start(serverBaseURL: serverBaseURL, onPaired: onPaired, onCancel: onCancel, onFailed: onFailed)
             }
     }
+}
+
+/// Carries the ASWebAuthenticationSession completion across the ObjC main-thread hop —
+/// `perform(_:on:with:)` takes a single object, and we need both the URL and the error.
+private final class PairingCallbackBox: NSObject {
+    let url: URL?
+    let error: (any Error)?
+    init(url: URL?, error: (any Error)?) { self.url = url; self.error = error }
 }
 
 @MainActor
@@ -39,12 +48,19 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
     private var pairingSession: DevicePairingSession?
     private var onPaired: ((String) -> Void)?
     private var onCancel: (() -> Void)?
+    private var onFailed: ((PairingFailure) -> Void)?
 
-    func start(serverBaseURL: URL, onPaired: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+    func start(
+        serverBaseURL: URL,
+        onPaired: @escaping (String) -> Void,
+        onCancel: @escaping () -> Void,
+        onFailed: @escaping (PairingFailure) -> Void
+    ) {
         let pairingSession = DevicePairing.makeSession()
         self.pairingSession = pairingSession
         self.onPaired = onPaired
         self.onCancel = onCancel
+        self.onFailed = onFailed
 
         let deviceName = UIDevice.current.name
         let url = DevicePairing.pairingURL(serverBaseURL: serverBaseURL, session: pairingSession, deviceName: deviceName)
@@ -81,30 +97,34 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
     // main thread's run loop, which (unlike a Swift `Task`/`DispatchQueue` hop from here) needs
     // no Swift Concurrency executor check on the way, so it can't hit the same trap.
     nonisolated private func handleAuthCallback(_ callbackURL: URL?, _ error: (any Error)?) {
-        perform(#selector(finishFromCallback(_:)), on: Thread.main, with: callbackURL, waitUntilDone: false)
+        perform(#selector(finishFromCallback(_:)), on: Thread.main,
+                with: PairingCallbackBox(url: callbackURL, error: error), waitUntilDone: false)
     }
 
     // `@objc` target for the `perform(_:on:with:waitUntilDone:)` hop above — `perform` passes
-    // its `with:` argument as a plain `Any?`, so this just re-narrows it back to `URL?` before
-    // forwarding to the real (isolated) handler.
-    @objc private func finishFromCallback(_ callbackURL: Any?) {
-        finish(callbackURL: callbackURL as? URL)
+    // its `with:` argument as a plain `Any?`, so this just re-narrows it back to `PairingCallbackBox`
+    // before forwarding both the URL and the error to the real (isolated) handler.
+    @objc private func finishFromCallback(_ box: Any?) {
+        let box = box as? PairingCallbackBox
+        finish(callbackURL: box?.url, error: box?.error)
     }
 
-    private func finish(callbackURL: URL?) {
+    private func finish(callbackURL: URL?, error: (any Error)?) {
         session = nil
         // `pairingSession` alone is the "has start() been called" gate -- it's set together with
         // (and never outlives) the local `serverBaseURL` `start()` used to build the pairing URL,
         // so there's no separate value from that URL still needed here.
-        guard let callbackURL, let pairingSession else {
+        guard let pairingSession else {
             onCancel?()
             return
         }
-        switch DevicePairing.handleCallback(callbackURL, session: pairingSession) {
-        case .success(let token):
+        switch DevicePairing.classify(callbackURL: callbackURL, error: error, session: pairingSession) {
+        case .paired(let token):
             onPaired?(token)
-        case .stateMismatch, .malformedCallback:
+        case .failed(.cancelled):
             onCancel?()
+        case .failed(let failure):
+            onFailed?(failure)
         }
     }
 

@@ -40,6 +40,7 @@ struct OnboardingServerPage: View {
     /// longer points at.
     @State private var pairedURLText: String?
     @State private var isPairing = false
+    @State private var pairingFailure: PairingFailure?
     @FocusState private var isURLFieldFocused: Bool
 
     var body: some View {
@@ -63,6 +64,7 @@ struct OnboardingServerPage: View {
             state.performPrimaryAction = primaryAction
         }
         .onChange(of: serverURLText) { _, newValue in
+            pairingFailure = nil
             if let pairedURLText, newValue != pairedURLText {
                 state.isPaired = false
                 self.pairedURLText = nil
@@ -97,7 +99,11 @@ struct OnboardingServerPage: View {
                             onPaired()
                         }
                     },
-                    onCancel: { isPairing = false }
+                    onCancel: { isPairing = false },
+                    onFailed: { failure in
+                        isPairing = false
+                        pairingFailure = failure
+                    }
                 )
             }
         }
@@ -163,6 +169,12 @@ struct OnboardingServerPage: View {
                             .disabled(validatedServerURL == nil)
                     }
                 }
+                if let pairingFailure {
+                    Text(Self.failureMessage(pairingFailure))
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 4)
+                }
                 if isOnboardingFlow, !state.isPaired {
                     Text("You'll see demo content until you pair a server. Pair anytime from Settings.")
                         .font(.footnote)
@@ -202,7 +214,21 @@ struct OnboardingServerPage: View {
     /// doesn't require reaching for the mouse/trackpad after typing the address.
     private func signIn() {
         guard validatedServerURL != nil else { return }
+        pairingFailure = nil
         isPairing = true
+    }
+
+    /// User-facing copy for a genuine pairing failure (`.cancelled` never reaches here — it
+    /// routes to `onCancel` and shows nothing, matching a user-initiated dismissal).
+    static func failureMessage(_ failure: PairingFailure) -> String {
+        switch failure {
+        case .cancelled:
+            return ""
+        case .sessionFailed:
+            return String(localized: "Sign-in didn't complete. Check that the address points to a running Yana Server and try again.")
+        case .stateMismatch, .malformedCallback:
+            return String(localized: "The server's response could not be verified. Please try signing in again.")
+        }
     }
 
     /// While paired, this IS "Done" for the server-setup step: wipe whatever was mirrored before

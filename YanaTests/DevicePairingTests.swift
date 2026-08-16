@@ -1,9 +1,36 @@
+import AuthenticationServices
 import Foundation
 import Testing
 @testable import Yana
 
 @Suite("DevicePairing")
 struct DevicePairingTests {
+    var session: DevicePairingSession { DevicePairingSession(state: "abc-123") }
+
+    @Test func classifyMapsCancelToCancelled() {
+        let err = ASWebAuthenticationSessionError(.canceledLogin)
+        #expect(DevicePairing.classify(callbackURL: nil, error: err, session: session) == .failed(.cancelled))
+    }
+
+    @Test func classifyMapsOtherErrorsToSessionFailed() {
+        struct Boom: Error {}
+        #expect(DevicePairing.classify(callbackURL: nil, error: Boom(), session: session) == .failed(.sessionFailed))
+    }
+
+    @Test func classifyMapsNilURLNoErrorToCancelled() {
+        #expect(DevicePairing.classify(callbackURL: nil, error: nil, session: session) == .failed(.cancelled))
+    }
+
+    @Test func classifyForwardsStateMismatch() {
+        let url = URL(string: "yana://auth-callback?token=t&state=WRONG")!
+        #expect(DevicePairing.classify(callbackURL: url, error: nil, session: session) == .failed(.stateMismatch))
+    }
+
+    @Test func classifyForwardsSuccess() {
+        let url = URL(string: "yana://auth-callback?token=tok&state=\(session.state)")!
+        #expect(DevicePairing.classify(callbackURL: url, error: nil, session: session) == .paired(token: "tok"))
+    }
+
     @Test func pairingURLCarriesStateSchemeAndDeviceName() {
         let session = DevicePairingSession(state: "abc-123")
         let url = DevicePairing.pairingURL(
