@@ -37,16 +37,14 @@ struct YanaCommands: Commands {
                 .keyboardShortcut(",", modifiers: .command)
         }
 
-        CommandGroup(replacing: .textEditing) {
-            Button("Find") { model?.requestSearchFocus() }
-                .keyboardShortcut("f", modifiers: .command)
-                .disabled(model == nil)
-        }
-
         CommandMenu("Article") {
             Button("Update all") { model?.triggerRefresh() }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(model == nil || model?.hasServer != true)
+
+            Button("Find") { model?.requestSearchFocus() }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(model == nil)
 
             Divider()
 
