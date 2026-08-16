@@ -70,6 +70,14 @@ struct TimelineFilteringTests {
         #expect(summary.filterRead == summary.isRead)
     }
 
+    @Test func emptyFilterReturnsAllItemsIncludingUntagged() throws {
+        let context = try makeContext()
+        let tagged = article("a", tagIDs: [], in: context)
+        let untagged = article("b", tagIDs: [], in: context)
+        let out = TagFilter.apply(to: [tagged, untagged], disabledTagNames: [], includeUntagged: true)
+        #expect(out.count == 2)
+    }
+
     @Test func anchorResolvesToIndexOrNewest() throws {
         let context = try makeContext()
         let a = article("a", tagIDs: [], in: context)

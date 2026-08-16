@@ -8,13 +8,13 @@ struct TimelineBootstrapTests {
         let date: Date
         let createdAt: Date
         let serverID: Int?
-        let filterTagNames: [String]
+        let filterTagNames: Set<String>
         let filterFeedName: String?
         let filterStarred: Bool
         let filterRead: Bool
         init(_ id: String, tags: [String] = ["t"], feed: String? = "f", starred: Bool = false, read: Bool = false) {
             identifier = id; date = Date(timeIntervalSince1970: 0); createdAt = Date(timeIntervalSince1970: 0)
-            serverID = nil; filterTagNames = tags; filterFeedName = feed; filterStarred = starred; filterRead = read
+            serverID = nil; filterTagNames = Set(tags); filterFeedName = feed; filterStarred = starred; filterRead = read
         }
     }
 

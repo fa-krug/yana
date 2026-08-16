@@ -4,7 +4,7 @@ import SwiftData
 /// Items the timeline filters operate on. Both the full `Article` and the lightweight
 /// `ArticleSummary` conform, so the same filter pipeline serves the reader and the list.
 protocol TimelineFilterable {
-    var filterTagNames: [String] { get }
+    var filterTagNames: Set<String> { get }
     var filterFeedName: String? { get }
     var filterStarred: Bool { get }
     var filterRead: Bool { get }
@@ -43,7 +43,7 @@ extension Article: TimelineFilterable {
     /// index build); this conformance exists for API completeness and direct-`Article` tests, so
     /// a per-call fetch here -- rather than plumbing a lookup map through a parameterless
     /// protocol requirement -- is an acceptable, deliberately un-optimized trade.
-    var filterTagNames: [String] {
+    var filterTagNames: Set<String> {
         guard let tagIDs = feed?.tagIDs, !tagIDs.isEmpty else { return [] }
         guard let context = modelContext else { return [] }
         let tags = (try? context.fetch(FetchDescriptor<Tag>())) ?? []
@@ -52,7 +52,7 @@ extension Article: TimelineFilterable {
             guard let serverID = tag.serverID else { continue }
             namesByID[serverID] = tag.name
         }
-        return tagIDs.compactMap { namesByID[$0] }
+        return Set(tagIDs.compactMap { namesByID[$0] })
     }
     var filterFeedName: String? { feed?.name }
     var filterStarred: Bool { starred }
@@ -62,7 +62,7 @@ extension Article: TimelineFilterable {
 extension Article: TimelineIdentifiable {}
 
 extension ArticleSummary: TimelineFilterable {
-    var filterTagNames: [String] { Array(tagNames) }
+    var filterTagNames: Set<String> { tagNames }
     var filterFeedName: String? { feedName.isEmpty ? nil : feedName }
     var filterStarred: Bool { isStarred }
     var filterRead: Bool { isRead }
@@ -77,7 +77,9 @@ enum TagFilter {
     static func apply<T: TimelineFilterable>(
         to items: [T], disabledTagNames: Set<String>, includeUntagged: Bool
     ) -> [T] {
-        items.filter { item in
+        // Nothing disabled and untagged shown: the filter can't remove anything (audit P6).
+        guard !disabledTagNames.isEmpty || !includeUntagged else { return items }
+        return items.filter { item in
             let names = item.filterTagNames
             if names.isEmpty { return includeUntagged }
             return names.contains { !disabledTagNames.contains($0) }
