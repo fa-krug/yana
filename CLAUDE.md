@@ -234,10 +234,26 @@ source and issue board live at
   token is stored via `KeychainService.saveDeviceToken` — the Keychain service is now just
   `saveDeviceToken`/`loadDeviceToken`/`deleteDeviceToken` over one key, written with
   `kSecAttrSynchronizable: false` (device-local; no more per-provider API keys, no more iCloud
-  Keychain sync). `AuthenticatedClient.current()` resolves the app's current `YanaAPIClient?` from
-  `AppSettings.serverBaseURL` + the stored token; `nil` means "not paired yet" and every call site
-  (the launch-time sync, `BackgroundRefreshManager`, the reader's action handlers) treats that as
-  "nothing to do," not an error.
+  Keychain sync). `loadDeviceToken` keeps a one-slot, lock-protected in-memory cache
+  (`OSAllocatedUnfairLock<String??>`) rather than hitting `SecItemCopyMatching` on every call — the
+  Keychain round-trip was showing up per-row in `SyncEngine.backfillMissingContent`'s bounded task
+  group, which calls `AuthenticatedClient.current()` (and thus this) once per article. The triple-
+  optional distinguishes "never read" (`.none`) from "read and confirmed absent" (`.some(nil)`) so a
+  genuinely-unpaired device doesn't keep re-querying Keychain either; `saveDeviceToken`/
+  `deleteDeviceToken` update the cache in lockstep. `AuthenticatedClient.current()` resolves the
+  app's current `YanaAPIClient?` from `AppSettings.serverBaseURL` + the stored token; `nil` means
+  "not paired yet" and every call site (the launch-time sync, `BackgroundRefreshManager`, the
+  reader's action handlers) treats that as "nothing to do," not an error. `DevicePairing.classify`
+  (`Yana/Services/DevicePairing.swift`) turns an `ASWebAuthenticationSession` completion into a
+  `PairingOutcome` distinguishing four previously-collapsed-into-one-silent-"cancelled" failure
+  modes — user cancel, session/transport failure, anti-forgery state mismatch, and a malformed
+  callback (`PairingFailure`) — so `DevicePairingView` can show a failure reason instead of quietly
+  doing nothing (audit U1). Separately, `SyncEngine.sync()` posts `.yanaSessionInvalidated`
+  whenever it detects the stored token has been revoked/expired (a `YanaAPIClientError.unauthorized`
+  from either the top-level sync or the content backfill loop) and deletes it; `ContentView` observes
+  that notification and re-runs its re-pairing gate immediately rather than waiting for the next
+  app-foreground/launch check, so a session revoked from another device prompts re-pairing right
+  away (audit U2).
 - **Sync** (`Yana/Services/SyncEngine.swift`, `Yana/Services/SyncWriter.swift`): the orchestrator +
   write-path pair that replaced `AggregationService`/`AggregationWriter` and the entire
   `Yana/Aggregators/` tree (deleted wholesale — no more `AggregatorType`, `AggregatorOptions`,
@@ -268,7 +284,12 @@ source and issue board live at
   logo hash) and deletes whatever's left — so an image whose last referencing article is gone
   (`applyRemovals`'s explicit list, a feed's cascade-delete in `replaceFeeds`, or a local
   swipe-to-delete since the last sync) doesn't linger on disk forever; this is pure local disk I/O,
-  so it runs even when the rest of the pass was offline/degraded. `SyncWriter` (`@ModelActor`) does the actual `ModelContext`
+  so it runs even when the rest of the pass was offline/degraded. This pass is gated, not
+  unconditional: decoding every local article body to compute `referencedImageHashes` isn't free, so
+  `performSync` only runs it when the pass could plausibly have orphaned something — a server-side
+  removal actually deleted a row, a feed disappeared, or `AppSettings.imagePruneNeeded` was set by a
+  local swipe-to-delete (`ArticleListView`) or a Mac sidebar delete (`TimelineModel`) since the last
+  sync; the flag is cleared right after the prune runs. `SyncWriter` (`@ModelActor`) does the actual `ModelContext`
   writes: `upsertSummaries` matches by `Article.serverID`, and never re-stamps `Article.date` (the
   original article date, what the timeline shows and sorts by) or `createdAt` on update — an
   article's timeline position never jumps on re-fetch, matching the server's own treatment of a
@@ -305,7 +326,11 @@ source and issue board live at
   local flag and save immediately, then fire the PATCH; on failure the change is enqueued into
   `PendingWriteQueue` (backed by `AppSettings.pendingWrites`) instead of being rolled back, and
   `SyncEngine.sync()` retries every queued write opportunistically before its normal pull. Both stay
-  silently local-only when not paired.
+  silently local-only when not paired. `ArticleWrites.markRead` is now a thin wrapper over the more
+  general `ArticleWrites.setRead(_:read:...)`, which also backs the reader/list's manual Mark as
+  Read/Unread controls (there was previously no supported way to mark an already-read article back
+  to unread); both no-op when the article already matches the target `read` value, so re-displaying
+  an already-read page (e.g. swiping back over it) never fires a redundant PATCH.
 - **Images** (`Yana/Services/ImageStore.swift`, `Yana/Views/Config/FeedLogoView.swift`,
   `Yana/Services/ArticleHeaderLogo.swift`): `ImageStore` is a disk cache keyed by content hash,
   fetching `GET /api/v1/images/:hash` on cache miss and writing the raw bytes verbatim under that
@@ -409,13 +434,25 @@ source and issue board live at
   reader on (or briefly render) a completely unrelated article.
 - **Background refresh** (`Yana/Services/BackgroundRefreshManager.swift`): best-effort periodic
   `BGAppRefreshTask` + `BGProcessingTask`, registered at launch, rescheduled from the per-device
-  `AppSettings.updateInterval` (`UpdateInterval` enum). `runRefresh` now calls
+  `AppSettings.updateInterval` (`UpdateInterval` enum). `runRefresh` calls
   `SyncEngine.sync()` directly (in place of the old `AggregationService.updateAll()`) and posts a
   new-article notification via `NotificationService`/`NewArticleNotification` when enabled, the
   system authorized it, and the sync pulled down at least one new article summary — otherwise
-  silent, matching the old behavior. On Mac Catalyst (no `BGTaskScheduler`), a repeating in-process
-  `Task` loop plus a launch/window-focus `runNow()` cover the same ground, since the desktop model is
-  "the app tends to stay open" rather than woken by the system.
+  silent, matching the old behavior. On Mac Catalyst (no `BGTaskScheduler`), a cancellable
+  repeating in-process `Task` loop (`scheduleMac`) drives periodic updates while the app is running
+  instead. That loop is re-armed, not just armed once at launch (audit U4): `YanaApp.swift`'s
+  `.onChange(of: appSettings.updateInterval)` calls `AppDelegate.rearmBackgroundRefresh()` →
+  `BackgroundRefreshManager.schedule()`, which cancels and restarts `macRefreshLoop` at the new
+  interval, and switching the interval to `.off` takes the `guard secondsProvider() != nil else`
+  branch, which cancels the loop outright instead of leaving a stale one running against an
+  abandoned setting. Returning to the foreground also triggers an out-of-band run: `scenePhase`
+  going `.active` calls `AppDelegate.refreshOnFocus()` → `runNow()`, so a user who left the app
+  backgrounded for a while sees fresh content immediately rather than waiting for the loop's own
+  tick. Both `runNow()` and the loop's per-tick `runRefresh` call pass
+  `postsNotification: UIApplication.shared.applicationState != .active`, so a foreground-triggered
+  run (focus, launch) never fires a "new articles arrived" system notification while the user is
+  already looking at the window — that noise is reserved for runs that actually happened while
+  backgrounded.
 - **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView) — **unaffected by this
   rework's networking changes**. Article bodies are stored as a closed, typed `[Block]` model
   (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled
@@ -491,13 +528,42 @@ source and issue board live at
   `Yana/Views/Onboarding/OnboardingServerPage.swift`, `Yana/Views/Onboarding/OnboardingAIModePage.swift`):
   `WelcomeView` is now a 3-step paged coordinator — `.welcome` (feature highlights), `.server`
   (`OnboardingServerPage`: enter a server URL, then pair via a `DevicePairingView` sheet — the same
-  flow Settings uses to re-pair), `.aiMode` (`OnboardingAIModePage`, just embedding
-  `AIModeSettingsSection`). Finishing kicks off a first foreground `SyncEngine.sync()`.
+  flow Settings uses to re-pair), `.aiMode` (`OnboardingAIModePage`). `OnboardingAIModePage` is
+  deliberately its own small implementation rather than reusing `AIModeSettingsSection` verbatim:
+  that component is a `Section`, built to live inside a `Form`/`List`, which always expands to fill
+  whatever height it's given — wrapping it in a `Form` here would leave the same "sparse content,
+  huge dead space below it" problem `OnboardingServerPage` had, so this page mirrors that page's
+  content-sized, card-styled, centered layout instead, keeping every onboarding step visually
+  consistent. Finishing kicks off a first foreground `SyncEngine.sync()`.
   `ContentView`'s `.onAppear` gate now covers two cases, not one: a device that never completed
   onboarding starts at `.welcome`; a device that **did** complete onboarding but currently has no
   valid session (`AuthenticatedClient.current() == nil` — pairing revoked from another device, or the
   Keychain was cleared) re-enters `WelcomeView` starting at `.server` instead of restarting from
   `.welcome`.
+- **First-sync gate and pairing transitions** (`Yana/Services/InitialSyncGate.swift`,
+  `Yana/Services/PairingSync.swift`, `Yana/Services/ServerDisconnect.swift`,
+  `Yana/Views/InitialSyncLoadingView.swift`, `Yana/Views/InitialSyncFailedView.swift`):
+  `InitialSyncGate.run` blocks the reader behind `InitialSyncLoadingView` for a device's very first
+  sync after pairing, because the timeline sorts by the article's original date rather than import
+  order — a large historical backfill landing in ~200-article pages can insert new unread articles
+  anywhere in the currently-visible range, which made swiping through the timeline jump to unrelated
+  articles while pages were still trickling in. It retries the first `SyncEngine.sync()` call up to
+  `maxAttempts` (5, with a `retryDelay` between tries) since a transient failure partway through must
+  not be mistaken for done — that used to leave older pages to arrive later via the ordinary
+  background path with no gate left to catch them. A `YanaAPIClientError.unauthorized` during those
+  retries gives up immediately without setting the failure state (the token is already dead;
+  `ContentView`'s re-pairing gate picks it up on its own), while every other exhausted attempt sets
+  `AppState.initialSyncFailed = true` so the reader shows `InitialSyncFailedView`'s "Try Again"
+  action instead of silently rendering the empty-library "add your first feed" state against a
+  server that actually has content (audit U3). `run` takes an optional `syncOnce` closure as a test
+  seam, defaulting to a real `SyncEngine(container:client:).sync()` call. `PairingSync
+  .resetAndFullSync` wipes the local mirror and re-runs this gate's blocking branch whenever a
+  (re-)pairing hands the app a fresh Bearer token — shared by onboarding's "Continue" and Settings'
+  "change server" flow, since either could point at a different server than whatever was already
+  mirrored locally. `ServerDisconnect.disconnect` mirrors that transition in reverse: deletes the
+  stored token, clears the server address, wipes the mirror, and falls back into the same
+  demo-content mode `OnboardingServerPage`'s "Skip for now" offers, clearing `hasCompletedInitialSync`
+  too so a later re-pair goes through the loading screen again instead of silently skipping it.
 - **Mac Catalyst windowing** (`Yana/Reader/Mac/`): structurally unchanged by this rework — `MacRootView`
   is still a permanent two-column `NavigationSplitView` (article-list sidebar + reader detail), with
   Welcome/Settings/the pre-server-migration notice as separate singleton `WindowGroup`s
@@ -510,7 +576,7 @@ source and issue board live at
   `FeedEditorView`/`WindowID.feedEditor`. Everything else — the Mail-style two-pane keyboard focus
   model (`MacFocusPane`), the sidebar's programmatic-scroll-follow (`SidebarScrollRequest`,
   `.scrollPosition(id:anchor:)`), the remembered sidebar width (`AppSettings.macSidebarWidth`,
-  `SidebarWidth`), and the `MacToolbarStyle`/`MacFormStyle` chrome-convention helpers — is unaffected
+  `SidebarWidth`), and the `MacToolbarStyle` chrome-convention helper — is unaffected
   and still applies exactly as before.
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
@@ -627,7 +693,12 @@ source and issue board live at
   legacy-HTML passes: suites that only exercised orphaned helpers — `CredentialTesterTests`,
   `NameSearchTests`, `ArticleSearchTests`, `CrossFadeTests`, `UpdateProgressTests`,
   `ArticleHeaderLogoTests` — plus `BlockParserTests`/`GiphyBlockReproTests`, which covered the
-  deleted HTML→blocks parser, went with the code they tested.)
+  deleted HTML→blocks parser, went with the code they tested.) The audit-fix batch since then added
+  further coverage in existing and new suites — `InitialSyncGateTests` (the retry/give-up state
+  machine and its `syncOnce` seam), `ArticleWritesTests` (`setRead`'s no-op-when-unchanged and
+  queue-on-failure behavior), `DevicePairingTests` (`classify`'s four failure modes), and
+  `BackgroundRefreshManagerTests` (the Mac loop's re-arm/cancel-on-`.off` behavior) among them —
+  without changing the overall suite count.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap
@@ -646,11 +717,10 @@ source and issue board live at
   tests using XCTest. The iPhone-side identifier lookups (`"settings.manage"`, `"settings.aiSection"`)
   were fixed to match the server-API client rework and the full iOS Simulator suite passes, including
   `ScreenshotUITests.testCaptureScreenshots` and `YanaUITests.testSettingsRestoreShowsWelcomeAgain`.
-  **Still-open, out-of-scope-for-this-plan area:** `MacScreenshotUITests.swift` still selects the
-  Settings sidebar pane by the old raw value `"feeds"` (`mac.settings.pane.feeds`), but
-  `SettingsPane` (`Yana/Reader/Mac/WindowID.swift`) no longer has a `.feeds` case — the pane set is
-  now `general/reader/manage/ai/about`. Mac Catalyst tests aren't part of the iOS Simulator
-  `xcodebuild test` run above, so this doesn't show up there.
+  `MacScreenshotUITests.swift` selects the Settings sidebar pane by its current raw values
+  (`general/reader/manage/ai/about`, matching `SettingsPane` in `Yana/Reader/Mac/WindowID.swift`) —
+  the stale `"feeds"` lookup this used to carry was fixed. Mac Catalyst tests aren't part of the iOS
+  Simulator `xcodebuild test` run above, so this suite is verified separately.
 - Run tests: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
 - All tests use `@MainActor` for safe concurrency
 - **UI-test isolation:** XCTest reuses **one** simulator app container across test classes and runs
