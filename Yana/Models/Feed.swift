@@ -3,6 +3,8 @@ import SwiftData
 
 @Model
 final class Feed {
+    // `SyncWriter` looks feeds up by `identifier` once per upsert batch and per /feeds replace.
+    #Index<Feed>([\.identifier])
     var name: String = ""
     var identifier: String = ""
     var logoImageHash: String?

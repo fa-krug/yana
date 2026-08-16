@@ -48,6 +48,12 @@ actor SyncWriter {
     @discardableResult
     func upsertSummaries(_ summaries: [SyncArticleSummaryWire]) -> [PersistentIdentifier] {
         var touched: [PersistentIdentifier] = []
+        // One fetch for the whole page instead of one unindexed fetch per summary (audit P5).
+        // The /feeds table is small (unpaginated server snapshot), so fetching it whole is cheap.
+        var feedsByIdentifier: [String: Feed] = [:]
+        if let feeds = try? modelContext.fetch(FetchDescriptor<Feed>()) {
+            for feed in feeds { feedsByIdentifier[feed.identifier] = feed }
+        }
         for summary in summaries {
             // Both values are precomputed as plain local `let`s -- matching the pattern
             // `FeedsView.refreshArticleCounts()` already uses (`let id = feed.persistentModelID`
@@ -60,13 +66,12 @@ actor SyncWriter {
             // a `StandardPredicateExpression`) -- same pattern `replaceFeeds` below uses for
             // `idString`.
             let targetServerID = summary.id
-            let existingDescriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == targetServerID })
-            let feedIdString = summary.feedId.description
-            let feedDescriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.identifier == feedIdString })
+            var existingDescriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == targetServerID })
+            existingDescriptor.fetchLimit = 1
             // Feeds are looked up by their own serverID equivalent -- see `replaceFeeds` below,
             // which stores the server feed id into `Feed.identifier` verbatim (feeds have no
             // separate natural identifier client-side any more; the server's id *is* the identity).
-            let feed = try? modelContext.fetch(feedDescriptor).first
+            let feed = feedsByIdentifier[summary.feedId.description]
 
             if let article = try? modelContext.fetch(existingDescriptor).first {
                 article.title = summary.name
@@ -112,7 +117,8 @@ actor SyncWriter {
     /// normal, expected condition in a bounded-concurrency pipeline, not an error.
     @discardableResult
     func applyContent(articleServerID: Int, document: WireDocument) -> Bool {
-        let descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == articleServerID })
+        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == articleServerID })
+        descriptor.fetchLimit = 1
         guard let article = try? modelContext.fetch(descriptor).first else { return false }
         article.blocks = document.blocks
         article.hasContent = true
@@ -168,7 +174,8 @@ actor SyncWriter {
             fetchExisting: { wire in
                 let idString = String(wire.id)
                 seenIdentifiers.insert(idString)
-                let descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.identifier == idString })
+                var descriptor = FetchDescriptor<Feed>(predicate: #Predicate { $0.identifier == idString })
+                descriptor.fetchLimit = 1
                 return try? modelContext.fetch(descriptor).first
             },
             makeNew: { wire in Feed(name: wire.name, identifier: String(wire.id)) },
@@ -203,7 +210,8 @@ actor SyncWriter {
             fetchExisting: { wire in
                 seenServerIDs.insert(wire.id)
                 let targetServerID = wire.id
-                let descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.serverID == targetServerID })
+                var descriptor = FetchDescriptor<Tag>(predicate: #Predicate { $0.serverID == targetServerID })
+                descriptor.fetchLimit = 1
                 return try? modelContext.fetch(descriptor).first
             },
             makeNew: { wire in let tag = Tag(name: wire.name, colorHex: wire.color); tag.serverID = wire.id; return tag },
