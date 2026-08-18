@@ -53,7 +53,10 @@ enum UpdateAndSync {
                 let status: RunStatusResponse = try await client.get("/api/v1/runs/\(runId)")
                 consecutiveTransportFailures = 0
                 if !status.isRunning { return }
-            } catch YanaAPIClientError.transport {
+            } catch YanaAPIClientError.transport, YanaAPIClientError.unexpectedStatus {
+                // A proxy's 502 or a Next.js 500 page is the same class of transient hiccup as a
+                // dropped connection here, and was reported as `.transport` before that case
+                // existed -- keep retrying it rather than bailing on the first blip.
                 consecutiveTransportFailures += 1
                 if consecutiveTransportFailures >= maxConsecutiveTransportFailures { return }
             } catch {

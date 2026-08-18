@@ -370,7 +370,13 @@ source and issue board live at
   transport failure. `.unavailable` carries a non-localized `detail` tag
   (`network`/`response`/`auth`/`on-device`, or an unrecognized server error code verbatim) shown in
   parentheses in the toast, which is the only route by which a failure this build has never heard of
-  reaches a self-hosting operator at all.
+  reaches a self-hosting operator at all. `YanaAPIClientError` gained `.unexpectedStatus(Int)` for
+  that last case: a non-2xx response whose body is not the `{ error: { code, message } }` envelope
+  (an HTML 404 from a server predating a route, a proxy's 502, a Next.js 500 page) used to be thrown
+  as `.transport`, i.e. indistinguishable from being offline, which is the difference between "your
+  server needs updating" and "try again on better signal". `UpdateAndSync.waitForRunToFinish`
+  tolerates the new case exactly as it tolerated `.transport`, so run polling still rides out a
+  proxy blip instead of bailing on the first one.
   `AppleIntelligenceSummaryProvider` runs entirely on-device via `AppleIntelligenceChunkedSummarizer`
   (extracted from the former `AppleIntelligenceProcessor`, keeping only the summarize path — the
   improve-writing/translate paths and their `AIOptions`/`AggregatedArticle` plumbing are gone): the
@@ -727,7 +733,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 416 tests in 94 suites, all passing. (An earlier pass had dropped to 381 tests in 90
+  change, 417 tests in 94 suites, all passing. (An earlier pass had dropped to 381 tests in 90
   suites from a prior 406 by deleting dead-code and legacy-HTML suites — ones that only exercised
   orphaned helpers such as `CredentialTesterTests`, `NameSearchTests`, `ArticleSearchTests`,
   `CrossFadeTests`, `UpdateProgressTests`, `ArticleHeaderLogoTests`, plus
@@ -741,7 +747,10 @@ source and issue board live at
   `SummaryLanguageTests` + `SummarizerLanguageDirectiveTests` (two new suites), and the
   summarize-failure-reason work added five more cases to `AISummaryProviderTests` (the
   prompt-too-long mapping, the unknown-code/transport detail tags, the whole-prompt cap, and the
-  180s request timeout), for the current 416/94.
+  180s request timeout, and the undecodable-error-body status tag), for the current 417/94. Note
+  `SyncReactionMainThreadTests.importBatchesLeaveTheMainActorResponsive` measures a wall-clock stall
+  against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
+  treating a failure there as real.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap

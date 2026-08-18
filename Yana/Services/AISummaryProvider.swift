@@ -82,6 +82,7 @@ struct ServerAISummaryProvider: AISummaryProvider {
     static func failure(for error: YanaAPIClientError) -> AISummaryFailure {
         switch error {
         case .transport: return .unavailable(detail: "network")
+        case .unexpectedStatus(let status): return .unavailable(detail: "http \(status)")
         case .decoding: return .unavailable(detail: "response")
         case .unauthorized: return .unavailable(detail: "auth")
         case .server(let apiError):

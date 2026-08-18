@@ -141,9 +141,29 @@ struct AISummaryProviderTests {
         }
     }
 
+    /// A route the server does not have (an older deployment) or a reverse proxy's error page
+    /// carries no `{ error: { code } }` envelope. That used to be indistinguishable from being
+    /// offline, which is the difference between "your server needs updating" and "try again on
+    /// better signal".
+    @Test func serverProviderReportsAnUndecodableErrorBodyWithItsStatus() async {
+        await MockURLProtocol.lock.withLock {
+            MockURLProtocol.stub = { request in
+                let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: ["Content-Type": "text/html"])!
+                return (response, "<!DOCTYPE html><title>404</title>".data(using: .utf8)!)
+            }
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let result = await ServerAISummaryProvider(client: client).summarize(content: "x", title: "y")
+            #expect(result == .failure(.unavailable(detail: "http 404")))
+        }
+    }
+
     /// Offline/unexpected-shape failures must not be reported as a server configuration problem.
     @Test func serverProviderReportsTransportFailuresAsUnavailable() {
         #expect(ServerAISummaryProvider.failure(for: .transport) == .unavailable(detail: "network"))
+        #expect(ServerAISummaryProvider.failure(for: .unexpectedStatus(500)) == .unavailable(detail: "http 500"))
         #expect(ServerAISummaryProvider.failure(for: .decoding("bad shape")) == .unavailable(detail: "response"))
         #expect(ServerAISummaryProvider.failure(for: .unauthorized) == .unavailable(detail: "auth"))
         // An unknown code is carried through verbatim: this is the only route by which a

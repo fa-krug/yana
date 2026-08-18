@@ -60,7 +60,7 @@ struct YanaAPIClient: Sendable {
         guard (200..<300).contains(response.statusCode) else {
             if response.statusCode == 401 { throw YanaAPIClientError.unauthorized }
             guard let envelope = try? JSONDecoder().decode(YanaAPIErrorEnvelopeDecoder.self, from: data) else {
-                throw YanaAPIClientError.transport
+                throw YanaAPIClientError.unexpectedStatus(response.statusCode)
             }
             throw YanaAPIClientError.server(envelope.error)
         }
