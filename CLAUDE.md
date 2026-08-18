@@ -359,7 +359,18 @@ source and issue board live at
   `ai_max_prompt_length`, **whose default is 500 characters** — shorter than any real article
   body, so server-mode summarization failed on every article with no hint that the fix was to raise
   that limit in the server's own AI settings
-  (`AISummaryProviderTests.serverProviderReportsAPromptRejectedForLength` pins the mapping).
+  (`AISummaryProviderTests.serverProviderReportsAPromptRejectedForLength` pins the mapping). Two
+  further client-side defects behind the same "always fails, generic message" symptom: the prompt cap
+  applies to the **whole assembled prompt**, since the server's limit does (capping only the article
+  body let the instruction header and title push a max-length article back over a correctly-raised
+  limit), and this one call passes an explicit `timeout:` to `YanaAPIClient.post` —
+  `ServerAISummaryProvider.requestTimeout` (180s) instead of `URLSession`'s 60s default, because the
+  server spends up to its own operator-set `aiRequestTimeout` (default 120s) *per provider attempt*
+  with up to 3 retries, so a slow-but-successful generation was being dropped client-side as a
+  transport failure. `.unavailable` carries a non-localized `detail` tag
+  (`network`/`response`/`auth`/`on-device`, or an unrecognized server error code verbatim) shown in
+  parentheses in the toast, which is the only route by which a failure this build has never heard of
+  reaches a self-hosting operator at all.
   `AppleIntelligenceSummaryProvider` runs entirely on-device via `AppleIntelligenceChunkedSummarizer`
   (extracted from the former `AppleIntelligenceProcessor`, keeping only the summarize path — the
   improve-writing/translate paths and their `AIOptions`/`AggregatedArticle` plumbing are gone): the
@@ -716,7 +727,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 414 tests in 94 suites, all passing. (An earlier pass had dropped to 381 tests in 90
+  change, 416 tests in 94 suites, all passing. (An earlier pass had dropped to 381 tests in 90
   suites from a prior 406 by deleting dead-code and legacy-HTML suites — ones that only exercised
   orphaned helpers such as `CredentialTesterTests`, `NameSearchTests`, `ArticleSearchTests`,
   `CrossFadeTests`, `UpdateProgressTests`, `ArticleHeaderLogoTests`, plus
@@ -728,8 +739,9 @@ source and issue board live at
   `BackgroundRefreshManagerTests` (the Mac loop's re-arm/cancel-on-`.off` behavior), bringing the
   suite back up to 404/92, and the Apple-Intelligence summary-language fix added
   `SummaryLanguageTests` + `SummarizerLanguageDirectiveTests` (two new suites), and the
-  summarize-failure-reason work added three more cases to `AISummaryProviderTests`, for the current
-  414/94.
+  summarize-failure-reason work added five more cases to `AISummaryProviderTests` (the
+  prompt-too-long mapping, the unknown-code/transport detail tags, the whole-prompt cap, and the
+  180s request timeout), for the current 416/94.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap

@@ -21,8 +21,12 @@ struct YanaAPIClient: Sendable {
         try await send(path: path, method: "PATCH", query: [:], body: body)
     }
 
-    func post<T: Decodable>(_ path: String, body: (some Encodable)? = nil) async throws -> T {
-        try await send(path: path, method: "POST", query: [:], body: body)
+    /// `timeout` overrides `URLSession`'s 60s `timeoutIntervalForRequest` for this one request.
+    /// Needed by `/api/v1/ai/prompt`, where the server's own per-attempt AI timeout is an operator
+    /// setting that routinely exceeds 60s (defaults: 120s per attempt, up to 3 retries), so a
+    /// slow-but-successful generation was otherwise dropped client-side as a transport failure.
+    func post<T: Decodable>(_ path: String, body: (some Encodable)? = nil, timeout: TimeInterval? = nil) async throws -> T {
+        try await send(path: path, method: "POST", query: [:], body: body, timeout: timeout)
     }
 
     /// Body-less overload. `post(_:body:)`'s `body` parameter is an opaque `some Encodable`
@@ -44,9 +48,10 @@ struct YanaAPIClient: Sendable {
     }
 
     private func send<T: Decodable, Body: Encodable>(
-        path: String, method: String, query: [String: String], body: Body?
+        path: String, method: String, query: [String: String], body: Body?, timeout: TimeInterval? = nil
     ) async throws -> T {
         var request = try makeRequest(path: path, method: method, query: query)
+        if let timeout { request.timeoutInterval = timeout }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)

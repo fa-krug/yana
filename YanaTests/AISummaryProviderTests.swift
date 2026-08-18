@@ -98,18 +98,65 @@ struct AISummaryProviderTests {
         }
     }
 
+    /// The server's limit applies to the whole prompt string, not just the article body: capping
+    /// only the content let the instruction header and title push a max-length article back over
+    /// the limit, so a long article was rejected even at a correctly-raised server limit.
+    @Test func serverProviderCapsTheWholePromptNotJustTheBody() async throws {
+        try await MockURLProtocol.lock.withLock {
+            var sentPromptLength = 0
+            MockURLProtocol.stub = { request in
+                struct Body: Decodable { let prompt: String }
+                let body = try! JSONDecoder().decode(Body.self, from: request.capturedBody())
+                sentPromptLength = body.prompt.count
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, #"{"response":"ok","provider":"openai","model":"m"}"#.data(using: .utf8)!)
+            }
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let oversized = String(repeating: "a", count: ArticleAIText.maxContentChars + 5000)
+            _ = await ServerAISummaryProvider(client: client).summarize(content: oversized, title: "A long title")
+            #expect(sentPromptLength == ArticleAIText.maxContentChars)
+        }
+    }
+
+    /// The server's own per-attempt AI timeout is an operator setting defaulting to 120s, so the
+    /// 60s `URLSession` default silently aborted slow-but-successful generations.
+    @Test func serverProviderAllowsMoreThanTheDefaultSixtySecondTimeout() async throws {
+        try await MockURLProtocol.lock.withLock {
+            var sentTimeout: TimeInterval = 0
+            MockURLProtocol.stub = { request in
+                sentTimeout = request.timeoutInterval
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, #"{"response":"ok","provider":"openai","model":"m"}"#.data(using: .utf8)!)
+            }
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            _ = await ServerAISummaryProvider(client: client).summarize(content: "body", title: "T")
+            #expect(sentTimeout == ServerAISummaryProvider.requestTimeout)
+            #expect(sentTimeout > 60)
+        }
+    }
+
     /// Offline/unexpected-shape failures must not be reported as a server configuration problem.
     @Test func serverProviderReportsTransportFailuresAsUnavailable() {
-        #expect(ServerAISummaryProvider.failure(for: .transport) == .unavailable)
-        #expect(ServerAISummaryProvider.failure(for: .decoding("bad shape")) == .unavailable)
-        #expect(ServerAISummaryProvider.failure(for: .unauthorized) == .unavailable)
-        #expect(ServerAISummaryProvider.failure(for: .server(YanaAPIError(code: "something_new", message: ""))) == .unavailable)
+        #expect(ServerAISummaryProvider.failure(for: .transport) == .unavailable(detail: "network"))
+        #expect(ServerAISummaryProvider.failure(for: .decoding("bad shape")) == .unavailable(detail: "response"))
+        #expect(ServerAISummaryProvider.failure(for: .unauthorized) == .unavailable(detail: "auth"))
+        // An unknown code is carried through verbatim: this is the only route by which a
+        // server-side addition this build has never heard of reaches the user at all.
+        #expect(ServerAISummaryProvider.failure(for: .server(YanaAPIError(code: "something_new", message: "")))
+                == .unavailable(detail: "something_new"))
     }
 
     /// Each cause the user can act on gets its own copy; only the catch-all reuses the old text.
     @MainActor
     @Test func everyFailureReasonHasItsOwnMessage() {
-        let reasons: [AISummaryFailure] = [.promptTooLong, .noProvider, .limitReached, .providerError, .unavailable]
+        let reasons: [AISummaryFailure] = [.promptTooLong, .noProvider, .limitReached, .providerError,
+                                          .unavailable(detail: nil)]
         let messages = reasons.map(ReaderActions.summarizeFailureMessage)
         #expect(Set(messages).count == reasons.count)
         #expect(messages.allSatisfy { !$0.isEmpty })
@@ -129,7 +176,7 @@ struct AISummaryProviderTests {
         }
         let provider = AppleIntelligenceSummaryProvider(generator: UnavailableGenerator())
         let result = await provider.summarize(content: "body", title: "T")
-        #expect(result == .failure(.unavailable))
+        #expect(result == .failure(.unavailable(detail: "model unavailable")))
     }
 
     @Test func appleIntelligenceProviderReturnsSummaryWhenAvailable() async {

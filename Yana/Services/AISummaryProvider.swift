@@ -14,8 +14,11 @@ enum AISummaryFailure: Error, Equatable, Sendable {
     case limitReached
     /// The configured provider itself failed (bad credentials, upstream error).
     case providerError
-    /// Everything else: offline, unexpected wire shape, on-device model unavailable or failing.
-    case unavailable
+    /// Everything else: offline, timed out, unexpected wire shape, on-device model unavailable or
+    /// failing. `detail` names which of those it was (never localized -- it is a diagnostic tag,
+    /// shown in parentheses) so a self-hosted operator can tell a network drop from a wire-shape
+    /// mismatch from a server error code this app does not know about.
+    case unavailable(detail: String?)
 }
 
 /// Produces the reader's summary block. Two implementations, selected by `AppSettings.aiMode`:
@@ -48,18 +51,27 @@ private struct AIPromptResponse: Decodable { let response: String; let provider:
 struct ServerAISummaryProvider: AISummaryProvider {
     let client: YanaAPIClient
 
+    /// The server spends up to its own `aiRequestTimeout` (default 120s) per provider attempt, so
+    /// `URLSession`'s 60s default aborted slow generations before they ever came back. This does
+    /// not cover the server's absolute worst case (every retry timing out), deliberately: a reader
+    /// action that spins for ten minutes is worse than one that gives up and says so.
+    static let requestTimeout: TimeInterval = 180
+
     func summarize(content: String, title: String) async -> Result<String, AISummaryFailure> {
-        // Capped like the on-device path: the server enforces its own prompt-length limit, but
-        // there is no reason to put a whole multi-megabyte body on the wire to be rejected.
-        let prompt = "Summarize the following article concisely in 2-3 sentences.\n\nTitle: \(title)\n\n"
-            + ArticleAIText.cap(content)
+        // The server's limit applies to the WHOLE prompt string, so cap the assembled prompt --
+        // capping only `content` let the instruction and title push a max-length body back over
+        // the limit and straight into `prompt_too_long`.
+        let header = "Summarize the following article concisely in 2-3 sentences.\n\nTitle: \(title)\n\n"
+        let prompt = ArticleAIText.cap(header + content)
         do {
-            let result: AIPromptResponse = try await client.post("/api/v1/ai/prompt", body: AIPromptBody(prompt: prompt))
+            let result: AIPromptResponse = try await client.post(
+                "/api/v1/ai/prompt", body: AIPromptBody(prompt: prompt), timeout: Self.requestTimeout
+            )
             return .success(result.response)
         } catch let error as YanaAPIClientError {
             return .failure(Self.failure(for: error))
         } catch {
-            return .failure(.unavailable)
+            return .failure(.unavailable(detail: "unexpected"))
         }
     }
 
@@ -68,13 +80,18 @@ struct ServerAISummaryProvider: AISummaryProvider {
     /// error code rather than the status, since `YanaAPIClientError.server` carries only the
     /// envelope; the codes are the stable part of that contract anyway.
     static func failure(for error: YanaAPIClientError) -> AISummaryFailure {
-        guard case .server(let apiError) = error else { return .unavailable }
-        switch apiError.code {
-        case "prompt_too_long": return .promptTooLong
-        case "no_active_provider", "no_provider_configured": return .noProvider
-        case "daily_limit_exceeded", "monthly_limit_exceeded": return .limitReached
-        case "provider_error", "provider_unauthorized": return .providerError
-        default: return .unavailable
+        switch error {
+        case .transport: return .unavailable(detail: "network")
+        case .decoding: return .unavailable(detail: "response")
+        case .unauthorized: return .unavailable(detail: "auth")
+        case .server(let apiError):
+            switch apiError.code {
+            case "prompt_too_long": return .promptTooLong
+            case "no_active_provider", "no_provider_configured": return .noProvider
+            case "daily_limit_exceeded", "monthly_limit_exceeded": return .limitReached
+            case "provider_error", "provider_unauthorized": return .providerError
+            default: return .unavailable(detail: apiError.code)
+            }
         }
     }
 }
@@ -87,10 +104,12 @@ struct AppleIntelligenceSummaryProvider: AISummaryProvider {
     }
 
     func summarize(content: String, title: String) async -> Result<String, AISummaryFailure> {
-        guard generator.availability == .available else { return .failure(.unavailable) }
+        guard generator.availability == .available else {
+            return .failure(.unavailable(detail: "model unavailable"))
+        }
         guard let summary = await AppleIntelligenceChunkedSummarizer.summarize(
             text: content, title: title, generator: generator
-        ) else { return .failure(.unavailable) }
+        ) else { return .failure(.unavailable(detail: "on-device")) }
         return .success(summary)
     }
 }

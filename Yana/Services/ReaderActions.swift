@@ -53,8 +53,12 @@ enum ReaderActions {
             String(localized: "Your server has reached its AI request limit. Please try again later.")
         case .providerError:
             String(localized: "Your server's AI provider could not summarize this article. Please try again.")
-        case .unavailable:
-            String(localized: "Could not summarize this article. Please try again.")
+        case .unavailable(let detail):
+            if let detail {
+                String(localized: "Could not summarize this article. Please try again. (\(detail))")
+            } else {
+                String(localized: "Could not summarize this article. Please try again.")
+            }
         }
     }
 
