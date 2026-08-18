@@ -330,10 +330,12 @@ final class AppSettings {
         set { withMutation(keyPath: \.readingPositionUpdatedAt) { defaults.set(newValue, forKey: Key.readingPositionUpdatedAt) } }
     }
     /// A reading position pulled from the server but not yet applied to the visible timeline --
-    /// the server article id to jump to. Consumed exactly once, by the reader's next fresh session
-    /// (`ReaderAnchorController`/`TimelineModel`'s `jumpToSyncedTimelinePosition`, called only from
-    /// `applyTimeline`'s first-load branch) -- never applied mid-session, which would yank the user
-    /// off the article they're actively reading. `nil` once consumed.
+    /// the server article id to jump to. Applied by `ReaderAnchorController`/`TimelineModel`'s
+    /// `jumpToSyncedTimelinePosition`, retried on every timeline delivery (and on a live update
+    /// arriving mid-session) until it resolves against a locally-synced article, since the target
+    /// article may not have synced down to this device yet. `nil` once applied. Any user-driven
+    /// navigation (`TimelineAnchorWriter.record`) clears it outright instead, so a remote catch-up
+    /// never yanks the user off an article they've since started reading themselves.
     var pendingRemoteReadingPosition: Int? {
         get { access(keyPath: \.pendingRemoteReadingPosition); return optionalInt(forKey: Key.pendingRemoteReadingPosition) }
         set { withMutation(keyPath: \.pendingRemoteReadingPosition) { setOptionalInt(newValue, forKey: Key.pendingRemoteReadingPosition) } }

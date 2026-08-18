@@ -85,16 +85,35 @@ struct ReaderAnchorControllerTests {
         #expect(settings.timelineAnchorIdentifier == "b")
     }
 
-    @Test func jumpToSyncedTimelinePositionConsumesThePendingValueEvenWhenUnresolvable() throws {
+    /// The article this position points at may simply not have synced down to this device yet
+    /// (mid-backfill, or this device lagging behind another paired device's push) -- the pending
+    /// value must survive so a later retry, once more of the timeline has landed, can still apply
+    /// it. It's `TimelineAnchorWriter.record` (user-driven navigation), not this method, that bounds
+    /// how long a genuinely stale/unsyncable position can linger -- see the writer test below.
+    @Test func jumpToSyncedTimelinePositionRetainsThePendingValueWhenUnresolvable() throws {
         let settings = freshSettings()
         let articles = try makeSummaries([("a", 1)])
-        settings.pendingRemoteReadingPosition = 999   // not in this filtered slice
+        settings.pendingRemoteReadingPosition = 999   // not in this filtered slice (yet)
         let controller = ReaderAnchorController(settings: settings)
 
         let index = controller.jumpToSyncedTimelinePosition(in: articles)
 
         #expect(index == nil)
-        #expect(settings.pendingRemoteReadingPosition == nil, "a stale/unsyncable remote position must not be retried forever")
+        #expect(settings.pendingRemoteReadingPosition == 999, "must survive for a later retry once the article syncs down")
+    }
+
+    /// `TimelineAnchorWriter.record` is the user-driven write path; it must abandon any pending
+    /// remote catch-up so a stale/unresolvable position doesn't linger past the point the user has
+    /// taken over navigation themselves.
+    @Test func recordClearsAPendingRemoteReadingPosition() throws {
+        let settings = freshSettings()
+        let articles = try makeSummaries([("a", 1), ("b", 2)])
+        settings.pendingRemoteReadingPosition = 999
+        let controller = ReaderAnchorController(settings: settings)
+
+        controller.saveAnchor(at: 1, in: articles)
+
+        #expect(settings.pendingRemoteReadingPosition == nil)
     }
 
     @Test func jumpToSyncedTimelinePositionReturnsNilWhenNothingIsPending() throws {

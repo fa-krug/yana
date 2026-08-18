@@ -169,7 +169,9 @@ final class TimelineModel {
         guard let store else { return }
         guard !didRestoreAnchor else {
             recomputeFilter()
-            reanchorToCurrentArticle()
+            if !applyPendingRemotePosition() {
+                reanchorToCurrentArticle()
+            }
             return
         }
         let resolved = TimelineBootstrap.resolve(
@@ -193,18 +195,46 @@ final class TimelineModel {
 
     /// Applies a reading position pulled from another paired device (see
     /// `AppSettings.pendingRemoteReadingPosition`), if it resolves against `articles`. Consumes the
-    /// pending value either way (resolved or not) so a stale/unsyncable remote position isn't
-    /// retried forever. Call ONLY from `applyTimeline`'s first-load branch -- never mid-session,
-    /// which would yank the user off the article they're actively reading. Mirrors
+    /// pending value only on success -- when the target article hasn't synced down to this device
+    /// yet, the value is left in place so a later call can resolve it instead of losing the
+    /// position forever; any user-driven navigation (`TimelineAnchorWriter.record`) clears it
+    /// outright, bounding how long an unresolvable/stale position can linger. Mirrors
     /// `ReaderAnchorController.jumpToSyncedTimelinePosition` on iOS; see its doc comment for why
     /// this must never call `anchorWriter.record`.
     private func jumpToSyncedTimelinePosition(in articles: [ArticleSummary]) -> Int? {
         guard let articleID = settings.pendingRemoteReadingPosition else { return nil }
-        settings.pendingRemoteReadingPosition = nil
         guard let index = articles.firstIndex(where: { $0.serverID == articleID }) else { return nil }
+        settings.pendingRemoteReadingPosition = nil
         settings.timelineAnchorIdentifier = articles[index].identifier
         settings.timelineAnchorServerID = articleID
         return index
+    }
+
+    /// Retries the pending remote position against `filteredArticles`, applying it (and requesting
+    /// a sidebar scroll) if it now resolves. Called both by `applyTimeline`'s post-first-load branch
+    /// (so a position that hadn't synced down yet on the first attempt keeps retrying as later sync
+    /// pages land) and by `handleRemotePositionUpdate` (so a position that arrives live while the
+    /// article is already synced applies immediately, not just at the next relaunch). Returns
+    /// whether it applied, so callers can skip their own reanchor fallback when it did.
+    @discardableResult
+    private func applyPendingRemotePosition() -> Bool {
+        guard let index = jumpToSyncedTimelinePosition(in: filteredArticles) else { return false }
+        let previous = currentIndex
+        currentIndex = index
+        if currentIndex != previous {
+            requestScroll(to: filteredArticles[currentIndex].identifier)
+        }
+        return true
+    }
+
+    /// Call when a remote reading-position update arrives while this session is already running
+    /// (a live SSE push, or the periodic sync pull) -- applies it immediately if it resolves and
+    /// the user hasn't navigated away since (which would have already cleared the pending value via
+    /// `TimelineAnchorWriter.record`). No-ops before the first load has completed; that case is
+    /// instead picked up by `applyTimeline`'s first-load branch once summaries arrive.
+    func handleRemotePositionUpdate() {
+        guard didRestoreAnchor else { return }
+        applyPendingRemotePosition()
     }
 
     /// Keeps the displayed article selected across timeline mutations (refresh/reload/retention

@@ -206,19 +206,97 @@ struct TimelineModelTests {
     }
 
     /// A remote position that doesn't resolve against the current timeline (stale, or an article
-    /// this device hasn't synced) must fall back to the plain local anchor, not leave the reader
-    /// unparked -- and must still consume the pending value so it isn't retried forever.
+    /// this device hasn't synced yet) must fall back to the plain local anchor, not leave the
+    /// reader unparked -- but must NOT consume the pending value, so a later sync delivery that
+    /// brings the target article in can still resolve it (see the retry test below).
     @Test func applyTimelineFallsBackToTheLocalAnchorWhenTheRemotePositionDoesNotResolve() async throws {
         let settings = freshSettings()
         let (model, store) = try makeConfiguredModel(settings: settings)   // a/b/c, no serverIDs set
         await store.refreshNow()
         settings.timelineAnchorIdentifier = "a"
-        settings.pendingRemoteReadingPosition = 999   // no article has this serverID
+        settings.pendingRemoteReadingPosition = 999   // no article has this serverID yet
 
         model.applyTimeline()
 
         #expect(model.selectedSummary?.identifier == "a")
+        #expect(settings.pendingRemoteReadingPosition == 999, "must survive so a later sync delivery can retry it")
+    }
+
+    /// The bug this pins: a remote reading position that isn't resolvable on the first `applyTimeline`
+    /// call (the target article hadn't synced down yet) must not be lost -- once that article lands
+    /// via a later `applyTimeline` delivery (the ordinary post-first-load path, driven by
+    /// `store.summaries` changing as more sync pages arrive), it should apply then instead of never.
+    @Test func applyTimelineRetriesAnUnresolvedRemotePositionOnALaterDelivery() async throws {
+        let settings = freshSettings()
+        let container = try makeContainer()
+        let context = container.mainContext
+        insertArticle("a", into: context, date: Date(timeIntervalSince1970: 1), serverID: 10)
+        try context.save()
+        settings.pendingRemoteReadingPosition = 20   // "b" doesn't exist locally yet
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        await store.refreshNow()
+
+        let model = TimelineModel(settings: settings)
+        model.configure(modelContext: context, store: store)
+        model.applyTimeline()   // first load: only "a" exists, position stays pending
+
+        #expect(model.selectedSummary?.identifier == "a")
+        #expect(settings.pendingRemoteReadingPosition == 20)
+
+        // "b" lands via a later sync page.
+        insertArticle("b", into: context, date: Date(timeIntervalSince1970: 2), serverID: 20)
+        try context.save()
+        await store.refreshNow()
+        model.applyTimeline()   // second call: post-first-load branch retries the pending position
+
+        #expect(model.selectedSummary?.identifier == "b")
         #expect(settings.pendingRemoteReadingPosition == nil)
+    }
+
+    /// `handleRemotePositionUpdate` is the live-push path: a position that arrives (via SSE or the
+    /// periodic pull) while the target article is already synced should apply immediately, not
+    /// wait for the reader's next relaunch.
+    @Test func handleRemotePositionUpdateAppliesALiveUpdateImmediately() async throws {
+        let settings = freshSettings()
+        let container = try makeContainer()
+        let context = container.mainContext
+        insertArticle("a", into: context, date: Date(timeIntervalSince1970: 1), serverID: 10)
+        insertArticle("b", into: context, date: Date(timeIntervalSince1970: 2), serverID: 20)
+        try context.save()
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        await store.refreshNow()
+
+        let model = TimelineModel(settings: settings)
+        model.configure(modelContext: context, store: store)
+        model.applyTimeline()   // no saved anchor: parks on "b" (newest); didRestoreAnchor becomes true
+        #expect(model.selectedSummary?.identifier == "b")
+
+        settings.pendingRemoteReadingPosition = 10   // "a", pushed live from another device
+
+        model.handleRemotePositionUpdate()
+
+        #expect(model.selectedSummary?.identifier == "a")
+        #expect(settings.pendingRemoteReadingPosition == nil)
+    }
+
+    /// Before the first load has completed, a live update must be left alone for `applyTimeline`'s
+    /// first-load branch to pick up -- calling `handleRemotePositionUpdate` too early must not
+    /// consume or misapply it.
+    @Test func handleRemotePositionUpdateNoOpsBeforeTheFirstLoad() async throws {
+        let settings = freshSettings()
+        let (model, store) = try makeConfiguredModel(settings: settings)
+        await store.refreshNow()
+        settings.pendingRemoteReadingPosition = 42
+
+        model.handleRemotePositionUpdate()   // applyTimeline() never called yet
+
+        #expect(settings.pendingRemoteReadingPosition == 42)
     }
 
     // MARK: - Self-heal reanchor across duplicate identifiers

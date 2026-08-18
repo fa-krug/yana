@@ -153,7 +153,9 @@ struct ReaderScreen: View {
     private func applyTimeline() {
         guard !didRestoreAnchor else {
             recomputeFilter()
-            reanchorToCurrentArticle()
+            if !applyPendingRemotePosition() {
+                reanchorToCurrentArticle()
+            }
             return
         }
         let resolved = TimelineBootstrap.resolve(
@@ -170,6 +172,19 @@ struct ReaderScreen: View {
         appState.currentIndex = anchorController.jumpToSyncedTimelinePosition(in: resolved.articles) ?? resolved.anchorIndex
 
         didRestoreAnchor = true
+    }
+
+    /// Retries the pending remote position (see `AppSettings.pendingRemoteReadingPosition`) against
+    /// `filteredArticles`, jumping to it if it now resolves. Called from `applyTimeline`'s
+    /// post-first-load branch (so a position that hadn't synced down yet keeps retrying as later
+    /// sync pages land) and from the `pendingRemoteReadingPosition` change handler below (so a
+    /// live-pushed position that's already synced applies immediately instead of waiting for the
+    /// next relaunch). Returns whether it applied, so callers can skip their own reanchor fallback.
+    @discardableResult
+    private func applyPendingRemotePosition() -> Bool {
+        guard let i = anchorController.jumpToSyncedTimelinePosition(in: filteredArticles) else { return false }
+        appState.currentIndex = i
+        return true
     }
 
 
@@ -311,6 +326,9 @@ struct ReaderScreen: View {
         }
         .onChange(of: store.summaries) { _, _ in
             applyTimeline()
+        }
+        .onChange(of: settings.pendingRemoteReadingPosition) { _, _ in
+            if didRestoreAnchor { applyPendingRemotePosition() }
         }
         .onChange(of: settings.disabledTagNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }

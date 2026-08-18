@@ -119,6 +119,7 @@ struct MacRootView: View {
             #endif
         }
         .onChange(of: store.summaries) { _, _ in model.applyTimeline() }
+        .onChange(of: settings.pendingRemoteReadingPosition) { _, _ in model.handleRemotePositionUpdate() }
         .onChange(of: UpdateActivity.shared.isUpdating || model.isSummarizing) { _, busy in
             if busy {
                 spinnerHoldTask?.cancel()
