@@ -304,11 +304,8 @@ final class TimelineModel {
             switch result {
             case .saved:
                 self.reloadToken += 1
-            case .failed:
-                self.toast = ToastMessage(
-                    text: String(localized: "Could not summarize this article. Please try again."),
-                    style: .error
-                )
+            case .failed(let failure):
+                self.toast = ToastMessage(text: ReaderActions.summarizeFailureMessage(failure), style: .error)
             }
         }
     }

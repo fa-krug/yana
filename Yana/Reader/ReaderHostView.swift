@@ -369,11 +369,8 @@ struct ReaderScreen: View {
             switch result {
             case .saved:
                 reloadToken += 1
-            case .failed:
-                toast = ToastMessage(
-                    text: String(localized: "Could not summarize this article. Please try again."),
-                    style: .error
-                )
+            case .failed(let failure):
+                toast = ToastMessage(text: ReaderActions.summarizeFailureMessage(failure), style: .error)
             }
         }
     }

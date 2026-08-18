@@ -32,6 +32,8 @@ struct GeneratedSummary {
 /// Abstraction over on-device generation so `AppleIntelligenceProcessor` is testable with a fake.
 protocol ArticleGenerating: Sendable {
     var availability: AppleIntelligenceAvailability { get }
+    /// Languages the model can actually write in, so `SummaryLanguage` never asks for one it can't.
+    var supportedLanguages: Set<Locale.Language> { get }
     /// Estimated token count, for chunk budgeting.
     func tokenCount(_ text: String) -> Int
     /// One guided-generation call for the body-rewrite pass. Throws on generation failure.
@@ -42,6 +44,8 @@ protocol ArticleGenerating: Sendable {
 
 /// Concrete `ArticleGenerating` backed by the on-device system language model.
 struct AppleIntelligenceClient: ArticleGenerating {
+    var supportedLanguages: Set<Locale.Language> { SystemLanguageModel.default.supportedLanguages }
+
     var availability: AppleIntelligenceAvailability {
         switch SystemLanguageModel.default.availability {
         case .available:

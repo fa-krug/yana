@@ -15,6 +15,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
     /// if called, so any accidental regression back to a shared body/summary path fails loudly.
     final class RecordingGenerator: ArticleGenerating, @unchecked Sendable {
         let availability: AppleIntelligenceAvailability = .available
+        var supportedLanguages: Set<Locale.Language> = [Locale.Language(identifier: "en"), Locale.Language(identifier: "de")]
         var calls: [(instructions: String, prompt: String)] = []
         var mapTransform: @Sendable (String) -> String = { $0 }
         var reduceTransform: @Sendable (String) -> String = { _ in "" }
@@ -27,7 +28,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
 
         func generateSummary(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> String {
             calls.append((instructions: instructions, prompt: prompt))
-            if instructions == AppleIntelligenceChunkedSummarizer.reduceInstructions {
+            if instructions.hasPrefix(AppleIntelligenceChunkedSummarizer.reduceInstructions()) {
                 return reduceTransform(prompt)
             } else {
                 return mapTransform(prompt)
@@ -50,7 +51,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
         let text = paragraphA + "\n\n" + paragraphB
         let summary = await AppleIntelligenceChunkedSummarizer.summarize(text: text, title: "orig", generator: gen)
 
-        let reduceCalls = gen.calls.filter { $0.instructions == AppleIntelligenceChunkedSummarizer.reduceInstructions }
+        let reduceCalls = gen.calls.filter { $0.instructions.hasPrefix(AppleIntelligenceChunkedSummarizer.reduceInstructions()) }
         #expect(reduceCalls.count == 1)
         #expect(summary == "[REDUCED_CONTENT]")
     }
@@ -60,7 +61,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
         gen.mapTransform = { _ in "short summary" }
         let summary = await AppleIntelligenceChunkedSummarizer.summarize(text: "short", title: "orig", generator: gen)
 
-        let reduceCalls = gen.calls.filter { $0.instructions == AppleIntelligenceChunkedSummarizer.reduceInstructions }
+        let reduceCalls = gen.calls.filter { $0.instructions.hasPrefix(AppleIntelligenceChunkedSummarizer.reduceInstructions()) }
         #expect(reduceCalls.count == 0)
         #expect(summary == "short summary")
     }
@@ -68,6 +69,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
     @Test func generationFailureReturnsNilRatherThanThrowing() async {
         struct ThrowingGenerator: ArticleGenerating {
             let availability: AppleIntelligenceAvailability = .available
+            let supportedLanguages: Set<Locale.Language> = [Locale.Language(identifier: "en"), Locale.Language(identifier: "de")]
             func tokenCount(_ text: String) -> Int { text.count }
             func generate(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> ProcessedArticle {
                 throw NSError(domain: "test", code: 1)
@@ -86,6 +88,7 @@ struct AppleIntelligenceChunkedSummarizerTests {
         // caught previously: summaries collapsing into the article body verbatim.
         struct StructurePreservingGenerator: ArticleGenerating {
             let availability: AppleIntelligenceAvailability = .available
+            let supportedLanguages: Set<Locale.Language> = [Locale.Language(identifier: "en"), Locale.Language(identifier: "de")]
             func tokenCount(_ text: String) -> Int { max(1, text.count / 4) }
             func generate(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> ProcessedArticle {
                 ProcessedArticle(title: "T", content: prompt)   // would echo the full body if ever called

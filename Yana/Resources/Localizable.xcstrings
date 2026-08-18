@@ -4777,6 +4777,46 @@
           }
         }
       }
+    },
+    "This article is longer than the AI prompt limit on your server. Raise that limit in the server's AI settings and try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Artikel ist länger als das Prompt-Limit der KI auf dem Server. Dieses Limit in den KI-Einstellungen des Servers erhöhen und es erneut versuchen."
+          }
+        }
+      }
+    },
+    "Your server has no AI provider set up yet. Add one in the server's AI settings.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf dem Server ist noch kein KI-Anbieter eingerichtet. Einen Anbieter in den KI-Einstellungen des Servers hinzufügen."
+          }
+        }
+      }
+    },
+    "Your server has reached its AI request limit. Please try again later.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server hat sein Limit für KI-Anfragen erreicht. Bitte später erneut versuchen."
+          }
+        }
+      }
+    },
+    "Your server's AI provider could not summarize this article. Please try again.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der KI-Anbieter des Servers konnte diesen Artikel nicht zusammenfassen. Bitte erneut versuchen."
+          }
+        }
+      }
     }
   },
   "version": "1.1"

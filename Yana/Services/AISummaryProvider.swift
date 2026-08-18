@@ -1,18 +1,35 @@
 import Foundation
 
+/// Why a summary could not be produced. These map to distinct, actionable toasts: the old
+/// "collapse every failure into `nil`" design told the user to "try again" even for causes where
+/// retrying can never work (no provider configured on the server, or an article longer than the
+/// server's configured AI prompt limit, whose default of 500 characters is shorter than any real
+/// article body, so server-mode summarization failed every single time with no hint why).
+enum AISummaryFailure: Error, Equatable, Sendable {
+    /// Server rejected the prompt for exceeding its configured `Max Prompt Length`.
+    case promptTooLong
+    /// Server has no AI provider configured.
+    case noProvider
+    /// Server's daily/monthly AI request limit is reached.
+    case limitReached
+    /// The configured provider itself failed (bad credentials, upstream error).
+    case providerError
+    /// Everything else: offline, unexpected wire shape, on-device model unavailable or failing.
+    case unavailable
+}
+
 /// Produces the reader's summary block. Two implementations, selected by `AppSettings.aiMode`:
 /// `ServerAISummaryProvider` (network, via the server's configured provider) and
-/// `AppleIntelligenceSummaryProvider` (on-device). Both degrade to `nil` on any failure --
-/// "no summary available" is an expected, silent outcome here (rate limit, no provider
-/// configured, model unavailable), never a user-facing error.
+/// `AppleIntelligenceSummaryProvider` (on-device). Neither throws: a failure comes back as an
+/// `AISummaryFailure` the call sites turn into a toast.
 protocol AISummaryProvider: Sendable {
-    func summarize(content: String, title: String) async -> String?
+    func summarize(content: String, title: String) async -> Result<String, AISummaryFailure>
 }
 
 /// Whether the reader's "Summarize" action should be offered at all, for a given mode.
-/// `.server` is always considered ready -- `ServerAISummaryProvider` degrades to `nil` on its
-/// own if the server has no provider configured, which is a fine outcome for a button that was
-/// visible; `.appleIntelligence` needs an actual on-device-model availability check, since
+/// `.server` is always considered ready -- the app cannot know the server's AI configuration
+/// without asking, so a failed attempt reports the server's own reason (`AISummaryFailure`,
+/// rendered by `ReaderActions.summarizeFailureMessage`) instead of hiding the button; `.appleIntelligence` needs an actual on-device-model availability check, since
 /// showing the button with no usable model is a worse experience than hiding it. Shared here so
 /// `ReaderHostView`/`TimelineModel`'s toolbar-visibility checks (Task 17) don't duplicate the
 /// same three-line switch in two files.
@@ -31,15 +48,33 @@ private struct AIPromptResponse: Decodable { let response: String; let provider:
 struct ServerAISummaryProvider: AISummaryProvider {
     let client: YanaAPIClient
 
-    func summarize(content: String, title: String) async -> String? {
-        let prompt = "Summarize the following article concisely in 2-3 sentences.\n\nTitle: \(title)\n\n\(content)"
+    func summarize(content: String, title: String) async -> Result<String, AISummaryFailure> {
+        // Capped like the on-device path: the server enforces its own prompt-length limit, but
+        // there is no reason to put a whole multi-megabyte body on the wire to be rejected.
+        let prompt = "Summarize the following article concisely in 2-3 sentences.\n\nTitle: \(title)\n\n"
+            + ArticleAIText.cap(content)
         do {
             let result: AIPromptResponse = try await client.post("/api/v1/ai/prompt", body: AIPromptBody(prompt: prompt))
-            return result.response
+            return .success(result.response)
+        } catch let error as YanaAPIClientError {
+            return .failure(Self.failure(for: error))
         } catch {
-            // 429 (daily/monthly limit), 409 (no provider configured), 502 (provider error) all
-            // land here as ordinary, expected "no summary this time" outcomes.
-            return nil
+            return .failure(.unavailable)
+        }
+    }
+
+    /// Maps the server's `{ error: { code } }` envelope (see `yana-server`'s
+    /// `src/app/api/v1/ai/prompt/route.ts`) onto the reasons the reader can act on. Keyed on the
+    /// error code rather than the status, since `YanaAPIClientError.server` carries only the
+    /// envelope; the codes are the stable part of that contract anyway.
+    static func failure(for error: YanaAPIClientError) -> AISummaryFailure {
+        guard case .server(let apiError) = error else { return .unavailable }
+        switch apiError.code {
+        case "prompt_too_long": return .promptTooLong
+        case "no_active_provider", "no_provider_configured": return .noProvider
+        case "daily_limit_exceeded", "monthly_limit_exceeded": return .limitReached
+        case "provider_error", "provider_unauthorized": return .providerError
+        default: return .unavailable
         }
     }
 }
@@ -51,8 +86,11 @@ struct AppleIntelligenceSummaryProvider: AISummaryProvider {
         self.generator = generator
     }
 
-    func summarize(content: String, title: String) async -> String? {
-        guard generator.availability == .available else { return nil }
-        return await AppleIntelligenceChunkedSummarizer.summarize(text: content, title: title, generator: generator)
+    func summarize(content: String, title: String) async -> Result<String, AISummaryFailure> {
+        guard generator.availability == .available else { return .failure(.unavailable) }
+        guard let summary = await AppleIntelligenceChunkedSummarizer.summarize(
+            text: content, title: title, generator: generator
+        ) else { return .failure(.unavailable) }
+        return .success(summary)
     }
 }

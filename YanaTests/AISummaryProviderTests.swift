@@ -23,13 +23,13 @@ struct AISummaryProviderTests {
             let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
             let provider = ServerAISummaryProvider(client: client)
 
-            let summary = await provider.summarize(content: "Long article body...", title: "An Article")
+            let summary = try await provider.summarize(content: "Long article body...", title: "An Article").get()
             #expect(summary == "A concise summary.")
             #expect(capturedPrompt?.contains("An Article") == true)
         }
     }
 
-    @Test func serverProviderReturnsNilOnRateLimitRatherThanThrowing() async {
+    @Test func serverProviderReportsTheRateLimitRatherThanThrowing() async {
         await MockURLProtocol.lock.withLock {
             MockURLProtocol.stub = { request in
                 let response = HTTPURLResponse(url: request.url!, statusCode: 429, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
@@ -40,12 +40,12 @@ struct AISummaryProviderTests {
             let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
             let provider = ServerAISummaryProvider(client: client)
 
-            let summary = await provider.summarize(content: "x", title: "y")
-            #expect(summary == nil)
+            let result = await provider.summarize(content: "x", title: "y")
+            #expect(result == .failure(.limitReached))
         }
     }
 
-    @Test func serverProviderReturnsNilOnNoProviderConfigured() async {
+    @Test func serverProviderReportsNoProviderConfigured() async {
         await MockURLProtocol.lock.withLock {
             MockURLProtocol.stub = { request in
                 let response = HTTPURLResponse(url: request.url!, statusCode: 409, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
@@ -56,12 +56,12 @@ struct AISummaryProviderTests {
             let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
             let provider = ServerAISummaryProvider(client: client)
 
-            let summary = await provider.summarize(content: "x", title: "y")
-            #expect(summary == nil)
+            let result = await provider.summarize(content: "x", title: "y")
+            #expect(result == .failure(.noProvider))
         }
     }
 
-    @Test func serverProviderReturnsNilOnUpstreamProviderError() async {
+    @Test func serverProviderReportsAnUpstreamProviderError() async {
         await MockURLProtocol.lock.withLock {
             MockURLProtocol.stub = { request in
                 let response = HTTPURLResponse(url: request.url!, statusCode: 502, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
@@ -72,14 +72,53 @@ struct AISummaryProviderTests {
             let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
             let provider = ServerAISummaryProvider(client: client)
 
-            let summary = await provider.summarize(content: "x", title: "y")
-            #expect(summary == nil)
+            let result = await provider.summarize(content: "x", title: "y")
+            #expect(result == .failure(.providerError))
         }
     }
 
-    @Test func appleIntelligenceProviderReturnsNilWhenModelUnavailable() async {
+
+    /// The regression this pins. `yana-server`'s `/api/v1/ai/prompt` rejects any prompt longer than
+    /// `ai_max_prompt_length`, whose default is 500 characters, so server-mode summarization failed
+    /// for every real article -- and the old "every failure is nil" path reported it as
+    /// "Please try again", which can never succeed until the limit is raised on the server.
+    @Test func serverProviderReportsAPromptRejectedForLength() async {
+        await MockURLProtocol.lock.withLock {
+            MockURLProtocol.stub = { request in
+                let response = HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, #"{"error":{"code":"prompt_too_long","message":"prompt exceeds the configured length limit."}}"#.data(using: .utf8)!)
+            }
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+            let provider = ServerAISummaryProvider(client: client)
+
+            let result = await provider.summarize(content: String(repeating: "long body. ", count: 200), title: "T")
+            #expect(result == .failure(.promptTooLong))
+        }
+    }
+
+    /// Offline/unexpected-shape failures must not be reported as a server configuration problem.
+    @Test func serverProviderReportsTransportFailuresAsUnavailable() {
+        #expect(ServerAISummaryProvider.failure(for: .transport) == .unavailable)
+        #expect(ServerAISummaryProvider.failure(for: .decoding("bad shape")) == .unavailable)
+        #expect(ServerAISummaryProvider.failure(for: .unauthorized) == .unavailable)
+        #expect(ServerAISummaryProvider.failure(for: .server(YanaAPIError(code: "something_new", message: ""))) == .unavailable)
+    }
+
+    /// Each cause the user can act on gets its own copy; only the catch-all reuses the old text.
+    @MainActor
+    @Test func everyFailureReasonHasItsOwnMessage() {
+        let reasons: [AISummaryFailure] = [.promptTooLong, .noProvider, .limitReached, .providerError, .unavailable]
+        let messages = reasons.map(ReaderActions.summarizeFailureMessage)
+        #expect(Set(messages).count == reasons.count)
+        #expect(messages.allSatisfy { !$0.isEmpty })
+    }
+
+    @Test func appleIntelligenceProviderReportsUnavailableWhenModelUnavailable() async {
         struct UnavailableGenerator: ArticleGenerating {
             let availability: AppleIntelligenceAvailability = .deviceNotEligible
+            let supportedLanguages: Set<Locale.Language> = [Locale.Language(identifier: "en"), Locale.Language(identifier: "de")]
             func tokenCount(_ text: String) -> Int { text.count }
             func generate(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> ProcessedArticle {
                 ProcessedArticle(title: "T", content: "C")
@@ -89,13 +128,14 @@ struct AISummaryProviderTests {
             }
         }
         let provider = AppleIntelligenceSummaryProvider(generator: UnavailableGenerator())
-        let summary = await provider.summarize(content: "<p>body</p>", title: "T")
-        #expect(summary == nil)
+        let result = await provider.summarize(content: "body", title: "T")
+        #expect(result == .failure(.unavailable))
     }
 
     @Test func appleIntelligenceProviderReturnsSummaryWhenAvailable() async {
         struct AvailableGenerator: ArticleGenerating {
             let availability: AppleIntelligenceAvailability = .available
+            let supportedLanguages: Set<Locale.Language> = [Locale.Language(identifier: "en"), Locale.Language(identifier: "de")]
             func tokenCount(_ text: String) -> Int { text.count }
             func generate(instructions: String, prompt: String, temperature: Double, maxTokens: Int) async throws -> ProcessedArticle {
                 ProcessedArticle(title: "T", content: "C")
@@ -105,8 +145,8 @@ struct AISummaryProviderTests {
             }
         }
         let provider = AppleIntelligenceSummaryProvider(generator: AvailableGenerator())
-        let summary = await provider.summarize(content: "<p>body</p>", title: "T")
-        #expect(summary == "on-device summary")
+        let result = await provider.summarize(content: "body", title: "T")
+        #expect(result == .success("on-device summary"))
     }
 }
 

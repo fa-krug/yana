@@ -31,11 +31,14 @@ enum AppleIntelligenceChunkedSummarizer {
         let chunks = ArticleChunker.chunk(text: clean,
                                           budgetTokens: contentBudgetTokens,
                                           tokenCount: generator.tokenCount)
+        // Resolved from the article, once, so the map and reduce passes agree -- a reduce that
+        // dropped the directive would translate the partials back to the instruction language.
+        let language = SummaryLanguage.directive(text: clean, supported: generator.supportedLanguages)
         do {
             var partials: [String] = []
             for chunk in chunks {
                 let result = try await generator.generateSummary(
-                    instructions: summaryInstructions,
+                    instructions: summaryInstructions(language: language),
                     prompt: prompt(title: title, text: chunk),
                     temperature: temperature,
                     maxTokens: maxTokens
@@ -44,7 +47,7 @@ enum AppleIntelligenceChunkedSummarizer {
             }
             guard partials.count > 1 else { return partials.first }
             return try await generator.generateSummary(
-                instructions: reduceInstructions,
+                instructions: reduceInstructions(language: language),
                 prompt: prompt(title: title, text: ArticleAIText.cap(partials.joined(separator: "\n\n"))),
                 temperature: temperature,
                 maxTokens: maxTokens
@@ -56,12 +59,21 @@ enum AppleIntelligenceChunkedSummarizer {
 
     // MARK: - Prompt assembly (guided generation: no JSON-format boilerplate needed)
 
-    static let summaryInstructions =
-        "You summarize article content. " + ArticleAIText.summarizeInstruction
+    /// `language` is `SummaryLanguage.directive`'s output: appended when a supported target language
+    /// was resolved, omitted otherwise (leaving the model to answer in its own default).
+    static func summaryInstructions(language: String? = nil) -> String {
+        withLanguage("You summarize article content. " + ArticleAIText.summarizeInstruction, language)
+    }
 
-    static let reduceInstructions =
-        "You combine several partial article summaries into one concise summary. "
-        + ArticleAIText.summarizeInstruction
+    static func reduceInstructions(language: String? = nil) -> String {
+        withLanguage("You combine several partial article summaries into one concise summary. "
+                     + ArticleAIText.summarizeInstruction, language)
+    }
+
+    private static func withLanguage(_ instructions: String, _ language: String?) -> String {
+        guard let language else { return instructions }
+        return instructions + " " + language
+    }
 
     static func prompt(title: String, text: String) -> String {
         "Title: \(title)\n\nContent:\n\(text)"

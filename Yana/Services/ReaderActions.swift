@@ -37,7 +37,26 @@ enum ReaderActions {
         return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
-    enum SummarizeResult { case saved, failed }
+    enum SummarizeResult: Equatable { case saved, failed(AISummaryFailure) }
+
+    /// User-facing copy for a failed summarize, shared by both platforms' toasts. Split by reason
+    /// because "Please try again" is actively misleading for the two causes retrying can never fix:
+    /// no provider configured, and an article longer than the server's configured AI prompt limit
+    /// (whose default, 500 characters, is shorter than any real article body).
+    static func summarizeFailureMessage(_ failure: AISummaryFailure) -> String {
+        switch failure {
+        case .promptTooLong:
+            String(localized: "This article is longer than the AI prompt limit on your server. Raise that limit in the server's AI settings and try again.")
+        case .noProvider:
+            String(localized: "Your server has no AI provider set up yet. Add one in the server's AI settings.")
+        case .limitReached:
+            String(localized: "Your server has reached its AI request limit. Please try again later.")
+        case .providerError:
+            String(localized: "Your server's AI provider could not summarize this article. Please try again.")
+        case .unavailable:
+            String(localized: "Could not summarize this article. Please try again.")
+        }
+    }
 
     /// Runs `provider` against `article` and saves the result. The caller is expected to have
     /// already resolved `provider` (and shown a "not connected" toast instead of calling this at
@@ -45,12 +64,14 @@ enum ReaderActions {
     static func summarize(
         _ article: Article, using provider: AISummaryProvider, modelContext: ModelContext
     ) async -> SummarizeResult {
-        guard let summary = await provider.summarize(content: article.plainText, title: article.title) else {
-            return .failed
+        switch await provider.summarize(content: article.plainText, title: article.title) {
+        case .failure(let failure):
+            return .failed(failure)
+        case .success(let summary):
+            article.summary = summary
+            try? modelContext.save()
+            return .saved
         }
-        article.summary = summary
-        try? modelContext.save()
-        return .saved
     }
 
     enum ForceUpdateResult { case cancelled, applied(feedName: String?), failed }

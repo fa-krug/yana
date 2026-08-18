@@ -348,8 +348,18 @@ source and issue board live at
   Settings-UI helper it drove — including the `CredentialTestError` enum, which outlived that
   deletion for a while with no caller left and is now gone too). `ServerAISummaryProvider` calls
   `POST /api/v1/ai/prompt` with a fixed summarize prompt against whatever provider the server is
-  configured with; any failure (rate limit, no provider configured, provider error) degrades to
-  `nil` — "no summary available" is an expected, silent outcome, never a user-facing error.
+  configured with. **A failure reports why, rather than collapsing to `nil`:** both providers return
+  `Result<String, AISummaryFailure>`, whose failure distinguishes `promptTooLong`/`noProvider`/
+  `limitReached`/`providerError`/`unavailable`, mapped from the server's `{ error: { code } }`
+  envelope by `ServerAISummaryProvider.failure(for:)` (keyed on the code, since
+  `YanaAPIClientError.server` carries no status) and rendered by
+  `ReaderActions.summarizeFailureMessage`, which both platforms' toasts use. This replaced an
+  "every failure is silently `nil`" design that reported the one cause retrying can never fix as
+  "Please try again": `yana-server`'s `/api/v1/ai/prompt` rejects any prompt longer than the user's
+  `ai_max_prompt_length`, **whose default is 500 characters** — shorter than any real article
+  body, so server-mode summarization failed on every article with no hint that the fix was to raise
+  that limit in the server's own AI settings
+  (`AISummaryProviderTests.serverProviderReportsAPromptRejectedForLength` pins the mapping).
   `AppleIntelligenceSummaryProvider` runs entirely on-device via `AppleIntelligenceChunkedSummarizer`
   (extracted from the former `AppleIntelligenceProcessor`, keeping only the summarize path — the
   improve-writing/translate paths and their `AIOptions`/`AggregatedArticle` plumbing are gone): the
@@ -362,7 +372,23 @@ source and issue board live at
   elements in plain text, so it took its fallback and returned the whole article as ONE chunk —
   the map-reduce never ran and long articles overflowed the context window. `ArticleChunker` now
   splits on the blank lines `BlockParser.plainText` actually emits
-  (`ArticleChunkerTests.plainTextArticleIsActuallyChunked` pins this). `AISummaryReadiness.isReady(mode:)` gates
+  (`ArticleChunkerTests.plainTextArticleIsActuallyChunked` pins this).
+  **The output language is named explicitly, not left to the model.** The on-device model writes in
+  the language of its instructions, and every instruction string here is English, so a German
+  article got an English summary. `SummaryLanguage` (`Yana/Services/SummaryLanguage.swift`) resolves
+  a target language from the article text — `NLLanguageRecognizer` over the first 2000 characters,
+  the same rule `ReaderSpeechController` uses to pick a voice, falling back to
+  `Locale.preferredLanguages` — skips any candidate outside
+  `SystemLanguageModel.default.supportedLanguages` (surfaced on `ArticleGenerating` so tests can
+  inject it), and renders the winner as an instruction sentence naming the language in English
+  ("Write the summary in German…"). Naming it beats "answer in the article's language": the small
+  on-device model follows a concrete directive far more reliably than one it has to infer. The
+  directive is resolved once and appended to **both** the map and the reduce instructions — a reduce
+  pass without it translates the partials back to English (`SummarizerLanguageDirectiveTests` pins
+  that). When no supported language resolves, no directive is added and the model keeps its own
+  default. The server path (`ServerAISummaryProvider`) sends no such directive: its prompt carries
+  the article text and hosted models mirror the input language on their own.
+  `AISummaryReadiness.isReady(mode:)` gates
   whether the reader's "Summarize" action is offered at all — `.server` is always ready (it degrades
   gracefully on its own), `.appleIntelligence` needs `AppleIntelligenceClient().availability == .available`
   since showing the button with no usable model is worse than hiding it.
@@ -690,7 +716,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 404 tests in 92 suites, all passing. (An earlier pass had dropped to 381 tests in 90
+  change, 414 tests in 94 suites, all passing. (An earlier pass had dropped to 381 tests in 90
   suites from a prior 406 by deleting dead-code and legacy-HTML suites — ones that only exercised
   orphaned helpers such as `CredentialTesterTests`, `NameSearchTests`, `ArticleSearchTests`,
   `CrossFadeTests`, `UpdateProgressTests`, `ArticleHeaderLogoTests`, plus
@@ -700,7 +726,10 @@ source and issue board live at
   new suite) among them — plus `ArticleWritesTests` (`setRead`'s no-op-when-unchanged and
   queue-on-failure behavior), `DevicePairingTests` (`classify`'s four failure modes), and
   `BackgroundRefreshManagerTests` (the Mac loop's re-arm/cancel-on-`.off` behavior), bringing the
-  suite back up to its current 404/92.
+  suite back up to 404/92, and the Apple-Intelligence summary-language fix added
+  `SummaryLanguageTests` + `SummarizerLanguageDirectiveTests` (two new suites), and the
+  summarize-failure-reason work added three more cases to `AISummaryProviderTests`, for the current
+  414/94.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap
