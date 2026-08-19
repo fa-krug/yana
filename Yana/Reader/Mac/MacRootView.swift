@@ -396,9 +396,9 @@ private struct MacSidebarView: View {
         List(selection: $model.selection) {
             ForEach(displayed) { summary in
                 MacArticleRow(summary: summary, model: model,
-                              isSelected: model.selection == summary.identifier)
+                              isSelected: model.selection == summary.stableKey)
                     .listRowInsets(Self.rowInsets)
-                    .tag(summary.identifier)
+                    .tag(summary.stableKey)
             }
         }
         // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.

@@ -123,6 +123,18 @@ enum TimelinePageIndex {
         guard let identifier else { return nil }
         return items.firstIndex { $0.identifier == identifier }
     }
+
+    /// Resolves a `TimelineIdentifiable.stableKey` value back to an index. This is the counterpart
+    /// callers need when the only handle they have back is a `stableKey` itself -- e.g. a SwiftUI
+    /// `List`'s `selection` binding, whose `.tag()` values are `stableKey`s, not raw identifiers.
+    /// Reverses `stableKey`'s own encoding: an `"s"`-prefixed key is a `serverID`; anything else is
+    /// a raw identifier (the unsynced-fixture-data fallback `stableKey` itself falls back to).
+    static func index<T: TimelineIdentifiable>(ofStableKey key: String, in items: [T]) -> Int? {
+        if key.hasPrefix("s"), let serverID = Int(key.dropFirst()) {
+            return items.firstIndex { $0.serverID == serverID }
+        }
+        return items.firstIndex { $0.identifier == key }
+    }
 }
 
 /// Resolves the persisted timeline anchor to an index in the displayed list, falling back to the

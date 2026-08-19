@@ -78,16 +78,21 @@ final class TimelineModel {
 
     // MARK: - Selection
 
-    /// The selected article's stable identifier, bound to the sidebar `List(selection:)`. Setting it
-    /// re-resolves the position by identifier (never a stale index) and persists it as the anchor.
+    /// The selected article's `stableKey` (see `TimelineIdentifiable.stableKey`), bound to the
+    /// sidebar `List(selection:)`. Plain `identifier` is only a per-feed dedup key -- two different
+    /// feeds can share one -- so using it here let the `List`'s own tag-based selection tracking
+    /// resolve to the wrong row (or fail to highlight any row at all) whenever such a collision was
+    /// present in the currently displayed timeline. `stableKey` is unique across the whole library.
+    /// Setting it re-resolves the position by `stableKey` (never a stale index) and persists it as
+    /// the anchor.
     var selection: String? {
         get {
             filteredArticles.indices.contains(currentIndex)
-                ? filteredArticles[currentIndex].identifier : nil
+                ? filteredArticles[currentIndex].stableKey : nil
         }
         set {
             guard let id = newValue,
-                  let i = TimelinePageIndex.index(of: id, in: filteredArticles),
+                  let i = TimelinePageIndex.index(ofStableKey: id, in: filteredArticles),
                   // The sidebar `List(selection:)` binding is re-read (and written back) after any
                   // programmatic move of `currentIndex` — e.g. `jumpToSyncedTimelinePosition` — so
                   // without this guard, re-selecting the row already at `currentIndex` would still

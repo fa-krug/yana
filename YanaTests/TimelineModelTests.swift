@@ -338,6 +338,42 @@ struct TimelineModelTests {
         #expect(model.selectedSummary?.serverID == 2, "must reanchor to FeedY's copy, not FeedX's same-identifier row")
     }
 
+    /// Pins the fix for "the current article is not selected in the sidebar list": `selection` used
+    /// to expose the plain `identifier`, which the sidebar `List` binds and tags rows with -- but
+    /// `identifier` is only a per-feed dedup key, so two articles sharing one (as above) got the same
+    /// `List` tag, which broke the highlight/selection tracking. `selection` must expose the
+    /// library-unique `stableKey` instead, and round-trip back to the right row on assignment.
+    @Test func selectionUsesStableKeyToDisambiguateArticlesThatShareAnIdentifierAcrossFeeds() async throws {
+        let settings = freshSettings()
+        let container = try makeContainer()
+        let context = container.mainContext
+        let feedX = Feed(name: "FeedX", identifier: "fx")
+        let feedY = Feed(name: "FeedY", identifier: "fy")
+        let dupInFeedX = Article(title: "dup", identifier: "dup", url: "https://x.com/dup")
+        dupInFeedX.date = Date(timeIntervalSince1970: 1); dupInFeedX.feed = feedX; dupInFeedX.serverID = 1
+        let dupInFeedY = Article(title: "dup", identifier: "dup", url: "https://x.com/dup")
+        dupInFeedY.date = Date(timeIntervalSince1970: 2); dupInFeedY.feed = feedY; dupInFeedY.serverID = 2
+        context.insert(feedX); context.insert(feedY); context.insert(dupInFeedX); context.insert(dupInFeedY)
+        try context.save()
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("timeline-model-test-\(UUID().uuidString).plist")
+        let store = ArticleStore(container: container, cache: SummaryIndexCache(fileURL: cacheURL), anchorProvider: { (nil, nil) })
+        await store.refreshNow()
+
+        let model = TimelineModel(settings: settings)
+        model.configure(modelContext: context, store: store)
+        model.applyTimeline()   // parks on the last (newest) article by default: FeedY's copy
+
+        #expect(model.selection == "s2", "selection must be the stableKey, not the shared identifier \"dup\"")
+
+        // Selecting FeedX's copy by its stableKey must land on serverID 1, not fall through to the
+        // identifier-based lookup (which would be ambiguous between the two).
+        model.selection = "s1"
+        #expect(model.selectedSummary?.serverID == 1)
+        #expect(model.selection == "s1")
+    }
+
     // MARK: - clampIndex scroll bump (review finding 4)
 
     /// Review finding 4: a filter toggle that shrinks the timeline past the current selection moves
