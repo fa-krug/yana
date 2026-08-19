@@ -25,6 +25,21 @@ final class ReadingPositionSync {
     private let debounceInterval: Duration
     private var debounceTask: Task<Void, Never>?
 
+    /// The article id of a push this device currently has in flight to the server, set the
+    /// instant the PATCH is sent and cleared once it resolves (success or failure) -- brackets the
+    /// real network round trip, not the debounce window. This closes a race the plain
+    /// `readingPositionUpdatedAt` guard in `applyRemoteUpdate` cannot: the server publishes the
+    /// live `readingPosition` SSE event to every open connection on this same account the instant
+    /// the write commits, *including the pushing device's own* `ReadingPositionLiveSync`
+    /// connection, over a completely separate connection from the PATCH itself. If that echo lands
+    /// before this device's own PATCH response does, `readingPositionUpdatedAt` hasn't been
+    /// stamped yet, so the device would otherwise treat its own just-made write as a fresh remote
+    /// update and jump to it -- landing on a stale/previous article the instant the user has
+    /// navigated on since. Once the push resolves, `readingPositionUpdatedAt` takes over covering
+    /// the rest of the race (an echo arriving after resolution matches it exactly and is dropped by
+    /// the existing `known >= updatedAt` check).
+    private var inFlightPushArticleServerID: Int?
+
     /// `debounceInterval` is injectable purely for tests; production always uses the default.
     init(debounceInterval: Duration = .seconds(2)) {
         self.debounceInterval = debounceInterval
@@ -48,6 +63,8 @@ final class ReadingPositionSync {
     /// The actual PATCH, split out from `schedulePush` so it's directly testable without waiting
     /// on the debounce timer. On failure, queues for `flushPending` instead of dropping the write.
     func push(articleServerID: Int, client: YanaAPIClient, settings: AppSettings) async {
+        inFlightPushArticleServerID = articleServerID
+        defer { inFlightPushArticleServerID = nil }
         do {
             let updatedAt = try await ArticleActions(client: client).setReadingPosition(articleServerID: articleServerID)
             settings.pendingReadingPositionPush = nil
@@ -62,6 +79,8 @@ final class ReadingPositionSync {
     /// failure here leaves the entry queued for the next sync pass.
     static func flushPending(client: YanaAPIClient, settings: AppSettings) async {
         guard let articleServerID = settings.pendingReadingPositionPush else { return }
+        shared.inFlightPushArticleServerID = articleServerID
+        defer { shared.inFlightPushArticleServerID = nil }
         do {
             let updatedAt = try await ArticleActions(client: client).setReadingPosition(articleServerID: articleServerID)
             settings.pendingReadingPositionPush = nil
@@ -79,9 +98,16 @@ final class ReadingPositionSync {
     /// itself just pushed. The single source of truth for that rule -- shared by `SyncEngine`'s
     /// periodic `GET /api/v1/reading-position` pull and `ReadingPositionLiveSync`'s live SSE push,
     /// so a remote update is applied identically regardless of which route delivered it.
+    ///
+    /// Also drops an echo of a push this device currently has in flight (see
+    /// `inFlightPushArticleServerID`'s doc comment) -- the `updatedAt` guard above only catches a
+    /// self-echo once the push has resolved locally and stamped `readingPositionUpdatedAt`; this
+    /// closes the window before that, where the live SSE echo of a device's own write can outrace
+    /// its own PATCH response.
     static func applyRemoteUpdate(articleId: Int, updatedAt: Date, settings: AppSettings) {
         if let known = settings.readingPositionUpdatedAt, known >= updatedAt { return }
         settings.readingPositionUpdatedAt = updatedAt
+        guard articleId != shared.inFlightPushArticleServerID else { return }
         settings.pendingRemoteReadingPosition = articleId
     }
 }

@@ -122,6 +122,38 @@ struct ReadingPositionSyncTests {
         #expect(settings.readingPositionUpdatedAt == Date(timeIntervalSince1970: 2000))
     }
 
+    /// The bug this pins: the server fans a live `readingPosition` SSE event out to every open
+    /// connection on the account, including the pushing device's own -- so that echo can arrive on
+    /// a completely separate connection before this device's own PATCH response does. Before the
+    /// fix, `readingPositionUpdatedAt` (the only guard `applyRemoteUpdate` had) wasn't stamped yet
+    /// at that point, so the device treated its own in-flight write as a fresh remote update and
+    /// would jump straight to it -- landing back on a stale/previous article the moment the user
+    /// had already navigated on. `inFlightPushArticleServerID` closes that window directly.
+    @Test func applyRemoteUpdateIgnoresAnEchoOfAPushStillInFlight() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let settings = freshSettings()
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                Thread.sleep(forTimeInterval: 0.3)   // simulate a slow PATCH round trip
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, #"{"articleId":42,"updatedAt":"2026-01-01T00:00:00Z"}"#.data(using: .utf8)!)
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let pushTask = Task { await ReadingPositionSync.shared.push(articleServerID: 42, client: client, settings: settings) }
+            try? await Task.sleep(for: .milliseconds(80))   // let push() start and mark the in-flight id
+
+            // The live SSE echo of this exact write races ahead of the PATCH response.
+            ReadingPositionSync.applyRemoteUpdate(articleId: 42, updatedAt: ISO8601DateFormatter().date(from: "2026-01-01T00:00:00Z")!, settings: settings)
+
+            #expect(settings.pendingRemoteReadingPosition == nil, "an echo of this device's own in-flight push must not be treated as a remote update")
+
+            await pushTask.value
+            #expect(settings.readingPositionUpdatedAt == ISO8601DateFormatter().date(from: "2026-01-01T00:00:00Z"))
+        }
+    }
+
     @Test func applyRemoteUpdateDropsAnExactlyEqualUpdate() {
         // Guards against a device re-applying a position it just pushed itself, or a live SSE
         // event echoing the exact same write the periodic pull already applied.

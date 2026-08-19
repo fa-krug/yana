@@ -443,7 +443,16 @@ source and issue board live at
   swallowing any failure (including a 404 from a server predating this endpoint) since this is a
   nicety layered on the sync pass, never allowed to break the feeds/tags/articles pull that
   actually matters. That last-writer-wins gate/stash rule is factored into
-  `ReadingPositionSync.applyRemoteUpdate(articleId:updatedAt:settings:)`, a single source of truth
+  `ReadingPositionSync.applyRemoteUpdate(articleId:updatedAt:settings:)`, which also tracks
+  `inFlightPushArticleServerID` — the id of a push this device currently has in flight, set the
+  instant the PATCH is sent and cleared once it resolves — and drops an echo matching it outright.
+  This closes a race the `updatedAt` gate alone can't: the server fans the live `readingPosition`
+  event out to every open connection on the account **including the pushing device's own**, over a
+  connection entirely separate from the PATCH itself, so that echo can arrive back at the sender
+  before its own PATCH response does (while `readingPositionUpdatedAt` is still stale) — without
+  this guard the device would treat its own just-made write as a fresh remote update and jump
+  straight to it, landing on a stale/previous article the moment the user had already navigated on.
+  A single source of truth
   shared by `syncReadingPosition`'s pull above AND `ReadingPositionLiveSync`'s live push below, so a
   remote update is applied identically regardless of which route delivered it.
   `ReadingPositionLiveSync` (started/stopped alongside `scenePhase` in `YanaApp.swift`, active only
