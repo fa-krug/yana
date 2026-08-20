@@ -354,23 +354,43 @@ private struct MacSidebarView: View {
     @State private var searchResults: [ArticleSummary]?
     /// Focused by the ⌘F Find command (`model.searchFocusToken`) via the `.onChange` below.
     @FocusState private var searchFieldFocused: Bool
-    /// Drives `.scrollPosition(id:)` below. Mirrors `model.scrollTarget.id` — see that modifier's
-    /// `.onChange` for why a repeated request for the same id still needs to reach the List.
-    @State private var scrollAnchorID: String?
     /// The last `scrollTarget.token` applied, so a delivery that doesn't change the token (a plain
     /// SwiftUI re-render, not a new request) doesn't re-trigger a scroll.
     @State private var lastAppliedScrollToken: Int?
 
+    /// One-shot gate for the launch case: the sidebar's rows are hidden (`.opacity`) until the very
+    /// first scroll request -- the anchor restore -- has actually landed on screen, so the sidebar
+    /// opens already parked on the current article instead of visibly jumping there from the top.
+    /// See `scrollToTarget(_:proxy:)` for why this needs a retry loop and a visibility check at all,
+    /// rather than a single `proxy.scrollTo`, and its doc comment for why the once-proven-broken
+    /// `ScrollViewReader` wrapper below is back: this mirrors `ManagedList`'s identical technique
+    /// (`Yana/Views/Config/ManagedList.swift`), the one place in this codebase that already solved
+    /// "open a List already parked on a specific row" reliably.
+    @State private var isRevealed = false
+    /// Set once the launch anchor's scroll has been requested, so every later request (Next/Previous
+    /// Article, a remote anchor arriving live, the reanchor self-heal) takes the plain, no-hiding
+    /// path -- the sidebar is already on screen by then, so there is nothing to reveal.
+    @State private var hasHandledFirstScrollRequest = false
+    /// Set once a `scrollTo` call has been given a frame to take effect. The reveal condition below
+    /// ignores anything the target row reports before that: a target near the top is realized before
+    /// any scrolling, and revealing on that first report would show it in its pre-scroll place and
+    /// let the centering scroll shift it in front of the user.
+    @State private var scrollHasSettled = false
+    /// The target row's last reported frame, kept so the reveal can be re-evaluated when
+    /// `scrollHasSettled` flips -- in a list short enough that the scroll moves nothing, the row
+    /// reports its position once and never again.
+    @State private var targetRowFrame: CGRect?
+    /// The List's own frame, against which the target row's frame is tested for on-screen-ness.
+    @State private var listFrame: CGRect = .zero
+
     /// Browsing shows the model's filtered timeline; a live search swaps in predicate-fetched rows,
     /// re-run through the same tag/feed filter so the sidebar stays a subset of the reader timeline.
     ///
-    /// Cached, not a computed property (review finding 2): `.scrollPosition(id:)` below is a
-    /// two-way `Binding`, so SwiftUI writes `scrollAnchorID` back on every row-crossing-centre event
-    /// while the user scrolls — each write re-evaluates this view's `body`. A computed `displayed`
-    /// re-ran the `TagFilter`/`FeedFilter` passes (and, while a search is active, re-filtered the
-    /// search results) on every one of those scroll-driven passes, on top of the `ForEach` identity
-    /// diff `body` always pays. Caching it means a scroll-driven `body` pass is O(1) here; the value
-    /// only actually changes when one of its real inputs does — see `recomputeDisplayed()`.
+    /// Cached, not a computed property (review finding 2): re-running the `TagFilter`/`FeedFilter`
+    /// passes (and, while a search is active, re-filtering the search results) on every `body` pass
+    /// would be wasted work on top of the `ForEach` identity diff `body` always pays. Caching it
+    /// means a `body` pass unrelated to filtering is O(1) here; the value only actually changes when
+    /// one of its real inputs does — see `recomputeDisplayed()`.
     @State private var displayed: [ArticleSummary] = []
 
     /// Extra vertical room per sidebar row — the AppKit-backed source list packs rows tightly by
@@ -385,85 +405,96 @@ private struct MacSidebarView: View {
     private static var selectionTint: Color { Color.accentColor.mix(with: .black, by: 0.18) }
 
     var body: some View {
-        // The List must be the DIRECT child of the NavigationSplitView sidebar column for the system
-        // to give it the source-list chrome (translucent material, inset rounded selection, no
-        // separators) — a prior version of this view wrapped it in a ScrollViewReader precisely to
-        // scroll to the selection, and that wrapper was what suppressed the chrome; it was removed
-        // for exactly that reason. `.scrollPosition(id:anchor:)` below is a modifier applied
-        // directly to this same List (like `.listStyle(.sidebar)` or `.searchable` already are), not
-        // a wrapping container, so it programmatically scrolls the selected row into view without
-        // repeating that failure.
-        List(selection: $model.selection) {
-            ForEach(displayed) { summary in
-                MacArticleRow(summary: summary, model: model,
-                              isSelected: model.selection == summary.stableKey)
-                    .listRowInsets(Self.rowInsets)
-                    .tag(summary.stableKey)
-            }
-        }
-        // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.
-        .accessibilityIdentifier("mac.sidebar.list")
-        .listStyle(.sidebar)
-        .onAppear { recomputeDisplayed() }
-        // `displayed`'s real inputs: the model's filtered timeline, the live search results, and —
-        // only relevant while a search is active, since browsing already reads `model.filteredArticles`
-        // straight through — the tag/feed filter settings `recomputeDisplayed()` re-applies on top of
-        // `searchResults`. None of these fire on a mere scroll (see `displayed`'s doc comment).
-        .onChange(of: model.filteredArticles) { _, _ in recomputeDisplayed() }
-        .onChange(of: searchResults) { _, _ in recomputeDisplayed() }
-        .onChange(of: settings.disabledTagNames) { _, _ in recomputeDisplayed() }
-        .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
-        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeDisplayed() }
-        .onChange(of: settings.starredOnly) { _, _ in recomputeDisplayed() }
-        .scrollPosition(id: $scrollAnchorID, anchor: .center)
-        .onChange(of: model.scrollTarget) { _, target in
-            guard let target, target.token != lastAppliedScrollToken else { return }
-            lastAppliedScrollToken = target.token
-            if scrollAnchorID == target.id {
-                // Same id as already applied (e.g. the launch anchor restore immediately followed by
-                // a remote anchor for that same article): reassigning the identical value wouldn't
-                // change `scrollAnchorID` at all, so SwiftUI would never re-issue the scroll. Bounce
-                // through `nil` first so the following assignment is a genuine change.
-                scrollAnchorID = nil
-                Task { @MainActor in scrollAnchorID = target.id }
-            } else {
-                scrollAnchorID = target.id
-            }
-        }
-        // The selection highlight follows the tint. The brand accent is a bright lavender that
-        // fills the whole selected pill at full saturation — glaring against the dark sidebar — so
-        // damp it toward a deeper violet for the sidebar only. Derived from the accent so it stays
-        // on-brand and adapts to light/dark; iOS is untouched (this is the Mac window).
-        .tint(Self.selectionTint)
-        .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
-        .searchFocused($searchFieldFocused)
-        .onChange(of: model.searchFocusToken) { _, _ in searchFieldFocused = true }
-        .overlay {
-            if displayed.isEmpty {
-                if searchText.isEmpty {
-                    ContentUnavailableView("No Articles", systemImage: "tray",
-                                           description: Text("Pair a Yana Server that has feeds and articles configured."))
-                } else {
-                    ContentUnavailableView.search(text: searchText)
+        // `ScrollViewReader { List { ... } }`: an earlier version of this view used exactly this
+        // wrapper and, per a since-superseded assumption in this file's history, it was blamed for
+        // suppressing the sidebar's native source-list chrome (translucent material, inset rounded
+        // selection, no separators) and replaced with `.scrollPosition(id:)` applied directly to the
+        // List instead. That replacement is what this fix reverts: `.scrollPosition(id:)` can only
+        // scroll to a row the List has already laid out, so a request delivered the instant its row's
+        // data arrives (the launch anchor restore, above all) races the List's own layout and is
+        // silently dropped -- which is exactly why the sidebar opened at the top instead of parked on
+        // the current article. `ManagedList` (`Yana/Views/Config/ManagedList.swift`) solves this exact
+        // problem for the iOS article list with `ScrollViewReader` + a retry loop + hiding the rows
+        // until the target row is confirmed on screen; this reapplies that same proven technique here.
+        // **This needs a one-time manual check that the sidebar chrome still looks right** — the
+        // original "breaks chrome" finding predates that reveal-gating discovery and was bundled in a
+        // commit that also fixed an unrelated Mac-idiom bug, so it was never re-isolated and retested.
+        ScrollViewReader { proxy in
+            List(selection: $model.selection) {
+                ForEach(displayed) { summary in
+                    MacArticleRow(summary: summary, model: model,
+                                  isSelected: model.selection == summary.stableKey)
+                        .listRowInsets(Self.rowInsets)
+                        .tag(summary.stableKey)
+                        // Only the row currently being scrolled to reports its position, and only
+                        // while the launch reveal is still pending -- every other row pays nothing.
+                        .modifier(SidebarTargetRowProbe(
+                            isTarget: !isRevealed && summary.identifier == model.scrollTarget?.id,
+                            onPosition: targetRowDidReport))
                 }
             }
+            // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.
+            .accessibilityIdentifier("mac.sidebar.list")
+            .listStyle(.sidebar)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { listFrame = $0 }
+            // Rows stay invisible (but laid out, so the scroll below can resolve them) until the
+            // launch anchor has been scrolled to -- see `scrollToTarget(_:proxy:)`.
+            .opacity(isRevealed ? 1 : 0)
+            .onAppear {
+                recomputeDisplayed()
+                revealIfNothingToRestore()
+                scheduleRevealFallback()
+            }
+            // `displayed`'s real inputs: the model's filtered timeline, the live search results, and —
+            // only relevant while a search is active, since browsing already reads `model.filteredArticles`
+            // straight through — the tag/feed filter settings `recomputeDisplayed()` re-applies on top of
+            // `searchResults`.
+            .onChange(of: model.filteredArticles) { _, _ in recomputeDisplayed(); revealIfNothingToRestore() }
+            .onChange(of: searchResults) { _, _ in recomputeDisplayed() }
+            .onChange(of: settings.disabledTagNames) { _, _ in recomputeDisplayed() }
+            .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
+            .onChange(of: settings.disabledFeedNames) { _, _ in recomputeDisplayed() }
+            .onChange(of: settings.starredOnly) { _, _ in recomputeDisplayed() }
+            .onChange(of: model.scrollTarget) { _, target in
+                guard let target, target.token != lastAppliedScrollToken else { return }
+                lastAppliedScrollToken = target.token
+                scrollToTarget(target.id, proxy: proxy)
+            }
+            // The selection highlight follows the tint. The brand accent is a bright lavender that
+            // fills the whole selected pill at full saturation — glaring against the dark sidebar — so
+            // damp it toward a deeper violet for the sidebar only. Derived from the accent so it stays
+            // on-brand and adapts to light/dark; iOS is untouched (this is the Mac window).
+            .tint(Self.selectionTint)
+            .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
+            .searchFocused($searchFieldFocused)
+            .onChange(of: model.searchFocusToken) { _, _ in searchFieldFocused = true }
+            .overlay {
+                if displayed.isEmpty {
+                    if searchText.isEmpty {
+                        ContentUnavailableView("No Articles", systemImage: "tray",
+                                               description: Text("Pair a Yana Server that has feeds and articles configured."))
+                    } else {
+                        ContentUnavailableView.search(text: searchText)
+                    }
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                MacFilterBar(settings: settings, onCreateFeed: onCreateFeed)
+            }
+            .task(id: searchText) {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled else { return }
+                debouncedSearch = searchText
+            }
+            .task(id: debouncedSearch) { await runSearch() }
+            .focused($focusedPane, equals: .sidebar)
+            .onKeyPress(.return) {
+                guard model.selectedSummary != nil else { return .ignored }
+                focusedPane = .reader
+                return .handled
+            }
+            .background(widthReader)
         }
-        .safeAreaInset(edge: .top) {
-            MacFilterBar(settings: settings, onCreateFeed: onCreateFeed)
-        }
-        .task(id: searchText) {
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else { return }
-            debouncedSearch = searchText
-        }
-        .task(id: debouncedSearch) { await runSearch() }
-        .focused($focusedPane, equals: .sidebar)
-        .onKeyPress(.return) {
-            guard model.selectedSummary != nil else { return .ignored }
-            focusedPane = .reader
-            return .handled
-        }
-        .background(widthReader)
     }
 
     @ViewBuilder private var widthReader: some View {
@@ -490,6 +521,71 @@ private struct MacSidebarView: View {
         displayed = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
     }
 
+    /// Scrolls to `id`. The very first call (the launch anchor restore) runs the hide-until-visible
+    /// dance: `proxy.scrollTo` can only resolve a row the List has already laid out, and the launch
+    /// request is delivered the same instant that row's data arrives, racing the List's own layout of
+    /// it -- so this retries across a few short frames, exactly as `ManagedList.scrollToTargetIfNeeded`
+    /// does, and keeps the rows hidden until the target is confirmed on screen so the user never sees
+    /// the pre-scroll position. Every later call (Next/Previous Article, a remote anchor, the reanchor
+    /// self-heal) takes the plain path: the sidebar is already visible by then, so a single scroll with
+    /// no hiding is enough, matching how those callers already expect an immediate, visible jump.
+    private func scrollToTarget(_ id: String, proxy: ScrollViewProxy) {
+        guard !hasHandledFirstScrollRequest else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
+            return
+        }
+        hasHandledFirstScrollRequest = true
+        Task { @MainActor in
+            for delayMS in [0, 60, 250] {
+                try? await Task.sleep(nanoseconds: UInt64(delayMS) * 1_000_000)
+                if isRevealed { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
+                // Give the scroll one frame to take effect, so the position judged below is the
+                // post-scroll one.
+                try? await Task.sleep(nanoseconds: 16_000_000)
+                scrollHasSettled = true
+                if delayMS == 250 { isRevealed = true } else { revealIfTargetIsOnScreen() }
+            }
+        }
+    }
+
+    private func targetRowDidReport(_ frame: CGRect) {
+        targetRowFrame = frame
+        revealIfTargetIsOnScreen()
+    }
+
+    /// The reveal condition: the target row sits fully within the List's own bounds, i.e. the scroll
+    /// really has put it on screen. Positions reported before the scroll settled don't count -- see
+    /// `scrollHasSettled`.
+    private func revealIfTargetIsOnScreen() {
+        guard !isRevealed, scrollHasSettled, let frame = targetRowFrame else { return }
+        isRevealed = ManagedListReveal.isRowFullyVisible(row: frame, inList: listFrame)
+    }
+
+    /// If the first delivery of `filteredArticles` is empty, no scroll request will ever arrive (there
+    /// is nothing to restore an anchor to), so hiding the rows forever would leave the sidebar
+    /// permanently blank instead of showing its "No Articles" empty state.
+    private func revealIfNothingToRestore() {
+        guard !isRevealed, !hasHandledFirstScrollRequest, model.filteredArticles.isEmpty else { return }
+        isRevealed = true
+    }
+
+    /// Backstop for a launch anchor that, for whatever reason, never resolves to an on-screen row
+    /// (e.g. the anchored article was deleted server-side between sessions) -- without this the
+    /// sidebar would stay hidden indefinitely, which is a far worse failure than a brief top-of-list
+    /// flash. `scrollToTarget`'s own 250ms-delay attempt already force-reveals on its own timeout;
+    /// this is a second, independent safety net for the case where no scroll request arrives at all.
+    private func scheduleRevealFallback() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if !isRevealed { isRevealed = true }
+        }
+    }
+
     private func runSearch() async {
         let q = debouncedSearch.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { searchResults = nil; return }
@@ -499,6 +595,33 @@ private struct MacSidebarView: View {
 
 /// The pinned tag/feed filter control at the top of the sidebar (the Mac home for what is a sheet on
 /// iOS). A pull-down `Menu` of toggles that write straight to the shared `AppSettings` filter.
+/// Reports the row's frame while `isTarget` is set, so `MacSidebarView` can reveal its rows the
+/// moment the row it scrolled to is genuinely on screen. A copy of `ManagedList`'s private
+/// `TargetRowPositionProbe`, kept separate rather than shared since that one is file-private to
+/// `ManagedList.swift`. Written as a `ViewModifier` taking `isTarget` (not applied conditionally at
+/// the call site) so a row's identity and its `List` metadata don't change when the flag flips.
+private struct SidebarTargetRowProbe: ViewModifier {
+    let isTarget: Bool
+    let onPosition: (CGRect) -> Void
+
+    func body(content: Content) -> some View {
+        content.background {
+            if isTarget {
+                // A `GeometryReader`, not `onGeometryChange`, because the row may well be realized
+                // already sitting in its final place: that produces no *change* to report, and the
+                // reveal would be left waiting on the backstop. `onAppear` covers that first
+                // position, `onChange` the ones the scroll produces.
+                GeometryReader { geometry in
+                    let frame = geometry.frame(in: .global)
+                    Color.clear
+                        .onAppear { onPosition(frame) }
+                        .onChange(of: frame) { _, new in onPosition(new) }
+                }
+            }
+        }
+    }
+}
+
 private struct MacFilterBar: View {
     let settings: AppSettings
     let onCreateFeed: () -> Void
