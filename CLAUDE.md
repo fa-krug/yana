@@ -443,15 +443,22 @@ source and issue board live at
   swallowing any failure (including a 404 from a server predating this endpoint) since this is a
   nicety layered on the sync pass, never allowed to break the feeds/tags/articles pull that
   actually matters. That last-writer-wins gate/stash rule is factored into
-  `ReadingPositionSync.applyRemoteUpdate(articleId:updatedAt:settings:)`, which also tracks
-  `inFlightPushArticleServerID` — the id of a push this device currently has in flight, set the
-  instant the PATCH is sent and cleared once it resolves — and drops an echo matching it outright.
-  This closes a race the `updatedAt` gate alone can't: the server fans the live `readingPosition`
-  event out to every open connection on the account **including the pushing device's own**, over a
-  connection entirely separate from the PATCH itself, so that echo can arrive back at the sender
-  before its own PATCH response does (while `readingPositionUpdatedAt` is still stale) — without
-  this guard the device would treat its own just-made write as a fresh remote update and jump
-  straight to it, landing on a stale/previous article the moment the user had already navigated on.
+  `ReadingPositionSync.applyRemoteUpdate(articleId:updatedAt:settings:)`, which carries two further
+  guards the `updatedAt` gate alone can't provide. **A user-driven navigation this device hasn't
+  had acknowledged yet always wins:** `ReadingPositionSync.unacknowledgedLocalPosition` is set the
+  moment a push is *scheduled* (so it spans the ~2s debounce, not just the PATCH round trip) and
+  cleared only when that same id's PATCH succeeds, and while it is set every remote update is
+  dropped — without stamping `readingPositionUpdatedAt`, so a genuinely newer remote value is
+  merely deferred to the next pull rather than swallowed. This is what stops the reader being
+  dragged back off an article the user just opened from the list: the local anchor is written
+  instantly but the push is debounced, so a sync pull (or a live SSE event) landing in that window
+  still carries the *previous* position. It also covers the sender's own echo, since the server
+  fans the live `readingPosition` event out to every open connection on the account **including
+  the pushing device's own**, over a connection entirely separate from the PATCH itself, so that
+  echo can arrive back at the sender before its own PATCH response does. **An update pointing at
+  the article this device is already anchored on** (`AppSettings.timelineAnchorServerID`) is
+  stamped and dropped rather than stashed — it changes nothing, and it is the resting shape of a
+  self-echo whose event `updatedAt` is a hair later than the PATCH response it echoes.
   A single source of truth
   shared by `syncReadingPosition`'s pull above AND `ReadingPositionLiveSync`'s live push below, so a
   remote update is applied identically regardless of which route delivered it.
@@ -465,10 +472,15 @@ source and issue board live at
   device's next full sync. Best-effort like the rest of that SSE feed: a dropped/never-opened
   connection loses nothing but low latency, since the periodic pull above always eventually catches
   up regardless. That stashed value is applied — and consumed — by
-  `ReaderAnchorController`/`TimelineModel`'s `jumpToSyncedTimelinePosition`, called ONLY from
-  `applyTimeline()`'s first-load branch (a fresh app launch/session, before the user has navigated)
-  by resolving the pulled server article id directly against `ArticleSummary.serverID` — never
-  mid-session, which would yank the user off the article they're actively reading. This read side
+  `ReaderAnchorController`/`TimelineModel`'s `jumpToSyncedTimelinePosition`, which resolves the
+  pulled server article id directly against `ArticleSummary.serverID`. It is called from
+  `applyTimeline()`'s first-load branch (a fresh app launch/session), retried on every later
+  timeline delivery while the value stays unresolved (the target article may not have synced down
+  yet), and applied mid-session from the `pendingRemoteReadingPosition` change handler
+  (`ReaderScreen`'s `.onChange` / `TimelineModel.handleRemotePositionUpdate`) so another device's
+  navigation shows up live. What keeps that from yanking the user off an article they're actively
+  reading is upstream, in `applyRemoteUpdate`'s two guards above plus
+  `TimelineAnchorWriter.record` clearing any not-yet-applied pending value. This read side
   writes `timelineAnchorIdentifier`/`timelineAnchorServerID` directly rather than going through
   `TimelineAnchorWriter.record`, by design: it must never trigger another push, or two open devices
   would trade anchor writes forever (pinned by `ReaderAnchorControllerTests`). `ReaderAnchorController`
@@ -756,7 +768,11 @@ source and issue board live at
   `SummaryLanguageTests` + `SummarizerLanguageDirectiveTests` (two new suites), and the
   summarize-failure-reason work added five more cases to `AISummaryProviderTests` (the
   prompt-too-long mapping, the unknown-code/transport detail tags, the whole-prompt cap, and the
-  180s request timeout, and the undecodable-error-body status tag), for the current 417/94. Note
+  180s request timeout, and the undecodable-error-body status tag), for 417/94 at that point. The
+  reading-position self-echo/stale-pull fix added five more cases to `ReadingPositionSyncTests`
+  (the debounce-window drop, the already-anchored drop, that another device's *different* position
+  still applies, that remote updates resume once the local push is acknowledged, and that a failed
+  push keeps the local position authoritative). Note
   `SyncReactionMainThreadTests.importBatchesLeaveTheMainActorResponsive` measures a wall-clock stall
   against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
   treating a failure there as real.

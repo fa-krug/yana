@@ -8,12 +8,12 @@ import Foundation
 /// short-lived connection for a single reload's `job` event; multiple concurrent readers of the
 /// same per-user feed are fine, since the server fans every event out to every open connection.
 ///
-/// Applying a live update goes through the exact same last-writer-wins stash
-/// (`ReadingPositionSync.applyRemoteUpdate`) the periodic pull uses -- never applied immediately,
-/// which would yank the user off the article they're actively reading (see
-/// `AppSettings.pendingRemoteReadingPosition`'s doc comment). A live push just makes that stash
-/// available sooner; `ReaderAnchorController`/`TimelineModel` still only ever consume it at a
-/// fresh session's first load.
+/// Applying a live update goes through the exact same stash (`ReadingPositionSync
+/// .applyRemoteUpdate`) the periodic pull uses, guards included -- a live push just makes that
+/// stash available sooner. In particular a position this device itself just navigated to and
+/// hasn't had acknowledged yet always outranks whatever arrives here, so the sender's own echo (the
+/// server fans every event out to every open connection on the account, this one included) can
+/// never move the reader off the article the user just opened.
 ///
 /// Best-effort by construction, same as `JobEventsClient` itself: a dropped connection (or the
 /// device simply being offline) loses nothing but low latency -- the next full sync's
