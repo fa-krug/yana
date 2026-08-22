@@ -30,7 +30,24 @@ extension TimelineIdentifiable {
     /// when there's no `serverID` yet (unsynced debug/screenshot fixture data), where a collision
     /// isn't a real-world concern.
     var stableKey: String {
+        TimelineStableKey.make(identifier: identifier, serverID: serverID)
+    }
+}
+
+/// The single place a `stableKey` is *encoded*, so a caller holding a loose identifier/serverID
+/// pair rather than an item -- `AppSettings.timelineAnchorStableKey`, built from the two persisted
+/// anchor fields -- produces exactly the key `TimelineIdentifiable.stableKey` would, and exactly
+/// the one `TimelinePageIndex.index(ofStableKey:)` decodes again.
+enum TimelineStableKey {
+    static func make(identifier: String, serverID: Int?) -> String {
         serverID.map { "s\($0)" } ?? identifier
+    }
+
+    /// The same encoding for a pair whose *both* halves can be absent (the persisted anchor
+    /// fields). `nil` means there is no anchored article to key off at all.
+    static func makeIfPresent(identifier: String?, serverID: Int?) -> String? {
+        guard identifier != nil || serverID != nil else { return nil }
+        return make(identifier: identifier ?? "", serverID: serverID)
     }
 }
 
@@ -105,6 +122,72 @@ enum StarredFilter {
     static func apply<T: TimelineFilterable>(to items: [T], starredOnly: Bool) -> [T] {
         guard starredOnly else { return items }
         return items.filter { $0.filterStarred }
+    }
+}
+
+/// Filters the timeline by read state (`AppSettings.readFilter`). A no-op in `.all`.
+///
+/// `exemptKey` -- the `stableKey` of the article the timeline is currently parked on -- is always
+/// kept, whatever its read state. That carve-out is what makes this filter usable at all: an
+/// article is marked read the instant it becomes the displayed one, and every recompute runs off
+/// `ArticleStore`'s index (which is re-published on that very write), so in `.unread` the article
+/// the user just opened would otherwise disappear from the timeline mid-read and take the reader
+/// with it. The exemption lapses as soon as the user navigates elsewhere, so a read article drops
+/// out once it is genuinely behind them -- which is the point of the filter.
+enum ReadFilter {
+    static func apply<T: TimelineFilterable & TimelineIdentifiable>(
+        to items: [T], mode: ReadFilterMode, exemptKey: String? = nil
+    ) -> [T] {
+        guard mode != .all else { return items }
+        return items.filter { item in
+            if let exemptKey, item.stableKey == exemptKey { return true }
+            return mode == .unread ? !item.filterRead : item.filterRead
+        }
+    }
+}
+
+/// The timeline's complete filter chain: tags, then feeds, then starred-only, then read state.
+/// Every surface that shows the timeline (the iOS reader and its article list, the Mac sidebar,
+/// the first-load bootstrap) runs exactly this, so they can never drift apart -- the four of them
+/// each used to spell the chain out by hand, and a filter added to one was a filter missing from
+/// the others.
+///
+/// Order within the chain is irrelevant to the result: every pass only ever removes rows, never
+/// reorders (see `TimelineOrder`), so the output always keeps `ArticleStore`'s canonical
+/// `(createdAt, serverID)` order whatever is filtered out of it.
+enum TimelineFilterChain {
+    static func apply<T: TimelineFilterable & TimelineIdentifiable>(
+        to items: [T],
+        disabledTagNames: Set<String>,
+        includeUntagged: Bool,
+        disabledFeedNames: Set<String>,
+        starredOnly: Bool,
+        readFilter: ReadFilterMode,
+        anchorKey: String?
+    ) -> [T] {
+        let byTag = TagFilter.apply(
+            to: items, disabledTagNames: disabledTagNames, includeUntagged: includeUntagged
+        )
+        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: disabledFeedNames)
+        let byStarred = StarredFilter.apply(to: byFeed, starredOnly: starredOnly)
+        return ReadFilter.apply(to: byStarred, mode: readFilter, exemptKey: anchorKey)
+    }
+
+    /// The same chain, reading every input from `AppSettings` (including the anchored article that
+    /// `ReadFilter` exempts). This is what the view/model call sites use.
+    @MainActor
+    static func apply<T: TimelineFilterable & TimelineIdentifiable>(
+        to items: [T], settings: AppSettings
+    ) -> [T] {
+        apply(
+            to: items,
+            disabledTagNames: settings.disabledTagNames,
+            includeUntagged: settings.includeUntagged,
+            disabledFeedNames: settings.disabledFeedNames,
+            starredOnly: settings.starredOnly,
+            readFilter: settings.readFilter,
+            anchorKey: settings.timelineAnchorStableKey
+        )
     }
 }
 

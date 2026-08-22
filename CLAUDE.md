@@ -162,7 +162,7 @@ source and issue board live at
 ### SwiftUI + SwiftData + thin sync client
 
 - **Models** (`Yana/Models/`): SwiftData `@Model` classes — `Feed`, `Tag`, `Article` — plus
-  `AppSettings` (the preferences store, including the `AIMode` enum), `UpdateInterval` (per-device
+  `AppSettings` (the preferences store, including the `AIMode` and `ReadFilterMode` enums), `UpdateInterval` (per-device
   background-refresh schedule), and `ServerMigrationEligibility` (pure state machine for the
   one-time "Yana now requires a server" notice shown to devices that finished onboarding before this
   rework shipped). **These models store only what this client actually renders.** A `Feed` is a
@@ -176,8 +176,9 @@ source and issue board live at
   `Article.starred: Bool` is a plain field (no more built-in "Starred" tag or `Tag.isBuiltIn`).
   `Article.serverID: Int?` is the sync identity `SyncWriter` upserts/removes/backfills by.
   `Article.hasContent: Bool` tracks whether `/articles/:id/content` has landed yet for this row,
-  driving the sync engine's backfill retry. `Article.read: Bool` is read state: display-only, and it
-  deliberately takes no part in the timeline's order (see **Key patterns**). Assign it directly —
+  driving the sync engine's backfill retry. `Article.read: Bool` is read state. It never
+  takes part in the timeline's *order*, only in what the optional "Read State" quick-filter keeps
+  (see **Key patterns**). Assign it directly —
   the old `readRank: Int` sort mirror and its `setRead(_:)` setter are gone, along with the index
   every sync insert used to maintain for it. `Article.blocks` (computed from `blockData`) is
   unchanged from before — see **Reader**.
@@ -679,6 +680,8 @@ source and issue board live at
     incoherent. The `readRank` mirror column, its index, and the `Article.setRead(_:)` setter that
     maintained it are all deleted — assign `Article.read` directly. The band-aid this replaces,
     `TimelinePinning` (which lifted the displayed article back to its as-if-unread slot), is deleted.
+    Read state may *filter* (the opt-in "Read State" quick-filter below) but it must still never
+    *order*: `ReadFilter` only removes rows, so whatever survives it is in the same order it was.
   - **`Article.date` must not sort.** It's the feed's own publish timestamp, display-only, and a feed
     can backfill it out of order, which would retroactively move an article the user already paged past.
   - **`serverID` is a required tiebreak, not a nicety.** The server stamps `createdAt` with
@@ -692,14 +695,36 @@ source and issue board live at
   synced article from unread to read (read on another device) but a sync pass can never downgrade an
   already-locally-read article back to unread (`SyncWriter.upsertSummaries`'s upgrade-only rule).
   Starring is a separate, orthogonal `Article.starred` boolean with its own "Starred Only"
-  quick-filter, and likewise never affects order.
+  quick-filter, and likewise never affects order. Read state has an opt-in quick-filter of its own
+  (`AppSettings.readFilter`, an `all`/`unread`/`read` `ReadFilterMode`, default `.all`), applied by
+  `ReadFilter` — **which always exempts the article the timeline is parked on**
+  (`AppSettings.timelineAnchorStableKey`). That carve-out is what makes the filter usable rather
+  than hostile: since an article is marked read the instant it becomes the displayed one, and every
+  recompute runs off the `ArticleStore` index that same write re-publishes, `.unread` would
+  otherwise delete the article out of the timeline mid-read and carry the reader off it. The
+  exemption lapses once the user navigates on, so an article does drop out of an `.unread` timeline
+  once it is genuinely behind them. The exemption depends on the anchor being written *before* the
+  read write on every navigation path — it is, in all four (`didFinishAnimating` calls
+  `onIndexChange` before `onArticleDisplayed`; `openArticle`, the Mac `selection` setter and
+  `moveSelection` all `record` before `markRead`) — so keep that order if you touch them.
 - **Tags are a live join, not a snapshot:** `Feed.tagIDs` is refreshed from the server on every
-  `/feeds` fetch, and the timeline's tag/feed/starred filtering (`Yana/Utilities/TimelineFiltering.swift`
-  — `TagFilter`/`FeedFilter`/`StarredFilter`, applied identically to the full `Article` and the
-  lightweight `ArticleSummary`) always reflects the feed's *current* tag membership. This replaces the
-  old per-article "tags snapshotted at import time" model. **Starred is a plain `Article.starred`
-  boolean**, not tag membership — there is no more built-in "Starred" tag; the timeline filter has a
-  dedicated "Starred Only" quick-filter toggle instead (`AppSettings.starredOnly`).
+  `/feeds` fetch, and the timeline's tag/feed/starred/read filtering
+  (`Yana/Utilities/TimelineFiltering.swift` — `TagFilter`/`FeedFilter`/`StarredFilter`/`ReadFilter`,
+  applied identically to the full `Article` and the lightweight `ArticleSummary`) always reflects the
+  feed's *current* tag membership. This replaces the old per-article "tags snapshotted at import
+  time" model. **Starred is a plain `Article.starred` boolean**, not tag membership — there is no
+  more built-in "Starred" tag; the timeline filter has a dedicated "Starred Only" quick-filter
+  toggle instead (`AppSettings.starredOnly`), alongside the "Read State" picker
+  (`AppSettings.readFilter`).
+- **One filter chain, four surfaces:** `TimelineFilterChain` (same file) is the whole pipeline —
+  tags, feeds, starred, read — and every surface that shows the timeline runs exactly it: the iOS
+  reader (`ReaderActions.recomputeFilter`), its searchable article list
+  (`ArticleListView.filteredResults`), the Mac sidebar (`MacSidebarView.recomputeDisplayed`) and the
+  first-load bootstrap (`TimelineBootstrap.resolve`). Those four each used to spell the chain out by
+  hand, which is how a filter could exist on one surface and quietly not on the others; add a filter
+  to the chain, not to a call site. Each surface still needs its own `.onChange(of:)` on the new
+  setting to recompute, and (on the reader/sidebar) to re-resolve the index from the anchor
+  afterwards — the surviving rows shift even when the displayed article itself survives.
 - **Update vs. reload, now server-triggered:** two distinct semantics, reflected in the action labels,
   both of which now only *trigger* server-side work and must poll to see the result (a POST/PATCH ack
   is not the content itself — see `UpdateAndSync`). **"Update"** (the reader's pull-down gesture, "Update
@@ -742,7 +767,8 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 417 tests in 94 suites, all passing. (An earlier pass had dropped to 381 tests in 90
+  change, 430 tests in 94 suites (the read-state filter added 13 cases to the existing
+  filtering/filter-state/bootstrap/badge suites). (An earlier pass had dropped to 381 tests in 90
   suites from a prior 406 by deleting dead-code and legacy-HTML suites — ones that only exercised
   orphaned helpers such as `CredentialTesterTests`, `NameSearchTests`, `ArticleSearchTests`,
   `CrossFadeTests`, `UpdateProgressTests`, `ArticleHeaderLogoTests`, plus
@@ -853,6 +879,9 @@ source and issue board live at
 
 ### Enhanced
 - **Search** ✅ — full-text search across articles (title/plainText/author/feed name) via the reader's `ArticleListView`
+- **Read-state filter** ✅ — an opt-in "Read State" quick-filter (all/unread/read) in the same
+  filter sheet as the tag, feed and starred filters, on both platforms; it narrows the timeline
+  without ever reordering it, and never hides the article currently being read
 - **Feed/tag management** ✅ — moved entirely to the server's own web UI, reached from Settings (`ManagementWebView`) via an embedded WebView that bootstraps a fresh, short-lived, single-use server session token on every appearance
 - **Notifications** ✅ — opt-in (off by default) local notification with the new-article count after a background sync
 - **Read-aloud** ✅ — `ReaderSpeechController` reads articles aloud with a voice matching the article's language, continues from the lock screen / Control Center, and exposes a voice picker in the Reader settings section

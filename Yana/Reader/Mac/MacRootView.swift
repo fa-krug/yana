@@ -140,6 +140,7 @@ struct MacRootView: View {
         .onChange(of: settings.includeUntagged) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.disabledFeedNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.starredOnly) { _, _ in model.recomputeFilter(); model.clampIndex() }
+        .onChange(of: settings.readFilter) { _, _ in model.refilterKeepingCurrentArticle() }
         .onDisappear {
             spinnerHoldTask?.cancel()
             spinnerHoldTask = nil
@@ -455,6 +456,7 @@ private struct MacSidebarView: View {
             .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
             .onChange(of: settings.disabledFeedNames) { _, _ in recomputeDisplayed() }
             .onChange(of: settings.starredOnly) { _, _ in recomputeDisplayed() }
+            .onChange(of: settings.readFilter) { _, _ in recomputeDisplayed() }
             .onChange(of: model.scrollTarget) { _, target in
                 guard let target, target.token != lastAppliedScrollToken else { return }
                 lastAppliedScrollToken = target.token
@@ -514,11 +516,7 @@ private struct MacSidebarView: View {
     /// hooks above, never from `body` itself — that's the whole point of caching it (review finding 2).
     private func recomputeDisplayed() {
         guard let searchResults else { displayed = model.filteredArticles; return }
-        let byTag = TagFilter.apply(to: searchResults,
-                                    disabledTagNames: settings.disabledTagNames,
-                                    includeUntagged: settings.includeUntagged)
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        displayed = StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        displayed = TimelineFilterChain.apply(to: searchResults, settings: settings)
     }
 
     /// Scrolls to `id`. The very first call (the launch anchor restore) runs the hide-until-visible
@@ -640,6 +638,18 @@ private struct MacFilterBar: View {
                 toggle(String(localized: "Starred Only"), isOn: settings.starredOnly) {
                     settings.starredOnly = $0
                 }
+                // Three-way, unlike the toggles around it -- a `Picker` inside the menu renders as
+                // a checkmarked group, which is the Mac convention for a radio-style choice.
+                Picker(selection: Binding(
+                    get: { settings.readFilter },
+                    set: { settings.readFilter = $0 }
+                )) {
+                    ForEach(ReadFilterMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                } label: {
+                    Text("Read State")
+                }
                 Section("Tags") {
                     ForEach(tags) { tag in
                         toggle(tag.name, isOn: !settings.disabledTagNames.contains(tag.name)) { active in
@@ -670,6 +680,7 @@ private struct MacFilterBar: View {
                         settings.disabledFeedNames = []
                         settings.includeUntagged = true
                         settings.starredOnly = false
+                        settings.readFilter = .all
                     }
                 }
             } label: {

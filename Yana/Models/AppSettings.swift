@@ -14,6 +14,29 @@ enum AIMode: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
+/// Timeline read-state quick-filter. `.all` (the default) shows everything; the other two
+/// narrow the timeline to unread or read articles only.
+///
+/// The article the timeline is currently parked on is always exempt from this filter (see
+/// `ReadFilter.apply`): an article is marked read the instant it becomes the displayed one, so
+/// without that carve-out selecting `.unread` would make the article the user is reading vanish
+/// out from under them.
+enum ReadFilterMode: String, CaseIterable, Sendable, Identifiable {
+    case all
+    case unread
+    case read
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .all: String(localized: "All")
+        case .unread: String(localized: "Unread")
+        case .read: String(localized: "Read")
+        }
+    }
+}
+
 /// Non-secret user preferences, backed by UserDefaults. Secrets live in `KeychainService`.
 @MainActor
 @Observable
@@ -31,6 +54,7 @@ final class AppSettings {
             Key.updateInterval: UpdateInterval.min60.rawValue,
             Key.aiMode: AIMode.server.rawValue,
             Key.includeUntagged: true,
+            Key.readFilter: ReadFilterMode.all.rawValue,
             Key.articleTextSize: ArticleTextSize.medium.rawValue,
             Key.articleFont: ArticleFont.system.rawValue,
         ])
@@ -65,6 +89,7 @@ final class AppSettings {
         static let includeUntagged = "settings.includeUntagged"
         static let disabledFeedNames = "settings.disabledFeedNames"
         static let starredOnly = "settings.starredOnly"
+        static let readFilter = "settings.readFilter"
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
         static let timelineAnchorServerID = "settings.timelineAnchorServerID"
@@ -194,16 +219,28 @@ final class AppSettings {
         get { access(keyPath: \.disabledFeedNames); return Set(defaults.stringArray(forKey: Key.disabledFeedNames) ?? []) }
         set { withMutation(keyPath: \.disabledFeedNames) { defaults.set(Array(newValue), forKey: Key.disabledFeedNames) } }
     }
-    /// True when the timeline filter would hide some articles (a tag or feed is off, or untagged
-    /// articles are excluded). Drives the reader's filter-button active state.
+    /// True when the timeline filter would hide some articles (a tag or feed is off, untagged
+    /// articles are excluded, or one of the quick filters is narrowing by starred/read state).
+    /// Drives the reader's filter-button active state.
     var isTimelineFilterActive: Bool {
         !disabledTagNames.isEmpty || !includeUntagged || !disabledFeedNames.isEmpty || starredOnly
+            || readFilter != .all
     }
     /// Timeline quick-filter: show only starred articles. Replaces the old built-in "Starred" tag
     /// row now that starring is a plain boolean, not tag membership.
     var starredOnly: Bool {
         get { access(keyPath: \.starredOnly); return defaults.bool(forKey: Key.starredOnly) }
         set { withMutation(keyPath: \.starredOnly) { defaults.set(newValue, forKey: Key.starredOnly) } }
+    }
+    /// Timeline quick-filter: restrict the timeline to unread or read articles (see
+    /// `ReadFilterMode`). Stored by raw value so an unrecognized/absent value degrades to `.all`
+    /// rather than to a filter the user never chose.
+    var readFilter: ReadFilterMode {
+        get {
+            access(keyPath: \.readFilter)
+            return ReadFilterMode(rawValue: defaults.string(forKey: Key.readFilter) ?? "") ?? .all
+        }
+        set { withMutation(keyPath: \.readFilter) { defaults.set(newValue.rawValue, forKey: Key.readFilter) } }
     }
 
     // MARK: Reader
@@ -317,6 +354,12 @@ final class AppSettings {
     var timelineAnchorServerID: Int? {
         get { access(keyPath: \.timelineAnchorServerID); return optionalInt(forKey: Key.timelineAnchorServerID) }
         set { withMutation(keyPath: \.timelineAnchorServerID) { setOptionalInt(newValue, forKey: Key.timelineAnchorServerID) } }
+    }
+    /// The anchored article as a `TimelineIdentifiable.stableKey`, i.e. the key of the article the
+    /// timeline is currently parked on. `ReadFilter` exempts it so the article being read is never
+    /// filtered out from under the user by its own read state.
+    var timelineAnchorStableKey: String? {
+        TimelineStableKey.makeIfPresent(identifier: timelineAnchorIdentifier, serverID: timelineAnchorServerID)
     }
 
     // MARK: Reading position sync

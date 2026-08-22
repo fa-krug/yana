@@ -185,6 +185,7 @@ final class TimelineModel {
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
             starredOnly: settings.starredOnly,
+            readFilter: settings.readFilter,
             anchorIdentifier: settings.timelineAnchorIdentifier,
             anchorServerID: settings.timelineAnchorServerID
         )
@@ -256,6 +257,16 @@ final class TimelineModel {
         if currentIndex != previous {
             requestScroll(to: filteredArticles[currentIndex].identifier)
         }
+    }
+
+    /// Re-applies the filter chain and keeps the timeline on the article it was already showing:
+    /// the surrounding rows move, so the index has to be re-resolved from the anchor even when the
+    /// displayed article itself survives the filter (`ReadFilter` exempts it). Used by the
+    /// read-state filter, whose whole job is to add and remove rows around the current one.
+    func refilterKeepingCurrentArticle() {
+        recomputeFilter()
+        reanchorToCurrentArticle()
+        clampIndex()
     }
 
     /// Keep selection valid after the filter narrows the timeline. When a filter toggle actually

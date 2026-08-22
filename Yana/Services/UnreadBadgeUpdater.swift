@@ -4,7 +4,7 @@ import UserNotifications
 #endif
 
 /// Opt-in app-icon badge showing the unread count *within the user's current timeline filter*
-/// (tag/feed/starred-only selections), not the full library. Hooked into
+/// (tag/feed/starred-only/read-state selections), not the full library. Hooked into
 /// `ArticleStore.publish(_:)` so it recomputes on every sync pull and every local star/read write —
 /// the same single choke point that already drives everything else keyed off the article index.
 @MainActor
@@ -17,6 +17,11 @@ enum UnreadBadgeUpdater {
         let includeUntagged = settings.includeUntagged
         let disabledFeeds = settings.disabledFeedNames
         let starredOnly = settings.starredOnly
+        // A read-only timeline has no unread articles in it by definition. (`ReadFilter`'s
+        // exemption for the article currently being displayed is deliberately ignored here: it's a
+        // transient display concession to stop that one row vanishing mid-read, not a filter the
+        // badge should count against.)
+        guard settings.readFilter != .read else { return 0 }
         var count = 0
         for s in summaries where !s.isRead {
             if starredOnly && !s.isStarred { continue }
