@@ -6,6 +6,9 @@ import Testing
 @Suite("ReadingPositionSync", .serialized)
 struct ReadingPositionSyncTests {
     private func freshSettings() -> AppSettings {
+        // `ReadingPositionSync.shared`'s unacknowledged-local-write state is in-memory and outlives
+        // a single test (a deliberately-failing push leaves it set), so clear it per test.
+        ReadingPositionSync.shared.resetLocalWriteStateForTesting()
         let suite = "ReadingPositionSyncTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
@@ -128,7 +131,7 @@ struct ReadingPositionSyncTests {
     /// fix, `readingPositionUpdatedAt` (the only guard `applyRemoteUpdate` had) wasn't stamped yet
     /// at that point, so the device treated its own in-flight write as a fresh remote update and
     /// would jump straight to it -- landing back on a stale/previous article the moment the user
-    /// had already navigated on. `inFlightPushArticleServerID` closes that window directly.
+    /// had already navigated on. `unacknowledgedLocalPosition` closes that window directly.
     @Test func applyRemoteUpdateIgnoresAnEchoOfAPushStillInFlight() async throws {
         try await MockURLProtocol.lock.withLock {
             let settings = freshSettings()
@@ -151,6 +154,81 @@ struct ReadingPositionSyncTests {
 
             await pushTask.value
             #expect(settings.readingPositionUpdatedAt == ISO8601DateFormatter().date(from: "2026-01-01T00:00:00Z"))
+        }
+    }
+
+    /// The reported bug: jumping to an article from the list writes the local anchor immediately
+    /// but debounces the push by ~2s, so a sync pull -- or a live `readingPosition` SSE event --
+    /// landing inside that window still carries the *previous* position. Since a remote update now
+    /// applies mid-session, stashing it would drag the reader straight back off the article the
+    /// user just opened.
+    @Test func applyRemoteUpdateIgnoresAStalePositionWhileALocalJumpIsStillDebounced() throws {
+        let settings = freshSettings()
+        settings.serverBaseURL = "https://yana.example.com"
+        KeychainService.saveDeviceToken("test-token")
+        defer {
+            KeychainService.deleteDeviceToken()
+            ReadingPositionSync.shared.resetLocalWriteStateForTesting()
+        }
+        // `schedulePush` no-ops when unpaired, which would make the assertions below hold for the
+        // wrong reason -- fail loudly instead if another suite's Keychain cleanup raced this one.
+        try #require(AuthenticatedClient.current(settings: settings) != nil)
+
+        // The user picks article 42 out of the list: anchor written now, push scheduled for later.
+        settings.timelineAnchorServerID = 42
+        ReadingPositionSync.shared.schedulePush(articleServerID: 42, settings: settings)
+
+        ReadingPositionSync.applyRemoteUpdate(articleId: 7, updatedAt: Date(timeIntervalSince1970: 1000), settings: settings)
+
+        #expect(settings.pendingRemoteReadingPosition == nil, "an unacknowledged local jump outranks the position the server still holds")
+        #expect(
+            settings.readingPositionUpdatedAt == nil,
+            "dropped without stamping, so a genuinely newer remote position is only deferred, never swallowed"
+        )
+    }
+
+    @Test func applyRemoteUpdateDropsAnUpdateForTheArticleAlreadyAnchoredLocally() {
+        // A self-echo that arrives once the push has resolved and the user hasn't moved on: there
+        // is nothing to apply, and stashing it would surface as a "remote" jump.
+        let settings = freshSettings()
+        let updatedAt = Date(timeIntervalSince1970: 1000)
+        settings.timelineAnchorServerID = 42
+        ReadingPositionSync.applyRemoteUpdate(articleId: 42, updatedAt: updatedAt, settings: settings)
+        #expect(settings.pendingRemoteReadingPosition == nil)
+        #expect(settings.readingPositionUpdatedAt == updatedAt, "still the newest server state this device knows about")
+    }
+
+    @Test func applyRemoteUpdateStillFollowsAnotherDeviceToADifferentArticle() {
+        let settings = freshSettings()
+        settings.timelineAnchorServerID = 42
+        ReadingPositionSync.applyRemoteUpdate(articleId: 8, updatedAt: Date(timeIntervalSince1970: 1000), settings: settings)
+        #expect(settings.pendingRemoteReadingPosition == 8)
+    }
+
+    @Test func remoteUpdatesFlowAgainOnceTheLocalPushIsAcknowledged() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let settings = freshSettings()
+            let client = stubClient(status: 200, body: #"{"articleId":100,"updatedAt":"2026-01-01T00:00:00Z"}"#.data(using: .utf8)!)
+            settings.timelineAnchorServerID = 100
+
+            await ReadingPositionSync.shared.push(articleServerID: 100, client: client, settings: settings)
+            ReadingPositionSync.applyRemoteUpdate(articleId: 8, updatedAt: Date(timeIntervalSince1970: 2_000_000_000), settings: settings)
+
+            #expect(settings.pendingRemoteReadingPosition == 8)
+        }
+    }
+
+    @Test func aFailedPushKeepsTheLocalPositionAuthoritative() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let settings = freshSettings()
+            let client = stubClient(status: 500, body: #"{"error":{"code":"server_error","message":"nope"}}"#.data(using: .utf8)!)
+            defer { ReadingPositionSync.shared.resetLocalWriteStateForTesting() }
+
+            await ReadingPositionSync.shared.push(articleServerID: 100, client: client, settings: settings)
+            ReadingPositionSync.applyRemoteUpdate(articleId: 7, updatedAt: Date(timeIntervalSince1970: 1000), settings: settings)
+
+            #expect(settings.pendingReadingPositionPush == 100)
+            #expect(settings.pendingRemoteReadingPosition == nil, "the queued local write is still newer than anything the server can report")
         }
     }
 
