@@ -23,18 +23,15 @@ enum ReaderActions {
         }
     }
 
-    /// Re-filters `summaries` by the reader's tag/feed/starred filter. Filtering only ever *removes*
-    /// rows -- it never reorders -- so the result keeps `ArticleStore`'s canonical
-    /// `(createdAt, serverID)` order (see `TimelineOrder`), which is what makes the reader's
-    /// forward/back navigation symmetric no matter what the user marks read along the way.
+    /// Re-filters `summaries` by the reader's tag/feed/starred/read filter (`TimelineFilterChain`).
+    /// Filtering only ever *removes* rows -- it never reorders -- so the result keeps
+    /// `ArticleStore`'s canonical `(createdAt, serverID)` order (see `TimelineOrder`), which is what
+    /// makes the reader's forward/back navigation symmetric no matter what the user marks read along
+    /// the way. The read filter additionally exempts the anchored (currently displayed) article, so
+    /// that marking-read-on-display can't pull the open article out of the timeline; see
+    /// `ReadFilter.apply`.
     static func recomputeFilter(summaries: [ArticleSummary], settings: AppSettings) -> [ArticleSummary] {
-        let byTag = TagFilter.apply(
-            to: summaries,
-            disabledTagNames: settings.disabledTagNames,
-            includeUntagged: settings.includeUntagged
-        )
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        TimelineFilterChain.apply(to: summaries, settings: settings)
     }
 
     enum SummarizeResult: Equatable { case saved, failed(AISummaryFailure) }

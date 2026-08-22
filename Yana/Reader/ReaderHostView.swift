@@ -164,6 +164,7 @@ struct ReaderScreen: View {
             includeUntagged: settings.includeUntagged,
             disabledFeedNames: settings.disabledFeedNames,
             starredOnly: settings.starredOnly,
+            readFilter: settings.readFilter,
             anchorIdentifier: settings.timelineAnchorIdentifier,
             anchorServerID: settings.timelineAnchorServerID
         )
@@ -334,6 +335,15 @@ struct ReaderScreen: View {
         .onChange(of: settings.includeUntagged) { _, _ in recomputeFilter() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeFilter() }
         .onChange(of: settings.starredOnly) { _, _ in recomputeFilter() }
+        // Re-filtering removes rows around the page the reader is parked on, so its index moves
+        // even though the article itself survives (`ReadFilter` exempts the anchor). Re-resolve
+        // the index from the anchor rather than leaving a stale one pointing at another article;
+        // the clamp is the fallback for an anchor that doesn't resolve at all.
+        .onChange(of: settings.readFilter) { _, _ in
+            recomputeFilter()
+            reanchorToCurrentArticle()
+            clampIndex()
+        }
 
     }
 

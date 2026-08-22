@@ -1,9 +1,10 @@
 import SwiftData
 import SwiftUI
 
-/// Filter sheet: a Tags section (every tag plus an "Untagged" entry) and a Feeds section,
-/// each row a toggle. All active by default. Writes the disabled sets / untagged flag to
-/// `AppSettings`. A "Clear All" action re-enables everything.
+/// Filter sheet: the quick filters (starred-only, read state), a Tags section (every tag plus an
+/// "Untagged" entry) and a Feeds section, each row a toggle. Everything shown by default. Writes
+/// the disabled sets / untagged flag / quick filters to `AppSettings`. A "Clear All" action
+/// re-enables everything.
 struct TagFilterView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -14,7 +15,8 @@ struct TagFilterView: View {
     @State private var includeUntagged = true
 
     private var isFiltering: Bool {
-        !disabledTags.isEmpty || !disabledFeeds.isEmpty || !includeUntagged || settings.starredOnly
+        !disabledTags.isEmpty || !disabledFeeds.isEmpty || !includeUntagged
+            || settings.starredOnly || settings.readFilter != .all
     }
 
     var body: some View {
@@ -54,6 +56,7 @@ struct TagFilterView: View {
         settings.disabledFeedNames = []
         settings.includeUntagged = true
         settings.starredOnly = false
+        settings.readFilter = .all
     }
 }
 
@@ -73,6 +76,18 @@ private struct TagFilterListContent: View {
                 set: { settings.starredOnly = $0 }
             )) {
                 Label { Text("Starred Only") } icon: { Image(systemName: "star.fill").foregroundStyle(.yellow) }
+            }
+            // Read state is a three-way choice, not a toggle: "unread only" and "read only" are
+            // both useful, and neither is the default.
+            Picker(selection: Binding(
+                get: { settings.readFilter },
+                set: { settings.readFilter = $0 }
+            )) {
+                ForEach(ReadFilterMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            } label: {
+                Label { Text("Read State") } icon: { Image(systemName: "circle.lefthalf.filled") }
             }
         }
 

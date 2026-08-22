@@ -3864,6 +3864,28 @@
         }
       }
     },
+    "Read State": {
+      "comment": "Timeline quick-filter: restrict the timeline to unread or read articles.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesestatus"
+          }
+        }
+      }
+    },
+    "Read": {
+      "comment": "Read-state filter option: show only read articles.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gelesen"
+          }
+        }
+      }
+    },
     "More": {
       "localizations": {
         "de": {

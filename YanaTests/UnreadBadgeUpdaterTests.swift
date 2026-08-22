@@ -73,6 +73,28 @@ struct UnreadBadgeUpdaterTests {
         #expect(UnreadBadgeUpdater.count(from: summaries, settings: settings) == 1)
     }
 
+    /// A read-only timeline contains no unread articles, so the badge has nothing to show.
+    @Test func readOnlyFilterYieldsNoUnreadCount() throws {
+        let settings = freshSettings()
+        settings.readFilter = .read
+        let summaries = [
+            try makeSummary(identifier: "a", isRead: false),
+            try makeSummary(identifier: "b", isRead: true),
+        ]
+        #expect(UnreadBadgeUpdater.count(from: summaries, settings: settings) == 0)
+    }
+
+    /// `.unread` hides nothing the badge was counting anyway -- it only counts unread articles.
+    @Test func unreadOnlyFilterLeavesTheCountUnchanged() throws {
+        let settings = freshSettings()
+        settings.readFilter = .unread
+        let summaries = [
+            try makeSummary(identifier: "a", isRead: false),
+            try makeSummary(identifier: "b", isRead: true),
+        ]
+        #expect(UnreadBadgeUpdater.count(from: summaries, settings: settings) == 1)
+    }
+
     @Test func countHonorsAllFiltersInOnePass() throws {
         let settings = freshSettings()
         settings.disabledFeedNames = ["Muted Feed"]

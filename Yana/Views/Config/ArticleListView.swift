@@ -28,9 +28,10 @@ struct ArticleListView: View {
 
     /// Browsing reads the in-memory index (already in the timeline's canonical
     /// `(createdAt, serverID)` order — see `TimelineOrder`); a search swaps in predicate-fetched
-    /// results. Both run through the shared tag/feed filter so the list stays a subset of the reader
-    /// timeline, and since filtering only removes rows, browsing shows exactly the reader's order —
-    /// including the row for the article currently open, which stays put when it is marked read.
+    /// results. Both run through the shared tag/feed/starred/read filter (`TimelineFilterChain`) so
+    /// the list stays a subset of the reader timeline, and since filtering only removes rows,
+    /// browsing shows exactly the reader's order — including the row for the article currently open,
+    /// which stays put when it is marked read (the read filter exempts it; see `ReadFilter.apply`).
     ///
     /// Cached, not computed (mirrors `MacSidebarView.displayed`, audit P7): `body` re-runs on every
     /// searchable keystroke and every store publish; the three filter passes only need to re-run
@@ -55,15 +56,11 @@ struct ArticleListView: View {
         self._results = State(initialValue: Self.filteredResults(base: store.summaries, settings: settings))
     }
 
-    /// The shared tag/feed/starred filter chain, factored out so both the designated `init` (which
-    /// seeds `results` before `@Environment` is even resolved) and `recomputeResults()` (which reads
-    /// it afterward) apply the exact same rules.
+    /// The shared tag/feed/starred/read filter chain, factored out so both the designated `init`
+    /// (which seeds `results` before `@Environment` is even resolved) and `recomputeResults()`
+    /// (which reads it afterward) apply the exact same rules.
     private static func filteredResults(base: [ArticleSummary], settings: AppSettings) -> [ArticleSummary] {
-        let byTag = TagFilter.apply(to: base,
-                                    disabledTagNames: settings.disabledTagNames,
-                                    includeUntagged: settings.includeUntagged)
-        let byFeed = FeedFilter.apply(to: byTag, disabledFeedNames: settings.disabledFeedNames)
-        return StarredFilter.apply(to: byFeed, starredOnly: settings.starredOnly)
+        TimelineFilterChain.apply(to: base, settings: settings)
     }
 
     /// Recomputes the cached `results` from its real inputs. Called from the `onChange`/`onAppear`
@@ -164,6 +161,7 @@ struct ArticleListView: View {
         .onChange(of: settings.includeUntagged) { _, _ in recomputeResults() }
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeResults() }
         .onChange(of: settings.starredOnly) { _, _ in recomputeResults() }
+        .onChange(of: settings.readFilter) { _, _ in recomputeResults() }
         .navigationTitle("Articles")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
