@@ -32,6 +32,7 @@ private struct WireBlockBox: Decodable {
     private enum HeadingKeys: String, CodingKey { case level, runs }
     private enum ListKeys: String, CodingKey { case ordered, items }
     private enum BlockquoteKeys: String, CodingKey { case blocks }
+    private enum SummaryKeys: String, CodingKey { case blocks }
     private enum ImageKeys: String, CodingKey { case ref, caption }
     private enum EmbedKeys: String, CodingKey { case provider, thumbnailRef, externalURL, title }
     private enum CodeBlockKeys: String, CodingKey { case text, language }
@@ -56,6 +57,12 @@ private struct WireBlockBox: Decodable {
         case "blockquote":
             let c = try decoder.container(keyedBy: BlockquoteKeys.self)
             block = .blockquote(try c.decode([WireBlockBox].self, forKey: .blocks).map(\.block))
+        case "summary":
+            // Wraps blocks, not runs (the `blockquote` shape), so a two-paragraph summary stays
+            // inside the one block instead of pushing the article down the document. Additive at
+            // wire `version` 1 -- see this file's note on the unknown-type rule below.
+            let c = try decoder.container(keyedBy: SummaryKeys.self)
+            block = .summary(try c.decode([WireBlockBox].self, forKey: .blocks).map(\.block))
         case "image":
             let c = try decoder.container(keyedBy: ImageKeys.self)
             block = .image(

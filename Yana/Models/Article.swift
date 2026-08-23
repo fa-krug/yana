@@ -38,8 +38,12 @@ final class Article {
     /// treatment of a publication date as immutable.
     var date: Date = Date.now
     var author: String = ""
-    /// AI-generated summary, shown above the body in the reader. Defaulted for lightweight
-    /// SwiftData migration; empty when summarization is off.
+    /// **Legacy, read-only.** Where an AI-generated summary used to live before summaries became a
+    /// block of their own (`Block.summary`, written by `ReaderActions.summarize` and delivered by the
+    /// server in the content document). Nothing writes this any more; `ArticleBlockView.bodyBlocks`
+    /// still reads it to synthesize a summary block for rows summarized by an earlier build, so
+    /// those summaries stay visible without a migration sweep, and `ReaderSpeechController` reads it
+    /// for the same reason. Do not add new writers -- the block stream is the single source of truth.
     var summary: String = ""
     /// When this article was first synced to this device -- mirrors the server's own `createdAt`
     /// (its stable, append-only, backfill-proof insertion order key; see `SyncWriter`'s wire
@@ -84,15 +88,13 @@ final class Article {
         identifier: String,
         url: String,
         date: Date = .now,
-        author: String = "",
-        summary: String = ""
+        author: String = ""
     ) {
         self.title = title
         self.identifier = identifier
         self.url = url
         self.date = date
         self.author = author
-        self.summary = summary
         self.createdAt = .now
     }
 

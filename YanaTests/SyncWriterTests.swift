@@ -223,6 +223,66 @@ struct SyncWriterTests {
         #expect(article.blocks.count == 1)
     }
 
+    /// A summary generated on this device lives in the block stream, so a content re-fetch (a
+    /// "Reload", or an `updated` article coming back round through the backfill) would destroy it if
+    /// `applyContent` replaced the blocks blindly.
+    @Test func applyContentKeepsALocalSummaryWhenTheServerSendsNone() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Summarized", identifier: "art-100",
+                                    date: now, author: "", read: false, starred: false,
+                                    createdAt: now, updatedAt: now)
+        ])
+        let article = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
+        article.blocks = [.summary([.paragraph([InlineRun(text: "Local summary.")])])]
+        try container.mainContext.save()
+
+        let doc = try JSONDecoder().decode(WireDocument.self, from: #"""
+        {"version":1,"blocks":[{"type":"paragraph","runs":[{"text":"Refetched body.","styles":[],"link":null}]}]}
+        """#.data(using: .utf8)!)
+        let applied = await writer.applyContent(articleServerID: 100, document: doc)
+        #expect(applied)
+
+        let after = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
+        let expected: [Block] = [.paragraph([InlineRun(text: "Local summary.")])]
+        #expect(Block.summaryContents(of: after.blocks) == expected)
+        // Carried into the slot, ahead of the article the server just sent.
+        #expect(after.blocks.count == 2)
+        guard case .summary = after.blocks[0] else { Issue.record("summary must lead"); return }
+    }
+
+    /// The other direction: once the server generates its own summary, it replaces the local one
+    /// rather than landing beside it.
+    @Test func applyContentLetsAServerSummaryReplaceTheLocalOne() async throws {
+        let container = try makeContainer()
+        let writer = SyncWriter(modelContainer: container)
+        let now = Date.now
+        _ = await writer.upsertSummaries([
+            SyncArticleSummaryWire(id: 100, feedId: 1, name: "Summarized", identifier: "art-100",
+                                    date: now, author: "", read: false, starred: false,
+                                    createdAt: now, updatedAt: now)
+        ])
+        let article = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
+        article.blocks = [.summary([.paragraph([InlineRun(text: "Local summary.")])])]
+        try container.mainContext.save()
+
+        let doc = try JSONDecoder().decode(WireDocument.self, from: #"""
+        {"version":1,"blocks":[
+            {"type":"summary","blocks":[{"type":"paragraph","runs":[{"text":"Server summary.","styles":[],"link":null}]}]},
+            {"type":"paragraph","runs":[{"text":"Refetched body.","styles":[],"link":null}]}
+        ]}
+        """#.data(using: .utf8)!)
+        let applied = await writer.applyContent(articleServerID: 100, document: doc)
+        #expect(applied)
+
+        let after = try container.mainContext.fetch(FetchDescriptor<Article>()).first!
+        #expect(after.blocks.count == 2)
+        let expected: [Block] = [.paragraph([InlineRun(text: "Server summary.")])]
+        #expect(Block.summaryContents(of: after.blocks) == expected)
+    }
+
     @Test func articlesMissingContentReturnsOnlyUnfetchedOnes() async throws {
         let container = try makeContainer()
         let writer = SyncWriter(modelContainer: container)

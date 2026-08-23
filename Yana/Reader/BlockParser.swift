@@ -25,6 +25,12 @@ enum BlockParser {
                 case .heading(_, let runs): parts.append(runsText(runs))
                 case .list(_, let items): for item in items { walk(item) }
                 case .blockquote(let inner): walk(inner)
+                // The summary is part of the visible body, so it belongs in both surfaces this
+                // feeds: searching for a phrase that appears in a summary should find the article,
+                // and read-aloud reads the summary before the article just as the reader shows it
+                // first. `ReaderActions.summarize` strips it back out of its own input
+                // (`Block.removingSummaries`) so the model never summarizes a summary.
+                case .summary(let inner): walk(inner)
                 case .image(_, let caption):
                     let c = runsText(caption)
                     if !c.isEmpty { parts.append(c) }

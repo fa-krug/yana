@@ -142,7 +142,11 @@ enum UpdateAndSync {
         // visible page reflects the new content immediately -- see `pollForReloadedContent`'s doc
         // comment for why `SyncWriter`'s write alone isn't enough.
         if let visibleArticle, visibleArticle.serverID == articleServerID {
-            visibleArticle.blocks = document.blocks
+            // Same summary carry-over rule `SyncWriter.applyContent` applies below -- a locally
+            // generated summary is body content, so a reload must not wipe it. Both write paths need
+            // it, or the visible object and the stored row would disagree about the summary.
+            visibleArticle.blocks = Block.preservingSummary(from: visibleArticle.blocks,
+                                                            in: document.blocks)
             visibleArticle.hasContent = true
             try? visibleArticle.modelContext?.save()
         }

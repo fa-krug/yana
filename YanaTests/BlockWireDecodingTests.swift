@@ -39,6 +39,45 @@ struct BlockWireDecodingTests {
         guard case .divider = doc.blocks[3] else { Issue.record("expected divider"); return }
     }
 
+    /// The document's shipped order: lead media first, summary second, article after them.
+    @Test func decodesASummaryWrappingItsOwnBlocks() throws {
+        let json = #"""
+        {"version":1,"blocks":[
+            {"type":"image","ref":"yana-img://lead","caption":[]},
+            {"type":"summary","blocks":[
+                {"type":"paragraph","runs":[{"text":"First half.","styles":[],"link":null}]},
+                {"type":"paragraph","runs":[{"text":"Second half.","styles":[],"link":null}]}
+            ]},
+            {"type":"paragraph","runs":[{"text":"The article itself.","styles":[],"link":null}]}
+        ]}
+        """#.data(using: .utf8)!
+        let doc = try JSONDecoder().decode(WireDocument.self, from: json)
+        #expect(doc.version == 1)
+        #expect(doc.blocks.count == 3)
+        guard case .summary(let inner) = doc.blocks[1] else { Issue.record("expected summary"); return }
+        // Wrapping blocks (not runs) is what keeps a two-paragraph summary inside the one block
+        // instead of pushing the article down the document.
+        #expect(inner.count == 2)
+        guard case .paragraph(let runs) = inner[0] else { Issue.record("expected paragraph"); return }
+        #expect(runs.first?.text == "First half.")
+        // The lead media keeps no kind of its own, so lead-image hoisting is unaffected.
+        guard case .image = doc.blocks[0] else { Issue.record("expected image"); return }
+    }
+
+    /// A summary with no lead media in front of it decodes at the top, and an empty wrapper is a
+    /// decode success rather than a document-wide failure.
+    @Test func decodesASummaryFirstAndEmpty() throws {
+        let json = #"""
+        {"version":1,"blocks":[
+            {"type":"summary","blocks":[]},
+            {"type":"paragraph","runs":[{"text":"Body.","styles":[],"link":null}]}
+        ]}
+        """#.data(using: .utf8)!
+        let doc = try JSONDecoder().decode(WireDocument.self, from: json)
+        guard case .summary(let inner) = doc.blocks.first else { Issue.record("expected summary"); return }
+        #expect(inner.isEmpty)
+    }
+
     @Test func decodesImageEmbedCodeBlock() throws {
         let json = #"""
         {"version":1,"blocks":[

@@ -120,7 +120,11 @@ actor SyncWriter {
         var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == articleServerID })
         descriptor.fetchLimit = 1
         guard let article = try? modelContext.fetch(descriptor).first else { return false }
-        article.blocks = document.blocks
+        // Wholesale replacement, except for the summary block: a summary generated on this device
+        // lives in the block stream (`ReaderActions.summarize`), so replacing blindly would destroy
+        // it on every content re-fetch. A server-supplied summary always wins; this only carries the
+        // local one over when the incoming document has none.
+        article.blocks = Block.preservingSummary(from: article.blocks, in: document.blocks)
         article.hasContent = true
         try? modelContext.save()
         return true

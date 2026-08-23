@@ -43,7 +43,9 @@ struct ReaderArticle: Equatable {
 /// Native SwiftUI renderer for an article's `[Block]` body — replaces the WebView + themed-HTML
 /// reader page. Renders top-to-bottom in a scroll view (a `LazyVStack`, so only on-screen blocks are
 /// built/laid out and only their images decode — a very large article never materializes all at
-/// once): heading + dateline, the AI summary card (after the lead image), then each block. Top-level
+/// once): heading + dateline, the lead image, then each block -- among them the AI summary, which is
+/// a block of its own (`Block.summary`) sitting at the document's summary slot rather than chrome the
+/// header draws. Top-level
 /// flowing text renders through `SelectableText`
 /// (a hosted `UITextView`) so it is fully selectable with the system edit menu; text nested in a
 /// list/blockquote stays SwiftUI `Text` (selectable via the ambient `.textSelection`). Dynamic Type
@@ -96,6 +98,10 @@ struct ArticleBlockView: View {
                         // is set, then upgrades to the selectable UITextView after first paint.
                         TextRunView(blocks: blocks, bodySize: bodySize, uiDesign: font.uiDesign,
                                     deferSelectable: deferSelectableText, onOpenLink: onOpenLink)
+                    case .summary(let inner):
+                        SummaryCardView(blocks: inner, bodySize: bodySize, design: font.uiDesign,
+                                        onOpenLink: onOpenLink, onPlayVideo: onPlayVideo,
+                                        onShowImage: onShowImage)
                     case .single(let block):
                         BlockNodeView(block: block, bodySize: bodySize, design: font.uiDesign,
                                       leadImageRef: leadImageRef, onOpenLink: onOpenLink,
@@ -120,9 +126,31 @@ struct ArticleBlockView: View {
 
     // MARK: - Header / summary / lead image ordering
 
-    /// The blocks are rendered as-is, except the AI summary card is injected after a leading image
-    /// (the lead media) so it sits between the image and the body — matching the prior reader.
-    private var bodyBlocks: [Block] { article.blocks }
+    /// The blocks to render. Almost always the document's own: the summary is a block now
+    /// (`Block.summary`), so its position comes from the document rather than from this view
+    /// hoisting it into the header, and the lead image is the only thing still hoisted.
+    ///
+    /// Two blocks get synthesized into the summary slot (`Block.settingSummary`, so they land
+    /// exactly where a real one would and nothing shifts when the real one arrives):
+    ///
+    /// - A summary produced by a build that stored it in `Article.summary` instead of in the block
+    ///   stream. Reading that column keeps those summaries visible without a migration sweep;
+    ///   nothing writes it any more (`ReaderActions.summarize` writes the block), so this fires
+    ///   only for rows that predate the change and is skipped entirely once a real summary exists.
+    /// - An empty placeholder while a summarize request is in flight, which `bodySegments` renders
+    ///   as the loading skeleton.
+    private var bodyBlocks: [Block] {
+        let blocks = article.blocks
+        guard !Block.containsSummary(blocks) else { return blocks }
+        let legacy = article.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !legacy.isEmpty {
+            return Block.settingSummary([.paragraph([InlineRun(text: legacy)])], in: blocks)
+        }
+        if summaryPending {
+            return Block.settingSummary([], in: blocks)
+        }
+        return blocks
+    }
 
     /// The top-level body split into render segments: maximal runs of consecutive flowing-text
     /// blocks (paragraphs + headings) coalesced into one `SelectableText`, with every other block
@@ -143,6 +171,15 @@ struct ArticleBlockView: View {
             switch block {
             case .paragraph, .heading:
                 run.append(block)
+            case .summary(let inner):
+                // Its own segment kind rather than a plain `.single`: the card is drawn by
+                // `ArticleBlockView` so an empty one can render the in-flight skeleton, which
+                // needs `summaryPending` in scope. An empty summary with nothing in flight is a
+                // degenerate document; drop it rather than draw a blank card.
+                guard !inner.isEmpty || summaryPending else { continue }
+                flushRun()
+                segments.append(BodySegment(id: id, kind: .summary(inner)))
+                id += 1
             default:
                 flushRun()
                 segments.append(BodySegment(id: id, kind: .single(block)))
@@ -175,12 +212,13 @@ struct ArticleBlockView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             dateline
-            // Lead image (if the first block is an image) renders before the summary.
+            // The lead image is the one block still hoisted out of the body: it renders here, above
+            // the summary, and `BlockNodeView` skips it further down. Everything after it -- the
+            // summary block included -- renders in document order.
             if case let .image(ref, caption)? = bodyBlocks.first {
                 BlockImageView(ref: ref, caption: caption, bodySize: bodySize,
                                design: font.uiDesign, onOpenLink: onOpenLink, onShowImage: onShowImage)
             }
-            summaryCard
         }
     }
 
@@ -207,49 +245,71 @@ struct ArticleBlockView: View {
         }
     }
 
-    @ViewBuilder private var summaryCard: some View {
-        let trimmed = article.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            summaryContainer { Text(trimmed).font(.system(size: bodySize)) }
-        } else if summaryPending {
-            summaryContainer {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(0..<3, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.secondary.opacity(0.2))
-                            .frame(width: i == 2 ? 160 : nil, height: 12)
-                            .frame(maxWidth: i == 2 ? nil : .infinity, alignment: .leading)
-                    }
-                }
-            }
-        }
-    }
+}
 
-    @ViewBuilder private func summaryContainer<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+/// One render unit of the article body: a coalesced run of consecutive text blocks (rendered by a
+/// single `SelectableText`), the AI summary card, or a standalone non-text block. `id` is the
+/// block's position in the segment list, stable for the life of a given article body.
+private struct BodySegment: Identifiable {
+    enum Kind {
+        case textRun([Block])
+        case summary([Block])
+        case single(Block)
+    }
+    let id: Int
+    let kind: Kind
+}
+
+/// The AI summary, drawn as a labelled card so it reads as commentary on the article rather than
+/// part of it. An empty `blocks` means a summarize request is in flight and renders the loading
+/// skeleton in the card the finished summary will fill, so nothing moves when it lands.
+///
+/// Its contents go through `BlockNodeView` (SwiftUI `Text`, like a blockquote's) rather than the
+/// coalescing `SelectableText` path: a summary is a couple of paragraphs, so a hosted `UITextView`
+/// buys nothing, and the surrounding `.textSelection(.enabled)` keeps it selectable anyway.
+private struct SummaryCardView: View {
+    let blocks: [Block]
+    let bodySize: CGFloat
+    let design: UIFontDescriptor.SystemDesign
+    let onOpenLink: (URL) -> Void
+    let onPlayVideo: (Embed) -> Void
+    let onShowImage: (String) -> Void
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Summary")
                 .font(.system(size: bodySize * 0.7, weight: .bold))
                 .textCase(.uppercase)
                 .foregroundStyle(.secondary)
-            content()
+            if blocks.isEmpty {
+                skeleton
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                        // `leadImageRef: nil` -- the lead-image skip is about not drawing the
+                        // hoisted header image twice, and an image inside a summary is not that.
+                        BlockNodeView(block: block, bodySize: bodySize, design: design,
+                                      leadImageRef: nil, onOpenLink: onOpenLink,
+                                      onPlayVideo: onPlayVideo, onShowImage: onShowImage)
+                    }
+                }
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
     }
 
-}
-
-/// One render unit of the article body: either a coalesced run of consecutive text blocks (rendered
-/// by a single `SelectableText`) or a standalone non-text block. `id` is the block's position in the
-/// segment list, stable for the life of a given article body.
-private struct BodySegment: Identifiable {
-    enum Kind {
-        case textRun([Block])
-        case single(Block)
+    private var skeleton: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(0..<3, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color.secondary.opacity(0.2))
+                    .frame(width: i == 2 ? 160 : nil, height: 12)
+                    .frame(maxWidth: i == 2 ? nil : .infinity, alignment: .leading)
+            }
+        }
     }
-    let id: Int
-    let kind: Kind
 }
 
 /// Renders one coalesced run of flowing-text blocks (paragraphs + headings). To keep first paint
@@ -365,6 +425,16 @@ private struct BlockNodeView: View {
             listView(ordered: ordered, items: items)
         case .blockquote(let inner):
             blockquoteView(inner)
+        case .summary(let inner):
+            // A top-level summary is routed to its own `BodySegment` (so it can render the in-flight
+            // skeleton) and never reaches here. This arm covers a summary nested inside a list item
+            // or blockquote, which the server does not emit -- drawn as the same card so an
+            // unexpected one is still legible rather than silently dropped. Nothing is in flight
+            // down here, so an empty one is dropped rather than left showing a skeleton forever.
+            if !inner.isEmpty {
+                SummaryCardView(blocks: inner, bodySize: bodySize, design: design,
+                                onOpenLink: onOpenLink, onPlayVideo: onPlayVideo, onShowImage: onShowImage)
+            }
         case .image(let ref, let caption):
             // The lead image is rendered in the header; skip it here to avoid a duplicate.
             if ref != leadImageRef {

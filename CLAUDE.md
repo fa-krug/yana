@@ -181,7 +181,10 @@ source and issue board live at
   (see **Key patterns**). Assign it directly —
   the old `readRank: Int` sort mirror and its `setRead(_:)` setter are gone, along with the index
   every sync insert used to maintain for it. `Article.blocks` (computed from `blockData`) is
-  unchanged from before — see **Reader**.
+  unchanged from before — see **Reader**. `Article.summary: String` is **legacy and read-only**: the
+  AI summary is a `Block.summary` in the block stream now (see **AI**), and this column survives only
+  as a fallback that keeps summaries produced by earlier builds visible. Nothing writes it — the
+  `Article.init` parameter that used to is gone.
   **When adding a column here, check something reads it.** A batch of write-only columns
   (`Article.iconURL`/`syncFeedIdentifier`/`syncAggregatorType`, `Tag.sortOrder`/`createdAt`, the
   four `Feed` config fields above) accumulated by being mirrored from the wire and never rendered.
@@ -410,6 +413,31 @@ source and issue board live at
   whether the reader's "Summarize" action is offered at all — `.server` is always ready (it degrades
   gracefully on its own), `.appleIntelligence` needs `AppleIntelligenceClient().availability == .available`
   since showing the button with no usable model is worse than hiding it.
+  **A summary is a block, and the block stream is its only home** (`Block.summary([Block])`, wrapping
+  blocks rather than runs so a multi-paragraph summary stays inside the one block). `yana-server`
+  emits it for feeds with "Summarize" enabled, at a fixed document slot — lead media first when there
+  is one, summary second, article after them — and `ReaderActions.summarize` writes a locally-produced
+  summary (either mode) into that same slot, so the reader has exactly one summary to draw however it
+  was produced and can never stack two cards. Everything that reads or writes that position goes
+  through the `Block` helpers in `Yana/Reader/Block.swift` (`containsSummary`/`summaryContents`/
+  `settingSummary`/`removingSummaries`/`preservingSummary`) rather than spelling the rule out again —
+  the four call sites drifting apart is exactly the failure this avoids. Three consequences worth
+  knowing:
+  - **`Article.summary` is legacy, read-only.** Nothing writes it. `ArticleBlockView.bodyBlocks`
+    synthesizes a summary block from it when the document has none, so a summary produced by an
+    earlier build stays visible with no migration sweep, and `ReaderSpeechController.spokenText`
+    prepends it *only* in that same case (`plainText` already flattens a real summary block, so
+    prepending unconditionally read it aloud twice). Do not add new writers.
+  - **A content re-fetch must not wipe it.** A locally-generated summary is body content now, so both
+    write paths — `SyncWriter.applyContent` and `UpdateAndSync.fetchAndApplyContent`'s direct write to
+    the visible object — carry it over via `Block.preservingSummary`. A server-supplied summary always
+    wins; the carry-over only fills the gap when the incoming document has none.
+  - **The summarizer is fed the article, not the article plus its own summary.**
+    `BlockParser.plainText` includes summary text by design (it is the search and read-aloud surface),
+    so `ReaderActions.summarize` strips it back out with `Block.removingSummaries` before prompting.
+  Wire `version` stays **1**: the kind is additive under the format's own rule that an unknown block
+  type is skipped, not fatal. Before this client handled it, `WireBlockBox`'s `default:` arm mapped it
+  to `.paragraph([])` — the summary rendered as blank space.
 - **ArticleStore** (`Yana/Services/ArticleStore.swift`): **unchanged in design** from before this
   rework — `@MainActor @Observable`, loads the whole library's lightweight `ArticleSummary` metadata
   once via an `@ModelActor` loader wrapped in `OffMainActor.run`, then keeps it current
@@ -519,7 +547,8 @@ source and issue board live at
   backgrounded.
 - **Reader** (`Yana/Reader/`): a native SwiftUI body renderer (no WebView) — **unaffected by this
   rework's networking changes**. Article bodies are stored as a closed, typed `[Block]` model
-  (`Block.swift`) — paragraphs/headings/lists/blockquotes/images/embeds/code/dividers, with styled
+  (`Block.swift`) — paragraphs/headings/lists/blockquotes/summaries/images/embeds/code/dividers, with
+  styled
   `InlineRun`s — and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for
   selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://`
   ref (tapping an image opens it full-screen with pinch-to-zoom, double-tap-to-zoom and swipe-down-
@@ -779,7 +808,11 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 430 tests in 94 suites (the read-state filter added 13 cases to the existing
+  change, 458 tests in 96 suites (the summary block added two suites — `BlockSummarySlotTests` for
+  the shared slot helpers and `SummaryBlockTests` for what the summarize action writes and how the
+  summary reaches `plainText`/read-aloud — plus five cases across
+  `BlockWireDecodingTests`/`BlockImageHashesTests`/`SyncWriterTests`; the read-state filter before it
+  added 13 cases to the existing
   filtering/filter-state/bootstrap/badge suites). (An earlier pass had dropped to 381 tests in 90
   suites from a prior 406 by deleting dead-code and legacy-HTML suites — ones that only exercised
   orphaned helpers such as `CredentialTesterTests`, `NameSearchTests`, `ArticleSearchTests`,

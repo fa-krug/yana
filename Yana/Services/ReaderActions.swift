@@ -59,20 +59,41 @@ enum ReaderActions {
         }
     }
 
-    /// Runs `provider` against `article` and saves the result. The caller is expected to have
-    /// already resolved `provider` (and shown a "not connected" toast instead of calling this at
-    /// all when no provider is available) -- see both call sites' synchronous guard before this.
+    /// Runs `provider` against `article` and saves the result into the article's block stream. The
+    /// caller is expected to have already resolved `provider` (and shown a "not connected" toast
+    /// instead of calling this at all when no provider is available) -- see both call sites'
+    /// synchronous guard before this.
+    ///
+    /// The summary is a block (`Block.summary`) at the document's summary slot, the same slot and
+    /// same kind the server uses for the summaries it generates itself, so the reader has exactly
+    /// one summary to draw however it was produced. It deliberately does NOT write the legacy
+    /// `Article.summary` column: that column is read-only now, a fallback for rows summarized
+    /// before this change (see `ArticleBlockView.bodyBlocks`).
     static func summarize(
         _ article: Article, using provider: AISummaryProvider, modelContext: ModelContext
     ) async -> SummarizeResult {
-        switch await provider.summarize(content: article.plainText, title: article.title) {
+        let blocks = article.blocks
+        // Summarize the article, not a summary of it. `Article.plainText` includes a summary block's
+        // text (it is body content), so re-summarizing would otherwise feed the previous summary
+        // back into the model alongside the article.
+        let content = BlockParser.plainText(Block.removingSummaries(from: blocks))
+        switch await provider.summarize(content: content, title: article.title) {
         case .failure(let failure):
             return .failed(failure)
         case .success(let summary):
-            article.summary = summary
+            article.blocks = Block.settingSummary(summaryParagraphs(from: summary), in: blocks)
             try? modelContext.save()
             return .saved
         }
+    }
+
+    /// A model's summary text split into one paragraph block per blank-line-separated section, so a
+    /// multi-paragraph summary keeps its paragraph breaks inside the single summary block.
+    static func summaryParagraphs(from text: String) -> [Block] {
+        text.components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { Block.paragraph([InlineRun(text: $0)]) }
     }
 
     enum ForceUpdateResult { case cancelled, applied(feedName: String?), failed }
