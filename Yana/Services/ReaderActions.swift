@@ -66,9 +66,8 @@ enum ReaderActions {
     ///
     /// The summary is a block (`Block.summary`) at the document's summary slot, the same slot and
     /// same kind the server uses for the summaries it generates itself, so the reader has exactly
-    /// one summary to draw however it was produced. It deliberately does NOT write the legacy
-    /// `Article.summary` column: that column is read-only now, a fallback for rows summarized
-    /// before this change (see `ArticleBlockView.bodyBlocks`).
+    /// one summary to draw however it was produced. There is no summary column on `Article` to write
+    /// instead -- the block stream is the only home a summary has.
     static func summarize(
         _ article: Article, using provider: AISummaryProvider, modelContext: ModelContext
     ) async -> SummarizeResult {

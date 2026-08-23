@@ -169,21 +169,19 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - Text + voice
 
-    /// Plain, speakable text for an article: title, then AI summary (if any), then the body text.
+    /// Plain, speakable text for an article: the title, then the body text.
     /// Reads the article's `plainText` (its blocks flattened to visible text), so the spoken text
     /// matches what the reader renders. URLs are stripped first — a synthesizer reads a link out as
     /// an unintelligible run of characters ("h-t-t-p-colon-slash-slash…"), so we drop them rather
     /// than read them aloud.
+    ///
+    /// The AI summary needs no part of its own: it is a `Block.summary` in the body, so `plainText`
+    /// already flattens it in place, ahead of the article, matching the order the reader draws it.
+    /// Appending it separately would read it aloud twice.
     static func spokenText(for article: Article) -> String {
         var parts: [String] = []
         let title = article.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !title.isEmpty { parts.append(title) }
-        // A summary is part of the body now (a `Block.summary`, which `plainText` flattens in place
-        // ahead of the article, matching the order the reader draws it), so only a legacy
-        // `Article.summary` from a build that stored it outside the blocks needs prepending here.
-        // Appending it unconditionally would read a block summary out twice.
-        let summary = article.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !summary.isEmpty, !Block.containsSummary(article.blocks) { parts.append(summary) }
         let body = article.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !body.isEmpty { parts.append(body) }
         // A sentence break between sections gives the synthesizer a natural pause after the title.

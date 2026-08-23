@@ -10,7 +10,8 @@ struct ReaderArticle: Equatable {
     let date: Date
     let logoHash: String?
     let url: String
-    let summary: String
+    /// The AI summary is a `Block.summary` inside `blocks`, so there is deliberately no `summary`
+    /// field here to carry a second copy of it.
     let blocks: [Block]
 
     @MainActor
@@ -21,21 +22,19 @@ struct ReaderArticle: Equatable {
         date = article.date
         logoHash = article.feed?.logoImageHash
         url = article.url
-        summary = article.summary
         blocks = article.blocks
     }
 
     /// Value init for rendering content that isn't a persisted `Article` (e.g. the extraction
     /// editor's live preview, which parses freshly-scraped HTML into blocks without saving).
     init(title: String, author: String = "", date: Date, url: String, blocks: [Block],
-         feedName: String = "", summary: String = "", logoHash: String? = nil) {
+         feedName: String = "", logoHash: String? = nil) {
         self.title = title
         self.feedName = feedName
         self.author = author
         self.date = date
         self.logoHash = logoHash
         self.url = url
-        self.summary = summary
         self.blocks = blocks
     }
 }
@@ -126,30 +125,18 @@ struct ArticleBlockView: View {
 
     // MARK: - Header / summary / lead image ordering
 
-    /// The blocks to render. Almost always the document's own: the summary is a block now
-    /// (`Block.summary`), so its position comes from the document rather than from this view
-    /// hoisting it into the header, and the lead image is the only thing still hoisted.
+    /// The blocks to render: the document's own, except that while a summarize request is in flight
+    /// an empty placeholder is synthesized into the summary slot (`Block.settingSummary`) for
+    /// `bodySegments` to draw as the loading skeleton. Putting it in the real slot is what keeps the
+    /// skeleton from shifting when the finished summary replaces it.
     ///
-    /// Two blocks get synthesized into the summary slot (`Block.settingSummary`, so they land
-    /// exactly where a real one would and nothing shifts when the real one arrives):
-    ///
-    /// - A summary produced by a build that stored it in `Article.summary` instead of in the block
-    ///   stream. Reading that column keeps those summaries visible without a migration sweep;
-    ///   nothing writes it any more (`ReaderActions.summarize` writes the block), so this fires
-    ///   only for rows that predate the change and is skipped entirely once a real summary exists.
-    /// - An empty placeholder while a summarize request is in flight, which `bodySegments` renders
-    ///   as the loading skeleton.
+    /// Nothing else is rearranged here. The summary is a block (`Block.summary`), so its position
+    /// comes from the document rather than from this view hoisting it into the header; the lead
+    /// image is the only thing still hoisted.
     private var bodyBlocks: [Block] {
         let blocks = article.blocks
-        guard !Block.containsSummary(blocks) else { return blocks }
-        let legacy = article.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !legacy.isEmpty {
-            return Block.settingSummary([.paragraph([InlineRun(text: legacy)])], in: blocks)
-        }
-        if summaryPending {
-            return Block.settingSummary([], in: blocks)
-        }
-        return blocks
+        guard summaryPending, !Block.containsSummary(blocks) else { return blocks }
+        return Block.settingSummary([], in: blocks)
     }
 
     /// The top-level body split into render segments: maximal runs of consecutive flowing-text

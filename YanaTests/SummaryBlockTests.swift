@@ -70,17 +70,18 @@ struct SummaryBlockTests {
         #expect(inner == onePara("The short version."))
     }
 
-    /// The legacy column is read-only now: writing it as well would put the same summary in two
-    /// places and reintroduce the "which one does the reader draw" question the block kind settles.
-    @Test func summarizeDoesNotWriteTheLegacySummaryColumn() async throws {
+    /// With no lead media the summary takes the first slot, and the article follows it.
+    @Test func summarizeWritesTheSummaryFirstWhenThereIsNoLeadMedia() async throws {
         let context = try makeContext()
         let article = makeArticle(in: context, blocks: [.paragraph([InlineRun(text: "Body.")])])
         let provider = StubProvider(result: .success("The short version."))
 
         _ = await ReaderActions.summarize(article, using: provider, modelContext: context)
 
-        #expect(article.summary.isEmpty)
-        #expect(Block.containsSummary(article.blocks))
+        let blocks = article.blocks
+        #expect(blocks.count == 2)
+        guard case .summary = blocks[0] else { Issue.record("summary must be first"); return }
+        #expect(blocks[1] == .paragraph([InlineRun(text: "Body.")]))
     }
 
     /// Re-summarizing replaces the existing summary rather than stacking a second one.
@@ -147,29 +148,22 @@ struct SummaryBlockTests {
 
     // MARK: - Read-aloud
 
-    /// `plainText` already carries a block summary, so prepending `Article.summary` on top of it
-    /// would read the summary out twice.
-    @Test func spokenTextDoesNotRepeatABlockSummary() throws {
+    /// The summary is spoken because `plainText` flattens it as body content, and exactly once --
+    /// `spokenText` adds no separate part for it, which is what would read it out twice.
+    @Test func spokenTextReadsTheSummaryOnceAheadOfTheArticle() throws {
         let context = try makeContext()
         let article = makeArticle(in: context, blocks: [
             .summary([.paragraph([InlineRun(text: "The short version.")])]),
             .paragraph([InlineRun(text: "The article itself.")]),
         ])
-        article.summary = "The short version."   // as a pre-change build would have left it
 
         let spoken = ReaderSpeechController.spokenText(for: article)
 
         #expect(spoken.occurrences(of: "The short version.") == 1)
-    }
-
-    /// The other side of that guard: a summary produced by a pre-change build has no block, so it
-    /// still has to be spoken.
-    @Test func spokenTextStillReadsALegacyColumnSummary() throws {
-        let context = try makeContext()
-        let article = makeArticle(in: context, blocks: [.paragraph([InlineRun(text: "The article itself.")])])
-        article.summary = "The short version."
-
-        #expect(ReaderSpeechController.spokenText(for: article).contains("The short version."))
+        let summaryAt = spoken.range(of: "The short version.")
+        let articleAt = spoken.range(of: "The article itself.")
+        #expect(summaryAt != nil && articleAt != nil)
+        if let summaryAt, let articleAt { #expect(summaryAt.lowerBound < articleAt.lowerBound) }
     }
 }
 

@@ -181,10 +181,11 @@ source and issue board live at
   (see **Key patterns**). Assign it directly —
   the old `readRank: Int` sort mirror and its `setRead(_:)` setter are gone, along with the index
   every sync insert used to maintain for it. `Article.blocks` (computed from `blockData`) is
-  unchanged from before — see **Reader**. `Article.summary: String` is **legacy and read-only**: the
-  AI summary is a `Block.summary` in the block stream now (see **AI**), and this column survives only
-  as a fallback that keeps summaries produced by earlier builds visible. Nothing writes it — the
-  `Article.init` parameter that used to is gone.
+  unchanged from before — see **Reader**. **There is no `Article.summary` column**: an AI summary is
+  a `Block.summary` inside `blockData` (see **AI**). A separate column existed briefly, before the
+  server gained the block kind, and is deleted rather than deprecated — it was never in a shipped
+  schema, so there is nothing to migrate and no fallback to read. Don't reintroduce one; two homes
+  for a summary is how a reader ends up drawing two summary cards.
   **When adding a column here, check something reads it.** A batch of write-only columns
   (`Article.iconURL`/`syncFeedIdentifier`/`syncAggregatorType`, `Tag.sortOrder`/`createdAt`, the
   four `Feed` config fields above) accumulated by being mirrored from the wire and never rendered.
@@ -423,11 +424,12 @@ source and issue board live at
   `settingSummary`/`removingSummaries`/`preservingSummary`) rather than spelling the rule out again —
   the four call sites drifting apart is exactly the failure this avoids. Three consequences worth
   knowing:
-  - **`Article.summary` is legacy, read-only.** Nothing writes it. `ArticleBlockView.bodyBlocks`
-    synthesizes a summary block from it when the document has none, so a summary produced by an
-    earlier build stays visible with no migration sweep, and `ReaderSpeechController.spokenText`
-    prepends it *only* in that same case (`plainText` already flattens a real summary block, so
-    prepending unconditionally read it aloud twice). Do not add new writers.
+  - **There is no summary column, and no fallback path.** `Article` carries no `summary` field, and
+    `ReaderArticle` no longer mirrors one; `ReaderSpeechController.spokenText` adds no summary part
+    of its own, because `plainText` already flattens the summary block in place ahead of the article
+    (a separate part read it aloud twice). The only thing `ArticleBlockView.bodyBlocks` synthesizes
+    is an *empty* summary block while a summarize request is in flight, so the loading skeleton sits
+    in the slot the finished summary will fill and doesn't shift when it lands.
   - **A content re-fetch must not wipe it.** A locally-generated summary is body content now, so both
     write paths — `SyncWriter.applyContent` and `UpdateAndSync.fetchAndApplyContent`'s direct write to
     the visible object — carry it over via `Block.preservingSummary`. A server-supplied summary always
@@ -808,7 +810,7 @@ source and issue board live at
 
 ### Tests
 - `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 458 tests in 96 suites (the summary block added two suites — `BlockSummarySlotTests` for
+  change, 457 tests in 96 suites (the summary block added two suites — `BlockSummarySlotTests` for
   the shared slot helpers and `SummaryBlockTests` for what the summarize action writes and how the
   summary reaches `plainText`/read-aloud — plus five cases across
   `BlockWireDecodingTests`/`BlockImageHashesTests`/`SyncWriterTests`; the read-state filter before it

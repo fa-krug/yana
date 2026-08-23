@@ -38,13 +38,11 @@ final class Article {
     /// treatment of a publication date as immutable.
     var date: Date = Date.now
     var author: String = ""
-    /// **Legacy, read-only.** Where an AI-generated summary used to live before summaries became a
-    /// block of their own (`Block.summary`, written by `ReaderActions.summarize` and delivered by the
-    /// server in the content document). Nothing writes this any more; `ArticleBlockView.bodyBlocks`
-    /// still reads it to synthesize a summary block for rows summarized by an earlier build, so
-    /// those summaries stay visible without a migration sweep, and `ReaderSpeechController` reads it
-    /// for the same reason. Do not add new writers -- the block stream is the single source of truth.
-    var summary: String = ""
+    // NOTE: no `summary` column. An AI summary is a `Block.summary` in `blockData` -- see **AI** in
+    // CLAUDE.md. A separate column existed briefly, before the server gained the block kind and the
+    // reader's own summarize action started writing into the same slot; it is not a schema this app
+    // ever shipped, so there is nothing to migrate and no fallback to read. Do not reintroduce one:
+    // two homes for a summary is exactly how a reader ends up drawing two summary cards.
     /// When this article was first synced to this device -- mirrors the server's own `createdAt`
     /// (its stable, append-only, backfill-proof insertion order key; see `SyncWriter`'s wire
     /// decode). Not shown in the UI, but it IS the timeline's sort order, together with `serverID` as
