@@ -41,6 +41,18 @@ struct ScreenshotSeedTests {
             #expect(!article.blocks.isEmpty, "article \(article.identifier) has no blocks")
         }
 
+        // The AI summary the `01_Reader` shot shows is a block at the document's summary slot --
+        // second, after the lead image -- the same shape the server delivers, so the captures
+        // exercise the real render path rather than a fixture-only one.
+        for article in articles {
+            let blocks = article.blocks
+            #expect(blocks.count >= 2, "article \(article.identifier) is too short to place a summary")
+            guard case .summary = blocks[1] else {
+                Issue.record("article \(article.identifier) has no summary block at the slot")
+                continue
+            }
+        }
+
         // The anchor was parked on the hero article.
         let anchor = AppSettings().timelineAnchorIdentifier
         #expect(anchor == "screenshot://0/0")

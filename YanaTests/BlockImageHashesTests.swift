@@ -23,6 +23,13 @@ struct BlockImageHashesTests {
         #expect(Block.imageHashes(in: blocks) == ["in-list", "in-quote"])
     }
 
+    /// Summaries are prose today, so an image inside one is defensive -- but a summary is a block
+    /// wrapper like any other, and its bytes must not be pruned as unreferenced.
+    @Test func recursesIntoSummaries() {
+        let blocks: [Block] = [.summary([.image(ref: "yana-img://in-summary", caption: [])])]
+        #expect(Block.imageHashes(in: blocks) == ["in-summary"])
+    }
+
     @Test func ignoresRemoteURLRefsAndEmbedsWithNoThumbnail() {
         let blocks: [Block] = [
             .image(ref: "https://example.test/remote.jpg", caption: []),

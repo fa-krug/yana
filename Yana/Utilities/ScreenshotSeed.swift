@@ -221,6 +221,11 @@ enum ScreenshotSeed {
                 for paragraph in articleSpec.bodyParagraphs {
                     blocks.append(.paragraph([InlineRun(text: paragraph)]))
                 }
+                // The AI summary is a block at the document's summary slot -- second here, after the
+                // lead image -- the same shape the server delivers and the reader renders.
+                blocks = Block.settingSummary(
+                    [.paragraph([InlineRun(text: articleSpec.summary)])], in: blocks
+                )
 
                 let when = Date(timeIntervalSinceNow: -Double(globalIndex) * 5400)
                 let article = Article(
@@ -228,8 +233,7 @@ enum ScreenshotSeed {
                     identifier: identifier,
                     url: spec.url,
                     date: when,
-                    author: articleSpec.author,
-                    summary: articleSpec.summary
+                    author: articleSpec.author
                 )
                 article.blocks = blocks
                 article.createdAt = when

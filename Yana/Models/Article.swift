@@ -38,9 +38,11 @@ final class Article {
     /// treatment of a publication date as immutable.
     var date: Date = Date.now
     var author: String = ""
-    /// AI-generated summary, shown above the body in the reader. Defaulted for lightweight
-    /// SwiftData migration; empty when summarization is off.
-    var summary: String = ""
+    // NOTE: no `summary` column. An AI summary is a `Block.summary` in `blockData` -- see **AI** in
+    // CLAUDE.md. A separate column existed briefly, before the server gained the block kind and the
+    // reader's own summarize action started writing into the same slot; it is not a schema this app
+    // ever shipped, so there is nothing to migrate and no fallback to read. Do not reintroduce one:
+    // two homes for a summary is exactly how a reader ends up drawing two summary cards.
     /// When this article was first synced to this device -- mirrors the server's own `createdAt`
     /// (its stable, append-only, backfill-proof insertion order key; see `SyncWriter`'s wire
     /// decode). Not shown in the UI, but it IS the timeline's sort order, together with `serverID` as
@@ -84,15 +86,13 @@ final class Article {
         identifier: String,
         url: String,
         date: Date = .now,
-        author: String = "",
-        summary: String = ""
+        author: String = ""
     ) {
         self.title = title
         self.identifier = identifier
         self.url = url
         self.date = date
         self.author = author
-        self.summary = summary
         self.createdAt = .now
     }
 
