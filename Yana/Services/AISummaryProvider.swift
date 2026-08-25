@@ -58,10 +58,19 @@ struct ServerAISummaryProvider: AISummaryProvider {
     static let requestTimeout: TimeInterval = 180
 
     func summarize(content: String, title: String) async -> Result<String, AISummaryFailure> {
+        // Name the output language explicitly. A hosted model answers in the language of its
+        // instructions, and the header below is English, so a German article came back summarized
+        // in English. `supported: nil` because the app cannot enumerate a hosted provider's
+        // languages -- see `SummaryLanguage.directive`.
+        let language = SummaryLanguage.directive(text: content, supported: nil)
+        let instruction = ["Summarize the following article concisely in 2-3 sentences.", language]
+            .compactMap { $0 }
+            .joined(separator: " ")
         // The server's limit applies to the WHOLE prompt string, so cap the assembled prompt --
         // capping only `content` let the instruction and title push a max-length body back over
-        // the limit and straight into `prompt_too_long`.
-        let header = "Summarize the following article concisely in 2-3 sentences.\n\nTitle: \(title)\n\n"
+        // the limit and straight into `prompt_too_long`. Capping the assembled string also keeps
+        // the header (and thus the language directive) intact, since only the tail is dropped.
+        let header = "\(instruction)\n\nTitle: \(title)\n\n"
         let prompt = ArticleAIText.cap(header + content)
         do {
             let result: AIPromptResponse = try await client.post(

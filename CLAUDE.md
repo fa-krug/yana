@@ -408,8 +408,15 @@ source and issue board live at
   directive is resolved once and appended to **both** the map and the reduce instructions — a reduce
   pass without it translates the partials back to English (`SummarizerLanguageDirectiveTests` pins
   that). When no supported language resolves, no directive is added and the model keeps its own
-  default. The server path (`ServerAISummaryProvider`) sends no such directive: its prompt carries
-  the article text and hosted models mirror the input language on their own.
+  default. **The server path carries the same directive**, appended to its own English
+  "Summarize the following article..." instruction header: a hosted model answers in the language of
+  the instruction it is given rather than mirroring the language of the article text, so a German
+  article came back summarized in English in server mode too
+  (`AISummaryProviderTests.serverProviderAsksForASummaryInTheArticlesLanguage` pins it). It resolves
+  the directive with `supported: nil` (unrestricted) — the app cannot enumerate a hosted provider's
+  languages, and filtering against a list it does not have would only ever drop a language the model
+  can in fact write. The directive sits in the prompt *header*, which is why capping the assembled
+  prompt rather than the body (see above) also keeps it intact: only the tail is dropped.
   `AISummaryReadiness.isReady(mode:)` gates
   whether the reader's "Summarize" action is offered at all — `.server` is always ready (it degrades
   gracefully on its own), `.appleIntelligence` needs `AppleIntelligenceClient().availability == .available`
@@ -833,7 +840,9 @@ source and issue board live at
   reading-position self-echo/stale-pull fix added five more cases to `ReadingPositionSyncTests`
   (the debounce-window drop, the already-anchored drop, that another device's *different* position
   still applies, that remote updates resume once the local push is acknowledged, and that a failed
-  push keeps the local position authoritative). Note
+  push keeps the local position authoritative). Extending the summary-language directive to the
+  server path added one case each to `AISummaryProviderTests` (the German prompt) and
+  `SummaryLanguageTests` (the unrestricted-support resolution). Note
   `SyncReactionMainThreadTests.importBatchesLeaveTheMainActorResponsive` measures a wall-clock stall
   against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
   treating a failure there as real.

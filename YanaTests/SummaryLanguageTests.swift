@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import Yana
 
-/// The regression these pin: nothing in the on-device summarize path ever named an output language,
-/// so the model answered in the language of its (always English) instructions -- a German article
-/// got an English summary.
+/// The regression these pin: neither summarize path ever named an output language, so the model
+/// answered in the language of its (always English) instructions -- a German article got an English
+/// summary, on-device and via the server alike.
 @Suite("SummaryLanguage")
 struct SummaryLanguageTests {
     let german = """
@@ -39,6 +39,13 @@ struct SummaryLanguageTests {
                                                  supported: [Locale.Language(identifier: "en-US")],
                                                  preferred: ["en-US"])
         #expect(directive?.contains("English") == true)
+    }
+
+    /// The server path: the app cannot enumerate a hosted provider's languages, so it asks for the
+    /// article's own language whatever that is, rather than filtering against a list it does not have.
+    @Test func unrestrictedSupportAsksForTheDetectedLanguage() {
+        let directive = SummaryLanguage.directive(text: german, supported: nil, preferred: ["en-US"])
+        #expect(directive?.contains("German") == true)
     }
 
     @Test func noSupportedLanguageYieldsNoDirective() {

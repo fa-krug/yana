@@ -98,6 +98,33 @@ struct AISummaryProviderTests {
         }
     }
 
+    /// The regression this pins: the server path sent no output-language directive, on the
+    /// assumption that a hosted model mirrors the language of the text it is handed. It does not --
+    /// it answers in the language of the surrounding instruction, which is English -- so a German
+    /// article came back with an English summary.
+    @Test func serverProviderAsksForASummaryInTheArticlesLanguage() async {
+        await MockURLProtocol.lock.withLock {
+            var capturedPrompt = ""
+            MockURLProtocol.stub = { request in
+                struct Body: Decodable { let prompt: String }
+                capturedPrompt = (try? JSONDecoder().decode(Body.self, from: request.capturedBody()).prompt) ?? ""
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, #"{"response":"Zusammenfassung.","provider":"openai","model":"m"}"#.data(using: .utf8)!)
+            }
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let german = """
+            Der Bundestag hat am Mittwoch über den Haushalt beraten. Die Abgeordneten diskutierten \
+            mehrere Stunden über die geplanten Ausgaben für Bildung und Verkehr. Am Ende wurde der \
+            Entwurf mit knapper Mehrheit an die Ausschüsse zurückverwiesen.
+            """
+            _ = await ServerAISummaryProvider(client: client).summarize(content: german, title: "Haushalt")
+            #expect(capturedPrompt.contains("Write the summary in German"))
+        }
+    }
+
     /// The server's limit applies to the whole prompt string, not just the article body: capping
     /// only the content let the instruction header and title push a max-length article back over
     /// the limit, so a long article was rejected even at a correctly-raised server limit.

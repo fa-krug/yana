@@ -3,26 +3,36 @@ import NaturalLanguage
 
 /// Which language an AI summary should be written in.
 ///
-/// The on-device model writes in the language of its instructions unless told otherwise, and every
-/// instruction string in `AppleIntelligenceChunkedSummarizer` is English -- so a German article got
-/// an English summary. This resolves a target language from the article text itself (the same
-/// "detect the dominant language of the first couple of sentences" rule `ReaderSpeechController`
-/// already uses to pick a voice) and renders it as an explicit instruction sentence.
+/// A model writes in the language of its instructions unless told otherwise, and every instruction
+/// string on both summarize paths is English -- so a German article got an English summary. This
+/// resolves a target language from the article text itself (the same "detect the dominant language
+/// of the first couple of sentences" rule `ReaderSpeechController` already uses to pick a voice)
+/// and renders it as an explicit instruction sentence.
 ///
-/// Naming the language beats "answer in the same language as the article": the small on-device
-/// model follows a concrete directive far more reliably than one it has to infer from the input.
+/// Naming the language beats "answer in the same language as the article": a model follows a
+/// concrete directive far more reliably than one it has to infer from the input, and the small
+/// on-device model especially so.
+///
+/// **Both paths need this, not just the on-device one.** `ServerAISummaryProvider` used to send no
+/// directive at all, on the assumption that a hosted model mirrors the language of the text it is
+/// given. It does not: the surrounding instruction ("Summarize the following article...") is
+/// English, and that is what the model answers in, so a German article came back summarized in
+/// English there too.
 enum SummaryLanguage {
     /// Language detection needs a couple of sentences, not the whole article.
     static let detectionPrefix = 2000
 
     /// An instruction sentence naming the language to write in, or `nil` when no supported language
-    /// can be resolved (leaving the model's own default -- today's behaviour -- in place).
+    /// can be resolved (leaving the model's own default in place).
     ///
     /// Candidates, in order: the article's dominant language, then the user's preferred language.
     /// A candidate the model does not support is skipped, since asking for output in a language the
-    /// model cannot write is worse than an English summary.
+    /// model cannot write is worse than an English summary. `supported: nil` means "unrestricted",
+    /// which is the server path: the app cannot enumerate a hosted provider's languages, and the
+    /// hosted models the server fronts are multilingual anyway, so filtering there would only ever
+    /// drop a language the model can in fact write.
     static func directive(text: String,
-                          supported: Set<Locale.Language>,
+                          supported: Set<Locale.Language>?,
                           preferred: [String] = Locale.preferredLanguages) -> String? {
         guard let name = languageName(text: text, supported: supported, preferred: preferred) else { return nil }
         return "Write the summary in \(name), regardless of the language of these instructions."
@@ -30,7 +40,7 @@ enum SummaryLanguage {
 
     /// The English name of the resolved language ("German", "Chinese (Simplified)"), or `nil`.
     static func languageName(text: String,
-                             supported: Set<Locale.Language>,
+                             supported: Set<Locale.Language>?,
                              preferred: [String] = Locale.preferredLanguages) -> String? {
         let candidates = [detect(text)] + preferred.map { Locale.Language(identifier: $0) }
         for candidate in candidates.compactMap({ $0 }) where isSupported(candidate, in: supported) {
@@ -50,8 +60,9 @@ enum SummaryLanguage {
     /// Match on language code alone (plus script when both sides declare one): the model reports
     /// support per locale (`de-DE`, `zh-CN`), while detection yields a bare language or a
     /// language+script (`de`, `zh-Hans`), so comparing whole identifiers never matches.
-    static func isSupported(_ language: Locale.Language, in supported: Set<Locale.Language>) -> Bool {
+    static func isSupported(_ language: Locale.Language, in supported: Set<Locale.Language>?) -> Bool {
         guard let code = language.languageCode?.identifier else { return false }
+        guard let supported else { return true }   // unrestricted: see `directive`.
         return supported.contains { candidate in
             guard candidate.languageCode?.identifier == code else { return false }
             guard let script = language.script, let candidateScript = candidate.script else { return true }
