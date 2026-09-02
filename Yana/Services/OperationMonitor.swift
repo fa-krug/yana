@@ -245,10 +245,12 @@ final class OperationMonitor {
     /// learn a percentage sooner than the next poll would. **It never decides an outcome and is
     /// never required for correctness**: a missed or duplicated event costs nothing, because the
     /// poll loop in `monitor(_:settings:container:client:observer:)` is what actually ends the
-    /// wait. This only ever moves `progressPercent` earlier than the next poll would have. Started
-    /// before any operation is triggered (from the scene `.task`, alongside `resume`), so a job
-    /// that finishes in the moment between a POST and its first poll cannot slip through a connect
-    /// gap.
+    /// wait. Applying an event clamps to `max(existing, incoming)` rather than assigning outright,
+    /// so a stale or out-of-order event can only move `progressPercent` forward, never backward --
+    /// a percentage regressing on screen reads as a bug even though nothing here was actually
+    /// wrong. Started before any operation is triggered (from the scene `.task`, alongside
+    /// `resume`), so a job that finishes in the moment between a POST and its first poll cannot
+    /// slip through a connect gap.
     func startEvents(
         settings: AppSettings,
         clientProvider: @escaping @MainActor @Sendable (AppSettings) -> YanaAPIClient? = {
@@ -259,26 +261,38 @@ final class OperationMonitor {
         guard eventTask == nil else { return }
         eventTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
+                // Bound once per (re)connect attempt, not once per event. Only relevant in tests,
+                // which construct throwaway `OperationMonitor` instances (production only ever uses
+                // `.shared`, which never deallocates): a stream that closes having delivered no
+                // events at all would otherwise never reach a self-liveness check and keep
+                // reconnecting forever on the captured `clientProvider`/`settings`, with nothing
+                // left around that a later event could even update -- exactly the kind of leaked
+                // loop that can reopen connections during a later, unrelated test.
+                guard let self else { return }
                 guard let client = clientProvider(settings) else {
                     try? await Task.sleep(for: reconnectDelay)
                     continue
                 }
                 var iterator = JobEventsClient(client: client).events().makeAsyncIterator()
                 while let event = try? await iterator.next() {
-                    guard let self else { return }
+                    // Matches `ReadingPositionLiveSync`'s shape: without this, an event already
+                    // buffered when `stopEvents()` fires (app backgrounded) could still land a
+                    // `progressPercent` write after the task was told to stop.
+                    guard !Task.isCancelled else { return }
                     // Composite-keyed exactly like `inFlight` itself, for the same reason: a job
                     // id and a run id are drawn from different server-side tables and collide
                     // freely, so indexing by the bare numeric id here would attribute a run's
                     // percentage to a same-numbered in-flight job (or vice versa).
                     if case let .job(payload) = event,
                        self.inFlight["job-\(payload.jobId)"] != nil {
-                        self.progressPercent = Int(payload.progress)
+                        self.progressPercent = max(self.progressPercent ?? 0, Int(payload.progress))
                     }
                     if case let .run(payload) = event,
                        self.inFlight["run-\(payload.runId)"] != nil {
-                        self.progressPercent = payload.progress
+                        self.progressPercent = max(self.progressPercent ?? 0, payload.progress)
                     }
                 }
+                guard !Task.isCancelled else { return }
                 try? await Task.sleep(for: reconnectDelay)
             }
         }

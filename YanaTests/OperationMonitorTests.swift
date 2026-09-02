@@ -713,4 +713,64 @@ struct OperationMonitorTests {
             for task in first { await task.value }
         }
     }
+
+    /// Pins the composite-key constraint `startEvents` relies on: `inFlight` is keyed by
+    /// `TrackedOperation.monitorKey` ("job-<id>"/"run-<id>"), not the bare numeric id, precisely
+    /// because a job id and a run id are drawn from different server-side tables that collide
+    /// freely. A same-numbered `job` SSE event must never move a tracked `run`'s percentage (or
+    /// vice versa) -- getting the key format wrong is silent, since it only shows a wrong
+    /// percentage, never a wrong outcome.
+    @Test func sseJobEventNeverMovesASameNumberedRunsProgress() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            settings.trackedOperations = [
+                TrackedOperation(kind: .updateAll, id: 5, startedAt: .now)
+            ]
+            // The run event (runId 5) should move this run's progress to 60. The job event
+            // (jobId 5, same number, different table) must be ignored entirely -- there is no
+            // tracked reload with job id 5, only a tracked run with id 5.
+            let sseBody = "event: run\ndata: {\"runId\":5,\"status\":\"running\",\"progress\":60,\"totalJobs\":1,\"completedJobs\":0,\"failedJobs\":0}\n\n"
+                + "event: job\ndata: {\"jobId\":5,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"running\",\"progress\":99}\n\n"
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/runs/5":
+                    return self.json(request, """
+                    {"runId":5,"status":"running","progress":10,"totalJobs":1,
+                     "completedJobs":0,"failedJobs":0}
+                    """)
+                case "/api/v1/jobs/events":
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                                   httpVersion: nil,
+                                                   headerFields: ["Content-Type": "text/event-stream"])!
+                    return (response, sseBody.data(using: .utf8)!)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let tasks = monitor.resume(settings: settings, container: container,
+                                       clientProvider: { _ in api })
+            monitor.startEvents(settings: settings, clientProvider: { _ in api },
+                                reconnectDelay: .seconds(30))
+
+            // The frames arrive as soon as the stream connects; poll briefly for the run event to
+            // land rather than sleeping a fixed guess.
+            for _ in 0..<50 where monitor.progressPercent != 60 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+
+            #expect(monitor.progressPercent == 60)
+
+            monitor.stopWatching(settings: settings)
+            monitor.stopEvents()
+            for task in tasks { await task.value }
+            // Give the SSE task's cancellation a moment to actually unwind before the lock
+            // releases, so a still-in-flight reconnect from THIS test can't consume the NEXT
+            // test's stub.
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
 }
