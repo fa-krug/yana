@@ -53,4 +53,16 @@ struct JobStatusTests {
         #expect(done.isTerminal)
         #expect(done.didSucceed)
     }
+
+    /// `isTerminal` used to be `!isRunning`, which read ANY unrecognized status -- e.g. a future
+    /// `"pending"`/`"queued"` this build has never heard of -- as terminal-and-failed. It must
+    /// instead degrade to "keep waiting", the same way `JobStatusResponse.isTerminal` already
+    /// does for an unrecognized job status.
+    @Test func runStatusTreatsAnUnrecognizedStatusAsNotTerminal() throws {
+        let run: RunStatusResponse = try decode("""
+        {"runId":5,"status":"something-new","progress":10,"totalJobs":4,"completedJobs":0,"failedJobs":0}
+        """)
+        #expect(!run.isTerminal)
+        #expect(!run.didSucceed)
+    }
 }

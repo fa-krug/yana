@@ -14,9 +14,12 @@ struct RunStatusResponse: Decodable, Equatable, Sendable {
     let failedJobs: Int
 
     var isRunning: Bool { status == "running" }
-    /// A run is `running`, `completed` or `failed` server-side, so anything that is not still
-    /// running has ended.
-    var isTerminal: Bool { !isRunning }
+    /// Terminal only for the known terminal values -- symmetrical with `JobStatusResponse
+    /// .isTerminal`. This used to be `!isRunning`, which read ANY unrecognized status (e.g. a
+    /// future `"pending"`/`"queued"` this build has never heard of) as terminal-and-failed,
+    /// turning an unknown-but-benign status into an immediate spurious "could not update" toast
+    /// instead of just continuing to poll.
+    var isTerminal: Bool { status == "completed" || status == "failed" }
     var didSucceed: Bool { status == "completed" }
 }
 

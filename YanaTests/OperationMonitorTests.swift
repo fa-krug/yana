@@ -175,4 +175,121 @@ struct OperationMonitorTests {
             #expect(settings.trackedOperations.isEmpty)
         }
     }
+
+    /// Pins finding 2 of the code-review fix pass: `monitor` returns `nil` on cancellation, and
+    /// that must NOT be treated as an outcome. `TrackedOperation`'s own doc contract is that a
+    /// record is removed only once a terminal status has been observed, precisely so a relaunch
+    /// after the process is killed mid-wait can resume it -- clearing the record on a mere
+    /// cancellation (as opposed to a real terminal result) would defeat that.
+    @Test func cancellingTheTaskLeavesThePersistedRecordAndClearsIsActive() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let api = client { request in
+                guard request.url!.path == "/api/v1/jobs/42" else {
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+                return self.json(request, """
+                {"jobId":42,"runId":null,"kind":"article.reload","progress":10,"status":"running",
+                 "error":"","startedAt":null,"finishedAt":null}
+                """)
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            let task = monitor.track(operation, settings: settings, container: container,
+                                     client: api)
+            task.cancel()
+            await task.value
+
+            #expect(monitor.isActive == false)
+            #expect(settings.trackedOperations == [operation])
+        }
+    }
+
+    /// Pins finding 1: an `.unauthorized` response (the "token revoked from another device"
+    /// case named in the fix request) must end the wait rather than retry forever -- mirroring
+    /// `UpdateAndSync.waitForRunToFinish`'s identical bail-out on the same error class.
+    @Test func anUnauthorizedResponseEndsTheWaitUnconfirmedAndClearsTheRecord() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            var call = 0
+            let api = client { request in
+                guard request.url!.path == "/api/v1/jobs/42" else {
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+                call += 1
+                return (HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil,
+                                        headerFields: nil)!, Data())
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container,
+                                client: api).value
+
+            #expect(call == 1)
+            #expect(settings.trackedOperations.isEmpty)
+            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+        }
+    }
+
+    /// Pins one of the two `.gone` shapes: a 404 whose body carries the server's
+    /// `{"error":{"code":"not_found",...}}` envelope, which `YanaAPIClient` decodes into
+    /// `.server(YanaAPIError(code: "not_found", ...))`.
+    @Test func aNotFoundEnvelopeReachesTheGoneArm() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let api = client { request in
+                guard request.url!.path == "/api/v1/jobs/42" else {
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+                return self.json(
+                    request, #"{"error":{"code":"not_found","message":"job gone"}}"#, status: 404)
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container,
+                                client: api).value
+
+            #expect(settings.trackedOperations.isEmpty)
+            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+        }
+    }
+
+    /// Pins the other `.gone` shape: a bare 404 with no JSON error envelope at all -- an HTML 404
+    /// page or similar -- which `YanaAPIClient` cannot decode as the error envelope and so maps to
+    /// `.unexpectedStatus(404)` instead of `.server(...)`.
+    @Test func aBareNotFoundStatusReachesTheGoneArm() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let api = client { request in
+                (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                 headerFields: nil)!, Data())
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container,
+                                client: api).value
+
+            #expect(settings.trackedOperations.isEmpty)
+            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+        }
+    }
 }

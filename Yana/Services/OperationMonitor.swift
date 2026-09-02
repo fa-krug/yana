@@ -86,8 +86,17 @@ final class OperationMonitor {
                                              client: client, observer: observer)
             self.inFlight[key] = nil
             self.visibleArticles[key] = nil
-            settings.trackedOperations.removeAll { $0.monitorKey == key }
-            if let outcome { self.lastOutcome = outcome }
+            // Only clear the persisted record once an outcome was actually reached. `monitor`
+            // returns `nil` solely on cancellation ("stop watching", not "the wait ended"), and
+            // `TrackedOperation`'s own doc contract is that a record is removed only once a
+            // terminal status has been observed and its follow-up applied -- clearing it on
+            // cancellation too would defeat resume-after-relaunch, since a cancelled-at-launch
+            // monitor (e.g. the app being killed mid-poll) must leave the record for `resume()`
+            // to pick back up next launch.
+            if let outcome {
+                settings.trackedOperations.removeAll { $0.monitorKey == key }
+                self.lastOutcome = outcome
+            }
             self.isActive = !self.inFlight.isEmpty
             if !self.isActive { self.progressPercent = nil }
         }
@@ -123,9 +132,19 @@ final class OperationMonitor {
                 _ = await applyTerminalSuccess(operation, container: container, client: client,
                                                settings: settings)
                 return .unconfirmed(operation.kind)
+            case .permanentFailure:
+                // .unauthorized, .decoding, and a well-formed .server error other than
+                // "not_found" mean the row genuinely cannot be queried -- retrying will never
+                // succeed (mirrors UpdateAndSync.waitForRunToFinish's identical bail-out). Ending
+                // the wait here, rather than looping it forever, is what lets the record clear and
+                // the UI report honestly that completion could not be confirmed.
+                return .unconfirmed(operation.kind)
             case .retryable:
-                // A dropped packet, a proxy's 502, or being offline entirely. None of those are
-                // the operation's outcome, so the wait continues and the record stays persisted.
+                // A dropped packet, a proxy's 502, or being offline entirely -- unlike the
+                // permanent class above, retrying CAN eventually succeed here, so the wait
+                // continues and the record stays persisted. This is deliberate: it is what lets an
+                // offline device resume the wait later instead of losing it, with the server's own
+                // 300s per-job budget as the real bound rather than any client-side timeout.
                 break
             }
 
@@ -139,6 +158,12 @@ final class OperationMonitor {
     private enum PollResult {
         case state(percent: Int, terminal: Bool, succeeded: Bool)
         case gone
+        /// `.unauthorized`, `.decoding`, or a well-formed `.server` error whose code is not
+        /// `"not_found"` -- the row cannot be queried and never will be, no matter how many more
+        /// times this polls.
+        case permanentFailure
+        /// `.transport` or `.unexpectedStatus` -- a dropped packet, a proxy blip, or being
+        /// offline. Worth another attempt.
         case retryable
     }
 
@@ -158,6 +183,16 @@ final class OperationMonitor {
             return .gone
         } catch YanaAPIClientError.unexpectedStatus(404) {
             return .gone
+        } catch let error as YanaAPIClientError {
+            switch error {
+            case .unauthorized, .decoding, .server:
+                // Same reasoning as UpdateAndSync.waitForRunToFinish: an auth rejection, an
+                // undecodable response, or a well-formed (non-"not_found") server error all mean
+                // this row genuinely cannot be queried, as opposed to a transient network blip.
+                return .permanentFailure
+            case .transport, .unexpectedStatus:
+                return .retryable
+            }
         } catch {
             return .retryable
         }
