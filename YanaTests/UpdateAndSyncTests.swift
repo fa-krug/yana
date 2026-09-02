@@ -44,7 +44,7 @@ struct UpdateAndSyncTests {
                 if path == "/api/v1/runs/5" {
                     runStatusCallCount += 1
                     let status = runStatusCallCount < 3 ? "running" : "completed"
-                    let body = #"{"runId":5,"status":"\#(status)","totalJobs":1,"completedJobs":0,"failedJobs":0}"#
+                    let body = #"{"runId":5,"status":"\#(status)","progress":0,"totalJobs":1,"completedJobs":0,"failedJobs":0}"#
                     let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
                     return (response, body.data(using: .utf8)!)
                 }
@@ -85,7 +85,7 @@ struct UpdateAndSyncTests {
                 let path = request.url!.path
                 if path == "/api/v1/runs/5" {
                     let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
-                    return (response, #"{"runId":5,"status":"running","totalJobs":1,"completedJobs":0,"failedJobs":0}"#.data(using: .utf8)!)
+                    return (response, #"{"runId":5,"status":"running","progress":0,"totalJobs":1,"completedJobs":0,"failedJobs":0}"#.data(using: .utf8)!)
                 }
                 if path == "/api/v1/articles/sync" {
                     syncCallCount += 1
@@ -135,7 +135,7 @@ struct UpdateAndSyncTests {
                         return (response, "not json".data(using: .utf8)!)
                     }
                     let status = runStatusCallCount < 4 ? "running" : "completed"
-                    let body = #"{"runId":5,"status":"\#(status)","totalJobs":1,"completedJobs":0,"failedJobs":0}"#
+                    let body = #"{"runId":5,"status":"\#(status)","progress":0,"totalJobs":1,"completedJobs":0,"failedJobs":0}"#
                     let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
                     return (response, body.data(using: .utf8)!)
                 }

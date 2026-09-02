@@ -6,11 +6,18 @@ import Foundation
 struct RunStatusResponse: Decodable, Equatable, Sendable {
     let runId: Int
     let status: String
+    /// The server's own completion percentage for this run (0-100), computed from its counters so
+    /// every client shows the same number. Displayed verbatim.
+    let progress: Int
     let totalJobs: Int
     let completedJobs: Int
     let failedJobs: Int
 
     var isRunning: Bool { status == "running" }
+    /// A run is `running`, `completed` or `failed` server-side, so anything that is not still
+    /// running has ended.
+    var isTerminal: Bool { !isRunning }
+    var didSucceed: Bool { status == "completed" }
 }
 
 /// `GET`/`PATCH /api/v1/reading-position`'s response shape -- shared by `SyncEngine`'s pull and
