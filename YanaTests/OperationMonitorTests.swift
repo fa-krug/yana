@@ -737,6 +737,7 @@ struct OperationMonitorTests {
             // tracked reload with job id 5, only a tracked run with id 5.
             let sseBody = "event: run\ndata: {\"runId\":5,\"status\":\"running\",\"progress\":60,\"totalJobs\":1,\"completedJobs\":0,\"failedJobs\":0}\n\n"
                 + "event: job\ndata: {\"jobId\":5,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"running\",\"progress\":99}\n\n"
+            let connects = StreamConnectCount()
             let api = client { request in
                 switch request.url!.path {
                 case "/api/v1/runs/5":
@@ -745,6 +746,7 @@ struct OperationMonitorTests {
                      "completedJobs":0,"failedJobs":0}
                     """)
                 case "/api/v1/jobs/events":
+                    connects.note()
                     let response = HTTPURLResponse(url: request.url!, statusCode: 200,
                                                    httpVersion: nil,
                                                    headerFields: ["Content-Type": "text/event-stream"])!
@@ -755,7 +757,18 @@ struct OperationMonitorTests {
                 }
             }
 
-            let monitor = makeMonitor()
+            // NOT `makeMonitor()`: its 5ms poll interval makes any assertion about
+            // `progressPercent` a race, because the poll path assigns it unconditionally
+            // (`publish`) while the SSE path is what this test is about. A 5ms poll overwrites an
+            // SSE-delivered 60 (or a misindexed 99) with the polled 10 a few milliseconds later, so
+            // whether the assertion below saw the SSE value or the poll value came down to
+            // scheduling -- it was observed passing and failing against the same code. One poll at
+            // the start and nothing more for the rest of the test removes that race entirely, and
+            // leaves the SSE writes as the only thing that can move the percentage afterwards.
+            let monitor = OperationMonitor(pollInterval: .seconds(30),
+                                           slowPollInterval: .seconds(30),
+                                           youngPhase: .seconds(600), nudgeSlice: .milliseconds(5),
+                                           activity: UpdateActivity())
             let tasks = monitor.resume(settings: settings, container: container,
                                        clientProvider: { _ in api })
             // A short reconnect delay, not the production-ish 30s this used to pass. The stub's
@@ -769,17 +782,33 @@ struct OperationMonitorTests {
             monitor.startEvents(settings: settings, clientProvider: { _ in api },
                                 reconnectDelay: .milliseconds(50))
 
-            // Wait on the observable condition with a generous ceiling rather than a fixed number
-            // of short sleeps: this returns in a few milliseconds on an idle machine and still
-            // passes on a loaded one. The ceiling bounds nothing but "the SSE frame never arrived
-            // at all" -- it is a failure deadline, not an expected duration, so it is set far
-            // above any plausible scheduling delay for a mock stream.
+            // Wait for the stream to have been consumed to its end and RECONNECTED, not merely
+            // for the percentage to reach 60.
+            //
+            // Waiting on `progressPercent == 60` is what this test used to do, and it left a hole
+            // wide enough to drive the bug through: 60 is set by the *run* frame, which is the
+            // first of the two, and the *job* frame -- the one whose mis-attribution this test
+            // exists to catch -- is processed after it. So that wait could exit while the job frame
+            // was still unconsumed, and the assertion then passed in a build where the job arm was
+            // misindexed and would have written 99 a moment later. The assertion has to happen
+            // after BOTH frames have been handled.
+            //
+            // The stub's body is finite, so `startEvents`' inner loop processes both frames, sees
+            // the stream close, and comes back round to reconnect. A second connect is therefore
+            // observable proof that the job frame was consumed -- no fixed sleep required, and it
+            // still settles in ~100ms on an idle machine (the 50ms reconnect delay plus change).
+            // The ceiling is a failure deadline for "the stream never reconnected at all", not an
+            // expected duration.
             let deadline = ContinuousClock.now + .seconds(10)
-            while monitor.progressPercent != 60, ContinuousClock.now < deadline {
+            while connects.value < 2, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(5))
             }
+            #expect(connects.value >= 2)
 
+            // The run frame's 60 landed, and the job frame -- same number, different server-side
+            // table, no tracked reload with job id 5 -- did not overwrite it with its own 99.
             #expect(monitor.progressPercent == 60)
+            #expect(monitor.progressPercent != 99)
 
             monitor.stopWatching(settings: settings)
             monitor.stopEvents()
@@ -1107,4 +1136,14 @@ private final class HeldContentRequest: @unchecked Sendable {
     func waitUntilReleased() { _ = released.wait(timeout: .now() + 10) }
     /// Safe to call more than once; the extra signals are simply never consumed.
     func release() { released.signal() }
+}
+
+/// Counts `GET /api/v1/jobs/events` connects for the progress-attribution test, which uses a
+/// second connect as observable proof that the first stream was consumed to its end (and so that
+/// every frame in it was processed). Written from a URL-loading thread, read from the main actor.
+private final class StreamConnectCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func note() { lock.withLock { count += 1 } }
 }
