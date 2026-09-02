@@ -11,7 +11,7 @@ struct JobEventsClientTests {
         try await MockURLProtocol.lock.withLock {
             let sseBody = "event: job\ndata: {\"jobId\":1,\"runId\":null,\"kind\":\"article.reload\",\"status\":\"completed\",\"progress\":1}\n\n"
                 + ": ping\n\n"
-                + "event: run\ndata: {\"runId\":5,\"status\":\"completed\",\"totalJobs\":3,\"completedJobs\":3,\"failedJobs\":0}\n\n"
+                + "event: run\ndata: {\"runId\":5,\"status\":\"completed\",\"progress\":100,\"totalJobs\":3,\"completedJobs\":3,\"failedJobs\":0}\n\n"
             let config = URLSessionConfiguration.ephemeral
             config.protocolClasses = [MockURLProtocol.self]
             MockURLProtocol.stub = { request in
@@ -27,7 +27,7 @@ struct JobEventsClientTests {
 
             #expect(events == [
                 .job(JobEventPayload(jobId: 1, runId: nil, kind: "article.reload", status: "completed", progress: 1)),
-                .run(RunEventPayload(runId: 5, status: "completed", totalJobs: 3, completedJobs: 3, failedJobs: 0)),
+                .run(RunEventPayload(runId: 5, status: "completed", progress: 100, totalJobs: 3, completedJobs: 3, failedJobs: 0)),
             ])
         }
     }

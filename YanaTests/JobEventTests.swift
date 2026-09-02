@@ -12,9 +12,9 @@ struct JobEventTests {
     }
 
     @Test func decodesARunFrameIntoARunEvent() {
-        let frame = SSEFrame(event: "run", data: #"{"runId":5,"status":"running","totalJobs":3,"completedJobs":1,"failedJobs":0}"#)
+        let frame = SSEFrame(event: "run", data: #"{"runId":5,"status":"running","progress":33,"totalJobs":3,"completedJobs":1,"failedJobs":0}"#)
         #expect(JobEvent.decode(frame: frame) == .run(
-            RunEventPayload(runId: 5, status: "running", totalJobs: 3, completedJobs: 1, failedJobs: 0)
+            RunEventPayload(runId: 5, status: "running", progress: 33, totalJobs: 3, completedJobs: 1, failedJobs: 0)
         ))
     }
 

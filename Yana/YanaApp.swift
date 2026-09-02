@@ -131,8 +131,13 @@ struct YanaApp: App {
                         Task { await articleStore.flushCache() }
                         // No point paying for an open SSE connection while nothing is watching it.
                         ReadingPositionLiveSync.shared.stop()
+                        // No point paying for an open SSE connection while nothing is watching.
+                        // The poll loops keep running; they are what actually ends a wait.
+                        OperationMonitor.shared.stopEvents()
                     case .active:
                         ReadingPositionLiveSync.shared.start(settings: appSettings)
+                        OperationMonitor.shared.startEvents(settings: appSettings)
+                        OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
                         #if targetEnvironment(macCatalyst)
                         appDelegate.refreshOnFocus()
                         #endif
@@ -170,6 +175,11 @@ struct YanaApp: App {
                     // `.active` state on a cold launch needs this called explicitly here too;
                     // `start()` is idempotent, so this and the scene-phase handler never race.
                     ReadingPositionLiveSync.shared.start(settings: appSettings)
+                    // Anything this device triggered and never saw finish -- including in a
+                    // previous launch -- is picked back up here, through the same path a fresh
+                    // trigger takes.
+                    OperationMonitor.shared.startEvents(settings: appSettings)
+                    OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
                     #if targetEnvironment(macCatalyst)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).

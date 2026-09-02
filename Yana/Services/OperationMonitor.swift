@@ -203,6 +203,92 @@ final class OperationMonitor {
         observer?(percent)
     }
 
+    /// Picks monitoring back up for everything persisted, whether this session triggered it or a
+    /// previous one did. Called at launch and whenever the app returns to the foreground; the
+    /// per-operation guard in `track` (keyed the same way, by `monitorKey`) makes repeat calls
+    /// free, so callers never have to reason about whether monitoring is already running.
+    ///
+    /// Returns the tasks it started, for tests. Production ignores the result.
+    @discardableResult
+    func resume(
+        settings: AppSettings, container: ModelContainer,
+        clientProvider: (AppSettings) -> YanaAPIClient? = { AuthenticatedClient.current(settings: $0) }
+    ) -> [Task<Void, Never>] {
+        guard let client = clientProvider(settings) else { return [] }
+        return settings.trackedOperations.compactMap { operation in
+            // Keyed by `monitorKey`, NOT `id`: `id` alone collides across the job/run id spaces
+            // (see the `inFlight` doc comment above), and `track` itself already treats an
+            // existing `monitorKey` entry as "already watching this" -- checking here too avoids
+            // constructing a `Task` (via `track`) for an operation that would just be handed back
+            // its own already-running one, so `resume`'s return value stays an accurate "what did
+            // I just start" for tests to assert on.
+            guard inFlight[operation.monitorKey] == nil else { return nil }
+            return track(operation, settings: settings, container: container, client: client)
+        }
+    }
+
+    /// Stop watching on this device, without asking the server to stop working. The persisted
+    /// records go with it: the user asked for the spinner to end, and whatever the server produces
+    /// still arrives through the next ordinary sync.
+    func stopWatching(settings: AppSettings) {
+        for task in inFlight.values { task.cancel() }
+        inFlight.removeAll()
+        visibleArticles.removeAll()
+        settings.trackedOperations = []
+        isActive = false
+        progressPercent = nil
+    }
+
+    private var eventTask: Task<Void, Never>?
+
+    /// Subscribes to `GET /api/v1/jobs/events` for as long as the app is foregrounded, purely to
+    /// learn a percentage sooner than the next poll would. **It never decides an outcome and is
+    /// never required for correctness**: a missed or duplicated event costs nothing, because the
+    /// poll loop in `monitor(_:settings:container:client:observer:)` is what actually ends the
+    /// wait. This only ever moves `progressPercent` earlier than the next poll would have. Started
+    /// before any operation is triggered (from the scene `.task`, alongside `resume`), so a job
+    /// that finishes in the moment between a POST and its first poll cannot slip through a connect
+    /// gap.
+    func startEvents(
+        settings: AppSettings,
+        clientProvider: @escaping @MainActor @Sendable (AppSettings) -> YanaAPIClient? = {
+            AuthenticatedClient.current(settings: $0)
+        },
+        reconnectDelay: Duration = .seconds(5)
+    ) {
+        guard eventTask == nil else { return }
+        eventTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let client = clientProvider(settings) else {
+                    try? await Task.sleep(for: reconnectDelay)
+                    continue
+                }
+                var iterator = JobEventsClient(client: client).events().makeAsyncIterator()
+                while let event = try? await iterator.next() {
+                    guard let self else { return }
+                    // Composite-keyed exactly like `inFlight` itself, for the same reason: a job
+                    // id and a run id are drawn from different server-side tables and collide
+                    // freely, so indexing by the bare numeric id here would attribute a run's
+                    // percentage to a same-numbered in-flight job (or vice versa).
+                    if case let .job(payload) = event,
+                       self.inFlight["job-\(payload.jobId)"] != nil {
+                        self.progressPercent = Int(payload.progress)
+                    }
+                    if case let .run(payload) = event,
+                       self.inFlight["run-\(payload.runId)"] != nil {
+                        self.progressPercent = payload.progress
+                    }
+                }
+                try? await Task.sleep(for: reconnectDelay)
+            }
+        }
+    }
+
+    func stopEvents() {
+        eventTask?.cancel()
+        eventTask = nil
+    }
+
     /// Sleeps in slices so a live SSE event (Task 9) can shorten the wait without any continuation
     /// bookkeeping. The cost is at most one slice of added latency.
     private func sleep(_ total: Duration) async {

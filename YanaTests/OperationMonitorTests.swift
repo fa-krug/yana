@@ -643,4 +643,74 @@ struct OperationMonitorTests {
             #expect(monitor.lastOutcome == .reloaded(articleServerID: 100, feedName: "Feed"))
         }
     }
+
+    @Test func resumeMonitorsARecordPersistedByAPreviousSession() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            // Written by a previous launch; nothing in this session triggered it.
+            settings.trackedOperations = [
+                TrackedOperation(kind: .updateAll, id: 5, startedAt: Date(timeIntervalSince1970: 1))
+            ]
+            var runCalls = 0
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/runs/5":
+                    runCalls += 1
+                    return self.json(request, """
+                    {"runId":5,"status":"completed","progress":100,"totalJobs":1,
+                     "completedJobs":1,"failedJobs":0}
+                    """)
+                case "/api/v1/feeds": return self.json(request, #"{"feeds":[]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let tasks = monitor.resume(settings: settings, container: container,
+                                       clientProvider: { _ in api })
+            for task in tasks { await task.value }
+
+            #expect(runCalls == 1)
+            #expect(settings.trackedOperations.isEmpty)
+            #expect(monitor.lastOutcome == .updated(newCount: 0))
+        }
+    }
+
+    @Test func resumeIsIdempotentSoAForegroundCallDoesNotDoubleMonitor() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            settings.trackedOperations = [
+                TrackedOperation(kind: .updateAll, id: 5, startedAt: .now)
+            ]
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/runs/5":
+                    return self.json(request, """
+                    {"runId":5,"status":"running","progress":10,"totalJobs":1,
+                     "completedJobs":0,"failedJobs":0}
+                    """)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let first = monitor.resume(settings: settings, container: container,
+                                       clientProvider: { _ in api })
+            let second = monitor.resume(settings: settings, container: container,
+                                        clientProvider: { _ in api })
+            #expect(first.count == 1)
+            #expect(second.isEmpty)
+            monitor.stopWatching(settings: settings)
+            for task in first { await task.value }
+        }
+    }
 }

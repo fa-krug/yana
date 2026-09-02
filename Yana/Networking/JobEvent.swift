@@ -22,10 +22,12 @@ struct JobEventPayload: Decodable, Equatable, Sendable {
 
 /// Mirrors the `ApiEvent` "run" variant. `status` is one of `"running"`/`"completed"`/`"failed"`
 /// server-side (confirmed via `schema/jobs.ts`'s default and `bumpRunCounters()` in `queue.ts`) --
-/// there is no `"pending"` state for a run.
+/// there is no `"pending"` state for a run. `progress` is the run's server-computed completion
+/// percentage, 0-100, included by `publishJobOutcome()` alongside the counters above.
 struct RunEventPayload: Decodable, Equatable, Sendable {
     let runId: Int
     let status: String
+    let progress: Int
     let totalJobs: Int
     let completedJobs: Int
     let failedJobs: Int
