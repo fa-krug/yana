@@ -344,28 +344,25 @@ struct ReaderScreen: View {
             reanchorToCurrentArticle()
             clampIndex()
         }
-        // The only observer of `lastOutcome` on iOS -- `ArticleListView` is presented over this
-        // reader, and a second observer there would show the same outcome as two toasts.
+        // Observes `lastOutcome` whenever the article list sheet is NOT frontmost.
+        // `ArticleListView` observes it itself while its sheet is up (see that view), so that a
+        // reload triggered from its swipe action still gets a toast -- this reader's own toast
+        // would otherwise render behind the sheet, invisible, and auto-expire before the user
+        // dismisses it. The two observers are mutually exclusive by construction (this one skips
+        // exactly when the other is mounted), so an outcome is never shown twice.
         .onChange(of: OperationMonitor.shared.lastOutcome) { _, outcome in
-            guard let outcome else { return }
-            switch outcome {
-            case .reloaded(_, let feedName):
+            guard let outcome, !appState.showArticleList else { return }
+            toast = ReaderActions.outcomeToast(outcome)
+            if ReaderActions.outcomeRefreshesVisiblePage(outcome) {
                 // Re-render the visible page: the reload refreshed the article's content, but the
                 // reader only re-renders when reloadToken changes (same as summarize).
                 reloadToken += 1
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+            }
+            switch outcome {
+            case .reloaded, .updated:
                 Haptics.impact(.light)
-            case .updated(let newCount):
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
-                Haptics.impact(.light)
-            case .failed:
-                toast = ToastMessage(
-                    text: String(localized: "Could not reload this article. Please try again."),
-                    style: .error
-                )
-            case .unconfirmed:
-                reloadToken += 1
-                toast = ToastMessage(text: String(localized: "The server did not confirm this finished, so this might not be the newest version."))
+            case .failed, .unconfirmed:
+                break
             }
         }
 

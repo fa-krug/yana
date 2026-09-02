@@ -362,20 +362,9 @@ final class TimelineModel {
     /// cannot bump it itself. `MacRootView` is the sole caller: there is exactly one detail pane
     /// on Mac, so a second call site observing the same outcome would double the toast.
     func applyOperationOutcome(_ outcome: OperationOutcome) {
-        switch outcome {
-        case .reloaded(_, let feedName):
+        toast = ReaderActions.outcomeToast(outcome)
+        if ReaderActions.outcomeRefreshesVisiblePage(outcome) {
             reloadToken += 1
-            toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
-        case .updated(let newCount):
-            toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
-        case .failed:
-            toast = ToastMessage(
-                text: String(localized: "Could not reload this article. Please try again."),
-                style: .error
-            )
-        case .unconfirmed:
-            reloadToken += 1
-            toast = ToastMessage(text: String(localized: "The server did not confirm this finished, so this might not be the newest version."))
         }
     }
 

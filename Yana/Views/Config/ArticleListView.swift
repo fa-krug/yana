@@ -158,6 +158,16 @@ struct ArticleListView: View {
         .onChange(of: settings.disabledFeedNames) { _, _ in recomputeResults() }
         .onChange(of: settings.starredOnly) { _, _ in recomputeResults() }
         .onChange(of: settings.readFilter) { _, _ in recomputeResults() }
+        // This view is a `.sheet` over `ReaderScreen`, so while it's presented the reader's own
+        // `lastOutcome` toast would render behind it, invisible, and auto-expire before the sheet
+        // is dismissed. `ReaderScreen` skips reacting while `appState.showArticleList` is true, so
+        // this is the only observer live at a time -- an `.onChange` here only runs while this view
+        // is actually in the hierarchy, which is exactly "while the sheet is presented," with no
+        // extra guard needed.
+        .onChange(of: OperationMonitor.shared.lastOutcome) { _, outcome in
+            guard let outcome else { return }
+            toast = ReaderActions.outcomeToast(outcome)
+        }
         .navigationTitle("Articles")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {

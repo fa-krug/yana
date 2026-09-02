@@ -131,4 +131,47 @@ enum ReaderActions {
         monitor.track(operation, settings: settings, container: container, client: client)
         return true
     }
+
+    /// The toast to show for a finished `OperationMonitor` operation, shared by every surface that
+    /// observes `OperationMonitor.shared.lastOutcome`: `ReaderScreen` (iOS), `MacRootView`'s
+    /// delegate to `TimelineModel.applyOperationOutcome`, and `ArticleListView` while its sheet is
+    /// frontmost. Kept in one place because `.failed`/`.unconfirmed` need to read
+    /// `TrackedOperation.Kind` to pick the right copy -- an `.updateAll` run has no single article
+    /// to name, so it must not reuse the reload-shaped strings, and a duplicated switch drifting
+    /// out of sync across three call sites is exactly the failure mode this type exists to avoid.
+    static func outcomeToast(_ outcome: OperationOutcome) -> ToastMessage {
+        switch outcome {
+        case .reloaded(_, let feedName):
+            return ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+        case .updated(let newCount):
+            return ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
+        case .failed(.reloadArticle):
+            return ToastMessage(
+                text: String(localized: "Could not reload this article. Please try again."),
+                style: .error
+            )
+        case .failed(.updateAll):
+            return ToastMessage(
+                text: String(localized: "Could not check for updates. Please try again."),
+                style: .error
+            )
+        case .unconfirmed(.reloadArticle):
+            return ToastMessage(text: String(localized: "The server did not confirm this finished, so this might not be the newest version."))
+        case .unconfirmed(.updateAll):
+            return ToastMessage(text: String(localized: "The server did not confirm this update finished, so some new articles might still be missing."))
+        }
+    }
+
+    /// Whether reacting to this outcome should bump `reloadToken` to re-render the currently
+    /// visible article page. Only a `.reloadArticle` operation ever touches the open article's own
+    /// content -- an `.updateAll` run never writes to it directly (any new articles it produced
+    /// arrive through the ordinary sync pull), so bumping the token for one would re-render the
+    /// page for no reason.
+    static func outcomeRefreshesVisiblePage(_ outcome: OperationOutcome) -> Bool {
+        switch outcome {
+        case .reloaded: true
+        case .unconfirmed(.reloadArticle): true
+        case .updated, .failed, .unconfirmed(.updateAll): false
+        }
+    }
 }

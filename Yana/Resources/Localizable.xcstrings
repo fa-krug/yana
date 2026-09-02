@@ -4742,6 +4742,22 @@
         }
       }
     },
+    "The server did not confirm this update finished, so some new articles might still be missing.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server hat den Abschluss dieser Aktualisierung nicht bestätigt. Es fehlen möglicherweise noch neue Artikel."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server did not confirm this update finished, so some new articles might still be missing."
+          }
+        }
+      }
+    },
     "The server returned an error.": {
       "localizations": {
         "de": {
