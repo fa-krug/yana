@@ -326,9 +326,16 @@ struct MacRootView: View {
     }
 
     /// Wide enough for the longest percentage this ever shows -- "100%" (English) or "100 %"
-    /// (German) -- at `.caption` size, so the label's own width never changes as the number grows
-    /// or shrinks. See `updateButton`'s doc comment for why that matters.
-    private static let progressLabelWidth: CGFloat = 34
+    /// (German, which inserts a thin space before the sign per `"%lld%%"`'s German localization)
+    /// -- at `.caption.monospacedDigit()`, so the label's own width never changes as the number
+    /// grows or shrinks. See `updateButton`'s doc comment for why that matters. Measured, not
+    /// eyeballed: `NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)` is the closest
+    /// AppKit equivalent of SwiftUI's `.caption.monospacedDigit()` on Catalyst (`.caption` is 12pt
+    /// there, unlike AppKit's own `NSFont.preferredFont(forTextStyle: .caption1)`, which resolves
+    /// to 10pt and would understate the width), fed through `CTLineGetTypographicBounds`. "100 %"
+    /// measures ~37.2pt at that size -- wider than the previous 34pt reservation, which would have
+    /// clipped the German label at 100%. 40pt leaves a small margin above the measured value.
+    private static let progressLabelWidth: CGFloat = 40
 
     /// The sidebar's launch width: the last persisted value clamped to bounds, or the ideal default
     /// when no value has been stored yet (stored value == 0 is the UserDefaults zero-default). This
