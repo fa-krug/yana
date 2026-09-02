@@ -294,9 +294,14 @@ struct MacRootView: View {
         settings.hasSkippedServerPairing && !settings.hasDismissedDemoBanner && AuthenticatedClient.current() == nil
     }
 
-    /// "Update all", whose icon cross-fades to a spinner while a run is in flight so the busy
-    /// indicator sits inside the group without changing the item set or the group's width (both
-    /// children stay laid out — only their opacity changes).
+    /// "Update all", whose icon cross-fades to a spinner (plus the operation's percentage, when
+    /// there is one) while a run is in flight so the busy indicator sits inside the group without
+    /// changing the item set or the group's width (both children stay laid out — only their
+    /// opacity changes). The percentage label always reserves `progressLabelWidth`, monospaced,
+    /// left-aligned within it, and toggles by opacity rather than being added/removed — otherwise
+    /// the label appearing, or widening from "0%" to "100%", would nudge this item's width and
+    /// with it its `ControlGroup` neighbours, which is exactly what this comment used to promise
+    /// never happens.
     private var updateButton: some View {
         Button {
             model.triggerRefresh()
@@ -305,9 +310,11 @@ struct MacRootView: View {
                 Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
                 HStack(spacing: 4) {
                     ProgressView().controlSize(.small)
-                    if let label = UpdateActivity.shared.progressLabel {
-                        Text(label).font(.caption).foregroundStyle(.secondary)
-                    }
+                    Text(UpdateActivity.shared.progressLabel ?? "")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: Self.progressLabelWidth, alignment: .leading)
+                        .opacity(UpdateActivity.shared.progressLabel == nil ? 0 : 1)
                 }
                 .opacity(showSpinner ? 1 : 0)
             }
@@ -317,6 +324,11 @@ struct MacRootView: View {
         .help(Text("Update all"))
         .accessibilityLabel(showSpinner ? Text("Updating") : Text("Update all"))
     }
+
+    /// Wide enough for the longest percentage this ever shows -- "100%" (English) or "100 %"
+    /// (German) -- at `.caption` size, so the label's own width never changes as the number grows
+    /// or shrinks. See `updateButton`'s doc comment for why that matters.
+    private static let progressLabelWidth: CGFloat = 34
 
     /// The sidebar's launch width: the last persisted value clamped to bounds, or the ideal default
     /// when no value has been stored yet (stored value == 0 is the UserDefaults zero-default). This

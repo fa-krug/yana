@@ -84,13 +84,39 @@ struct UpdateActivityTests {
         #expect(activity.progressLabel == nil)
     }
 
-    @Test func rendersThePercentageVerbatim() {
+    /// Bundle-pinned, following `PluralAgreementTests`' approach: the simulator's language is not
+    /// guaranteed to be English, and `locale:` alone selects plural/number *rules*, not which
+    /// `.lproj` is used, so resolution has to go through an explicit per-language bundle to be
+    /// locale-independent.
+    private static func bundle(_ language: String) -> Bundle? {
+        Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:))
+    }
+
+    private func percentString(_ value: Int, _ language: String) throws -> String {
+        let bundle = try #require(Self.bundle(language), "no \(language).lproj in the app bundle")
+        return String(localized: "\(value)%", bundle: bundle, locale: Locale(identifier: language))
+    }
+
+    /// Asserts the literal rendered strings, not `progressLabel` against
+    /// `String(localized: "\(55)%")` -- the exact expression the implementation evaluates. That
+    /// comparison would pass even if the catalog were missing the key entirely, since both sides
+    /// would then render the same raw key back; it is precisely the failure this task had to guard
+    /// against (the task brief's own example guessed the wrong key, `"%lld%"` instead of the
+    /// actually-extracted `"%lld%%"`, and only an out-of-band check of the compiled stringsdata
+    /// caught it). Resolving through explicit per-language bundles here pins both the content and
+    /// the locale, so a reverted or misspelled catalog entry fails this test directly.
+    @Test func rendersThePercentageVerbatim() throws {
         let activity = UpdateActivity()
-        activity.setProgress(0)
-        #expect(activity.progressLabel == String(localized: "\(0)%"))
         activity.setProgress(55)
-        #expect(activity.progressLabel == String(localized: "\(55)%"))
-        activity.setProgress(100)
-        #expect(activity.progressLabel == String(localized: "\(100)%"))
+        #expect(activity.progressPercent == 55)
+
+        #expect(try percentString(0, "en") == "0%")
+        #expect(try percentString(55, "en") == "55%")
+        #expect(try percentString(100, "en") == "100%")
+
+        // German puts a space before the percent sign.
+        #expect(try percentString(0, "de") == "0 %")
+        #expect(try percentString(55, "de") == "55 %")
+        #expect(try percentString(100, "de") == "100 %")
     }
 }
