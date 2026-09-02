@@ -84,6 +84,7 @@ final class AppSettings {
         // Sync
         static let syncCursor = "settings.syncCursor"
         static let pendingWrites = "settings.pendingWrites"
+        static let trackedOperations = "settings.trackedOperations"
         // Timeline filter
         static let disabledTagNames = "settings.disabledTagNames"
         static let includeUntagged = "settings.includeUntagged"
@@ -200,6 +201,24 @@ final class AppSettings {
             withMutation(keyPath: \.pendingWrites) {
                 let data = try? JSONEncoder().encode(newValue)
                 defaults.set(data, forKey: Key.pendingWrites)
+            }
+        }
+    }
+
+    /// Server-side operations this device triggered and has not yet seen finish. Survives a
+    /// relaunch on purpose -- see `TrackedOperation`.
+    var trackedOperations: [TrackedOperation] {
+        get {
+            access(keyPath: \.trackedOperations)
+            guard let data = defaults.data(forKey: Key.trackedOperations),
+                  let decoded = try? JSONDecoder().decode([TrackedOperation].self, from: data)
+            else { return [] }
+            return decoded
+        }
+        set {
+            withMutation(keyPath: \.trackedOperations) {
+                let data = try? JSONEncoder().encode(newValue)
+                defaults.set(data, forKey: Key.trackedOperations)
             }
         }
     }
