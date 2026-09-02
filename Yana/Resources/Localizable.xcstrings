@@ -4726,6 +4726,22 @@
         }
       }
     },
+    "The server did not confirm this finished, so this might not be the newest version.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Server hat den Abschluss nicht bestätigt. Das ist möglicherweise nicht die neueste Version."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server did not confirm this finished, so this might not be the newest version."
+          }
+        }
+      }
+    },
     "The server returned an error.": {
       "localizations": {
         "de": {

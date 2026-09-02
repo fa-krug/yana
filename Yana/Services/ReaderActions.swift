@@ -95,53 +95,40 @@ enum ReaderActions {
             .map { Block.paragraph([InlineRun(text: $0)]) }
     }
 
-    enum ForceUpdateResult { case cancelled, applied(feedName: String?), failed }
-
-    /// Triggers the server's per-article reload, then re-fetches its content directly via
-    /// `UpdateAndSync.pollForReloadedContent`. Deliberately does NOT go through `SyncEngine`'s
-    /// generic `hasContent`-gated backfill -- a premature backfill fetch during the poll window
-    /// could permanently lock out any later retry of this exact article. Caller must already have
-    /// confirmed pairing and a `serverID` before calling, and should run this from inside
-    /// `UpdateActivity.shared.restart` so its in-flight-task-cancellation contract still applies.
-    static func forceUpdateArticle(
-        _ article: Article, serverID: Int, client: YanaAPIClient, container: ModelContainer
-    ) async -> ForceUpdateResult {
-        do {
-            let jobId = try await ArticleActions(client: client).reload(articleServerID: serverID)
-            guard !Task.isCancelled else { return .cancelled }
-            let applied = await UpdateAndSync.pollForReloadedContent(
-                jobId: jobId, articleServerID: serverID, container: container, client: client,
-                visibleArticle: article
-            )
-            guard !Task.isCancelled else { return .cancelled }
-            return applied ? .applied(feedName: article.feed?.name) : .failed
-        } catch {
-            guard !Task.isCancelled else { return .cancelled }
-            return .failed
-        }
+    /// Triggers the server's per-article reload and hands the resulting job to `OperationMonitor`.
+    ///
+    /// The POST's ack is only a job id, never new content, so there is nothing to report yet: the
+    /// monitor is what finds out how the job ended and publishes the outcome. Persisting the
+    /// record before returning is deliberate, so an app killed a second later still resumes this
+    /// wait on its next launch.
+    ///
+    /// Returns `false` only when the trigger itself failed.
+    @discardableResult
+    static func startReload(
+        _ article: Article, serverID: Int, client: YanaAPIClient, container: ModelContainer,
+        settings: AppSettings, monitor: OperationMonitor = .shared
+    ) async -> Bool {
+        guard let jobId = try? await ArticleActions(client: client).reload(articleServerID: serverID)
+        else { return false }
+        let operation = TrackedOperation(kind: .reloadArticle(serverID: serverID), id: jobId,
+                                         startedAt: .now)
+        settings.trackedOperations.append(operation)
+        monitor.track(operation, settings: settings, container: container, client: client,
+                      visibleArticle: article)
+        return true
     }
 
-    enum TriggerRefreshResult { case cancelled, applied(newCount: Int), failed }
-
-    /// "Update" only triggers the server's aggregation run (`ArticleActions.updateAll()`); the run
-    /// itself happens server-side and asynchronously, so this follows up with `UpdateAndSync`'s
-    /// bounded poll of `SyncEngine.sync()` to actually pull in whatever the run produced. Caller
-    /// must already have confirmed pairing before calling, and should run this from inside
-    /// `UpdateActivity.shared.restart`.
-    static func triggerRefresh(
-        client: YanaAPIClient, container: ModelContainer, settings: AppSettings
-    ) async -> TriggerRefreshResult {
-        do {
-            let runId = try await ArticleActions(client: client).updateAll()
-            guard !Task.isCancelled else { return .cancelled }
-            let result = await UpdateAndSync.pollForFreshContent(
-                runId: runId, container: container, client: client, settings: settings
-            )
-            guard !Task.isCancelled else { return .cancelled }
-            return .applied(newCount: result.newCount)
-        } catch {
-            guard !Task.isCancelled else { return .cancelled }
-            return .failed
-        }
+    /// Triggers the server's aggregation run over every enabled feed and hands the run to
+    /// `OperationMonitor`. Same contract as `startReload`: the ack is a run id, not results.
+    @discardableResult
+    static func startUpdateAll(
+        client: YanaAPIClient, container: ModelContainer, settings: AppSettings,
+        monitor: OperationMonitor = .shared
+    ) async -> Bool {
+        guard let runId = try? await ArticleActions(client: client).updateAll() else { return false }
+        let operation = TrackedOperation(kind: .updateAll, id: runId, startedAt: .now)
+        settings.trackedOperations.append(operation)
+        monitor.track(operation, settings: settings, container: container, client: client)
+        return true
     }
 }

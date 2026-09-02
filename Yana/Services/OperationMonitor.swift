@@ -135,7 +135,7 @@ final class OperationMonitor {
             case .permanentFailure:
                 // .unauthorized, .decoding, and a well-formed .server error other than
                 // "not_found" mean the row genuinely cannot be queried -- retrying will never
-                // succeed (mirrors UpdateAndSync.waitForRunToFinish's identical bail-out). Ending
+                // succeed. Ending
                 // the wait here, rather than looping it forever, is what lets the record clear and
                 // the UI report honestly that completion could not be confirmed.
                 return .unconfirmed(operation.kind)
@@ -186,8 +186,8 @@ final class OperationMonitor {
         } catch let error as YanaAPIClientError {
             switch error {
             case .unauthorized, .decoding, .server:
-                // Same reasoning as UpdateAndSync.waitForRunToFinish: an auth rejection, an
-                // undecodable response, or a well-formed (non-"not_found") server error all mean
+                // An auth rejection, an undecodable response, or a well-formed
+                // (non-"not_found") server error all mean
                 // this row genuinely cannot be queried, as opposed to a transient network blip.
                 return .permanentFailure
             case .transport, .unexpectedStatus:
@@ -364,17 +364,16 @@ final class OperationMonitor {
     /// object the reader observes keeps its stale, pre-reload field values (a plain `fetch` does
     /// not refresh already-registered objects' attributes from a sibling context's save), so the
     /// reader silently keeps showing the old content even though the reload succeeded.
-    /// Not `private`: `UpdateAndSync.pollForReloadedContent` (still called by `ReaderActions`
-    /// until Task 10 rewires those call sites onto `OperationMonitor` directly) delegates to this
-    /// same implementation rather than keeping a second copy. `settings` defaults to the standard
-    /// `AppSettings()` (backed by `UserDefaults.standard`) so `UpdateAndSync`'s existing callers,
-    /// which have no `settings` of their own to pass, are unaffected -- production always resolves
-    /// to that same store either way. A caller that *does* have an isolated `AppSettings` (this
-    /// type's own `applyTerminalSuccess`, and any test) must pass it explicitly: without this, the
-    /// inner `SyncEngine.sync()` call below would silently fall back to `.standard` and read/write
-    /// `syncCursor`/`imagePruneNeeded` on the real, shared defaults store instead of the caller's
-    /// isolated one.
-    static func fetchAndApplyContent(
+    /// `private`: `UpdateAndSync` (the predecessor this type replaced, which waited ten seconds
+    /// for a single SSE event and then fetched anyway and reported success regardless of what the
+    /// server was actually doing) is gone as of Task 10, and `OperationMonitor.applyTerminalSuccess`
+    /// is the only remaining caller, so there is no longer a second implementation to share this
+    /// with. `settings` defaults to the standard `AppSettings()` (backed by `UserDefaults.standard`)
+    /// but `applyTerminalSuccess` always passes its own isolated instance explicitly: without that,
+    /// this method's inner `SyncEngine.sync()` call would silently fall back to `.standard` and
+    /// read/write `syncCursor`/`imagePruneNeeded` on the real, shared defaults store instead of the
+    /// caller's isolated one.
+    private static func fetchAndApplyContent(
         articleServerID: Int, container: ModelContainer, client: YanaAPIClient,
         visibleArticle: Article?, settings: AppSettings = AppSettings()
     ) async -> Bool {

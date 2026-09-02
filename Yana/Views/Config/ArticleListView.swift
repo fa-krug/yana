@@ -117,16 +117,12 @@ struct ArticleListView: View {
                               let client = AuthenticatedClient.current(),
                               let serverID = article.serverID
                         else { return }
-                        UpdateActivity.shared.restart {
-                            let result = await ReaderActions.forceUpdateArticle(
-                                article, serverID: serverID, client: client, container: modelContext.container
+                        Task {
+                            let started = await ReaderActions.startReload(
+                                article, serverID: serverID, client: client,
+                                container: modelContext.container, settings: settings
                             )
-                            switch result {
-                            case .cancelled:
-                                return
-                            case .applied(let feedName):
-                                toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
-                            case .failed:
+                            if !started {
                                 toast = ToastMessage(
                                     text: String(localized: "Could not reload this article. Please try again."),
                                     style: .error

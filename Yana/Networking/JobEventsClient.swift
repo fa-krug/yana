@@ -7,7 +7,7 @@ import Foundation
 ///
 /// The connection is explicitly documented server-side as best-effort -- a dropped connection
 /// loses nothing but low-latency notification. Callers must have their own fallback for "the
-/// stream ended (or errored) with no matching event," which `UpdateAndSync.pollForReloadedContent`
+/// stream ended (or errored) with no matching event," which `OperationMonitor`
 /// does by falling back to a direct content re-fetch.
 struct JobEventsClient: Sendable {
     let client: YanaAPIClient

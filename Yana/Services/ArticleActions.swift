@@ -15,7 +15,7 @@ private struct ReadingPositionBody: Encodable { let articleId: Int }
 /// Every method here only sends a request and decodes its ack -- it never touches the local
 /// SwiftData mirror itself. `setStarred`'s ack does carry the new value back, but callers still
 /// own writing it locally (this type has no `ModelContext`); `reload`/`updateAll` only trigger
-/// server-side work, returning a job/run id callers hand to `UpdateAndSync` to actually observe
+/// server-side work, returning a job/run id callers hand to `OperationMonitor` to actually observe
 /// completion and pull results down -- neither ack is new content itself.
 @MainActor
 final class ArticleActions {
@@ -33,7 +33,7 @@ final class ArticleActions {
         let _: ReadResponse = try await client.patch("/api/v1/articles/\(articleServerID)", body: ReadBody(read: read))
     }
 
-    /// Returns the server's `jobId` for this reload -- `UpdateAndSync.pollForReloadedContent`
+    /// Returns the server's `jobId` for this reload -- `OperationMonitor`
     /// needs it to pick this job's own completion event out of the shared `/jobs/events` stream
     /// (every reload/aggregate job for this user is multiplexed onto that one stream).
     @discardableResult

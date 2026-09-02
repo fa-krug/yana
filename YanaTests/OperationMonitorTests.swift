@@ -212,7 +212,7 @@ struct OperationMonitorTests {
 
     /// Pins finding 1: an `.unauthorized` response (the "token revoked from another device"
     /// case named in the fix request) must end the wait rather than retry forever -- mirroring
-    /// `UpdateAndSync.waitForRunToFinish`'s identical bail-out on the same error class.
+    /// the same bail-out reasoning `OperationMonitor`'s run-polling applies elsewhere.
     @Test func anUnauthorizedResponseEndsTheWaitUnconfirmedAndClearsTheRecord() async throws {
         try await MockURLProtocol.lock.withLock {
             let container = try makeContainer()

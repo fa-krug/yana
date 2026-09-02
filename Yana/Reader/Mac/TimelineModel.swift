@@ -356,27 +356,44 @@ final class TimelineModel {
         }
     }
 
-    /// Triggers the server's per-article reload, then re-fetches its content directly via
-    /// `UpdateAndSync.pollForReloadedContent`. See `ReaderScreen.forceUpdateArticle` (iOS) and that
-    /// method's doc comment for why this deliberately does NOT go through `SyncEngine`'s generic
-    /// `hasContent`-gated backfill (an earlier version of this code did, and a premature backfill
-    /// fetch during the poll window could permanently lock out any later retry of this article).
+    /// Applies an `OperationMonitor.lastOutcome` to this window's toast/reloadToken, mirroring the
+    /// `.onChange(of: OperationMonitor.shared.lastOutcome)` handler `ReaderScreen` (iOS) attaches
+    /// directly -- factored out here only because `reloadToken` is `private(set)`, so `MacRootView`
+    /// cannot bump it itself. `MacRootView` is the sole caller: there is exactly one detail pane
+    /// on Mac, so a second call site observing the same outcome would double the toast.
+    func applyOperationOutcome(_ outcome: OperationOutcome) {
+        switch outcome {
+        case .reloaded(_, let feedName):
+            reloadToken += 1
+            toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+        case .updated(let newCount):
+            toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
+        case .failed:
+            toast = ToastMessage(
+                text: String(localized: "Could not reload this article. Please try again."),
+                style: .error
+            )
+        case .unconfirmed:
+            reloadToken += 1
+            toast = ToastMessage(text: String(localized: "The server did not confirm this finished, so this might not be the newest version."))
+        }
+    }
+
+    /// Triggers the server's per-article reload. See `ReaderScreen.forceUpdateArticle` (iOS): the
+    /// trigger only reports its own failure, and `OperationMonitor` (started inside
+    /// `ReaderActions.startReload`) is what watches the job to completion and publishes the
+    /// outcome `MacRootView`'s `lastOutcome` observer shows.
     func forceUpdateArticle(_ article: Article) {
         guard let modelContext,
               let client = AuthenticatedClient.current(),
               let serverID = article.serverID
         else { return }
-        UpdateActivity.shared.restart {
-            let result = await ReaderActions.forceUpdateArticle(
-                article, serverID: serverID, client: client, container: modelContext.container
+        Task {
+            let started = await ReaderActions.startReload(
+                article, serverID: serverID, client: client,
+                container: modelContext.container, settings: self.settings
             )
-            switch result {
-            case .cancelled:
-                return
-            case .applied(let feedName):
-                self.reloadToken += 1
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
-            case .failed:
+            if !started {
                 self.toast = ToastMessage(
                     text: String(localized: "Could not reload this article. Please try again."),
                     style: .error
@@ -386,24 +403,19 @@ final class TimelineModel {
     }
 
     /// "Update" only triggers the server's aggregation run (`ArticleActions.updateAll()`); the run
-    /// itself happens server-side and asynchronously, so this follows up with `UpdateAndSync`'s
-    /// bounded poll of `SyncEngine.sync()` to actually pull in whatever the run produced.
+    /// itself happens server-side and asynchronously, so `OperationMonitor` is what follows the
+    /// run to completion and reports what it actually pulled in.
     func triggerRefresh() {
         guard let modelContext else { return }
         guard let client = AuthenticatedClient.current() else {
             toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
             return
         }
-        UpdateActivity.shared.restart {
-            let result = await ReaderActions.triggerRefresh(
+        Task {
+            let started = await ReaderActions.startUpdateAll(
                 client: client, container: modelContext.container, settings: self.settings
             )
-            switch result {
-            case .cancelled:
-                return
-            case .applied(let newCount):
-                self.toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
-            case .failed:
+            if !started {
                 self.toast = ToastMessage(
                     text: String(localized: "Could not check for updates. Please try again."),
                     style: .error

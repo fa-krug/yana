@@ -720,7 +720,7 @@ struct LeadImageReveal: ViewModifier {
     /// Runs `load` and a `timeout`-second sleep concurrently, returning as soon as either finishes.
     /// `load` keeps running to completion in the background if the timeout wins (its result still
     /// lands in `ReaderImageCache` for whoever reads it next), matching the pattern
-    /// `UpdateAndSync.waitForReloadJobOutcome` uses for its own event-vs-timeout race.
+    /// `OperationMonitor` uses for its own event-vs-timeout race.
     static func awaitFirst(timeout: Duration, load: @escaping @Sendable () async -> Void) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await load() }

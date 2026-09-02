@@ -4,7 +4,7 @@ import Foundation
 /// `readingPosition` events (`yana-server`'s `src/lib/api/events.ts`), so a position pushed from
 /// another paired device shows up on this one without waiting for the next full sync's pull
 /// (`SyncEngine.syncReadingPosition()`). Reuses `JobEventsClient`'s existing SSE plumbing and
-/// ignores every other event type on the stream -- `UpdateAndSync` opens its own separate,
+/// ignores every other event type on the stream -- `OperationMonitor` opens its own separate,
 /// short-lived connection for a single reload's `job` event; multiple concurrent readers of the
 /// same per-user feed are fine, since the server fans every event out to every open connection.
 ///

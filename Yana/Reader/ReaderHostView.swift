@@ -344,6 +344,30 @@ struct ReaderScreen: View {
             reanchorToCurrentArticle()
             clampIndex()
         }
+        // The only observer of `lastOutcome` on iOS -- `ArticleListView` is presented over this
+        // reader, and a second observer there would show the same outcome as two toasts.
+        .onChange(of: OperationMonitor.shared.lastOutcome) { _, outcome in
+            guard let outcome else { return }
+            switch outcome {
+            case .reloaded(_, let feedName):
+                // Re-render the visible page: the reload refreshed the article's content, but the
+                // reader only re-renders when reloadToken changes (same as summarize).
+                reloadToken += 1
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
+                Haptics.impact(.light)
+            case .updated(let newCount):
+                toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
+                Haptics.impact(.light)
+            case .failed:
+                toast = ToastMessage(
+                    text: String(localized: "Could not reload this article. Please try again."),
+                    style: .error
+                )
+            case .unconfirmed:
+                reloadToken += 1
+                toast = ToastMessage(text: String(localized: "The server did not confirm this finished, so this might not be the newest version."))
+            }
+        }
 
     }
 
@@ -440,31 +464,18 @@ struct ReaderScreen: View {
 
     // MARK: - Refresh
 
-    /// Force-update only the current article: triggers the server's per-article reload, then
-    /// re-fetches its content directly via `UpdateAndSync.pollForReloadedContent`.
-    /// `ArticleActions.reload`'s response is just an ack (the server does the re-fetch
-    /// asynchronously) -- see that method's doc comment for why this deliberately does NOT go
-    /// through `SyncEngine`'s generic `hasContent`-gated backfill (an earlier version of this code
-    /// did, and a premature backfill fetch during the poll window could permanently lock out any
-    /// later retry of this exact article).
+    /// Triggers the server's per-article reload. The trigger only reports its own failure -- the
+    /// POST's ack is a job id, not new content, so `OperationMonitor` (started inside
+    /// `ReaderActions.startReload`) is what actually watches the job to completion and publishes
+    /// the outcome the `.onChange(of: OperationMonitor.shared.lastOutcome)` handler below shows.
     private func forceUpdateArticle(_ article: Article) {
         guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
-        UpdateActivity.shared.restart {
-            let result = await ReaderActions.forceUpdateArticle(
-                article, serverID: serverID, client: client, container: modelContext.container
+        Task {
+            let started = await ReaderActions.startReload(
+                article, serverID: serverID, client: client,
+                container: modelContext.container, settings: settings
             )
-            switch result {
-            case .cancelled:
-                return
-            case .applied(let feedName):
-                // Re-render the visible page: the reload refreshed the article's content, but
-                // the reader only re-renders when reloadToken changes (same as summarize).
-                // Without this bump, Reload silently updates the DB while the page keeps
-                // showing stale content.
-                reloadToken += 1
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
-                Haptics.impact(.light)
-            case .failed:
+            if !started {
                 toast = ToastMessage(
                     text: String(localized: "Could not reload this article. Please try again."),
                     style: .error
@@ -474,24 +485,18 @@ struct ReaderScreen: View {
     }
 
     /// "Update" only triggers the server's aggregation run (`ArticleActions.updateAll()`); the run
-    /// itself happens server-side and asynchronously, so this follows up with `UpdateAndSync`'s
-    /// bounded poll of `SyncEngine.sync()` to actually pull in whatever the run produced.
+    /// itself happens server-side and asynchronously, so `OperationMonitor` is what follows the run
+    /// to completion and reports what it actually pulled in.
     private func triggerRefresh() {
         guard let client = AuthenticatedClient.current() else {
             toast = ToastMessage(text: String(localized: "Not connected to a server."), style: .error)
             return
         }
-        UpdateActivity.shared.restart {
-            let result = await ReaderActions.triggerRefresh(
+        Task {
+            let started = await ReaderActions.startUpdateAll(
                 client: client, container: modelContext.container, settings: settings
             )
-            switch result {
-            case .cancelled:
-                return
-            case .applied(let newCount):
-                toast = ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))
-                Haptics.impact(.light)
-            case .failed:
+            if !started {
                 toast = ToastMessage(
                     text: String(localized: "Could not check for updates. Please try again."),
                     style: .error
