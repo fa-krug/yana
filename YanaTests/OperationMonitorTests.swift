@@ -758,13 +758,25 @@ struct OperationMonitorTests {
             let monitor = makeMonitor()
             let tasks = monitor.resume(settings: settings, container: container,
                                        clientProvider: { _ in api })
+            // A short reconnect delay, not the production-ish 30s this used to pass. The stub's
+            // body is finite, so the stream closes once both frames are delivered and the loop
+            // reconnects; with a 30s delay, a *first* connect that lost its response (the stub is
+            // shared process-wide and the loading thread is at the mercy of the scheduler) parked
+            // the loop for longer than any sane test budget, so the run event never arrived and the
+            // percentage stayed at the polled 10. Reconnecting promptly makes a lost first connect
+            // recoverable instead of fatal; re-delivering the same frames is harmless, since
+            // `startEvents` clamps to `max(existing, incoming)`.
             monitor.startEvents(settings: settings, clientProvider: { _ in api },
-                                reconnectDelay: .seconds(30))
+                                reconnectDelay: .milliseconds(50))
 
-            // The frames arrive as soon as the stream connects; poll briefly for the run event to
-            // land rather than sleeping a fixed guess.
-            for _ in 0..<50 where monitor.progressPercent != 60 {
-                try await Task.sleep(for: .milliseconds(10))
+            // Wait on the observable condition with a generous ceiling rather than a fixed number
+            // of short sleeps: this returns in a few milliseconds on an idle machine and still
+            // passes on a loaded one. The ceiling bounds nothing but "the SSE frame never arrived
+            // at all" -- it is a failure deadline, not an expected duration, so it is set far
+            // above any plausible scheduling delay for a mock stream.
+            let deadline = ContinuousClock.now + .seconds(10)
+            while monitor.progressPercent != 60, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(5))
             }
 
             #expect(monitor.progressPercent == 60)
@@ -774,8 +786,10 @@ struct OperationMonitorTests {
             for task in tasks { await task.value }
             // Give the SSE task's cancellation a moment to actually unwind before the lock
             // releases, so a still-in-flight reconnect from THIS test can't consume the NEXT
-            // test's stub.
-            try await Task.sleep(for: .milliseconds(20))
+            // test's stub. Awaited a little longer than the 50ms reconnect delay above, so a
+            // reconnect that was already sleeping when `stopEvents` fired has woken, seen the
+            // cancellation and returned.
+            try await Task.sleep(for: .milliseconds(100))
         }
     }
 
