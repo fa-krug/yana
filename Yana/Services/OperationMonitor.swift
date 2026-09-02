@@ -14,6 +14,25 @@ enum OperationOutcome: Equatable, Sendable {
     case unconfirmed(TrackedOperation.Kind)
 }
 
+/// One published outcome, plus the sequence number that makes its delivery independent of its
+/// own value.
+///
+/// Views observe the *sequence*, never the outcome. `OperationOutcome` is `Equatable`, and
+/// SwiftUI's `.onChange` only fires when the observed value actually changes -- so publishing the
+/// bare outcome silently dropped every repeat. Reloading the same article twice produces a
+/// byte-identical `.reloaded(articleServerID:feedName:)` both times, and the second delivery was
+/// swallowed: no toast, and (the part that actually matters) no `reloadToken` bump, so the reader
+/// kept rendering the pre-reload page after a reload the server had genuinely completed -- the
+/// exact symptom this whole type exists to eliminate. Two Update All runs that both find zero new
+/// articles, and two consecutive failures, had the same problem. The counter never repeats, so
+/// every published outcome is delivered exactly once no matter what it contains.
+struct OperationOutcomeEvent: Equatable, Sendable {
+    /// Strictly increasing, starting at 1. Only its *change* is meaningful; the absolute value is
+    /// not a count of anything a caller should reason about.
+    let sequence: Int
+    let outcome: OperationOutcome
+}
+
 /// Waits for server-side operations to actually finish, and reports what really happened.
 ///
 /// The durable `jobs`/`runs` rows are the source of truth: this polls `GET /api/v1/jobs/:id` or
@@ -37,8 +56,11 @@ final class OperationMonitor {
     /// most recently.
     private(set) var progressPercent: Int?
     private(set) var isActive: Bool = false
-    /// The most recent finished operation. Views observe this to show a toast.
-    private(set) var lastOutcome: OperationOutcome?
+    /// The most recent finished operation, wrapped in an `OperationOutcomeEvent`. Views observe
+    /// `lastOutcomeEvent?.sequence` and then read `.outcome` -- see `OperationOutcomeEvent` for why
+    /// keying on the outcome value itself drops identical consecutive outcomes on the floor.
+    private(set) var lastOutcomeEvent: OperationOutcomeEvent?
+    private var outcomeSequence = 0
 
     /// Keyed by `TrackedOperation.monitorKey`, NOT `id`: `id` is a job id for `.reloadArticle` and
     /// a run id for `.updateAll`, drawn from two different server-side tables whose ids collide
@@ -55,13 +77,19 @@ final class OperationMonitor {
     private let slowPollInterval: Duration
     private let youngPhase: Duration
     private let nudgeSlice: Duration
+    /// The spinner/percentage surface this monitor drives. Production always uses the app-wide
+    /// `UpdateActivity.shared`; tests inject a throwaway instance so a monitor test cannot leave
+    /// the shared in-flight counter or percentage perturbed for whatever runs next.
+    private let activity: UpdateActivity
 
     init(pollInterval: Duration = .seconds(2), slowPollInterval: Duration = .seconds(5),
-         youngPhase: Duration = .seconds(60), nudgeSlice: Duration = .milliseconds(250)) {
+         youngPhase: Duration = .seconds(60), nudgeSlice: Duration = .milliseconds(250),
+         activity: UpdateActivity = .shared) {
         self.pollInterval = pollInterval
         self.slowPollInterval = slowPollInterval
         self.youngPhase = youngPhase
         self.nudgeSlice = nudgeSlice
+        self.activity = activity
     }
 
     /// Begins (or resumes) monitoring one operation. The caller is expected to have persisted it
@@ -85,14 +113,14 @@ final class OperationMonitor {
         // monitor became the source of truth for what's actually running. Pairing them here
         // instead means `isUpdating` reflects exactly what `track` is watching, regardless of
         // which call site triggered it.
-        UpdateActivity.shared.begin()
+        activity.begin()
 
         let task = Task { @MainActor in
             let outcome = await self.monitor(operation, settings: settings, container: container,
                                              client: client, observer: observer)
             self.inFlight[key] = nil
             self.visibleArticles[key] = nil
-            UpdateActivity.shared.end()
+            self.activity.end()
             // Only clear the persisted record once an outcome was actually reached. `monitor`
             // returns `nil` solely on cancellation ("stop watching", not "the wait ended"), and
             // `TrackedOperation`'s own doc contract is that a record is removed only once a
@@ -102,12 +130,14 @@ final class OperationMonitor {
             // to pick back up next launch.
             if let outcome {
                 settings.trackedOperations.removeAll { $0.monitorKey == key }
-                self.lastOutcome = outcome
+                self.outcomeSequence += 1
+                self.lastOutcomeEvent = OperationOutcomeEvent(sequence: self.outcomeSequence,
+                                                              outcome: outcome)
             }
             self.isActive = !self.inFlight.isEmpty
             if !self.isActive {
                 self.progressPercent = nil
-                UpdateActivity.shared.setProgress(nil)
+                self.activity.setProgress(nil)
             }
         }
         inFlight[key] = task
@@ -122,33 +152,35 @@ final class OperationMonitor {
         client: YanaAPIClient, observer: ((Int?) -> Void)?
     ) async -> OperationOutcome? {
         let startedMonitoringAt = ContinuousClock.now
-        var sawTheRowAlive = false
 
         while !Task.isCancelled {
             let poll = await pollOnce(operation, client: client)
             switch poll {
             case .state(let percent, let terminal, let succeeded):
-                sawTheRowAlive = true
                 publish(percent, observer: observer)
                 if terminal {
-                    guard succeeded else { return .failed(operation.kind) }
-                    return await applyTerminalSuccess(operation, container: container,
-                                                      client: client, settings: settings)
+                    guard succeeded else { return silentIfCancelled(.failed(operation.kind)) }
+                    let outcome = await applyTerminalSuccess(operation, container: container,
+                                                             client: client, settings: settings)
+                    return silentIfCancelled(outcome)
                 }
             case .gone:
-                // The row was pruned out from under the poll. Anything fetchable is applied, but
-                // nothing here says the work finished, so it is reported as unconfirmed.
-                guard sawTheRowAlive else { return .unconfirmed(operation.kind) }
+                // The row was pruned out from under the poll -- whether that happened before this
+                // device's first look or between two of its polls makes no difference to what can
+                // be done about it. Anything fetchable is applied either way (a pruned job row
+                // routinely means a *finished* job, so the content is usually there), but nothing
+                // here says the work finished, so it is reported as unconfirmed and never as
+                // success.
                 _ = await applyTerminalSuccess(operation, container: container, client: client,
                                                settings: settings)
-                return .unconfirmed(operation.kind)
+                return silentIfCancelled(.unconfirmed(operation.kind))
             case .permanentFailure:
                 // .unauthorized, .decoding, and a well-formed .server error other than
                 // "not_found" mean the row genuinely cannot be queried -- retrying will never
                 // succeed. Ending
                 // the wait here, rather than looping it forever, is what lets the record clear and
                 // the UI report honestly that completion could not be confirmed.
-                return .unconfirmed(operation.kind)
+                return silentIfCancelled(.unconfirmed(operation.kind))
             case .retryable:
                 // A dropped packet, a proxy's 502, or being offline entirely -- unlike the
                 // permanent class above, retrying CAN eventually succeed here, so the wait
@@ -163,6 +195,17 @@ final class OperationMonitor {
             await sleep(interval)
         }
         return nil
+    }
+
+    /// Swallows an outcome that was only reached because the user asked this device to stop
+    /// watching. `monitor`'s loop head already treats cancellation as "no outcome," but a
+    /// cancellation landing *inside* `applyTerminalSuccess` used to surface as a real result: the
+    /// content `GET` throws `URLError.cancelled`, `applied` comes back false, and a reload the
+    /// server had actually completed was reported as `.failed(.reloadArticle)` -- "Could not reload
+    /// this article" for work that succeeded. A user-initiated stop must always be silent, so every
+    /// return path in `monitor` funnels through this rather than only the loop head.
+    private func silentIfCancelled(_ outcome: OperationOutcome) -> OperationOutcome? {
+        Task.isCancelled ? nil : outcome
     }
 
     private enum PollResult {
@@ -210,7 +253,7 @@ final class OperationMonitor {
 
     private func publish(_ percent: Int, observer: ((Int?) -> Void)?) {
         progressPercent = percent
-        UpdateActivity.shared.setProgress(percent)
+        activity.setProgress(percent)
         observer?(percent)
     }
 
@@ -238,6 +281,12 @@ final class OperationMonitor {
         }
     }
 
+    /// The monitoring tasks currently in flight. Exists for tests, which must await a cancelled
+    /// task's unwind before releasing `MockURLProtocol.lock` -- otherwise a still-unwinding poll
+    /// can issue a request against the *next* test's global stub. Capture this before calling
+    /// `stopWatching`, which clears the table.
+    var inFlightTasks: [Task<Void, Never>] { Array(inFlight.values) }
+
     /// Stop watching on this device, without asking the server to stop working. The persisted
     /// records go with it: the user asked for the spinner to end, and whatever the server produces
     /// still arrives through the next ordinary sync.
@@ -251,7 +300,7 @@ final class OperationMonitor {
         // `end()` for each cancelled task's `begin()` still arrives asynchronously once its own
         // `monitor` loop notices the cancellation and the `track` completion block runs -- but the
         // percentage should stop being shown immediately, not linger until that unwind completes.
-        UpdateActivity.shared.setProgress(nil)
+        activity.setProgress(nil)
     }
 
     private var eventTask: Task<Void, Never>?
@@ -285,8 +334,16 @@ final class OperationMonitor {
                 // loop that can reopen connections during a later, unrelated test.
                 guard let self else { return }
                 guard let client = clientProvider(settings) else {
-                    try? await Task.sleep(for: reconnectDelay)
-                    continue
+                    // Unpaired: there is no stream to open, and nothing this loop does can change
+                    // that -- so it exits instead of waking every `reconnectDelay` forever, which
+                    // is what every demo-mode session used to do for as long as the app stayed
+                    // open. Clearing `eventTask` is what keeps the documented mid-session pairing
+                    // working: `startEvents` refuses to start a second task while one exists, so
+                    // without this the loop's exit would be permanent. A pairing that lands later
+                    // calls `startEvents` again (`PairingSync.resetAndFullSync`, plus the scene's
+                    // own `.active` handler in `YanaApp`), and this then starts a fresh task.
+                    self.eventTask = nil
+                    return
                 }
                 var iterator = JobEventsClient(client: client).events().makeAsyncIterator()
                 while let event = try? await iterator.next() {
@@ -301,12 +358,12 @@ final class OperationMonitor {
                     if case let .job(payload) = event,
                        self.inFlight["job-\(payload.jobId)"] != nil {
                         self.progressPercent = max(self.progressPercent ?? 0, Int(payload.progress))
-                        UpdateActivity.shared.setProgress(self.progressPercent)
+                        activity.setProgress(self.progressPercent)
                     }
                     if case let .run(payload) = event,
                        self.inFlight["run-\(payload.runId)"] != nil {
                         self.progressPercent = max(self.progressPercent ?? 0, payload.progress)
-                        UpdateActivity.shared.setProgress(self.progressPercent)
+                        activity.setProgress(self.progressPercent)
                     }
                 }
                 guard !Task.isCancelled else { return }

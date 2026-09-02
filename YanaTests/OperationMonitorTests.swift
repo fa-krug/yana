@@ -16,9 +16,14 @@ struct OperationMonitorTests {
     }
 
     /// A monitor with intervals short enough that a test finishes in milliseconds.
+    ///
+    /// `activity:` is a throwaway `UpdateActivity`, not the app-wide `.shared` one: these tests
+    /// drive `begin()`/`end()`/`setProgress` for real, and doing that on the singleton leaves the
+    /// in-flight count and percentage perturbed for whatever runs next in the same process.
     private func makeMonitor() -> OperationMonitor {
         OperationMonitor(pollInterval: .milliseconds(5), slowPollInterval: .milliseconds(5),
-                         youngPhase: .seconds(60), nudgeSlice: .milliseconds(1))
+                         youngPhase: .seconds(60), nudgeSlice: .milliseconds(1),
+                         activity: UpdateActivity())
     }
 
     private func client(_ stub: @escaping (URLRequest) -> (HTTPURLResponse, Data)) -> YanaAPIClient {
@@ -99,7 +104,7 @@ struct OperationMonitorTests {
 
             #expect(contentFetches == 0)
             #expect(settings.trackedOperations.isEmpty)
-            #expect(monitor.lastOutcome == .failed(.reloadArticle(serverID: 100)))
+            #expect(monitor.lastOutcomeEvent?.outcome == .failed(.reloadArticle(serverID: 100)))
         }
     }
 
@@ -237,7 +242,7 @@ struct OperationMonitorTests {
 
             #expect(call == 1)
             #expect(settings.trackedOperations.isEmpty)
-            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+            #expect(monitor.lastOutcomeEvent?.outcome == .unconfirmed(.reloadArticle(serverID: 100)))
         }
     }
 
@@ -265,7 +270,7 @@ struct OperationMonitorTests {
                                 client: api).value
 
             #expect(settings.trackedOperations.isEmpty)
-            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+            #expect(monitor.lastOutcomeEvent?.outcome == .unconfirmed(.reloadArticle(serverID: 100)))
         }
     }
 
@@ -289,7 +294,7 @@ struct OperationMonitorTests {
                                 client: api).value
 
             #expect(settings.trackedOperations.isEmpty)
-            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+            #expect(monitor.lastOutcomeEvent?.outcome == .unconfirmed(.reloadArticle(serverID: 100)))
         }
     }
 
@@ -346,7 +351,7 @@ struct OperationMonitorTests {
 
             #expect(visible.hasContent)
             #expect(visible.plainText.contains("fresh"))
-            #expect(monitor.lastOutcome == .reloaded(articleServerID: 100, feedName: "Feed"))
+            #expect(monitor.lastOutcomeEvent?.outcome == .reloaded(articleServerID: 100, feedName: "Feed"))
         }
     }
 
@@ -461,7 +466,7 @@ struct OperationMonitorTests {
             settings.trackedOperations = [operation]
             await monitor.track(operation, settings: settings, container: container, client: api).value
 
-            #expect(monitor.lastOutcome == .updated(newCount: 1))
+            #expect(monitor.lastOutcomeEvent?.outcome == .updated(newCount: 1))
             // "Syncs once": the follow-up sync after the run completes must not loop -- a second
             // (or more) `/articles/sync` call here would mean either a resync-required retry loop
             // or a duplicate sync pass, either of which would double-count `newCount` on a syncBody
@@ -520,7 +525,7 @@ struct OperationMonitorTests {
             settings.trackedOperations = [operation]
             await monitor.track(operation, settings: settings, container: container, client: api).value
 
-            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+            #expect(monitor.lastOutcomeEvent?.outcome == .unconfirmed(.reloadArticle(serverID: 100)))
             // The row being pruned mid-poll doesn't mean nothing was fetched -- `.gone` still
             // applies whatever content it can before reporting unconfirmed (see the `.gone` arm's
             // doc comment in `OperationMonitor.monitor`). A fresh fetch (not the `writer`'s own
@@ -640,7 +645,7 @@ struct OperationMonitorTests {
             settings.trackedOperations = [operation]
             await monitor.track(operation, settings: settings, container: container, client: api).value
 
-            #expect(monitor.lastOutcome == .reloaded(articleServerID: 100, feedName: "Feed"))
+            #expect(monitor.lastOutcomeEvent?.outcome == .reloaded(articleServerID: 100, feedName: "Feed"))
         }
     }
 
@@ -678,7 +683,7 @@ struct OperationMonitorTests {
 
             #expect(runCalls == 1)
             #expect(settings.trackedOperations.isEmpty)
-            #expect(monitor.lastOutcome == .updated(newCount: 0))
+            #expect(monitor.lastOutcomeEvent?.outcome == .updated(newCount: 0))
         }
     }
 
@@ -771,6 +776,129 @@ struct OperationMonitorTests {
             // releases, so a still-in-flight reconnect from THIS test can't consume the NEXT
             // test's stub.
             try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    /// The point of publishing an `OperationOutcomeEvent` rather than a bare `OperationOutcome`.
+    /// Reloading the same article twice produces two byte-identical
+    /// `.reloaded(articleServerID: 100, feedName: "Feed")` values, and the observers are SwiftUI
+    /// `.onChange` handlers, which fire only when the observed value actually changes -- so the
+    /// second delivery used to be dropped: no toast, and no `reloadToken` bump, leaving the
+    /// pre-reload page rendered after a reload the server had genuinely finished. The sequence
+    /// number is what makes delivery independent of the value.
+    @Test func twoConsecutiveIdenticalOutcomesAreBothDelivered() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old", identifier: "art-100",
+                                       date: .now, author: "", read: false, starred: false,
+                                       createdAt: .now, updatedAt: .now)
+            ])
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/jobs/42":
+                    return self.json(request, """
+                    {"jobId":42,"runId":null,"kind":"article.reload","progress":100,
+                     "status":"completed","error":"","startedAt":null,"finishedAt":null}
+                    """)
+                case "/api/v1/articles/100/content":
+                    return self.json(request, #"{"version":1,"blocks":[]}"#)
+                case "/api/v1/feeds":
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container,
+                                client: api).value
+            let first = monitor.lastOutcomeEvent
+            #expect(first?.outcome == .reloaded(articleServerID: 100, feedName: "Feed"))
+
+            // The same article reloaded again: same job id, same server answer, same outcome
+            // value.
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container,
+                                client: api).value
+            let second = monitor.lastOutcomeEvent
+            #expect(second?.outcome == first?.outcome)
+
+            // The events differ even though the outcomes do not -- which is exactly what makes an
+            // `.onChange` observer fire the second time.
+            #expect(second != first)
+            #expect(second?.sequence == (first?.sequence ?? 0) + 1)
+        }
+    }
+
+    /// The regression guard for the invariant this whole type exists to establish: **no timeout is
+    /// ever treated as success.** Its predecessor waited ten seconds for one SSE event and then
+    /// fetched the article anyway and reported "Reloaded" while the reader showed pre-reload
+    /// content. A job that never reports a terminal status is polled here far past any plausible
+    /// give-up threshold, and must produce no outcome at all and fetch no content. Deterministic:
+    /// it waits on the poll *count*, not on wall-clock time.
+    @Test func aJobThatNeverEndsNeverProducesAnOutcomeAndNeverFetchesContent() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            var polls = 0
+            var contentFetches = 0
+            let api = client { request in
+                if request.url!.path == "/api/v1/articles/100/content" { contentFetches += 1 }
+                guard request.url!.path == "/api/v1/jobs/42" else {
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+                polls += 1
+                return self.json(request, """
+                {"jobId":42,"runId":null,"kind":"article.reload","progress":40,"status":"running",
+                 "error":"","startedAt":null,"finishedAt":null}
+                """)
+            }
+
+            // 1ms polls, so "many cycles" costs milliseconds rather than seconds.
+            let monitor = OperationMonitor(pollInterval: .milliseconds(1),
+                                           slowPollInterval: .milliseconds(1),
+                                           youngPhase: .seconds(60), nudgeSlice: .milliseconds(1),
+                                           activity: UpdateActivity())
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            let task = monitor.track(operation, settings: settings, container: container,
+                                     client: api)
+
+            // Wait for the poll loop to have gone round many times -- 40 iterations is well past
+            // the 10s/5-attempt shapes any reintroduced client-side give-up would use, while
+            // staying a bounded number of iterations rather than a real-time sleep.
+            for _ in 0..<2000 where polls < 40 {
+                try await Task.sleep(for: .milliseconds(1))
+            }
+            #expect(polls >= 40)
+            #expect(monitor.lastOutcomeEvent == nil)
+            #expect(contentFetches == 0)
+            #expect(monitor.isActive)
+            // Still persisted: nothing terminal was ever observed, so the record has to survive
+            // for a later resume.
+            #expect(settings.trackedOperations == [operation])
+
+            monitor.stopWatching(settings: settings)
+            await task.value
+            // Cancellation is "stop watching", not a result -- and it must stay silent even
+            // though the loop had a perfectly good percentage in hand.
+            #expect(monitor.lastOutcomeEvent == nil)
         }
     }
 }

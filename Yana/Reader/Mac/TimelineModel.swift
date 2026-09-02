@@ -356,8 +356,9 @@ final class TimelineModel {
         }
     }
 
-    /// Applies an `OperationMonitor.lastOutcome` to this window's toast/reloadToken, mirroring the
-    /// `.onChange(of: OperationMonitor.shared.lastOutcome)` handler `ReaderScreen` (iOS) attaches
+    /// Applies a published `OperationOutcome` to this window's toast/reloadToken, mirroring the
+    /// `.onChange(of: OperationMonitor.shared.lastOutcomeEvent?.sequence)` handler
+    /// `ReaderScreen` (iOS) attaches
     /// directly -- factored out here only because `reloadToken` is `private(set)`, so `MacRootView`
     /// cannot bump it itself. `MacRootView` is the sole caller: there is exactly one detail pane
     /// on Mac, so a second call site observing the same outcome would double the toast.
@@ -371,7 +372,7 @@ final class TimelineModel {
     /// Triggers the server's per-article reload. See `ReaderScreen.forceUpdateArticle` (iOS): the
     /// trigger only reports its own failure, and `OperationMonitor` (started inside
     /// `ReaderActions.startReload`) is what watches the job to completion and publishes the
-    /// outcome `MacRootView`'s `lastOutcome` observer shows.
+    /// outcome `MacRootView`'s outcome-event observer shows.
     func forceUpdateArticle(_ article: Article) {
         guard let modelContext,
               let client = AuthenticatedClient.current(),

@@ -348,14 +348,21 @@ struct ReaderScreen: View {
             reanchorToCurrentArticle()
             clampIndex()
         }
-        // Observes `lastOutcome` whenever the article list sheet is NOT frontmost.
-        // `ArticleListView` observes it itself while its sheet is up (see that view), so that a
+        // Observes finished operations whenever the article list sheet is NOT frontmost.
+        // `ArticleListView` observes them itself while its sheet is up (see that view), so that a
         // reload triggered from its swipe action still gets a toast -- this reader's own toast
         // would otherwise render behind the sheet, invisible, and auto-expire before the user
         // dismisses it. The two observers are mutually exclusive by construction (this one skips
         // exactly when the other is mounted), so an outcome is never shown twice.
-        .onChange(of: OperationMonitor.shared.lastOutcome) { _, outcome in
-            guard let outcome, !appState.showArticleList else { return }
+        //
+        // Keyed on the event's `sequence`, never on the outcome value: `.onChange` only fires when
+        // the observed value changes, so observing the outcome itself silently dropped every
+        // identical repeat -- reloading the same article twice produced no second toast and, worse,
+        // no second `reloadToken` bump, leaving the pre-reload page on screen. See
+        // `OperationOutcomeEvent`.
+        .onChange(of: OperationMonitor.shared.lastOutcomeEvent?.sequence) { _, _ in
+            guard let outcome = OperationMonitor.shared.lastOutcomeEvent?.outcome,
+                  !appState.showArticleList else { return }
             toast = ReaderActions.outcomeToast(outcome)
             if ReaderActions.outcomeRefreshesVisiblePage(outcome) {
                 // Re-render the visible page: the reload refreshed the article's content, but the
@@ -468,7 +475,8 @@ struct ReaderScreen: View {
     /// Triggers the server's per-article reload. The trigger only reports its own failure -- the
     /// POST's ack is a job id, not new content, so `OperationMonitor` (started inside
     /// `ReaderActions.startReload`) is what actually watches the job to completion and publishes
-    /// the outcome the `.onChange(of: OperationMonitor.shared.lastOutcome)` handler below shows.
+    /// the outcome the `.onChange(of: OperationMonitor.shared.lastOutcomeEvent?.sequence)`
+    /// handler below shows.
     private func forceUpdateArticle(_ article: Article) {
         guard let client = AuthenticatedClient.current(), let serverID = article.serverID else { return }
         Task {

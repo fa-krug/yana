@@ -141,12 +141,14 @@ struct MacRootView: View {
         .onChange(of: settings.disabledFeedNames) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.starredOnly) { _, _ in model.recomputeFilter(); model.clampIndex() }
         .onChange(of: settings.readFilter) { _, _ in model.refilterKeepingCurrentArticle() }
-        // The only observer of `lastOutcome` on Mac -- there is exactly one detail pane, so a
-        // second observer elsewhere would show the same outcome as two toasts. No haptics here:
+        // The only observer of finished operations on Mac -- there is exactly one detail pane, so
+        // a second observer elsewhere would show the same outcome as two toasts. No haptics here:
         // Catalyst has none. Delegates to `TimelineModel.applyOperationOutcome` because
-        // `reloadToken` is `private(set)`.
-        .onChange(of: OperationMonitor.shared.lastOutcome) { _, outcome in
-            guard let outcome else { return }
+        // `reloadToken` is `private(set)`. Keyed on the event's `sequence` rather than the outcome
+        // value, so two identical consecutive outcomes are both delivered -- see
+        // `OperationOutcomeEvent`.
+        .onChange(of: OperationMonitor.shared.lastOutcomeEvent?.sequence) { _, _ in
+            guard let outcome = OperationMonitor.shared.lastOutcomeEvent?.outcome else { return }
             model.applyOperationOutcome(outcome)
         }
         .onDisappear {
