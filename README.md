@@ -59,8 +59,10 @@ when the article arrived, plus there's a "Starred Only" switch.
 
 Pulling down on the reader triggers a full refresh on the server ("Update All"); swiping an
 article or using the reader's overflow menu re-fetches just that one ("Reload"). Both work the
-same way under the hood: the app kicks off the job, waits for it to finish server-side, then
-syncs the result down.
+same way under the hood: the app kicks off the job and then watches its status on the server —
+showing the real completion percentage next to the spinner — until it actually finishes, then
+applies the result. That wait survives the app being closed and reopened, and nothing is ever
+reported as done just because a request timed out.
 
 Articles can be read aloud in a voice matching their language, with lock-screen and Control
 Center controls, and summarized either by your server's configured AI provider or by
@@ -152,7 +154,7 @@ with strict concurrency and `@MainActor` everywhere it matters. SwiftData is the
 offline-first mirror of whatever state the server has. Networking goes through
 `YanaAPIClient`, a thin typed wrapper over the server's `/api/v1/**` REST API; `SyncEngine`
 and `SyncWriter` handle pulling articles, feeds, and images down and applying local writes,
-while `ArticleActions` and `UpdateAndSync` push user-triggered actions up and poll them for
+while `ArticleActions` and `OperationMonitor` push user-triggered actions up and poll them for
 completion. Auth is device pairing via `ASWebAuthenticationSession`, with the resulting Bearer
 token kept in the Keychain, device-local and not synced through iCloud. The project itself is
 generated from `project.yml` via XcodeGen, and code quality is enforced with SwiftLint and

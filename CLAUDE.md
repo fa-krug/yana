@@ -196,21 +196,31 @@ source and issue board live at
   layer that turns the server's `type`-discriminated block JSON — matching
   `yana-server/src/lib/aggregators/blocks/schema.ts` — into the app's existing `Block`/`InlineRun`
   enum. `Block` itself keeps its compiler-synthesized `Codable`, which encodes differently, so this
-  is a separate decode path, not a `Block` extension). Four more files back the real server-
-  completion polling `UpdateAndSync` does (see **Sync**/**Actions** below): `RunStatus.swift`
+  is a separate decode path, not a `Block` extension). Five more files back the real server-
+  completion polling `OperationMonitor` does (see **Sync**/**Actions** below): `RunStatus.swift`
   (`RunStatusResponse`, the `GET /api/v1/runs/:id` wire shape, `status` a plain `String` — not a
-  closed enum — so a future server-added status degrades gracefully instead of failing to decode);
-  `JobEvent.swift` (`JobEventPayload`/`RunEventPayload`/`ReadingPositionEventPayload`, mirroring
+  closed enum — so a future server-added status degrades gracefully instead of failing to decode;
+  `progress` is the server's own computed completion percentage, 0-100, shown verbatim rather than
+  derived client-side from `totalJobs`/`completedJobs`, so every client agrees on the same number);
+  `JobStatus.swift` (`JobStatusResponse`, the `GET /api/v1/jobs/:id` wire shape — the durable row a
+  standalone `article.reload` job leaves behind, since its `runId` is `null` and it is otherwise
+  invisible to `/runs/:id`; also carries a `progress` percentage and the same plain-`String`-status
+  reasoning as `RunStatusResponse`. `startedAt`/`finishedAt` decode as `String?`, not `Date?`: the
+  server writes them with `toISOString()`, which includes fractional seconds that `JSONDecoder`'s
+  `.iso8601` strategy — what `YanaAPIClient` configures — rejects outright, and nothing here reads
+  either field, so carrying them as opaque strings keeps the whole response decodable instead of
+  trading an unused feature for a decode failure on every poll); `JobEvent.swift`
+  (`JobEventPayload`/`RunEventPayload`/`ReadingPositionEventPayload`, mirroring
   `yana-server`'s `ApiEvent` "job"/"run"/"readingPosition" SSE variants, same plain-`String`-status
   reasoning for the first two); `SSEFrameAccumulator.swift` (pure,
   synchronous SSE frame parsing — one line in, an `SSEFrame` out on a blank-line terminator, per the
   SSE spec, with `: ping` comment lines ignored); and `JobEventsClient.swift` (streams
   `GET /api/v1/jobs/events`, `yana-server`'s per-user SSE feed of job/run/reading-position
-  completion — the only way to observe a standalone `article.reload` job finishing, since that job
-  has `runId: null` and is invisible to `/runs/:id`; documented server-side as best-effort, so
-  callers must have their own fallback for a dropped connection or a missed event —
-  `UpdateAndSync.pollForReloadedContent` falls back to a direct re-fetch,
-  `ReadingPositionLiveSync` falls back to the next full sync's periodic pull).
+  completion — the only way to learn a percentage sooner than `OperationMonitor`'s own poll would,
+  since a standalone reload job has `runId: null` and is invisible to `/runs/:id`; documented
+  server-side as best-effort, so callers must never treat it as required for correctness —
+  `OperationMonitor.startEvents` only ever nudges `progressPercent` forward, never decides an
+  outcome, and `ReadingPositionLiveSync` falls back to the next full sync's periodic pull).
 - **Auth / device pairing** (`Yana/Services/DevicePairing.swift`, `Yana/Views/DevicePairingView.swift`,
   `Yana/Services/KeychainService.swift`, `Yana/Services/AuthenticatedClient.swift`): `DevicePairing`
   is a pure state machine — `makeSession` mints a client-generated, never-persisted random `state`
@@ -306,26 +316,58 @@ source and issue board live at
   compiles but crashes at fetch time — CoreData's SQL generator can't use a `TERNARY` as an `IN`
   LHS); `replaceFeeds` upserts by the server's feed id (stored as `Feed.identifier`, string form —
   feeds have no other natural client-side identity any more).
-- **Actions** (`Yana/Services/ArticleActions.swift`, `Yana/Services/UpdateAndSync.swift`): the
-  user-initiated write/trigger surface, separate from `SyncEngine`'s read path. `ArticleActions`
-  is a thin façade — `setStarred` (`PATCH /articles/:id`), `reload` (`POST /articles/:id/reload`),
-  `updateAll` (`POST /aggregate`) — that only sends a request and decodes its ack; it never touches
-  the local SwiftData mirror. `reload`/`updateAll`'s ack is just a job/run id, not new content (the
-  server does the re-fetch asynchronously), so `UpdateAndSync` follows up with real completion
-  detection instead of a blind fixed backoff: `pollForFreshContent` polls `GET /api/v1/runs/:id`
-  (`RunStatusResponse`) until the run's status is no longer `"running"` — tolerating transient
-  `.transport` failures for a few consecutive attempts rather than aborting on the first network
-  blip, but bailing immediately on `.unauthorized`/`.decoding`/`.server(...)` since those mean the
-  run genuinely can't be queried — then runs `SyncEngine.sync()` exactly once, used by the reader's
-  pull-down / "Update All" flow. `pollForReloadedContent` instead waits on `JobEventsClient`'s SSE
-  stream (`GET /api/v1/jobs/events`) for a terminal `job` event matching the reload's `jobId` (that
-  job has `runId: null`, so `/runs/:id` can never see it), and only on a `"failed"`/`"cancelled"`
-  event returns without a network call; a `"completed"` event, or no matching event arriving within
-  `eventTimeout` (a dropped SSE connection is documented server-side as best-effort — the default
-  timeout is a short 10s specifically to bound this worst case, since the fallback below is cheap),
-  falls back to exactly one direct re-fetch of that article's content (bypassing `SyncEngine`'s
-  `hasContent`-gated backfill, which — once triggered prematurely mid-poll — would permanently block
-  any later retry, since nothing else ever resets `hasContent` back to `false`). Starring
+- **Actions** (`Yana/Services/ArticleActions.swift`, `Yana/Services/ReaderActions.swift`,
+  `Yana/Services/OperationMonitor.swift`, `Yana/Models/TrackedOperation.swift`): the user-initiated
+  write/trigger surface, separate from `SyncEngine`'s read path. `ArticleActions` **only ever
+  triggers** — `setStarred` (`PATCH /articles/:id`), `reload` (`POST /articles/:id/reload`),
+  `updateAll` (`POST /aggregate`) — sending a request and decoding its ack; it never touches the
+  local SwiftData mirror and never waits for the server-side work itself to finish.
+  `ReaderActions.startReload`/`startUpdateAll` call it, then persist a `TrackedOperation` into
+  `AppSettings.trackedOperations` and hand it to `OperationMonitor.track`, which owns everything
+  that happens after the ack. **The durable `jobs`/`runs` rows are the source of truth; SSE only
+  moves the number sooner.** `OperationMonitor` polls `GET /api/v1/jobs/:id`
+  (`JobStatusResponse`, for a reload) or `GET /api/v1/runs/:id` (`RunStatusResponse`, for
+  "Update All") until the row itself reports a terminal status, publishing the row's own `progress`
+  percentage verbatim at every poll; `startEvents` separately listens to `JobEventsClient`'s SSE
+  stream purely to move `progressPercent` forward sooner between polls (clamped to
+  `max(existing, incoming)`) — a missed or duplicated event costs nothing, because it is never
+  what ends the wait. **No timeout is ever treated as success.** This replaces `UpdateAndSync`,
+  whose `pollForReloadedContent` waited ten seconds for a single SSE event and then fetched the
+  article and reported "Reloaded" regardless of what the server was actually doing — since the
+  server's own worker only claims a pending job on a two-second poll and then refetches and
+  re-extracts the page under a 300s budget, that ten-second wait was shorter than the normal case,
+  so most reloads announced success while the reader still showed the pre-reload content. A
+  transport failure (`.transport`/`.unexpectedStatus`) retries rather than ending the wait — this is
+  what lets an offline device resume rather than lose the wait, with the server's own per-job budget
+  as the real bound rather than any client-side timeout — while `.unauthorized`/`.decoding`/a
+  well-formed non-`"not_found"` `.server` error end the wait as `.unconfirmed` immediately, since
+  those mean the row genuinely cannot be queried, no matter how many more times this polls. A row
+  pruned before it was ever seen alive (`YanaAPIClientError.server("not_found")` /
+  `.unexpectedStatus(404)`) also ends as `.unconfirmed` rather than `.failed`, since the work may
+  well have finished; a row that WAS seen alive and then disappears still applies whatever content
+  it can. `TrackedOperation` is keyed by `monitorKey` (`"job-<id>"`/`"run-<id>"`), **not** the bare
+  numeric `id`: a job id and a run id are drawn from two entirely different server-side tables and
+  collide freely, so keying by `id` alone would let an in-flight reload silently refuse to also
+  track a same-numbered "Update All" run, or attribute one's SSE percentage to the other. Persisting
+  the record before `track` even starts polling (not after some later checkpoint) is what lets
+  `OperationMonitor.resume()` — called at launch and on every foreground — pick a still-in-flight
+  wait back up through the exact same code path a fresh operation takes, rather than a second
+  recovery mechanism; a device killed a second after the trigger POST still finds out how the work
+  ended on its next launch. `UpdateActivity` (`Yana/Services/UpdateActivity.swift`) is the
+  app-lifetime `isUpdating`/`progressPercent`/`progressLabel` the spinner UI reads — `track` pairs
+  its `begin()`/`end()` around the whole monitored wait, and `OperationMonitor` is the only writer
+  of `progressPercent` — and it **no longer has a `waitUntilIdle`**: `ArticleBlockView`'s
+  `.refreshable` handler now fires the trigger and hands the pull-to-refresh gesture straight back
+  after a short settle (`RefreshableIfAvailable`, `Yana/Reader/ArticleBlockView.swift`) rather than
+  blocking on completion, because an operation can now run for as long as the server takes — minutes,
+  for a full aggregation run — and a system refresh control cannot stay presented that long; the
+  toolbar spinner and its percentage carry the real state instead, and no success toast fires from
+  the refresh gesture itself. Every surface that can trigger a wait observes the same
+  `OperationMonitor.shared.lastOutcome` to report it — `ReaderScreen` (iOS), `MacRootView`'s
+  delegate to `TimelineModel.applyOperationOutcome`, and `ArticleListView` while its sheet is
+  frontmost — through `ReaderActions.outcomeToast`, kept in one place because `.failed`/
+  `.unconfirmed` need `TrackedOperation.Kind` to pick kind-aware copy (an `.updateAll` run has no
+  single article to name, so it must not reuse the reload-shaped strings). Starring
   and marking read are both optimistic, funneled through the shared `ArticleWrites` facade — flip the
   local flag and save immediately, then fire the PATCH; on failure the change is enqueued into
   `PendingWriteQueue` (backed by `AppSettings.pendingWrites`) instead of being rolled back, and
@@ -379,9 +421,9 @@ source and issue board live at
   that last case: a non-2xx response whose body is not the `{ error: { code, message } }` envelope
   (an HTML 404 from a server predating a route, a proxy's 502, a Next.js 500 page) used to be thrown
   as `.transport`, i.e. indistinguishable from being offline, which is the difference between "your
-  server needs updating" and "try again on better signal". `UpdateAndSync.waitForRunToFinish`
-  tolerates the new case exactly as it tolerated `.transport`, so run polling still rides out a
-  proxy blip instead of bailing on the first one.
+  server needs updating" and "try again on better signal". `OperationMonitor.pollOnce`
+  classifies `.unexpectedStatus` as retryable exactly like `.transport`, so a run/job poll still
+  rides out a proxy blip instead of bailing on the first one.
   `AppleIntelligenceSummaryProvider` runs entirely on-device via `AppleIntelligenceChunkedSummarizer`
   (extracted from the former `AppleIntelligenceProcessor`, keeping only the summarize path — the
   improve-writing/translate paths and their `AIOptions`/`AggregatedArticle` plumbing are gone): the
@@ -438,9 +480,9 @@ source and issue board live at
     is an *empty* summary block while a summarize request is in flight, so the loading skeleton sits
     in the slot the finished summary will fill and doesn't shift when it lands.
   - **A content re-fetch must not wipe it.** A locally-generated summary is body content now, so both
-    write paths — `SyncWriter.applyContent` and `UpdateAndSync.fetchAndApplyContent`'s direct write to
-    the visible object — carry it over via `Block.preservingSummary`. A server-supplied summary always
-    wins; the carry-over only fills the gap when the incoming document has none.
+    write paths — `SyncWriter.applyContent` and `OperationMonitor.fetchAndApplyContent`'s direct write
+    to the visible object — carry it over via `Block.preservingSummary`. A server-supplied summary
+    always wins; the carry-over only fills the gap when the incoming document has none.
   - **The summarizer is fed the article, not the article plus its own summary.**
     `BlockParser.plainText` includes summary text by design (it is the search and read-aloud surface),
     so `ReaderActions.summarize` strips it back out with `Block.removingSummaries` before prompting.
@@ -502,7 +544,7 @@ source and issue board live at
   remote update is applied identically regardless of which route delivered it.
   `ReadingPositionLiveSync` (started/stopped alongside `scenePhase` in `YanaApp.swift`, active only
   while foregrounded) holds a long-lived connection to the same per-user SSE feed
-  `UpdateAndSync`/`JobEventsClient` already use for reload-job completion
+  `OperationMonitor`/`JobEventsClient` already use for reload-job completion
   (`GET /api/v1/jobs/events`), watching for the `readingPosition` event `yana-server` publishes
   right after a `PATCH /api/v1/reading-position` commits (`src/lib/api/events.ts`/
   `src/app/api/v1/reading-position/route.ts` in the `yana-server` repo) — so another paired device's
@@ -576,8 +618,9 @@ source and issue board live at
   wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav
   bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a
   `ReaderBlockViewController` (a `UIHostingController` wrapping `ArticleBlockView`, pull-to-refresh,
-  which now triggers `ArticleActions.updateAll()` + `UpdateAndSync.pollForFreshContent` instead of the
-  old on-device aggregation); each page's full `Article` is resolved lazily by `persistentID`. Body
+  which now triggers `ReaderActions.startUpdateAll()` and hands the wait to `OperationMonitor`
+  instead of the old on-device aggregation); each page's full `Article` is resolved lazily by
+  `persistentID`. Body
   text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system
   browser via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer;
   matches the article's detected language, keeps playing when locked/backgrounded, wires up Now
@@ -611,8 +654,9 @@ source and issue board live at
   pre-server-migration users — a "Server Update Notice" restore action). A searchable
   `ArticleListView` (reached from the reader's list button, not a "config hub" any more) still exists
   unchanged: full-text search over title/plainText/author/feed name, swipe-to-star/reload (star is
-  optimistic-local + `ArticleActions.setStarred`; reload calls `ArticleActions.reload` then
-  `UpdateAndSync.pollForReloadedContent`), swipe-to-delete (local-only), and the same `TagFilterView`
+  optimistic-local + `ArticleActions.setStarred`; reload calls `ReaderActions.startReload`, which
+  hands the wait to `OperationMonitor` the same way the reader overflow menu's Reload does),
+  swipe-to-delete (local-only), and the same `TagFilterView`
   filter sheet. The hidden **Diagnostics** entry point (`DiagnosticsReveal`, the About → Version
   five-tap gesture, and the `SyncLogView` screen it used to unlock) is gone entirely — removed along
   with `SettingsPane.diagnostics` once CloudKit sync was removed, since there was no longer a
@@ -775,20 +819,26 @@ source and issue board live at
   to the chain, not to a call site. Each surface still needs its own `.onChange(of:)` on the new
   setting to recompute, and (on the reader/sidebar) to re-resolve the index from the anchor
   afterwards — the surviving rows shift even when the displayed article itself survives.
-- **Update vs. reload, now server-triggered:** two distinct semantics, reflected in the action labels,
-  both of which now only *trigger* server-side work and must poll to see the result (a POST/PATCH ack
-  is not the content itself — see `UpdateAndSync`). **"Update"** (the reader's pull-down gesture, "Update
-  All") calls `ArticleActions.updateAll()` (`POST /aggregate`, all enabled feeds) then
-  `UpdateAndSync.pollForFreshContent` (polls `GET /api/v1/runs/:id` until the run finishes, then
-  syncs once — see **Actions** above for the transient-failure handling).
-  **"Reload"** (the `ArticleListView` swipe, the reader overflow menu) calls
-  `ArticleActions.reload(articleServerID:)` (`POST /articles/:id/reload`, that article only) then
-  `UpdateAndSync.pollForReloadedContent` (waits on the `/api/v1/jobs/events` SSE stream for that
-  job's completion, falling back to a single direct re-fetch of `/articles/:id/content` if no
-  matching event arrives in time — not through `SyncEngine`'s backfill; see **Actions** above for
-  why). There is no more
-  client-side per-feed update/reload or "auto-run a newly created feed" — feed creation/management
-  happens entirely in the server's web UI now.
+- **Update vs. reload, now server-triggered and durably tracked:** two distinct semantics, reflected
+  in the action labels, both of which only *trigger* server-side work and then hand the wait to
+  `OperationMonitor` to see the result (a POST ack is a job/run id, not the content itself — see
+  **Actions** above). **"Update"** (the reader's pull-down gesture, "Update All") calls
+  `ReaderActions.startUpdateAll()` → `ArticleActions.updateAll()` (`POST /aggregate`, all enabled
+  feeds), which persists a `.updateAll` `TrackedOperation` keyed by the returned run id and hands it
+  to `OperationMonitor.track`. **"Reload"** (the `ArticleListView` swipe, the reader overflow menu)
+  calls `ReaderActions.startReload(...)` → `ArticleActions.reload(articleServerID:)`
+  (`POST /articles/:id/reload`, that article only), persisting a `.reloadArticle` `TrackedOperation`
+  keyed by the returned job id instead. From there both follow the identical path: `OperationMonitor`
+  polls `GET /api/v1/runs/:id` or `GET /api/v1/jobs/:id` respectively until the row itself reports a
+  terminal status, showing that row's own `progress` percentage verbatim the whole time (a live
+  `/api/v1/jobs/events` SSE event can only nudge the shown percentage forward sooner, never end the
+  wait — see **Actions**), and only then applies the result — a `SyncEngine.sync()` for "Update All",
+  a direct `/articles/:id/content` re-fetch for a reload. **No timeout is ever treated as success**,
+  and `AppSettings.trackedOperations` outlives both the triggering view and the process: a relaunch's
+  `OperationMonitor.resume()` (called at launch and on every foreground) picks the same wait back up
+  through the exact same polling path, rather than losing it or re-triggering the work. There is no
+  more client-side per-feed update/reload or "auto-run a newly created feed" — feed
+  creation/management happens entirely in the server's web UI now.
 - **SwiftData source of truth, sync writes it:** `SyncEngine`/`SyncWriter` write; views read
   lightweight metadata via `ArticleStore` (backed by SwiftData) rather than per-view `@Query`s.
 - **`propertiesToFetch` is a partial fault, not a projection — under-listing it costs more than
@@ -809,7 +859,7 @@ source and issue board live at
   says nothing about which thread it runs on; only the caller does. Every main-actor → `@ModelActor`
   call must go through `OffMainActor.run` (`Yana/Utilities/OffMainActor.swift`):
   `ArticleStore.fullLoad`/`publishFastDataset`, `SyncEngine`'s calls into `SyncWriter`,
-  `UpdateAndSync.pollForReloadedContent`'s `applyContent` call. `OffMainActorTests` pins the executor
+  `OperationMonitor.fetchAndApplyContent`'s `applyContent` call. `OffMainActorTests` pins the executor
   behaviour (including the "created off-main is not enough" case) so a future SwiftData change is
   caught, and `SyncReactionMainThreadTests` measures main-actor responsiveness across the sync-reaction
   chain — a regression there shows up as a stall, not a wrong value.
@@ -842,7 +892,23 @@ source and issue board live at
   still applies, that remote updates resume once the local push is acknowledged, and that a failed
   push keeps the local position authoritative). Extending the summary-language directive to the
   server path added one case each to `AISummaryProviderTests` (the German prompt) and
-  `SummaryLanguageTests` (the unrestricted-support resolution). Note
+  `SummaryLanguageTests` (the unrestricted-support resolution), for 424/94 at that point. The
+  progress-monitoring rework (server-computed run/job `progress`, `GET /api/v1/jobs/:id`, and
+  `OperationMonitor` replacing `UpdateAndSync`) deleted `UpdateAndSyncTests.swift` wholesale — it
+  exercised a type that no longer exists — and added five new suites in its place: `JobStatusTests`
+  (`JobStatusResponse`/`RunStatusResponse` decoding, including the fractional-seconds
+  `startedAt`/`finishedAt` shape and the unrecognized-status-stays-non-terminal rule),
+  `TrackedOperationTests` (`monitorKey`'s job/run collision-avoidance), `OperationMonitorTests` (the
+  poll loop's terminal/gone/permanent-failure/retryable branches, the no-timeout-is-success
+  guarantee, `resume()`'s relaunch pickup, and the SSE-nudge-forward-only clamp), `ReaderActionsTriggerTests`
+  (`startReload`/`startUpdateAll` persisting a `TrackedOperation` before handing off to the monitor),
+  and `UpdateActivityTests` (the `begin()`/`end()` balance and `progressPercent`/`progressLabel`
+  formatting, now that `waitUntilIdle` is gone). That nets to 98 suites; a full
+  `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test` run (Task 12's
+  verification pass) executed 493 Swift Testing cases — 486 passed, 7 failed, all in
+  `SummaryBlockTests`, all "Test crashed with signal trap" because Apple Intelligence is unavailable
+  in the simulator; this exact 7-test baseline was reproduced on the pre-plan commit, so it predates
+  and is unrelated to this plan. Note
   `SyncReactionMainThreadTests.importBatchesLeaveTheMainActorResponsive` measures a wall-clock stall
   against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
   treating a failure there as real.
