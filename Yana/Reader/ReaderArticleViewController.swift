@@ -159,6 +159,15 @@ final class ReaderArticleViewController: UIViewController,
 
     private let settings = AppSettings()
     private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    /// The server's real percentage for whatever `activityIndicator` is spinning for -- `nil`
+    /// hides it, so a refresh whose operation hasn't reported one yet shows only the spinner.
+    private let progressLabel: UILabel = {
+        let label = UILabel()
+        label.font = .preferredFont(forTextStyle: .caption1)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = .secondaryLabel
+        return label
+    }()
     private var articleListItem: UIBarButtonItem!
     private var filterItem: UIBarButtonItem!
     private var indicatorItem: UIBarButtonItem!
@@ -309,7 +318,11 @@ final class ReaderArticleViewController: UIViewController,
         // The loading indicator only joins the left group while a refresh runs (see
         // setRefreshing). A stopped indicator's bar-button item still reserves width, so it is
         // added/removed rather than left in place hidden.
-        indicatorItem = UIBarButtonItem(customView: activityIndicator)
+        let indicatorStack = UIStackView(arrangedSubviews: [activityIndicator, progressLabel])
+        indicatorStack.axis = .horizontal
+        indicatorStack.spacing = 4
+        indicatorStack.alignment = .center
+        indicatorItem = UIBarButtonItem(customView: indicatorStack)
         navigationItem.leftBarButtonItems = [articleListItem]
 
         starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))
@@ -366,8 +379,13 @@ final class ReaderArticleViewController: UIViewController,
             : String(localized: "Read article aloud")
     }
 
-    func setRefreshing(_ isRefreshing: Bool) {
+    func setRefreshing(_ isRefreshing: Bool, progressText: String?) {
         if isRefreshing { activityIndicator.startAnimating() } else { activityIndicator.stopAnimating() }
+        // Updated unconditionally, ahead of the item-count guard below: the percentage changes
+        // repeatedly while `isRefreshing` itself stays true, and the guard only short-circuits
+        // when the *item count* is unchanged, which it is for every one of those updates.
+        progressLabel.text = progressText
+        progressLabel.isHidden = progressText == nil
         let items: [UIBarButtonItem] = isRefreshing ? [articleListItem, indicatorItem] : [articleListItem]
         guard navigationItem.leftBarButtonItems?.count != items.count else { return }
         navigationItem.leftBarButtonItems = items

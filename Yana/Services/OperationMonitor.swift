@@ -80,12 +80,19 @@ final class OperationMonitor {
         if let existing = inFlight[key] { return existing }
         if let visibleArticle { visibleArticles[key] = WeakArticle(visibleArticle) }
         isActive = true
+        // Restores the spinner's begin()/end() balance that used to live in the trigger call
+        // sites' `UpdateActivity.shared.restart { ... }` wrappers, removed in Task 10 once this
+        // monitor became the source of truth for what's actually running. Pairing them here
+        // instead means `isUpdating` reflects exactly what `track` is watching, regardless of
+        // which call site triggered it.
+        UpdateActivity.shared.begin()
 
         let task = Task { @MainActor in
             let outcome = await self.monitor(operation, settings: settings, container: container,
                                              client: client, observer: observer)
             self.inFlight[key] = nil
             self.visibleArticles[key] = nil
+            UpdateActivity.shared.end()
             // Only clear the persisted record once an outcome was actually reached. `monitor`
             // returns `nil` solely on cancellation ("stop watching", not "the wait ended"), and
             // `TrackedOperation`'s own doc contract is that a record is removed only once a
@@ -98,7 +105,10 @@ final class OperationMonitor {
                 self.lastOutcome = outcome
             }
             self.isActive = !self.inFlight.isEmpty
-            if !self.isActive { self.progressPercent = nil }
+            if !self.isActive {
+                self.progressPercent = nil
+                UpdateActivity.shared.setProgress(nil)
+            }
         }
         inFlight[key] = task
         return task
@@ -200,6 +210,7 @@ final class OperationMonitor {
 
     private func publish(_ percent: Int, observer: ((Int?) -> Void)?) {
         progressPercent = percent
+        UpdateActivity.shared.setProgress(percent)
         observer?(percent)
     }
 
@@ -237,6 +248,10 @@ final class OperationMonitor {
         settings.trackedOperations = []
         isActive = false
         progressPercent = nil
+        // `end()` for each cancelled task's `begin()` still arrives asynchronously once its own
+        // `monitor` loop notices the cancellation and the `track` completion block runs -- but the
+        // percentage should stop being shown immediately, not linger until that unwind completes.
+        UpdateActivity.shared.setProgress(nil)
     }
 
     private var eventTask: Task<Void, Never>?
@@ -286,10 +301,12 @@ final class OperationMonitor {
                     if case let .job(payload) = event,
                        self.inFlight["job-\(payload.jobId)"] != nil {
                         self.progressPercent = max(self.progressPercent ?? 0, Int(payload.progress))
+                        UpdateActivity.shared.setProgress(self.progressPercent)
                     }
                     if case let .run(payload) = event,
                        self.inFlight["run-\(payload.runId)"] != nil {
                         self.progressPercent = max(self.progressPercent ?? 0, payload.progress)
+                        UpdateActivity.shared.setProgress(self.progressPercent)
                     }
                 }
                 guard !Task.isCancelled else { return }

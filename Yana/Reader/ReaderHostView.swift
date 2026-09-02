@@ -16,6 +16,9 @@ struct ReaderHostView: UIViewControllerRepresentable {
     var onUserNavigate: ((Int) -> Void)?
     var onArticleDisplayed: ((Article) -> Void)?
     let isRefreshing: Bool
+    /// The server's real percentage for whatever `isRefreshing` is showing a spinner for, or
+    /// `nil` when there is none to show yet.
+    let progressText: String?
     let isFilterActive: Bool
     var onRefresh: (() -> Void)?
     /// Fired from the empty-timeline page's shortcut button to start creating the first feed.
@@ -59,7 +62,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.isSummarizing = isSummarizing
         context.coordinator.lastReloadToken = reloadToken
         reader.configure(articles: articles, index: currentIndex)
-        reader.setRefreshing(isRefreshing)
+        reader.setRefreshing(isRefreshing, progressText: progressText)
         reader.setFilterActive(isFilterActive)
 
         let nav = UINavigationController(rootViewController: reader)
@@ -95,7 +98,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
             reader.reloadCurrentPage()
         }
         reader.update(articles: articles, index: currentIndex)
-        reader.setRefreshing(isRefreshing)
+        reader.setRefreshing(isRefreshing, progressText: progressText)
         reader.setFilterActive(isFilterActive)
     }
 
@@ -226,6 +229,7 @@ struct ReaderScreen: View {
                     onUserNavigate: { saveAnchor(at: $0) },
                     onArticleDisplayed: { markRead($0) },
                     isRefreshing: UpdateActivity.shared.isUpdating || isSummarizing,
+                    progressText: UpdateActivity.shared.progressLabel,
                     isFilterActive: settings.isTimelineFilterActive,
                     onRefresh: onRefreshHandler,
                     onCreateFeed: { showingCreateFeed = true },

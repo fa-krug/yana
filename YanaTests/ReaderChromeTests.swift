@@ -29,9 +29,9 @@ struct ReaderChromeTests {
         let reader = makeLoadedReader()
         let atRest = reader.navigationItem.rightBarButtonItems
         // The spinner joins the left group during a refresh; the left group grows then shrinks back.
-        reader.setRefreshing(true)
+        reader.setRefreshing(true, progressText: nil)
         #expect(reader.navigationItem.leftBarButtonItems?.count == 2)
-        reader.setRefreshing(false)
+        reader.setRefreshing(false, progressText: nil)
         #expect(reader.navigationItem.leftBarButtonItems?.count == 1)
         // The right group is re-asserted on every refresh toggle, so it always holds all three
         // items — never left collapsed into an automatic overflow menu after a refresh.

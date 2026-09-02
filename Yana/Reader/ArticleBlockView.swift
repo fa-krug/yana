@@ -740,11 +740,11 @@ private struct RefreshableIfAvailable: ViewModifier {
         if let onRefresh {
             content.refreshable {
                 onRefresh()
-                // Let restart() actually begin before sampling isUpdating...
-                try? await Task.sleep(nanoseconds: 400_000_000)
-                // ...then keep the system spinner up until the run really finishes, instead
-                // of lying with a fixed 400ms dismissal while the poll runs ~30s (audit U5).
-                await UpdateActivity.shared.waitUntilIdle()
+                // Let the trigger's POST land, then hand the gesture back. An operation now runs
+                // for as long as the server takes -- minutes, for a full aggregation run -- and a
+                // system refresh control cannot stay up that long. The toolbar spinner and its
+                // percentage carry the real state, and nothing claims the work is done here.
+                try? await Task.sleep(for: .milliseconds(400))
             }
         } else {
             content

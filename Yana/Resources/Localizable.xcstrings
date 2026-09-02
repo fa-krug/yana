@@ -201,6 +201,23 @@
         }
       }
     },
+    "%lld%%": {
+      "comment": "A progress percentage shown next to a spinner, e.g. \"55%\". Displayed verbatim, 0-100, no unit conversion.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld %%"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%%"
+          }
+        }
+      }
+    },
     "Couldn't reach this URL": {
       "comment": "Error shown when the entered feed URL could not be fetched during Resolve & Test.",
       "localizations": {

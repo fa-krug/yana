@@ -17,6 +17,18 @@ final class UpdateActivity {
     /// True while at least one update is running.
     var isUpdating: Bool { inFlight > 0 }
 
+    /// The server's own percentage for whatever is running, 0-100, `nil` when there is nothing to
+    /// report. Set by `OperationMonitor`; displayed verbatim, with no unit conversion.
+    private(set) var progressPercent: Int?
+
+    func setProgress(_ percent: Int?) { progressPercent = percent }
+
+    /// The percentage as shown next to a spinner, or `nil` when there is none.
+    var progressLabel: String? {
+        guard let progressPercent else { return nil }
+        return String(localized: "\(progressPercent)%")
+    }
+
     /// The most recently started update. A new `restart` cancels it before running.
     private var current: Task<Void, Never>?
 
@@ -52,14 +64,4 @@ final class UpdateActivity {
     /// Cancel the current update, if any. The operation unwinds on its next
     /// `Task.isCancelled` check and `run`'s `defer` rebalances the in-flight count.
     func cancel() { current?.cancel() }
-
-    /// Await the end of the current update burst, bounded. Polling (not a continuation chain)
-    /// keeps this trivially correct against restart()'s cancel-and-replace behavior; the poll is
-    /// coarse because its only consumer is the pull-to-refresh gesture spinner (audit U5).
-    func waitUntilIdle(pollInterval: Duration = .milliseconds(200), timeout: Duration = .seconds(35)) async {
-        let deadline = ContinuousClock.now + timeout
-        while isUpdating, ContinuousClock.now < deadline {
-            try? await Task.sleep(for: pollInterval)
-        }
-    }
 }

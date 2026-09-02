@@ -303,7 +303,13 @@ struct MacRootView: View {
         } label: {
             ZStack {
                 Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
-                ProgressView().controlSize(.small).opacity(showSpinner ? 1 : 0)
+                HStack(spacing: 4) {
+                    ProgressView().controlSize(.small)
+                    if let label = UpdateActivity.shared.progressLabel {
+                        Text(label).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .opacity(showSpinner ? 1 : 0)
             }
             .macToolbarIcon()
         }

@@ -77,18 +77,20 @@ struct UpdateActivityTests {
         #expect(activity.isUpdating == false)
     }
 
-    @Test func waitUntilIdleReturnsImmediatelyWhenIdle() async {
+    @Test func hasNoLabelWithoutAPercentage() {
         let activity = UpdateActivity()
-        let start = ContinuousClock.now
-        await activity.waitUntilIdle(pollInterval: .milliseconds(10), timeout: .seconds(1))
-        #expect(ContinuousClock.now - start < .milliseconds(500))
+        activity.setProgress(nil)
+        #expect(activity.progressPercent == nil)
+        #expect(activity.progressLabel == nil)
     }
 
-    @Test func waitUntilIdleOutlivesARunningUpdate() async {
+    @Test func rendersThePercentageVerbatim() {
         let activity = UpdateActivity()
-        let task = activity.restart { try? await Task.sleep(for: .milliseconds(100)) }
-        await activity.waitUntilIdle(pollInterval: .milliseconds(10), timeout: .seconds(2))
-        #expect(!activity.isUpdating)
-        _ = await task.value
+        activity.setProgress(0)
+        #expect(activity.progressLabel == String(localized: "\(0)%"))
+        activity.setProgress(55)
+        #expect(activity.progressLabel == String(localized: "\(55)%"))
+        activity.setProgress(100)
+        #expect(activity.progressLabel == String(localized: "\(100)%"))
     }
 }
