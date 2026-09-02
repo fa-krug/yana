@@ -20,9 +20,31 @@ struct PairingSyncTests {
         PairingSync.resetAndFullSync(
             appState: AppState(),
             articleStore: ArticleStore(container: AppContainer.shared),
-            settings: settings
+            settings: settings,
+            monitor: OperationMonitor(activity: UpdateActivity())
         )
 
         #expect(settings.hasCompletedInitialSync == false)
+    }
+
+    /// A fresh pairing may point at a different server entirely, and job/run ids collide freely
+    /// across servers -- so a `TrackedOperation` recorded before the re-pair must not survive it,
+    /// or `OperationMonitor.resume()` would poll an old server's id against the new one and apply
+    /// whatever it found to whichever local row now holds that article id.
+    @Test func resetClearsTrackedOperationsScopedToThePreviousServer() {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "PairingSync.\(UUID())")!)
+        settings.trackedOperations = [
+            TrackedOperation(kind: .updateAll, id: 7, startedAt: .now)
+        ]
+
+        KeychainService.deleteDeviceToken()
+        PairingSync.resetAndFullSync(
+            appState: AppState(),
+            articleStore: ArticleStore(container: AppContainer.shared),
+            settings: settings,
+            monitor: OperationMonitor(activity: UpdateActivity())
+        )
+
+        #expect(settings.trackedOperations.isEmpty)
     }
 }

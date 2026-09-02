@@ -116,4 +116,28 @@ struct ServerDisconnectTests {
         #expect(try context.fetch(FetchDescriptor<Article>()).allSatisfy { $0.identifier != "paired://article/0" })
         #expect(try context.fetch(FetchDescriptor<Feed>()).allSatisfy { $0.identifier != "paired://feed" })
     }
+
+    /// A tracked operation is scoped to the server that issued its id, and job/run ids collide
+    /// freely across servers. Left persisted, `OperationMonitor.resume()` on a later launch would
+    /// poll an OLD server's job id against a NEWLY paired one, and a matching-but-unrelated
+    /// completed job would have this device fetch `/articles/<old serverID>/content` and write one
+    /// article's body onto whatever row now holds that id. Same reasoning as the pending
+    /// write/reading-position queues this clears alongside.
+    @Test func disconnectClearsTrackedOperationsSoTheyCannotBeReplayedAgainstAnotherServer() throws {
+        let context = try inMemoryContext()
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "Disconnect.\(UUID())")!)
+        settings.trackedOperations = [
+            TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42, startedAt: .now),
+            TrackedOperation(kind: .updateAll, id: 7, startedAt: .now)
+        ]
+        settings.pendingReadingPositionPush = 100
+
+        // A throwaway monitor: `disconnect` stops whatever it is watching, and the app-wide
+        // `.shared` one must not be reached into from a test.
+        ServerDisconnect.disconnect(settings: settings, context: context,
+                                    monitor: OperationMonitor(activity: UpdateActivity()))
+
+        #expect(settings.trackedOperations.isEmpty)
+        #expect(settings.pendingReadingPositionPush == nil)
+    }
 }

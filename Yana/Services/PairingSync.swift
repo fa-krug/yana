@@ -11,8 +11,22 @@ enum PairingSync {
     static func resetAndFullSync(
         appState: AppState,
         articleStore: ArticleStore,
-        settings: AppSettings = AppSettings()
+        settings: AppSettings = AppSettings(),
+        monitor: OperationMonitor = .shared
     ) {
+        // The token that just arrived may point at an entirely different server, so everything
+        // scoped to the previous one has to go before the new sync starts. An in-flight monitor is
+        // the sharp edge: it would keep polling a job/run id from the old server against the new
+        // one (ids collide freely across servers), and on a terminal status run `SyncEngine.sync()`
+        // and write `/articles/<old serverID>/content` onto whatever row now holds that id.
+        // `stopWatching` cancels those waits and drops the persisted `trackedOperations` records,
+        // so `resume()` cannot replay them after a relaunch either.
+        monitor.stopWatching(settings: settings)
+        settings.trackedOperations = []
+        // Picks the SSE progress feed back up under the new token: `startEvents` exits (and clears
+        // its own task) when there is no client to build, which is the resting state of an
+        // unpaired device, so a pairing that happens mid-session has to restart it explicitly.
+        monitor.startEvents(settings: settings)
         LocalLibraryReset.wipe(context: AppContainer.shared.mainContext)
         // Whatever this device synced before says nothing about the backlog about to land: the
         // mirror was just wiped, and the token may well point at a different server entirely. So

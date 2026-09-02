@@ -8,15 +8,24 @@ import SwiftData
 /// shape, just running the transition in reverse.
 enum ServerDisconnect {
     @MainActor
-    static func disconnect(settings: AppSettings, context: ModelContext = AppContainer.shared.mainContext) {
-        // Best-effort mitigation: cancel whichever foreground update (pull-to-refresh "Update
-        // All", article reload, the reader's periodic refresh) `UpdateActivity` is currently
-        // tracking, so it can't keep writing through SyncEngine/SyncWriter after the wipe below
-        // and resurrect articles or re-set `syncCursor`. This does NOT cover
-        // `BackgroundRefreshManager` or `InitialSyncGate`, which run their syncs outside
-        // `UpdateActivity` entirely and are therefore not cancellable this way -- a full fix
-        // would require `SyncEngine` to re-check `AuthenticatedClient.current()` before every
-        // write batch, which is out of scope here.
+    static func disconnect(settings: AppSettings, context: ModelContext = AppContainer.shared.mainContext,
+                           monitor: OperationMonitor = .shared) {
+        // Stop every operation this device is still waiting on. This is not cosmetic: a monitor
+        // that survives the wipe below keeps polling the old server's job/run row and, on a
+        // terminal status, runs `SyncEngine.sync()` with the old client -- resurrecting the
+        // articles just deleted and re-setting `syncCursor`. `stopWatching` also drops the
+        // persisted `trackedOperations` records, which is what stops `resume()` on a later launch
+        // from replaying an old server's job id against a newly paired one (job ids collide freely
+        // across servers, so a matching-but-unrelated completed job would have this device fetch
+        // `/articles/<old serverID>/content` and write one article's body onto whatever row now
+        // holds that id).
+        monitor.stopWatching(settings: settings)
+        // `UpdateActivity.cancel()` on top of that covers `PairingSync`'s own `restart`-wrapped
+        // initial sync, the only thing still routed through `UpdateActivity.current`. It does NOT
+        // cover `BackgroundRefreshManager` or `InitialSyncGate` called from elsewhere, which run
+        // their syncs outside `UpdateActivity` entirely and are therefore not cancellable this way
+        // -- a full fix would require `SyncEngine` to re-check `AuthenticatedClient.current()`
+        // before every write batch, which is out of scope here.
         UpdateActivity.shared.cancel()
 
         KeychainService.deleteDeviceToken()
@@ -28,6 +37,10 @@ enum ServerDisconnect {
         // server paired later: SyncEngine.performSync() flushes these queues at the top of every
         // sync, with no server-identity check.
         settings.pendingWrites = []
+        // Already emptied by `stopWatching` above; restated here so the whole set of
+        // old-server-scoped state a disconnect has to clear reads as one list, and so removing the
+        // monitor call one day cannot silently leave these behind.
+        settings.trackedOperations = []
         settings.pendingReadingPositionPush = nil
         settings.pendingRemoteReadingPosition = nil
         settings.readingPositionUpdatedAt = nil
