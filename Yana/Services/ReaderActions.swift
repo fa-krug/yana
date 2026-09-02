@@ -133,7 +133,7 @@ enum ReaderActions {
     }
 
     /// The toast to show for a finished `OperationMonitor` operation, shared by every surface that
-    /// observes `OperationMonitor.shared.lastOutcome`: `ReaderScreen` (iOS), `MacRootView`'s
+    /// observes `OperationMonitor.shared.lastOutcomeEvent`: `ReaderScreen` (iOS), `MacRootView`'s
     /// delegate to `TimelineModel.applyOperationOutcome`, and `ArticleListView` while its sheet is
     /// frontmost. Kept in one place because `.failed`/`.unconfirmed` need to read
     /// `TrackedOperation.Kind` to pick the right copy -- an `.updateAll` run has no single article
@@ -142,6 +142,14 @@ enum ReaderActions {
     static func outcomeToast(_ outcome: OperationOutcome) -> ToastMessage {
         switch outcome {
         case .reloaded(_, let feedName):
+            // A reload knows which article it reloaded but not always which feed that article
+            // belongs to -- a reload resumed after a relaunch can find the row already pruned, so
+            // `feedName` is genuinely `nil`. `RefreshOutcome.message(newCount: 0, feedName: nil)`
+            // renders that as "No new articles.", which is an Update All result reported for a
+            // successful single-article reload. So the nameless case gets copy of its own.
+            guard let feedName else {
+                return ToastMessage(text: String(localized: "Reloaded this article."))
+            }
             return ToastMessage(text: RefreshOutcome.message(newCount: 0, feedName: feedName))
         case .updated(let newCount):
             return ToastMessage(text: RefreshOutcome.message(newCount: newCount, feedName: nil))

@@ -2023,6 +2023,16 @@
         }
       }
     },
+    "Reloaded this article.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Artikel wurde neu geladen."
+          }
+        }
+      }
+    },
     "Reloaded “%@”.": {
       "localizations": {
         "de": {

@@ -35,8 +35,11 @@ struct ReaderActionsTriggerTests {
             let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t",
                                        session: URLSession(configuration: config))
 
+            // Throwaway `UpdateActivity`, so this test's begin()/end() cannot leave the app-wide
+            // shared counter perturbed for whatever runs next in the same process.
             let monitor = OperationMonitor(pollInterval: .seconds(60), slowPollInterval: .seconds(60),
-                                           youngPhase: .seconds(60), nudgeSlice: .milliseconds(1))
+                                           youngPhase: .seconds(60), nudgeSlice: .milliseconds(1),
+                                           activity: UpdateActivity())
             let started = await ReaderActions.startReload(
                 article, serverID: 100, client: client, container: container, settings: settings,
                 monitor: monitor
@@ -47,7 +50,12 @@ struct ReaderActionsTriggerTests {
                 TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
                                  startedAt: settings.trackedOperations.first!.startedAt)
             ])
+            // Capture the monitoring task before `stopWatching` clears the table, then await its
+            // unwind *inside* the lock. Without this the cancelled poll can still be in flight
+            // when the lock releases and consume the next test's global `MockURLProtocol.stub`.
+            let tasks = monitor.inFlightTasks
             monitor.stopWatching(settings: settings)
+            for task in tasks { await task.value }
         }
     }
 
@@ -68,7 +76,7 @@ struct ReaderActionsTriggerTests {
             let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t",
                                        session: URLSession(configuration: config))
 
-            let monitor = OperationMonitor()
+            let monitor = OperationMonitor(activity: UpdateActivity())
             let started = await ReaderActions.startReload(
                 article, serverID: 100, client: client, container: container, settings: settings,
                 monitor: monitor
