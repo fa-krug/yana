@@ -292,4 +292,257 @@ struct OperationMonitorTests {
             #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
         }
     }
+
+    @Test func aCompletedReloadAppliesTheContentToTheVisibleArticle() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old", identifier: "art-100",
+                                       date: .now, author: "", read: false, starred: false,
+                                       createdAt: .now, updatedAt: .now)
+            ])
+            let readerContext = ModelContext(container)
+            let visible = try readerContext.fetch(
+                FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == 100 })
+            ).first!
+
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/jobs/42":
+                    return self.json(request, """
+                    {"jobId":42,"runId":null,"kind":"article.reload","progress":100,
+                     "status":"completed","error":"","startedAt":null,"finishedAt":null}
+                    """)
+                case "/api/v1/articles/100/content":
+                    return self.json(request, #"""
+                    {"version":1,"blocks":[{"type":"paragraph","runs":[{"text":"fresh","styles":[],"link":null}]}]}
+                    """#)
+                case "/api/v1/feeds":
+                    // Keep the feed the article belongs to alive in this response -- the follow-up
+                    // sync inside fetchAndApplyContent is a real /feeds fetch, and SyncWriter.replaceFeeds
+                    // prunes (and cascade-deletes the articles of) any local feed missing from it. An
+                    // empty response here would delete Feed 1 and its Article mid-test.
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container, client: api,
+                                visibleArticle: visible).value
+
+            #expect(visible.hasContent)
+            #expect(visible.plainText.contains("fresh"))
+            #expect(monitor.lastOutcome == .reloaded(articleServerID: 100, feedName: "Feed"))
+        }
+    }
+
+    @Test func aCompletedUpdateAllSyncsOnceAndReportsTheNewCount() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            var syncCalls = 0
+            let syncBody = #"""
+            {"new":[{"id":100,"feedId":1,"name":"New","identifier":"art-100","date":"2026-01-01T00:00:00Z","author":"","icon":null,"read":false,"starred":false,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}],"updated":[],"removed":[],"nextCursor":null}
+            """#
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/runs/5":
+                    return self.json(request, """
+                    {"runId":5,"status":"completed","progress":100,"totalJobs":1,
+                     "completedJobs":1,"failedJobs":0}
+                    """)
+                case "/api/v1/feeds":
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    syncCalls += 1
+                    return self.json(request, syncCalls == 1
+                        ? syncBody
+                        : #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .updateAll, id: 5, startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container, client: api).value
+
+            #expect(monitor.lastOutcome == .updated(newCount: 1))
+        }
+    }
+
+    @Test func aPrunedJobRowAppliesContentButReportsItAsUnconfirmed() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old", identifier: "art-100",
+                                       date: .now, author: "", read: false, starred: false,
+                                       createdAt: .now, updatedAt: .now)
+            ])
+            var jobCalls = 0
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/jobs/42":
+                    jobCalls += 1
+                    if jobCalls == 1 {
+                        return self.json(request, """
+                        {"jobId":42,"runId":null,"kind":"article.reload","progress":10,
+                         "status":"running","error":"","startedAt":null,"finishedAt":null}
+                        """)
+                    }
+                    return self.json(request, #"{"error":{"code":"not_found","message":"gone"}}"#,
+                                     status: 404)
+                case "/api/v1/articles/100/content":
+                    return self.json(request, #"{"version":1,"blocks":[]}"#)
+                case "/api/v1/feeds": return self.json(request, #"{"feeds":[]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container, client: api).value
+
+            #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+        }
+    }
+
+    @Test func aCompletedReloadPicksUpARewrittenTitleViaTheFollowUpSync() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old Title", identifier: "art-100",
+                                       date: .now, author: "", read: false, starred: false,
+                                       createdAt: .now, updatedAt: .now)
+            ])
+            let readerContext = ModelContext(container)
+            let visible = try readerContext.fetch(
+                FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == 100 })
+            ).first!
+            #expect(visible.title == "Old Title")
+
+            let syncBody = #"""
+            {"new":[],"updated":[{"id":100,"feedId":1,"name":"New Title","identifier":"art-100","date":"2026-01-01T00:00:00Z","author":"","icon":null,"read":false,"starred":false,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-02T00:00:00Z"}],"removed":[],"nextCursor":null}
+            """#
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/jobs/42":
+                    return self.json(request, """
+                    {"jobId":42,"runId":null,"kind":"article.reload","progress":100,
+                     "status":"completed","error":"","startedAt":null,"finishedAt":null}
+                    """)
+                case "/api/v1/articles/100/content":
+                    return self.json(request, #"{"version":1,"blocks":[]}"#)
+                case "/api/v1/feeds":
+                    // Keep the feed the article belongs to alive in this response -- the follow-up
+                    // sync inside fetchAndApplyContent is a real /feeds fetch, and SyncWriter.replaceFeeds
+                    // prunes (and cascade-deletes the articles of) any local feed missing from it. An
+                    // empty response here would delete Feed 1 and its Article mid-test.
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync": return self.json(request, syncBody)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container, client: api,
+                                visibleArticle: visible).value
+
+            #expect(visible.title == "New Title")
+        }
+    }
+
+    /// Extra case beyond the brief: an operation resumed after a relaunch has NO visible `Article`
+    /// (the reader wasn't holding one when the process restarted), so `feedName` cannot come from
+    /// `visible?.feed?.name`. It must instead be resolved from the store by the article's
+    /// `serverID`, or a resumed reload's completion renders as "No new articles." downstream
+    /// (`RefreshOutcome.message(newCount: 0, feedName: nil)`) despite genuinely succeeding.
+    @Test func aCompletedReloadWithNoVisibleArticleStillReportsTheFeedNameFromTheStore() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old", identifier: "art-100",
+                                       date: .now, author: "", read: false, starred: false,
+                                       createdAt: .now, updatedAt: .now)
+            ])
+
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/jobs/42":
+                    return self.json(request, """
+                    {"jobId":42,"runId":null,"kind":"article.reload","progress":100,
+                     "status":"completed","error":"","startedAt":null,"finishedAt":null}
+                    """)
+                case "/api/v1/articles/100/content":
+                    return self.json(request, #"{"version":1,"blocks":[]}"#)
+                case "/api/v1/feeds":
+                    // Keep the feed the article belongs to alive in this response -- the follow-up
+                    // sync inside fetchAndApplyContent is a real /feeds fetch, and SyncWriter.replaceFeeds
+                    // prunes (and cascade-deletes the articles of) any local feed missing from it. An
+                    // empty response here would delete Feed 1 and its Article mid-test.
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            // No `visibleArticle:` argument -- simulates a resumed operation after a relaunch.
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container, client: api).value
+
+            #expect(monitor.lastOutcome == .reloaded(articleServerID: 100, feedName: "Feed"))
+        }
+    }
 }

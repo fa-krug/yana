@@ -321,4 +321,14 @@ actor SyncWriter {
         descriptor.propertiesToFetch = [\.title]
         return try? modelContext.fetch(descriptor).first?.title
     }
+
+    /// The current feed name for a synced article, used as the fallback when a reload's outcome
+    /// is reported with no visible `Article` in hand -- which happens for an operation resumed
+    /// after a relaunch, since there is no reader-held object to read `.feed?.name` from in that
+    /// case. Same shape as `articleTitle(serverID:)` above.
+    func feedName(serverID: Int) -> String? {
+        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == serverID })
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first?.feed?.name
+    }
 }

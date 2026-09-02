@@ -214,12 +214,107 @@ final class OperationMonitor {
         }
     }
 
-    /// Filled in by the terminal follow-through task. Until then, nothing is fetched.
+    /// The work the server just finished, pulled down. For a reload this deliberately does NOT go
+    /// through `SyncEngine`'s generic `hasContent`-gated backfill: that backfill sets
+    /// `hasContent = true` and nothing ever resets it, so a fetch racing the poll would
+    /// permanently block any later retry of this exact article.
     private func applyTerminalSuccess(
         _ operation: TrackedOperation, container: ModelContainer, client: YanaAPIClient,
         settings: AppSettings
     ) async -> OperationOutcome {
-        .unconfirmed(operation.kind)
+        switch operation.kind {
+        case .reloadArticle(let articleServerID):
+            let visible = visibleArticles[operation.monitorKey]?.article
+            let applied = await Self.fetchAndApplyContent(
+                articleServerID: articleServerID, container: container, client: client,
+                visibleArticle: visible
+            )
+            guard applied else { return .failed(operation.kind) }
+            // `visible` is only present when the reader was actually holding this article when
+            // the operation started -- absent after a relaunch resumes a still-in-flight
+            // operation, since there is nothing to have held onto across the process restart. In
+            // that case the feed name is resolved from the store instead, so a resumed reload
+            // still reports the feed it belongs to rather than `nil` (which would otherwise render
+            // downstream as "No new articles." for a reload that in fact succeeded).
+            let feedName: String?
+            if let visible {
+                feedName = visible.feed?.name
+            } else {
+                let writer = SyncWriter(modelContainer: container)
+                feedName = await OffMainActor.run { await writer.feedName(serverID: articleServerID) }
+            }
+            return .reloaded(articleServerID: articleServerID, feedName: feedName)
+        case .updateAll:
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            let result = (try? await engine.sync())
+                ?? SyncResult(newCount: 0, updatedCount: 0, removedCount: 0)
+            return .updated(newCount: result.newCount)
+        }
+    }
+
+    /// Re-fetches and applies one article's content directly, bypassing `SyncEngine`'s generic
+    /// `hasContent`-gated backfill entirely (an earlier version of this code went through that
+    /// backfill, resetting `hasContent = false` first, and that is actively wrong: a premature
+    /// backfill fetch racing the poll sets `hasContent = true` and permanently blocks any later
+    /// retry, since nothing else ever resets it).
+    /// `visibleArticle`, if given, is the `Article` instance a reader is currently holding and
+    /// rendering for `articleServerID` -- pass it so its in-memory fields are updated directly on
+    /// its own `ModelContext` rather than only through `SyncWriter`'s separate `@ModelActor`
+    /// context. Without this, the write lands in the store but the already-registered `Article`
+    /// object the reader observes keeps its stale, pre-reload field values (a plain `fetch` does
+    /// not refresh already-registered objects' attributes from a sibling context's save), so the
+    /// reader silently keeps showing the old content even though the reload succeeded.
+    /// Not `private`: `UpdateAndSync.pollForReloadedContent` (still called by `ReaderActions`
+    /// until Task 10 rewires those call sites onto `OperationMonitor` directly) delegates to this
+    /// same implementation rather than keeping a second copy.
+    static func fetchAndApplyContent(
+        articleServerID: Int, container: ModelContainer, client: YanaAPIClient, visibleArticle: Article?
+    ) async -> Bool {
+        guard let document: WireDocument = try? await client.get(
+            "/api/v1/articles/\(articleServerID)/content"
+        ) else { return false }
+        // Update the reader's already-registered object directly, on its own context, so the
+        // visible page reflects the new content immediately -- see this method's doc comment for
+        // why `SyncWriter`'s write alone isn't enough.
+        if let visibleArticle, visibleArticle.serverID == articleServerID {
+            // Same summary carry-over rule `SyncWriter.applyContent` applies below -- a locally
+            // generated summary is body content, so a reload must not wipe it. Both write paths need
+            // it, or the visible object and the stored row would disagree about the summary.
+            visibleArticle.blocks = Block.preservingSummary(from: visibleArticle.blocks,
+                                                            in: document.blocks)
+            visibleArticle.hasContent = true
+            try? visibleArticle.modelContext?.save()
+        }
+        // `SyncWriter` is a `@ModelActor` -- per this codebase's rule, every call into one from a
+        // `@MainActor` context must be hopped off-main via `OffMainActor.run`, or the write runs
+        // inline on the calling (main) thread.
+        let writer = SyncWriter(modelContainer: container)
+        let applied = await OffMainActor.run {
+            await writer.applyContent(articleServerID: articleServerID, document: document)
+        }
+        guard applied else { return false }
+
+        // The reload can also change the article's title -- `yana-server`'s `handleReloadJob`
+        // re-derives it from the refetched source and writes `articles.name` (e.g. AI title
+        // translation, or the source correcting its own headline), but `/articles/:id/content`
+        // carries only the block body, never the title. A normal sync pass picks that change up
+        // through `/articles/sync`'s `updated` list (the reload also bumps `updatedAt`). Doing
+        // this *after* the content is already applied, not during the poll, is what makes it
+        // safe: the premature-backfill race this method's doc comment warns about only exists
+        // when a generic sync races the *content* fetch before it's confirmed done -- by this
+        // point this article's `hasContent` is already correctly `true`, so `backfillMissingContent`
+        // has nothing to do for it.
+        let engine = SyncEngine(container: container, client: client)
+        _ = try? await engine.sync()
+
+        if let visibleArticle, visibleArticle.serverID == articleServerID {
+            let freshTitle = await OffMainActor.run { await writer.articleTitle(serverID: articleServerID) }
+            if let freshTitle, freshTitle != visibleArticle.title {
+                visibleArticle.title = freshTitle
+                try? visibleArticle.modelContext?.save()
+            }
+        }
+        return true
     }
 }
 
