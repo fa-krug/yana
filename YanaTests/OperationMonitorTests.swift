@@ -980,4 +980,117 @@ struct OperationMonitorTests {
             #expect(monitor.lastOutcomeEvent == nil)
         }
     }
+
+    /// The one path `silentIfCancelled` exists for, exercised rather than merely inspected:
+    /// cancellation landing *inside* `applyTerminalSuccess`, after the server said "completed" and
+    /// the content `GET` is already in flight. `monitor`'s loop head cannot help there -- the loop
+    /// has already been left -- and before `silentIfCancelled` wrapped every return, the cancelled
+    /// content fetch threw, `applied` came back false, and a reload the server had genuinely
+    /// finished was announced as "Could not reload this article". A user-initiated stop must be
+    /// completely silent.
+    ///
+    /// Holding the window open needs a blocking stub, because `MockURLProtocol.startLoading` is
+    /// synchronous: the content response is parked on a `DispatchSemaphore` until the main actor has
+    /// called `stopWatching()`. That is safe precisely because `startLoading` runs on a URL-loading
+    /// thread, not the main actor, so blocking it leaves the main actor free to do the cancelling.
+    /// The park has a timeout and the release is deferred, so a failing expectation unwinds the test
+    /// instead of wedging that thread (and the whole suite behind `MockURLProtocol.lock`) forever.
+    @Test func cancellingDuringTheContentFetchPublishesNoOutcome() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old", identifier: "art-100",
+                                       date: .now, author: "", read: false, starred: false,
+                                       createdAt: .now, updatedAt: .now)
+            ])
+            let readerContext = ModelContext(container)
+            let visible = try readerContext.fetch(
+                FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == 100 })
+            ).first!
+
+            let gate = HeldContentRequest()
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/jobs/42":
+                    return self.json(request, """
+                    {"jobId":42,"runId":null,"kind":"article.reload","progress":100,
+                     "status":"completed","error":"","startedAt":null,"finishedAt":null}
+                    """)
+                case "/api/v1/articles/100/content":
+                    gate.noteStarted()
+                    gate.waitUntilReleased()
+                    return self.json(request, #"{"version":1,"blocks":[]}"#)
+                case "/api/v1/feeds":
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            let task = monitor.track(operation, settings: settings, container: container,
+                                     client: api, visibleArticle: visible)
+            // Released no matter how this test leaves this scope, including a thrown expectation:
+            // the parked loading thread must never be left waiting on an assertion that failed.
+            defer { gate.release() }
+
+            // Wait until the follow-through is genuinely inside the content fetch -- cancelling
+            // before that would only re-test the loop head, which the sibling test already covers.
+            for _ in 0..<500 where !gate.hasStarted {
+                try await Task.sleep(for: .milliseconds(5))
+            }
+            #expect(gate.hasStarted)
+
+            // Capture before `stopWatching`, which clears the in-flight table (see
+            // `inFlightTasks`' doc comment): the cancelled task's unwind has to be awaited before
+            // this test's stub is torn down.
+            let inFlight = monitor.inFlightTasks
+            monitor.stopWatching(settings: settings)
+            gate.release()
+            await task.value
+            for other in inFlight { await other.value }
+
+            // Silent: the server had reported "completed" and the follow-through was already
+            // running, so every unguarded return path here would have published something.
+            #expect(monitor.lastOutcomeEvent == nil)
+            #expect(monitor.isActive == false)
+            #expect(monitor.progressPercent == nil)
+            // `stopWatching` deliberately drops the persisted records -- the user asked the
+            // spinner to end, and whatever the server produced still arrives through the next
+            // ordinary sync. This is the one cancellation shape that does clear them, unlike a
+            // bare `task.cancel()` (which leaves them for `resume()`).
+            #expect(settings.trackedOperations.isEmpty)
+        }
+    }
+}
+
+/// Lets the cancel-during-follow-through test hold a stubbed response open. The stub body runs on
+/// a URL-loading thread while the assertions run on the main actor, so both the "has it started"
+/// flag and the parking primitive have to be thread-safe rather than a captured `var`.
+private final class HeldContentRequest: @unchecked Sendable {
+    private let lock = NSLock()
+    private var started = false
+    private let released = DispatchSemaphore(value: 0)
+
+    var hasStarted: Bool { lock.withLock { started } }
+    func noteStarted() { lock.withLock { started = true } }
+
+    /// Parks the loading thread until `release()`, with a bound so a test that fails an
+    /// expectation before releasing cannot wedge that thread (and every later test waiting on
+    /// `MockURLProtocol.lock`) indefinitely.
+    func waitUntilReleased() { _ = released.wait(timeout: .now() + 10) }
+    /// Safe to call more than once; the extra signals are simply never consumed.
+    func release() { released.signal() }
 }
