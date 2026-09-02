@@ -901,4 +901,83 @@ struct OperationMonitorTests {
             #expect(monitor.lastOutcomeEvent == nil)
         }
     }
+
+    /// The same invariant as the test above -- **no timeout is ever treated as success** -- but
+    /// against the shape the predecessor bug actually had: a *wall-clock* deadline. That test waits
+    /// on a poll count, and a poll count cannot catch "give up after ten seconds and report
+    /// success", because shrinking the poll interval does not shrink a hardcoded elapsed-time
+    /// deadline: 40 one-millisecond polls take 40ms, so a ten-second give-up branch never fires
+    /// within it and the test passes with the bug reintroduced. `UpdateAndSync`, the type this one
+    /// replaced, waited exactly ten seconds for one SSE event and then fetched the article anyway
+    /// and reported "Reloaded" over pre-reload content. So this case spends real time.
+    ///
+    /// **This test is deliberately real-time and must stay that way.** Do not "optimize" it by
+    /// compressing the window, waiting on a poll count, or injecting a clock: an elapsed-time
+    /// deadline written with `ContinuousClock.now`/`Date()` directly inside `monitor` -- exactly how
+    /// the surviving `youngPhase` comparison there is written -- would bypass any injected time
+    /// source, and every faster formulation of this test would go back to passing while the bug was
+    /// live. Genuinely elapsing the time is the only formulation that cannot be bypassed by how a
+    /// future deadline is written.
+    ///
+    /// The window brackets the original ten seconds with 50% margin. Polls are 50ms (cheap against
+    /// a mock, ~300 of them across the window) so the loop is demonstrably alive the whole time
+    /// rather than stalled -- a monitor whose loop had simply exited would otherwise also publish
+    /// no outcome and pass vacuously, which is why the poll count is asserted too.
+    @Test func aJobThatNeverEndsSurvivesRealElapsedTimeWithoutReportingSuccess() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            var polls = 0
+            var contentFetches = 0
+            let api = client { request in
+                if request.url!.path == "/api/v1/articles/100/content" { contentFetches += 1 }
+                guard request.url!.path == "/api/v1/jobs/42" else {
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+                polls += 1
+                return self.json(request, """
+                {"jobId":42,"runId":null,"kind":"article.reload","progress":40,"status":"running",
+                 "error":"","startedAt":null,"finishedAt":null}
+                """)
+            }
+
+            let monitor = OperationMonitor(pollInterval: .milliseconds(50),
+                                           slowPollInterval: .milliseconds(50),
+                                           youngPhase: .seconds(600),
+                                           nudgeSlice: .milliseconds(10),
+                                           activity: UpdateActivity())
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            let task = monitor.track(operation, settings: settings, container: container,
+                                     client: api)
+
+            // 15 seconds of real elapsed time: half again as long as the ten-second deadline the
+            // predecessor used, so any give-up-and-report-success branch at or below that has had
+            // its chance to fire before the assertions below run.
+            let started = ContinuousClock.now
+            while ContinuousClock.now - started < .seconds(15) {
+                try await Task.sleep(for: .milliseconds(100))
+                // Fail fast rather than at the end, so a reintroduced deadline is reported as
+                // soon as it fires instead of after the full window.
+                if monitor.lastOutcomeEvent != nil { break }
+            }
+
+            #expect(monitor.lastOutcomeEvent == nil)
+            #expect(contentFetches == 0)
+            #expect(monitor.isActive)
+            // The loop really did keep polling across the window (not exit early and pass
+            // vacuously): 15s of 50ms polls is ~300, so require a fraction of that with plenty of
+            // slack for a loaded machine.
+            #expect(polls > 50)
+            // Still persisted: nothing terminal was ever observed, so the record has to survive
+            // for a later resume.
+            #expect(settings.trackedOperations == [operation])
+
+            monitor.stopWatching(settings: settings)
+            await task.value
+            #expect(monitor.lastOutcomeEvent == nil)
+        }
+    }
 }
