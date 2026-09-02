@@ -350,6 +350,83 @@ struct OperationMonitorTests {
         }
     }
 
+    /// Regression pin for the production bug behind `Block.preservingSummary`'s use here: a
+    /// reload replaces `blocks` wholesale (`fetchAndApplyContent`'s direct write to the visible
+    /// object, and `SyncWriter.applyContent` on the stored row), and an incoming document with no
+    /// summary of its own must not silently wipe a summary the user generated locally on this
+    /// device. Seeds the visible article with a summary already in place, completes a reload whose
+    /// incoming document carries none, and checks the summary survives on both the in-memory
+    /// object and a fresh fetch of the stored row.
+    @Test func aCompletedReloadPreservesALocallyGeneratedSummary() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let writer = SyncWriter(modelContainer: container)
+            _ = await writer.replaceFeeds([
+                SyncFeedWire(id: 1, name: "Feed", identifier: "f1", tagIds: [], logoImageHash: nil)
+            ])
+            _ = await writer.upsertSummaries([
+                SyncArticleSummaryWire(id: 100, feedId: 1, name: "Old", identifier: "art-100",
+                                       date: .now, author: "", read: false, starred: false,
+                                       createdAt: .now, updatedAt: .now)
+            ])
+            let readerContext = ModelContext(container)
+            let visible = try readerContext.fetch(
+                FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == 100 })
+            ).first!
+            // Seed a locally generated summary via the shared `Block` helpers, the way
+            // `ReaderActions.summarize` actually writes one, rather than hand-rolling `.summary(...)`.
+            let existingBody: [Block] = [.paragraph([InlineRun(text: "The old article body.")])]
+            visible.blocks = Block.settingSummary(
+                [.paragraph([InlineRun(text: "A locally generated summary.")])], in: existingBody
+            )
+            try readerContext.save()
+            #expect(Block.containsSummary(visible.blocks))
+
+            let api = client { request in
+                switch request.url!.path {
+                case "/api/v1/jobs/42":
+                    return self.json(request, """
+                    {"jobId":42,"runId":null,"kind":"article.reload","progress":100,
+                     "status":"completed","error":"","startedAt":null,"finishedAt":null}
+                    """)
+                case "/api/v1/articles/100/content":
+                    // No summary in the incoming document -- a plain reload from the source, same
+                    // as the server always sends unless it also has "Summarize" enabled for this
+                    // feed.
+                    return self.json(request, #"""
+                    {"version":1,"blocks":[{"type":"paragraph","runs":[{"text":"fresh reload text","styles":[],"link":null}]}]}
+                    """#)
+                case "/api/v1/feeds":
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
+                case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
+                case "/api/v1/articles/sync":
+                    return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
+                default:
+                    return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                            headerFields: nil)!, Data())
+                }
+            }
+
+            let monitor = makeMonitor()
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            await monitor.track(operation, settings: settings, container: container, client: api,
+                                visibleArticle: visible).value
+
+            #expect(visible.plainText.contains("fresh reload text"))
+            #expect(Block.summaryContents(of: visible.blocks).map(BlockParser.plainText)?
+                .contains("A locally generated summary.") == true)
+
+            let stored = try ModelContext(container).fetch(
+                FetchDescriptor<Article>(predicate: #Predicate<Article> { $0.serverID == 100 })
+            ).first!
+            #expect(Block.summaryContents(of: stored.blocks).map(BlockParser.plainText)?
+                .contains("A locally generated summary.") == true)
+        }
+    }
+
     @Test func aCompletedUpdateAllSyncsOnceAndReportsTheNewCount() async throws {
         try await MockURLProtocol.lock.withLock {
             let container = try makeContainer()
@@ -385,6 +462,11 @@ struct OperationMonitorTests {
             await monitor.track(operation, settings: settings, container: container, client: api).value
 
             #expect(monitor.lastOutcome == .updated(newCount: 1))
+            // "Syncs once": the follow-up sync after the run completes must not loop -- a second
+            // (or more) `/articles/sync` call here would mean either a resync-required retry loop
+            // or a duplicate sync pass, either of which would double-count `newCount` on a syncBody
+            // that returns the same "new" article on repeat.
+            #expect(syncCalls == 1)
         }
     }
 
@@ -415,8 +497,14 @@ struct OperationMonitorTests {
                     return self.json(request, #"{"error":{"code":"not_found","message":"gone"}}"#,
                                      status: 404)
                 case "/api/v1/articles/100/content":
-                    return self.json(request, #"{"version":1,"blocks":[]}"#)
-                case "/api/v1/feeds": return self.json(request, #"{"feeds":[]}"#)
+                    return self.json(request, #"""
+                    {"version":1,"blocks":[{"type":"paragraph","runs":[{"text":"fresh","styles":[],"link":null}]}]}
+                    """#)
+                case "/api/v1/feeds":
+                    // Keep the feed the article belongs to alive in this response -- see the other
+                    // reload tests' identical comment. An empty list here would cascade-delete the
+                    // very article whose content this test claims to verify.
+                    return self.json(request, #"{"feeds":[{"id":1,"name":"Feed","identifier":"f1","tagIds":[],"logoImageHash":null}]}"#)
                 case "/api/v1/tags": return self.json(request, #"{"tags":[]}"#)
                 case "/api/v1/articles/sync":
                     return self.json(request, #"{"new":[],"updated":[],"removed":[],"nextCursor":null}"#)
@@ -433,6 +521,16 @@ struct OperationMonitorTests {
             await monitor.track(operation, settings: settings, container: container, client: api).value
 
             #expect(monitor.lastOutcome == .unconfirmed(.reloadArticle(serverID: 100)))
+            // The row being pruned mid-poll doesn't mean nothing was fetched -- `.gone` still
+            // applies whatever content it can before reporting unconfirmed (see the `.gone` arm's
+            // doc comment in `OperationMonitor.monitor`). A fresh fetch (not the `writer`'s own
+            // in-memory object) proves the write actually reached the store, not just an
+            // in-memory copy.
+            let stored = try ModelContext(container).fetch(
+                FetchDescriptor<Article>(predicate: #Predicate<Article> { $0.serverID == 100 })
+            ).first!
+            #expect(stored.hasContent)
+            #expect(stored.plainText.contains("fresh"))
         }
     }
 

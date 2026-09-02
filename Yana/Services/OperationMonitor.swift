@@ -227,7 +227,7 @@ final class OperationMonitor {
             let visible = visibleArticles[operation.monitorKey]?.article
             let applied = await Self.fetchAndApplyContent(
                 articleServerID: articleServerID, container: container, client: client,
-                visibleArticle: visible
+                visibleArticle: visible, settings: settings
             )
             guard applied else { return .failed(operation.kind) }
             // `visible` is only present when the reader was actually holding this article when
@@ -266,9 +266,17 @@ final class OperationMonitor {
     /// reader silently keeps showing the old content even though the reload succeeded.
     /// Not `private`: `UpdateAndSync.pollForReloadedContent` (still called by `ReaderActions`
     /// until Task 10 rewires those call sites onto `OperationMonitor` directly) delegates to this
-    /// same implementation rather than keeping a second copy.
+    /// same implementation rather than keeping a second copy. `settings` defaults to the standard
+    /// `AppSettings()` (backed by `UserDefaults.standard`) so `UpdateAndSync`'s existing callers,
+    /// which have no `settings` of their own to pass, are unaffected -- production always resolves
+    /// to that same store either way. A caller that *does* have an isolated `AppSettings` (this
+    /// type's own `applyTerminalSuccess`, and any test) must pass it explicitly: without this, the
+    /// inner `SyncEngine.sync()` call below would silently fall back to `.standard` and read/write
+    /// `syncCursor`/`imagePruneNeeded` on the real, shared defaults store instead of the caller's
+    /// isolated one.
     static func fetchAndApplyContent(
-        articleServerID: Int, container: ModelContainer, client: YanaAPIClient, visibleArticle: Article?
+        articleServerID: Int, container: ModelContainer, client: YanaAPIClient,
+        visibleArticle: Article?, settings: AppSettings = AppSettings()
     ) async -> Bool {
         guard let document: WireDocument = try? await client.get(
             "/api/v1/articles/\(articleServerID)/content"
@@ -304,7 +312,7 @@ final class OperationMonitor {
         // when a generic sync races the *content* fetch before it's confirmed done -- by this
         // point this article's `hasContent` is already correctly `true`, so `backfillMissingContent`
         // has nothing to do for it.
-        let engine = SyncEngine(container: container, client: client)
+        let engine = SyncEngine(container: container, client: client, settings: settings)
         _ = try? await engine.sync()
 
         if let visibleArticle, visibleArticle.serverID == articleServerID {
