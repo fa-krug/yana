@@ -509,7 +509,8 @@ source and issue board live at
   Next/Previous Article, or picking an article from the list): it persists the current article's
   `identifier` to `AppSettings.timelineAnchorIdentifier` (device-local `UserDefaults`, always
   immediate — offline-first, navigating never waits on network) alongside its `serverID` to the
-  parallel `AppSettings.timelineAnchorServerID` field, and it schedules a debounced push
+  parallel `AppSettings.timelineAnchorServerID` field (and resets
+  `AppSettings.timelineAnchorReadingOffset` to 0 — see below), and it schedules a debounced push
   of that article's `serverID` to `PATCH /api/v1/reading-position` via `ReadingPositionSync` (a
   ~2s idle debounce, so rapid timeline navigation doesn't fire a PATCH per page). A failed push is
   queued in `AppSettings.pendingReadingPositionPush` — a single field, not folded into
@@ -575,6 +576,29 @@ source and issue board live at
   different feeds can legitimately share one, and a plain identifier match could otherwise resolve —
   or cache — the wrong feed's article, which is what caused "going back" to occasionally land the
   reader on (or briefly render) a completely unrelated article.
+- **Within-article reading position** (`AppSettings.timelineAnchorReadingOffset`,
+  `ReaderBlockViewController.readingOffset`/`restoreReadingOffset`,
+  `ReaderArticleViewController.saveReadingOffset`): the anchor above records *which* article the
+  reader is on; this records *how far into it*. Written on `UIApplication.didEnterBackground` and
+  on the reader's `viewWillDisappear`, applied to the page a cold launch opens on (`configure`) and
+  to the displayed page on `willEnterForeground`. Without it every relaunch resumed the right
+  article at its top, which for a long half-read article is barely better than losing the position.
+  Three things worth knowing:
+  - **It is scoped to the anchor by construction, not by a second key.**
+    `TimelineAnchorWriter.record` zeroes it whenever the anchor moves to another article, so a
+    non-zero value always belongs to the article being restored; `restoreSavedReadingOffset` still
+    re-checks `stableKey` before applying.
+  - **It is a raw scroll offset, not a block index.** Written and read by the same layout on the
+    same device, and clamped to what the body can actually hold, so a text-size/font change or a
+    body that came back shorter degrades to a near-enough position rather than a wrong one. A
+    block-anchored position would be more robust and is a larger change.
+  - **The `willEnterForeground` restore is a repair for an unreproduced cause.** It was added for a
+    reported "jumps to the top of the article after a background sync"; the suspected cause is iOS
+    purging a suspended app's page layout (the same purge `rewarmNeighborsAfterReturn` exists to
+    repair), which a unit test cannot make the system do. Every sync path that *could* be tested —
+    an in-place `SyncWriter` update, new articles appended next to the displayed one, the
+    `setViewControllers` page re-assertion, a plain foreground return — was measured and keeps the
+    position. So the restore is a no-op whenever nothing was lost; it only ever repairs a loss.
 - **Background refresh** (`Yana/Services/BackgroundRefreshManager.swift`): best-effort periodic
   `BGAppRefreshTask` + `BGProcessingTask`, registered at launch, rescheduled from the per-device
   `AppSettings.updateInterval` (`UpdateInterval` enum). `runRefresh` calls
@@ -909,9 +933,26 @@ source and issue board live at
   `SummaryBlockTests`, all "Test crashed with signal trap" because Apple Intelligence is unavailable
   in the simulator; this exact 7-test baseline was reproduced on the pre-plan commit, so it predates
   and is unrelated to this plan. Note
+  The reading-position work added two suites —
+  `ReaderPageReassertScrollTests` (5 cases) and `ReaderSyncUpdateScrollTests` (1) — measured at
+  **495 passing cases, 0 assertion failures**, alongside the same standing 7 `SummaryBlockTests`
+  crashes (Apple Intelligence is unavailable in the simulator), which is why a full run exits 65
+  rather than 0. Read that exit code off `xcodebuild` itself: piping the run through `grep` and
+  checking `$?` reports **grep's** status, and a suite with 7 crashes in it reads as a clean pass.
+  Note
   `SyncReactionMainThreadTests.importBatchesLeaveTheMainActorResponsive` measures a wall-clock stall
   against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
   treating a failure there as real.
+- `YanaTests/ReaderPageReassertScrollTests.swift`/`ReaderSyncUpdateScrollTests.swift` — pin that
+  the reader keeps its within-article scroll position across an in-place sync update, a sync that
+  appends articles next to the displayed one, a page re-assertion, a foreground return, and a
+  relaunch. **Measuring this needs care, and getting it wrong invents bugs:** a reader page contains
+  two `UIScrollView`s, and the one deeper in the tree is `SelectableText`'s `UITextView`, with
+  `isScrollEnabled == false` and `contentSize == bounds`. Writing `contentOffset` on it succeeds and
+  reads back but scrolls nothing and is dropped on the next text layout, so a "walk the tree, take
+  the last scroll view" helper reports a reading position the reader never had — which is how a
+  since-disproved `setViewControllers`-zeroes-the-offset root cause got as far as a fix. Both files
+  select the outermost `isScrollEnabled` scroll view (SwiftUI's `HostingScrollView`) instead.
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap

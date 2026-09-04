@@ -221,6 +221,12 @@ final class ReaderArticleViewController: UIViewController,
             self, selector: #selector(handleWillEnterForeground),
             name: UIApplication.willEnterForegroundNotification, object: nil
         )
+        // Last chance to write the reading position before the app can be terminated — the anchor
+        // records *which* article, this records how far into it. See `saveReadingOffset`.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(saveReadingOffset),
+            name: UIApplication.didEnterBackgroundNotification, object: nil
+        )
 
         // Tap the nav bar to hide bars (NNW behavior).
         let tapZone = UIView()
@@ -261,6 +267,7 @@ final class ReaderArticleViewController: UIViewController,
         super.viewWillDisappear(animated)
         // Don't keep reading after the reader is left.
         speech.stop()
+        saveReadingOffset()
     }
 
     /// Flips true after the first `viewDidAppear` so only *return* appearances trigger a neighbor
@@ -298,6 +305,31 @@ final class ReaderArticleViewController: UIViewController,
 
     @objc private func handleWillEnterForeground() {
         rewarmNeighborsAfterReturn()
+        // Put the reading position back after a background trip. iOS purges an off-screen page's
+        // layer backing and layout while the app is suspended (the same purge
+        // `rewarmNeighborsAfterReturn` exists to repair), and a body that is laid out from scratch
+        // comes back at its top. The saved offset is written on `didEnterBackground`, so restoring
+        // it here is a no-op whenever the position did survive — it only ever repairs a loss.
+        if let displayed = displayedPage { restoreSavedReadingOffset(onto: displayed) }
+    }
+
+    /// Persist how far into the displayed article the user has read, alongside the anchor that
+    /// records which article it is (`AppSettings.timelineAnchorReadingOffset`). Without this a
+    /// relaunch resumed the right article at its top, which for a long half-read article is barely
+    /// better than losing the position outright. Pinned by
+    /// `ReaderPageReassertScrollTests.relaunchingKeepsTheReadingPosition`.
+    @objc func saveReadingOffset() {
+        guard let displayed = displayedPage else { return }
+        settings.timelineAnchorReadingOffset = Double(displayed.readingOffset.y)
+    }
+
+    /// The counterpart, applied to the page a cold launch opens on. Only ever applied to the
+    /// anchored article: `TimelineAnchorWriter.record` zeroes the stored offset whenever the anchor
+    /// moves, so a non-zero value always belongs to the article being restored.
+    private func restoreSavedReadingOffset(onto page: ReaderBlockViewController) {
+        let saved = settings.timelineAnchorReadingOffset
+        guard saved != 0, page.article.stableKey == settings.timelineAnchorStableKey else { return }
+        page.restoreReadingOffset(CGPoint(x: 0, y: CGFloat(saved)))
     }
 
     // MARK: - Chrome
@@ -445,6 +477,8 @@ final class ReaderArticleViewController: UIViewController,
         guard !articles.isEmpty else { applyEmptyState(); return }
         applyPopulatedChrome()
         if let page = makePage(for: self.index) {
+            // Resume where the user stopped reading, not at the top of the anchored article.
+            restoreSavedReadingOffset(onto: page)
             // First paint of the shown page renders body text cheaply, then upgrades to selectable.
             page.startsWithFastText = true
             // Warm the visible page's lead image before it is shown so its header renders on the

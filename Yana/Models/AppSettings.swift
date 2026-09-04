@@ -94,6 +94,7 @@ final class AppSettings {
         // Timeline position
         static let timelineAnchorIdentifier = "settings.timelineAnchorIdentifier"
         static let timelineAnchorServerID = "settings.timelineAnchorServerID"
+        static let timelineAnchorReadingOffset = "settings.timelineAnchorReadingOffset"
         // Reading position sync
         static let readingPositionUpdatedAt = "settings.readingPositionUpdatedAt"
         static let pendingRemoteReadingPosition = "settings.pendingRemoteReadingPosition"
@@ -373,6 +374,20 @@ final class AppSettings {
     var timelineAnchorServerID: Int? {
         get { access(keyPath: \.timelineAnchorServerID); return optionalInt(forKey: Key.timelineAnchorServerID) }
         set { withMutation(keyPath: \.timelineAnchorServerID) { setOptionalInt(newValue, forKey: Key.timelineAnchorServerID) } }
+    }
+
+    /// How far into the anchored article the reader was scrolled, so a relaunch resumes where the
+    /// user actually stopped reading rather than at the top of a half-read article. Scoped to the
+    /// anchor by construction: `TimelineAnchorWriter.record` resets it to 0 whenever the anchor
+    /// moves to a different article, so it can never be applied to the wrong one.
+    ///
+    /// A raw scroll offset, not a block index — it is written and read by the same layout on the
+    /// same device, and `ReaderBlockViewController` clamps it to whatever the body can actually
+    /// hold, so a text-size or font change degrades to a near-enough position rather than a wrong
+    /// one.
+    var timelineAnchorReadingOffset: Double {
+        get { access(keyPath: \.timelineAnchorReadingOffset); return defaults.double(forKey: Key.timelineAnchorReadingOffset) }
+        set { withMutation(keyPath: \.timelineAnchorReadingOffset) { defaults.set(newValue, forKey: Key.timelineAnchorReadingOffset) } }
     }
     /// The anchored article as a `TimelineIdentifiable.stableKey`, i.e. the key of the article the
     /// timeline is currently parked on. `ReadFilter` exempts it so the article being read is never

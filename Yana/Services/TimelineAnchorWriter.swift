@@ -30,6 +30,10 @@ final class TimelineAnchorWriter {
     func record(_ summary: ArticleSummary) {
         settings.timelineAnchorIdentifier = summary.identifier
         settings.timelineAnchorServerID = summary.serverID
+        // The saved scroll offset belongs to the article being left behind; a new anchor starts at
+        // the top. Resetting here is what keeps `timelineAnchorReadingOffset` scoped to the anchor
+        // without needing a second key to remember which article it was measured in.
+        settings.timelineAnchorReadingOffset = 0
         settings.pendingRemoteReadingPosition = nil
         ReadingPositionSync.shared.schedulePush(articleServerID: summary.serverID, settings: settings)
     }

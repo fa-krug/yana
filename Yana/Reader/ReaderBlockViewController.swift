@@ -24,6 +24,11 @@ final class ReaderBlockViewController: UIViewController {
     /// neighbors leave it false so they render straight to `SelectableText`, laid out off-screen.
     var startsWithFastText = false
 
+    /// A reading position handed to `restoreReadingOffset`, held until it has actually been
+    /// applied. A freshly built page has no laid-out content yet, so the restore has to wait for
+    /// `viewDidLayoutSubviews`.
+    private var pendingReadingOffset: CGPoint?
+
     private var topTapZone: UIView!
     private var bottomTapZone: UIView!
     /// Desired full-screen tap-zone state, remembered so it survives `viewDidLoad` (the pager may set
@@ -72,6 +77,63 @@ final class ReaderBlockViewController: UIViewController {
     deinit { NotificationCenter.default.removeObserver(self) }
 
     func reload() { rebuild() }
+
+    // MARK: - Reading position
+
+    /// The body's scroll view — the outermost *scrollable* one inside the hosting controller,
+    /// which is SwiftUI's `HostingScrollView` backing `ArticleBlockView`'s root `ScrollView`.
+    ///
+    /// The `isScrollEnabled` test is the load-bearing part, not a nicety: `SelectableText`'s
+    /// `UITextView` is also a `UIScrollView` and sits deeper in the same tree with
+    /// `isScrollEnabled == false` and `contentSize == bounds`. Its `contentOffset` accepts a write
+    /// and reads back, but scrolls nothing and is discarded on the next text layout — so treating
+    /// it as the reading position silently reports a value the reader never had.
+    private var bodyScrollView: UIScrollView? {
+        guard isViewLoaded, let root = host?.view else { return nil }
+        var queue: [UIView] = [root]
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            if let scroll = next as? UIScrollView, scroll.isScrollEnabled { return scroll }
+            queue.append(contentsOf: next.subviews)
+        }
+        return nil
+    }
+
+    /// How far into this article the user has read. `.zero` when the body isn't laid out yet.
+    var readingOffset: CGPoint { bodyScrollView?.contentOffset ?? .zero }
+
+    /// Put a reading position onto this page — the position the reader was at when the app was
+    /// last backgrounded or left (`AppSettings.timelineAnchorReadingOffset`), applied on a cold
+    /// launch and on the return from a background trip.
+    ///
+    /// Applied immediately if the body is already laid out, otherwise retried from
+    /// `viewDidLayoutSubviews` until it lands (a page built from scratch has no content size yet).
+    func restoreReadingOffset(_ offset: CGPoint) {
+        pendingReadingOffset = offset
+        applyPendingReadingOffset()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyPendingReadingOffset()
+    }
+
+    /// Applies (and consumes) `pendingReadingOffset` once the body has laid out enough content to
+    /// hold it. Clamping to the scrollable range keeps the restore honest when the article came
+    /// back shorter than it was.
+    private func applyPendingReadingOffset() {
+        guard let wanted = pendingReadingOffset, let scroll = bodyScrollView else { return }
+        let inset = scroll.adjustedContentInset
+        let minY = -inset.top
+        let maxY = max(minY, scroll.contentSize.height + inset.bottom - scroll.bounds.height)
+        // Nothing scrollable yet: the body hasn't laid out, so clamping now would collapse the
+        // restore to the top and consume it. Wait for the next layout pass instead.
+        guard maxY > minY else { return }
+        pendingReadingOffset = nil
+        let clamped = CGPoint(x: scroll.contentOffset.x, y: min(max(wanted.y, minY), maxY))
+        guard scroll.contentOffset != clamped else { return }
+        scroll.setContentOffset(clamped, animated: false)
+    }
 
     @objc private func rebuild() { host?.rootView = makeRootView() }
 
