@@ -29,6 +29,12 @@ final class ReaderBlockViewController: UIViewController {
     /// `viewDidLayoutSubviews`.
     private var pendingReadingOffset: CGPoint?
 
+    /// Watches the body's `contentSize` while a restore is pending. `viewDidLayoutSubviews` is not
+    /// enough on its own: this controller's view is pinned to fixed constraints, so the SwiftUI
+    /// body growing *inside* the hosting controller never changes its bounds and never triggers
+    /// another layout pass here. The growth is exactly what the restore is waiting for.
+    private var contentGrowthObservation: NSKeyValueObservation?
+
     private var topTapZone: UIView!
     private var bottomTapZone: UIView!
     /// Desired full-screen tap-zone state, remembered so it survives `viewDidLoad` (the pager may set
@@ -121,12 +127,26 @@ final class ReaderBlockViewController: UIViewController {
     /// `viewDidLayoutSubviews` until it lands (a page built from scratch has no content size yet).
     func restoreReadingOffset(_ offset: CGPoint) {
         pendingReadingOffset = offset
+        observeContentGrowth()
         applyPendingReadingOffset()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // The body's scroll view may only exist now, so this is also where a restore requested
+        // before the view loaded gets its observation attached.
+        if pendingReadingOffset != nil { observeContentGrowth() }
         applyPendingReadingOffset()
+    }
+
+    private func observeContentGrowth() {
+        guard contentGrowthObservation == nil, let scroll = bodyScrollView else { return }
+        // Hopped to the next runloop turn on purpose: the observation fires from inside SwiftUI's
+        // own layout pass, and a `contentOffset` written there is overwritten again before it ever
+        // reaches the screen. Applying after the pass settles is what makes the restore stick.
+        contentGrowthObservation = scroll.observe(\.contentSize, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.applyPendingReadingOffset() }
+        }
     }
 
     /// Applies `pendingReadingOffset`, and keeps holding it until the body has actually grown
@@ -144,16 +164,21 @@ final class ReaderBlockViewController: UIViewController {
     /// rather than dragging them back.
     private func applyPendingReadingOffset() {
         guard let wanted = pendingReadingOffset, let scroll = bodyScrollView else { return }
-        guard !scroll.isDragging, !scroll.isDecelerating else { pendingReadingOffset = nil; return }
+        guard !scroll.isDragging, !scroll.isDecelerating else { releasePendingReadingOffset(); return }
         let inset = scroll.adjustedContentInset
         let minY = -inset.top
         let maxY = max(minY, scroll.contentSize.height + inset.bottom - scroll.bounds.height)
         // Nothing scrollable yet: the body hasn't laid out at all. Wait for the next pass.
         guard maxY > minY else { return }
         let clamped = CGPoint(x: scroll.contentOffset.x, y: min(max(wanted.y, minY), maxY))
-        if clamped.y >= wanted.y { pendingReadingOffset = nil }
+        if clamped.y >= wanted.y { releasePendingReadingOffset() }
         guard scroll.contentOffset != clamped else { return }
         scroll.setContentOffset(clamped, animated: false)
+    }
+
+    private func releasePendingReadingOffset() {
+        pendingReadingOffset = nil
+        contentGrowthObservation = nil
     }
 
     @objc private func rebuild() { host?.rootView = makeRootView() }

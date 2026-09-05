@@ -604,6 +604,18 @@ source and issue board live at
     Consuming the target against that short body clamps the reader short of where it was with
     nothing left to correct it, so `applyPendingReadingOffset` re-clamps every pass and only
     releases the target once it fits exactly. A user touching the scroll view abandons it.
+  - **Waiting for that growth needs the scroll view's `contentSize`, not `viewDidLayoutSubviews`.**
+    `ReaderBlockViewController`'s view is pinned to fixed constraints, so the SwiftUI body growing
+    *inside* the hosting controller never changes its bounds and never triggers another layout pass
+    on it — the retry hook fired twice at launch and then never again. The growth is watched with a
+    KVO observation on `contentSize` instead. **And the re-apply must hop to the next runloop
+    turn:** the observation fires from inside SwiftUI's own layout pass, and a `contentOffset`
+    written there is overwritten again before it reaches the screen. Both were measured, not
+    guessed — `aRestoreLandsWhenTheBodyGrowsWithoutAnotherLayoutPass` fails without either half.
+  - **The restore hangs off `makePage`, not `configure`.** A cold launch does not always install
+    the anchored page from `configure`; `reconcile` installs it once the full timeline load lands,
+    and a page built there used to get no restore at all. Every freshly built page for the anchored
+    article resumes; cached pages already hold their own position.
   - **The `willEnterForeground` restore is a repair for an unreproduced cause.** It was added for a
     reported "jumps to the top of the article after a background sync"; the suspected cause is iOS
     purging a suspended app's page layout (the same purge `rewarmNeighborsAfterReturn` exists to
@@ -946,8 +958,8 @@ source and issue board live at
   in the simulator; this exact 7-test baseline was reproduced on the pre-plan commit, so it predates
   and is unrelated to this plan. Note
   The reading-position work added two suites —
-  `ReaderPageReassertScrollTests` (8 cases) and `ReaderSyncUpdateScrollTests` (1) — measured at
-  **498 passing cases, 0 assertion failures**, alongside the same standing 7 `SummaryBlockTests`
+  `ReaderPageReassertScrollTests` (10 cases) and `ReaderSyncUpdateScrollTests` (1) — measured at
+  **500 passing cases, 0 assertion failures**, alongside the same standing 7 `SummaryBlockTests`
   crashes (Apple Intelligence is unavailable in the simulator), which is why a full run exits 65
   rather than 0. Read that exit code off `xcodebuild` itself: piping the run through `grep` and
   checking `$?` reports **grep's** status, and a suite with 7 crashes in it reads as a clean pass.

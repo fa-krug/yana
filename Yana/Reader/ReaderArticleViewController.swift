@@ -480,8 +480,6 @@ final class ReaderArticleViewController: UIViewController,
         guard !articles.isEmpty else { applyEmptyState(); return }
         applyPopulatedChrome()
         if let page = makePage(for: self.index) {
-            // Resume where the user stopped reading, not at the top of the anchored article.
-            restoreSavedReadingOffset(onto: page)
             // First paint of the shown page renders body text cheaply, then upgrades to selectable.
             page.startsWithFastText = true
             // Warm the visible page's lead image before it is shown so its header renders on the
@@ -612,6 +610,12 @@ final class ReaderArticleViewController: UIViewController,
             onRequestShowBars: { [weak self] in self?.applyFullscreen(false, animated: true) }
         )
         vc.hideBarsTapZonesActive(settings.articleFullscreenEnabled && isFullscreenAvailable)
+        // Every freshly built page for the anchored article resumes where the user left off, not
+        // just the one `configure` happens to build. A cold launch does not always install the
+        // anchored page from `configure` — `reconcile` installs it too, once the full timeline
+        // load lands — and a page built there used to get no restore at all. Cached pages already
+        // hold their own position, so this only ever applies to a page built from scratch.
+        restoreSavedReadingOffset(onto: vc)
         pageCache.insert(vc, for: summary.stableKey)
         return vc
     }

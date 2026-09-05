@@ -350,4 +350,93 @@ struct ReaderPageReassertScrollTests {
         #expect(!page.hasPendingReadingOffset)
         #expect(bodyScrollView(page.view)?.contentOffset.y == parked.target)
     }
+
+    /// A cold launch does not always install the anchored page from `configure`: the full timeline
+    /// load lands afterwards and `reconcile` installs it instead. A page built there must resume
+    /// too, which is why the restore hangs off `makePage` rather than `configure`.
+    @Test func aPageBuiltByReconcileAlsoResumesTheReadingPosition() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        let articles = try seed(context: context, feed: feed, count: 8)
+
+        let settings = AppSettings()
+        settings.timelineAnchorIdentifier = articles[4].identifier
+        settings.timelineAnchorServerID = articles[4].serverID
+        settings.timelineAnchorReadingOffset = 400
+        defer {
+            settings.timelineAnchorIdentifier = nil
+            settings.timelineAnchorServerID = nil
+            settings.timelineAnchorReadingOffset = 0
+        }
+
+        let reader = ReaderArticleViewController()
+        reader.resolveArticle = { summary in articles.first { $0.serverID == summary.serverID } }
+        let nav = UINavigationController(rootViewController: reader)
+        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = nav
+        window.isHidden = false
+
+        // Built on a different article, the way a launch that has not resolved the anchor yet does.
+        reader.configure(articles: articles.map { ArticleSummary($0) }, index: 0)
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(400))
+
+        // The anchor resolves and the anchored page is installed by `reconcile`.
+        reader.update(articles: articles.map { ArticleSummary($0) }, index: 4)
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(800))
+        window.layoutIfNeeded()
+
+        let current = try #require(reader.children.compactMap { $0 as? UIPageViewController }.first?
+            .viewControllers?.first)
+        let after = bodyScrollView(current.view)?.contentOffset.y ?? -1
+        print("PROBE reconcile-installed page: -> \(after)")
+        #expect(after == 400, "a page installed by reconcile opened at \(after) instead of 400")
+    }
+
+    /// The restore has to survive the body growing *after* the last layout pass of this controller.
+    /// Its view is pinned to fixed constraints, so SwiftUI content growing inside the hosting
+    /// controller never changes its bounds and never triggers `viewDidLayoutSubviews` again — the
+    /// growth is watched through the scroll view's `contentSize` instead. Growth is provoked here
+    /// with a text-size change, which is a real one (`articleTextSizeDidChange` rebuilds the body).
+    @Test func aRestoreLandsWhenTheBodyGrowsWithoutAnotherLayoutPass() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        var articles = try seed(context: context, feed: feed, count: 8)
+
+        let settings = AppSettings()
+        let originalSize = settings.articleTextSize
+        settings.articleTextSize = .small
+        defer { settings.articleTextSize = originalSize }
+
+        let parked = try await makeParkedReader(context: context, articles: &articles, feed: feed, index: 4)
+        let page = try #require(parked.page as? ReaderBlockViewController)
+        let scroll = try #require(bodyScrollView(page.view))
+
+        // Beyond what the small-text body can hold, so the restore has to wait for growth.
+        let beyond = scroll.contentSize.height + 600
+        page.restoreReadingOffset(CGPoint(x: 0, y: beyond))
+        parked.window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        let beforeGrowth = scroll.contentOffset.y
+        #expect(page.hasPendingReadingOffset)
+
+        // Grow the body. No bounds change on the page controller's own view.
+        settings.articleTextSize = .xxlarge
+        parked.window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(800))
+        parked.window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(400))
+
+        let grown = try #require(bodyScrollView(page.view))
+        print("PROBE growth retry: \(beforeGrowth) -> \(grown.contentOffset.y) (target \(beyond))")
+        #expect(grown.contentOffset.y > beforeGrowth,
+                "the restore was not retried when the body grew: stuck at \(grown.contentOffset.y)")
+    }
 }
