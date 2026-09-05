@@ -280,4 +280,74 @@ struct ReaderPageReassertScrollTests {
         print("PROBE purged background trip: offset \(parked.target) -> \(after)")
         #expect(after == parked.target, "the reader came back at \(after) after a background trip")
     }
+
+    /// A page whose body isn't laid out cannot report a reading position, and must say so rather
+    /// than answer "the top". Answering `.zero` is indistinguishable from a user who really is at
+    /// the top, so a save taken during teardown overwrites a good saved position with 0 — which is
+    /// exactly what a relaunch then fails to restore.
+    @Test func anUnlaidOutPageReportsNoReadingPosition() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        let articles = try seed(context: context, feed: feed, count: 1)
+
+        let page = ReaderBlockViewController(
+            article: articles[0], allowsFullscreen: false, onRefresh: nil, onRequestShowBars: {}
+        )
+        #expect(page.readingOffset == nil, "an unloaded page claimed to know the reading position")
+    }
+
+    /// The save must be a no-op when there is nothing to measure, so a teardown-time call cannot
+    /// clobber the position `didEnterBackground` already wrote.
+    @Test func savingWithNothingToMeasureLeavesTheStoredPositionAlone() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        let articles = try seed(context: context, feed: feed, count: 3)
+
+        let settings = AppSettings()
+        settings.timelineAnchorReadingOffset = 777
+        defer { settings.timelineAnchorReadingOffset = 0 }
+
+        // A reader that was never put in a window: its pages exist but have no laid-out body.
+        let reader = ReaderArticleViewController()
+        reader.resolveArticle = { summary in articles.first { $0.serverID == summary.serverID } }
+        reader.configure(articles: articles.map { ArticleSummary($0) }, index: 1)
+        reader.saveReadingOffset()
+
+        #expect(settings.timelineAnchorReadingOffset == 777,
+                "the save clobbered a good position with an unmeasurable one")
+    }
+
+    /// The restore must survive a body that grows after the first layout pass — a lead image
+    /// resolving, or the plain-text first paint upgrading to `SelectableText`. Consuming the
+    /// pending offset on the first layout clamps it to whatever short body existed at that instant
+    /// and then never corrects it.
+    @Test func aRestoreBeyondTheCurrentBodyIsKeptUntilItFits() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        var articles = try seed(context: context, feed: feed, count: 8)
+
+        let parked = try await makeParkedReader(context: context, articles: &articles, feed: feed, index: 4)
+        let page = try #require(parked.page as? ReaderBlockViewController)
+
+        // Further than this body can currently scroll: the article has not finished growing.
+        page.restoreReadingOffset(CGPoint(x: 0, y: 99_999))
+        parked.window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(page.hasPendingReadingOffset,
+                "the restore was consumed against a body that could not hold it yet")
+
+        // One that fits is applied and consumed.
+        page.restoreReadingOffset(CGPoint(x: 0, y: parked.target))
+        parked.window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(!page.hasPendingReadingOffset)
+        #expect(bodyScrollView(page.view)?.contentOffset.y == parked.target)
+    }
 }

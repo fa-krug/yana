@@ -319,8 +319,11 @@ final class ReaderArticleViewController: UIViewController,
     /// better than losing the position outright. Pinned by
     /// `ReaderPageReassertScrollTests.relaunchingKeepsTheReadingPosition`.
     @objc func saveReadingOffset() {
-        guard let displayed = displayedPage else { return }
-        settings.timelineAnchorReadingOffset = Double(displayed.readingOffset.y)
+        // No measurement means no write. `viewWillDisappear` fires during teardown, after
+        // `didEnterBackground` has already stored the real position; measuring a torn-down body
+        // there would answer "the top" and clobber it, leaving the next launch nothing to restore.
+        guard let offset = displayedPage?.readingOffset else { return }
+        settings.timelineAnchorReadingOffset = Double(offset.y)
     }
 
     /// The counterpart, applied to the page a cold launch opens on. Only ever applied to the

@@ -99,8 +99,19 @@ final class ReaderBlockViewController: UIViewController {
         return nil
     }
 
-    /// How far into this article the user has read. `.zero` when the body isn't laid out yet.
-    var readingOffset: CGPoint { bodyScrollView?.contentOffset ?? .zero }
+    /// How far into this article the user has read, or `nil` when there is nothing to measure —
+    /// the body isn't laid out, or its backing was purged while the app was suspended.
+    ///
+    /// The `nil` is the point: answering `.zero` here is indistinguishable from a user who really
+    /// is at the top of the article, so a save taken while the views are being torn down
+    /// overwrites a good stored position with 0, and the next launch has nothing to restore.
+    var readingOffset: CGPoint? {
+        guard let scroll = bodyScrollView, scroll.contentSize.height > 0 else { return nil }
+        return scroll.contentOffset
+    }
+
+    /// Whether a restore is still waiting for the body to grow enough to hold it. Test-facing.
+    var hasPendingReadingOffset: Bool { pendingReadingOffset != nil }
 
     /// Put a reading position onto this page — the position the reader was at when the app was
     /// last backgrounded or left (`AppSettings.timelineAnchorReadingOffset`), applied on a cold
@@ -118,19 +129,29 @@ final class ReaderBlockViewController: UIViewController {
         applyPendingReadingOffset()
     }
 
-    /// Applies (and consumes) `pendingReadingOffset` once the body has laid out enough content to
-    /// hold it. Clamping to the scrollable range keeps the restore honest when the article came
-    /// back shorter than it was.
+    /// Applies `pendingReadingOffset`, and keeps holding it until the body has actually grown
+    /// enough to satisfy it.
+    ///
+    /// **Consuming it on the first layout pass is wrong**, which is what this used to do: a page
+    /// is laid out well before it is finished growing — the first paint renders plain text and
+    /// upgrades to `SelectableText` a runloop later (`startsWithFastText`), and a lead image
+    /// resolves later still (`ArticleBlockView`'s reveal gate). Clamping to whatever short body
+    /// existed at that instant and then throwing the target away leaves the reader short of where
+    /// it was, with nothing left to correct it. So the clamp is applied every pass as a best
+    /// effort, but the target is only released once the body can hold it exactly.
+    ///
+    /// The user always wins: once they touch the scroll view, the pending restore is abandoned
+    /// rather than dragging them back.
     private func applyPendingReadingOffset() {
         guard let wanted = pendingReadingOffset, let scroll = bodyScrollView else { return }
+        guard !scroll.isDragging, !scroll.isDecelerating else { pendingReadingOffset = nil; return }
         let inset = scroll.adjustedContentInset
         let minY = -inset.top
         let maxY = max(minY, scroll.contentSize.height + inset.bottom - scroll.bounds.height)
-        // Nothing scrollable yet: the body hasn't laid out, so clamping now would collapse the
-        // restore to the top and consume it. Wait for the next layout pass instead.
+        // Nothing scrollable yet: the body hasn't laid out at all. Wait for the next pass.
         guard maxY > minY else { return }
-        pendingReadingOffset = nil
         let clamped = CGPoint(x: scroll.contentOffset.x, y: min(max(wanted.y, minY), maxY))
+        if clamped.y >= wanted.y { pendingReadingOffset = nil }
         guard scroll.contentOffset != clamped else { return }
         scroll.setContentOffset(clamped, animated: false)
     }
