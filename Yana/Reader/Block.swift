@@ -60,7 +60,7 @@ struct InlineRun: Codable, Sendable, Equatable {
 /// A media embed. Rendered as a poster card (video) or a text card (tweet); a tap plays the video
 /// in-app or opens `externalURL` in the system browser / in-app Safari.
 struct Embed: Codable, Sendable, Equatable {
-    enum Provider: String, Codable, Sendable {
+    enum Provider: String, Codable, Sendable, CaseIterable {
         /// Providers played inline via their privacy-mode iframe player.
         case youtube, dailymotion
         /// A direct video stream (HLS `.m3u8` or MP4), e.g. a Reddit `v.redd.it` post. `externalURL`
