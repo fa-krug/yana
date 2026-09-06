@@ -178,20 +178,15 @@ struct ArticleListView: View {
             }
             ToolbarItem(placement: .topBarLeading) {
                 if isUpdating {
-                    HStack(spacing: 4) {
-                        Button { OperationMonitor.shared.stopWatching(settings: settings) } label: {
-                            ZStack {
-                                ProgressView()
-                                Image(systemName: "stop.fill")
-                                    .font(.system(size: 7, weight: .bold))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .accessibilityLabel(Text("Stop updating"))
-                        if let label = UpdateActivity.shared.progressLabel {
-                            Text(label).font(.caption).foregroundStyle(.secondary)
+                    Button { OperationMonitor.shared.stopWatching(settings: settings) } label: {
+                        ZStack {
+                            ProgressView()
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(.secondary)
                         }
                     }
+                    .accessibilityLabel(Text("Stop updating"))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {

@@ -18,16 +18,11 @@ final class UpdateActivity {
     var isUpdating: Bool { inFlight > 0 }
 
     /// The server's own percentage for whatever is running, 0-100, `nil` when there is nothing to
-    /// report. Set by `OperationMonitor`; displayed verbatim, with no unit conversion.
+    /// report. Set by `OperationMonitor`. Not shown in the UI -- every surface draws a plain,
+    /// indeterminate spinner -- but kept as the monitor's progress state.
     private(set) var progressPercent: Int?
 
     func setProgress(_ percent: Int?) { progressPercent = percent }
-
-    /// The percentage as shown next to a spinner, or `nil` when there is none.
-    var progressLabel: String? {
-        guard let progressPercent else { return nil }
-        return String(localized: "\(progressPercent)%")
-    }
 
     /// The most recently started update. A new `restart` cancels it before running.
     private var current: Task<Void, Never>?

@@ -327,11 +327,14 @@ source and issue board live at
   that happens after the ack. **The durable `jobs`/`runs` rows are the source of truth; SSE only
   moves the number sooner.** `OperationMonitor` polls `GET /api/v1/jobs/:id`
   (`JobStatusResponse`, for a reload) or `GET /api/v1/runs/:id` (`RunStatusResponse`, for
-  "Update All") until the row itself reports a terminal status, publishing the row's own `progress`
-  percentage verbatim at every poll; `startEvents` separately listens to `JobEventsClient`'s SSE
+  "Update All") until the row itself reports a terminal status, tracking the row's own `progress`
+  percentage at every poll; `startEvents` separately listens to `JobEventsClient`'s SSE
   stream purely to move `progressPercent` forward sooner between polls (clamped to
   `max(existing, incoming)`) — a missed or duplicated event costs nothing, because it is never
-  what ends the wait. **No timeout is ever treated as success.** This replaces `UpdateAndSync`,
+  what ends the wait. **That percentage is not shown anywhere:** every busy surface (the iOS reader's
+  nav-bar indicator, the article list's stop button, the Mac toolbar's update button) draws a plain
+  indeterminate spinner, so `UpdateActivity.progressPercent` is monitor state only and there is no
+  `progressLabel` any more. **No timeout is ever treated as success.** This replaces `UpdateAndSync`,
   whose `pollForReloadedContent` waited ten seconds for a single SSE event and then fetched the
   article and reported "Reloaded" regardless of what the server was actually doing — since the
   server's own worker only claims a pending job on a two-second poll and then refetches and
@@ -361,7 +364,7 @@ source and issue board live at
   after a short settle (`RefreshableIfAvailable`, `Yana/Reader/ArticleBlockView.swift`) rather than
   blocking on completion, because an operation can now run for as long as the server takes — minutes,
   for a full aggregation run — and a system refresh control cannot stay presented that long; the
-  toolbar spinner and its percentage carry the real state instead, and no success toast fires from
+  toolbar spinner carries the real state instead, and no success toast fires from
   the refresh gesture itself. Every surface that can trigger a wait observes the same
   `OperationMonitor.shared.lastOutcome` to report it — `ReaderScreen` (iOS), `MacRootView`'s
   delegate to `TimelineModel.applyOperationOutcome`, and `ArticleListView` while its sheet is
@@ -878,9 +881,9 @@ source and issue board live at
   (`POST /articles/:id/reload`, that article only), persisting a `.reloadArticle` `TrackedOperation`
   keyed by the returned job id instead. From there both follow the identical path: `OperationMonitor`
   polls `GET /api/v1/runs/:id` or `GET /api/v1/jobs/:id` respectively until the row itself reports a
-  terminal status, showing that row's own `progress` percentage verbatim the whole time (a live
-  `/api/v1/jobs/events` SSE event can only nudge the shown percentage forward sooner, never end the
-  wait — see **Actions**), and only then applies the result — a `SyncEngine.sync()` for "Update All",
+  terminal status, tracking that row's own `progress` percentage the whole time (a live
+  `/api/v1/jobs/events` SSE event can only nudge that percentage forward sooner, never end the
+  wait; nothing displays it — the UI is a plain spinner — see **Actions**), and only then applies the result — a `SyncEngine.sync()` for "Update All",
   a direct `/articles/:id/content` re-fetch for a reload. **No timeout is ever treated as success**,
   and `AppSettings.trackedOperations` outlives both the triggering view and the process: a relaunch's
   `OperationMonitor.resume()` (called at launch and on every foreground) picks the same wait back up
