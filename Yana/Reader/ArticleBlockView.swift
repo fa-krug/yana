@@ -546,10 +546,16 @@ private func attributedString(from runs: [InlineRun]) -> AttributedString {
 /// actor and fills in.
 private struct ReaderImageView: View {
     let ref: String
+    /// Drawn while the image is still absent. In-body images collapse to nothing (the default) so
+    /// the text doesn't reserve a gap for an image that may never arrive; an embed poster passes
+    /// `EmbedPosterPlaceholder` instead, since a poster card with nothing in it is a bare play
+    /// glyph floating in the body.
+    let placeholder: AnyView?
     @State private var image: UIImage?
 
-    init(ref: String) {
+    init(ref: String, placeholder: AnyView? = nil) {
         self.ref = ref
+        self.placeholder = placeholder
         // Seed from the cache synchronously so an already-decoded image renders on the first frame
         // (the common case for prewarmed neighbors and revisited pages) instead of popping in.
         _image = State(initialValue: ReaderImageCache.shared.cached(ref))
@@ -561,6 +567,8 @@ private struct ReaderImageView: View {
                 content(for: image)
                     .frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else if let placeholder {
+                placeholder
             } else {
                 Color.clear.frame(height: 1)
             }
@@ -641,11 +649,11 @@ private struct EmbedCardView: View {
 
     @ViewBuilder private var posterCard: some View {
         ZStack {
-            if let ref = embed.thumbnailRef {
-                ReaderImageView(ref: ref)
+            if let ref = EmbedPoster.posterRef(for: embed) {
+                ReaderImageView(ref: ref,
+                                placeholder: AnyView(EmbedPosterPlaceholder(provider: embed.provider)))
             } else {
-                RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.85))
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                EmbedPosterPlaceholder(provider: embed.provider)
             }
             Image(systemName: "play.circle.fill")
                 .font(.system(size: 54))

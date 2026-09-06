@@ -658,7 +658,24 @@ source and issue board live at
   tweet embeds as text cards — tapping a video plays it full-screen in-app via
   `ReaderVideoPlayerViewController` (YouTube/Dailymotion in a `WKWebView` privacy-mode player; a
   direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController`),
-  while tweets/unplayable embeds open externally. **How the player is loaded is per-provider,
+  while tweets/unplayable embeds open externally. **A poster card with no poster draws
+  `EmbedPosterPlaceholder` (`Yana/Reader/EmbedPoster.swift`), not an empty box.** Two unrelated
+  causes land there: the embed genuinely has no thumbnail anywhere (a private/deleted/region-blocked
+  YouTube video is dropped from `img.youtube.com` — both `maxresdefault` and `hqdefault` answer 404
+  with a 120×90 grey placeholder — so `yana-server`'s `localizeThumbnail` stores `""` and its
+  `encodeBlock` nulls it on the wire), or the ref is real but its bytes haven't landed in
+  `ImageStore` yet. Both used to render as something that read like a failed image load: a flat
+  black 16:9 rectangle with a lone play glyph for the first, and — because `ReaderImageView`
+  collapses to a 1pt sliver while empty — a play glyph floating in the body with no card at all for
+  the second. The placeholder is accent-tinted gradient artwork at the size the real poster would
+  occupy, so a late thumbnail lands over the top without the layout jumping. `ReaderImageView` takes
+  it as an optional `placeholder`; in-body images pass none and keep the collapse-to-nothing
+  behavior, which is deliberate there (text must not reserve a gap for an image that may never
+  arrive). `EmbedPoster.posterRef(for:)` treats an empty ref as absent, not just `nil` — the wire
+  nulls empties but a locally-authored fixture can carry `""` — and `glyph(for:)` is driven off
+  `Embed.Provider.allCases` in tests so a provider added later can't ship with no artwork. Note this
+  fixes the *presentation* only: the server still emits an embed for an unavailable video, so the
+  play button still opens something that won't play. **How the player is loaded is per-provider,
   decided by `ReaderVideoPlayerViewController.requiresEmbedderContext(_:)` — do not unify the two
   branches.** Dailymotion (and anything else) loads **top-level**, which makes the provider
   first-party so a `WKUserScript` can pre-seed its consent-notice localStorage flag; **YouTube must
@@ -966,6 +983,12 @@ source and issue board live at
   crashes (Apple Intelligence is unavailable in the simulator), which is why a full run exits 65
   rather than 0. Read that exit code off `xcodebuild` itself: piping the run through `grep` and
   checking `$?` reports **grep's** status, and a suite with 7 crashes in it reads as a clean pass.
+  The embed-poster placeholder added `EmbedPosterTests` (4 cases: the SF Symbol every provider's
+  glyph resolves to, and that a `nil`/`""`/real `thumbnailRef` each pick the right branch), measured
+  at **510 passing, 7 failing** — the same standing `SummaryBlockTests` crashes, no new failures.
+  Read the pass/fail counts off `xcrun xcresulttool get test-results summary --path <bundle>`: the
+  "Executed N tests" line `xcodebuild` prints at the end counts only the XCTest UI tests, not the
+  Swift Testing cases.
   Note
   `SyncReactionMainThreadTests.importBatchesLeaveTheMainActorResponsive` measures a wall-clock stall
   against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
