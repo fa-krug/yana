@@ -66,6 +66,12 @@ struct ArticleBlockView: View {
     /// Tapping an image opens it full-screen with pinch-to-zoom.
     var onShowImage: (String) -> Void = { _ in }
     var onRefresh: (() -> Void)?
+    /// "Find in Article" highlights, keyed by the same segment/path scheme this view renders by
+    /// (`FindUnitID`). `.empty` on every page that is not being searched.
+    var find: FindHighlights = .empty
+    /// A one-shot ask to scroll a body segment on screen (see `FindScrollRequest`), used for a match
+    /// whose text view the lazy stack has not built yet or that has no text view of its own.
+    var findScrollRequest: FindScrollRequest?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -78,42 +84,39 @@ struct ArticleBlockView: View {
     }
 
     var body: some View {
-        ScrollView {
-            // LazyVStack (not VStack): only the segments scrolled into view are instantiated and laid
-            // out, and each image's decoding `.task` fires only when its block appears. A very large
-            // article — e.g. a multi-page Heise story with many inline images — otherwise laid out
-            // every block and decoded every image at once, spiking memory enough to get the app
-            // jetsammed (no crash report). It also keeps off-screen neighbor prewarm (`layoutIfNeeded`)
-            // cheap, since only the initially-visible slice is laid out.
-            LazyVStack(alignment: .leading, spacing: 16) {
-                header
-                ForEach(bodySegments) { segment in
-                    switch segment.kind {
-                    case .textRun(let blocks):
-                        // A run of consecutive paragraphs/headings rendered by a single UITextView
-                        // (see ReaderAttributedText.make(blocks:)) — one hosted text view for a whole
-                        // stretch of prose instead of one per block, the reader's main per-page cost.
-                        // TextRunView renders it as plain SwiftUI Text first when `deferSelectableText`
-                        // is set, then upgrades to the selectable UITextView after first paint.
-                        TextRunView(blocks: blocks, bodySize: bodySize, uiDesign: font.uiDesign,
-                                    deferSelectable: deferSelectableText, onOpenLink: onOpenLink)
-                    case .summary(let inner):
-                        SummaryCardView(blocks: inner, bodySize: bodySize, design: font.uiDesign,
-                                        onOpenLink: onOpenLink, onPlayVideo: onPlayVideo,
-                                        onShowImage: onShowImage)
-                    case .single(let block):
-                        BlockNodeView(block: block, bodySize: bodySize, design: font.uiDesign,
-                                      leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                      onPlayVideo: onPlayVideo, onShowImage: onShowImage)
+        ScrollViewReader { proxy in
+            ScrollView {
+                // LazyVStack (not VStack): only the segments scrolled into view are instantiated and laid
+                // out, and each image's decoding `.task` fires only when its block appears. A very large
+                // article — e.g. a multi-page Heise story with many inline images — otherwise laid out
+                // every block and decoded every image at once, spiking memory enough to get the app
+                // jetsammed (no crash report). It also keeps off-screen neighbor prewarm (`layoutIfNeeded`)
+                // cheap, since only the initially-visible slice is laid out.
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    header
+                    ForEach(bodySegments) { segment in
+                        segmentView(segment)
+                            // Explicit, so `FindScrollRequest` can `scrollTo` a segment the lazy stack
+                            // has not built yet.
+                            .id(segment.id)
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fontDesign(font.design)   // applies the chosen typeface to all text (code blocks pin their own monospaced design)
+                .textSelection(.enabled)
+                .tint(.accentColor)   // colors tappable links in the rendered AttributedString
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fontDesign(font.design)   // applies the chosen typeface to all text (code blocks pin their own monospaced design)
-            .textSelection(.enabled)
-            .tint(.accentColor)   // colors tappable links in the rendered AttributedString
+            .onChange(of: findScrollRequest) { _, request in
+                guard let request else { return }
+                // Not animated: `ReaderBlockViewController` follows this coarse jump with an
+                // animated fine scroll to the match's own line once its text view exists, and two
+                // animations chained would visibly stutter.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { proxy.scrollTo(request.segment, anchor: .center) }
+            }
         }
         .environment(\.openURL, OpenURLAction { url in
             onOpenLink(url)
@@ -121,6 +124,28 @@ struct ArticleBlockView: View {
         })
         .modifier(RefreshableIfAvailable(onRefresh: onRefresh))
         .modifier(LeadImageReveal(leadImageRef: leadImageRef))
+    }
+
+    @ViewBuilder private func segmentView(_ segment: BodySegment) -> some View {
+        switch segment.kind {
+        case .textRun(let blocks):
+            // A run of consecutive paragraphs/headings rendered by a single UITextView
+            // (see ReaderAttributedText.make(blocks:)) — one hosted text view for a whole
+            // stretch of prose instead of one per block, the reader's main per-page cost.
+            // TextRunView renders it as plain SwiftUI Text first when `deferSelectableText`
+            // is set, then upgrades to the selectable UITextView after first paint.
+            TextRunView(blocks: blocks, segment: segment.id, bodySize: bodySize, uiDesign: font.uiDesign,
+                        deferSelectable: deferSelectableText, find: find, onOpenLink: onOpenLink)
+        case .summary(let inner):
+            SummaryCardView(blocks: inner, unit: FindUnitID(segment: segment.id), bodySize: bodySize,
+                            design: font.uiDesign, find: find,
+                            onOpenLink: onOpenLink, onPlayVideo: onPlayVideo,
+                            onShowImage: onShowImage)
+        case .single(let block):
+            BlockNodeView(block: block, unit: FindUnitID(segment: segment.id), bodySize: bodySize,
+                          design: font.uiDesign, leadImageRef: leadImageRef, find: find,
+                          onOpenLink: onOpenLink, onPlayVideo: onPlayVideo, onShowImage: onShowImage)
+        }
     }
 
     // MARK: - Header / summary / lead image ordering
@@ -134,47 +159,13 @@ struct ArticleBlockView: View {
     /// comes from the document rather than from this view hoisting it into the header; the lead
     /// image is the only thing still hoisted.
     private var bodyBlocks: [Block] {
-        let blocks = article.blocks
-        guard summaryPending, !Block.containsSummary(blocks) else { return blocks }
-        return Block.settingSummary([], in: blocks)
+        BodySegment.bodyBlocks(article.blocks, summaryPending: summaryPending)
     }
 
-    /// The top-level body split into render segments: maximal runs of consecutive flowing-text
-    /// blocks (paragraphs + headings) coalesced into one `SelectableText`, with every other block
-    /// (image, embed, list, blockquote, code, divider) standing alone. Collapsing prose runs into a
-    /// single hosted `UITextView` — instead of one per block — is the reader's biggest per-page cost
-    /// reduction while keeping full, edit-menu text selection.
+    /// The top-level body split into render segments -- see `BodySegment.segments(from:)`, which is
+    /// shared with the find index so a match is keyed by the segment that actually draws it.
     private var bodySegments: [BodySegment] {
-        var segments: [BodySegment] = []
-        var run: [Block] = []
-        var id = 0
-        func flushRun() {
-            guard !run.isEmpty else { return }
-            segments.append(BodySegment(id: id, kind: .textRun(run)))
-            id += 1
-            run = []
-        }
-        for block in bodyBlocks {
-            switch block {
-            case .paragraph, .heading:
-                run.append(block)
-            case .summary(let inner):
-                // Its own segment kind rather than a plain `.single`: the card is drawn by
-                // `ArticleBlockView` so an empty one can render the in-flight skeleton, which
-                // needs `summaryPending` in scope. An empty summary with nothing in flight is a
-                // degenerate document; drop it rather than draw a blank card.
-                guard !inner.isEmpty || summaryPending else { continue }
-                flushRun()
-                segments.append(BodySegment(id: id, kind: .summary(inner)))
-                id += 1
-            default:
-                flushRun()
-                segments.append(BodySegment(id: id, kind: .single(block)))
-                id += 1
-            }
-        }
-        flushRun()
-        return segments
+        BodySegment.segments(from: article.blocks, summaryPending: summaryPending)
     }
 
     /// Ref of the lead image (when the first block is an image), so `BlockNodeView` can skip it in
@@ -203,8 +194,9 @@ struct ArticleBlockView: View {
             // the summary, and `BlockNodeView` skips it further down. Everything after it -- the
             // summary block included -- renders in document order.
             if case let .image(ref, caption)? = bodyBlocks.first {
-                BlockImageView(ref: ref, caption: caption, bodySize: bodySize,
-                               design: font.uiDesign, onOpenLink: onOpenLink, onShowImage: onShowImage)
+                BlockImageView(ref: ref, caption: caption, unit: .leadImage, bodySize: bodySize,
+                               design: font.uiDesign, find: find, onOpenLink: onOpenLink,
+                               onShowImage: onShowImage)
             }
         }
     }
@@ -237,14 +229,70 @@ struct ArticleBlockView: View {
 /// One render unit of the article body: a coalesced run of consecutive text blocks (rendered by a
 /// single `SelectableText`), the AI summary card, or a standalone non-text block. `id` is the
 /// block's position in the segment list, stable for the life of a given article body.
-private struct BodySegment: Identifiable {
-    enum Kind {
+///
+/// Internal (not private) because `ArticleFindIndex` is built from the very same segmentation: a
+/// find match is painted into, and scrolled to inside, the view that draws its segment, so the
+/// index and the renderer have to agree on what the segments are. `segments(from:)` is the one
+/// place that decides.
+struct BodySegment: Identifiable, Equatable {
+    enum Kind: Equatable {
         case textRun([Block])
         case summary([Block])
         case single(Block)
     }
     let id: Int
     let kind: Kind
+
+    /// The blocks to render: the document's own, except that while a summarize request is in flight
+    /// an empty placeholder is synthesized into the summary slot (`Block.settingSummary`) for
+    /// `segments(from:)` to draw as the loading skeleton. Putting it in the real slot is what keeps
+    /// the skeleton from shifting when the finished summary replaces it.
+    ///
+    /// Nothing else is rearranged here. The summary is a block (`Block.summary`), so its position
+    /// comes from the document rather than from the view hoisting it into the header; the lead
+    /// image is the only thing still hoisted, and it is hoisted at render time, not here.
+    static func bodyBlocks(_ blocks: [Block], summaryPending: Bool) -> [Block] {
+        guard summaryPending, !Block.containsSummary(blocks) else { return blocks }
+        return Block.settingSummary([], in: blocks)
+    }
+
+    /// The top-level body split into render segments: maximal runs of consecutive flowing-text
+    /// blocks (paragraphs + headings) coalesced into one `SelectableText`, with every other block
+    /// (image, embed, list, blockquote, code, divider) standing alone. Collapsing prose runs into a
+    /// single hosted `UITextView` — instead of one per block — is the reader's biggest per-page cost
+    /// reduction while keeping full, edit-menu text selection.
+    static func segments(from blocks: [Block], summaryPending: Bool) -> [BodySegment] {
+        var segments: [BodySegment] = []
+        var run: [Block] = []
+        var id = 0
+        func flushRun() {
+            guard !run.isEmpty else { return }
+            segments.append(BodySegment(id: id, kind: .textRun(run)))
+            id += 1
+            run = []
+        }
+        for block in bodyBlocks(blocks, summaryPending: summaryPending) {
+            switch block {
+            case .paragraph, .heading:
+                run.append(block)
+            case .summary(let inner):
+                // Its own segment kind rather than a plain `.single`: the card is drawn by
+                // `ArticleBlockView` so an empty one can render the in-flight skeleton, which
+                // needs `summaryPending` in scope. An empty summary with nothing in flight is a
+                // degenerate document; drop it rather than draw a blank card.
+                guard !inner.isEmpty || summaryPending else { continue }
+                flushRun()
+                segments.append(BodySegment(id: id, kind: .summary(inner)))
+                id += 1
+            default:
+                flushRun()
+                segments.append(BodySegment(id: id, kind: .single(block)))
+                id += 1
+            }
+        }
+        flushRun()
+        return segments
+    }
 }
 
 /// The AI summary, drawn as a labelled card so it reads as commentary on the article rather than
@@ -256,8 +304,11 @@ private struct BodySegment: Identifiable {
 /// buys nothing, and the surrounding `.textSelection(.enabled)` keeps it selectable anyway.
 private struct SummaryCardView: View {
     let blocks: [Block]
+    /// The card's own find unit; its blocks are `unit.appending(index)`, as `ArticleFindIndex` keys them.
+    let unit: FindUnitID
     let bodySize: CGFloat
     let design: UIFontDescriptor.SystemDesign
+    let find: FindHighlights
     let onOpenLink: (URL) -> Void
     let onPlayVideo: (Embed) -> Void
     let onShowImage: (String) -> Void
@@ -272,12 +323,13 @@ private struct SummaryCardView: View {
                 skeleton
             } else {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                         // `leadImageRef: nil` -- the lead-image skip is about not drawing the
                         // hoisted header image twice, and an image inside a summary is not that.
-                        BlockNodeView(block: block, bodySize: bodySize, design: design,
-                                      leadImageRef: nil, onOpenLink: onOpenLink,
-                                      onPlayVideo: onPlayVideo, onShowImage: onShowImage)
+                        BlockNodeView(block: block, unit: unit.appending(index), bodySize: bodySize,
+                                      design: design, leadImageRef: nil, find: find,
+                                      onOpenLink: onOpenLink, onPlayVideo: onPlayVideo,
+                                      onShowImage: onShowImage)
                     }
                 }
             }
@@ -311,16 +363,21 @@ private struct SummaryCardView: View {
 /// `ReaderAttributedText.make(blocks:)`), so the upgrade swaps glyph-for-glyph without a reflow.
 private struct TextRunView: View {
     let blocks: [Block]
+    /// The run's body segment id; block `i` of the run is find unit `(segment, [i])`.
+    let segment: Int
     let bodySize: CGFloat
     let uiDesign: UIFontDescriptor.SystemDesign
+    let find: FindHighlights
     let onOpenLink: (URL) -> Void
     @State private var selectable: Bool
 
-    init(blocks: [Block], bodySize: CGFloat, uiDesign: UIFontDescriptor.SystemDesign,
-         deferSelectable: Bool, onOpenLink: @escaping (URL) -> Void) {
+    init(blocks: [Block], segment: Int, bodySize: CGFloat, uiDesign: UIFontDescriptor.SystemDesign,
+         deferSelectable: Bool, find: FindHighlights, onOpenLink: @escaping (URL) -> Void) {
         self.blocks = blocks
+        self.segment = segment
         self.bodySize = bodySize
         self.uiDesign = uiDesign
+        self.find = find
         self.onOpenLink = onOpenLink
         _selectable = State(initialValue: !deferSelectable)
     }
@@ -329,12 +386,15 @@ private struct TextRunView: View {
         Group {
             if selectable {
                 SelectableText(
-                    attributedText: ReaderAttributedText.make(blocks: blocks, baseSize: bodySize,
-                                                              design: uiDesign),
-                    onOpenLink: onOpenLink
+                    attributedText: ReaderAttributedText.make(
+                        blocks: blocks, baseSize: bodySize, design: uiDesign,
+                        highlights: { find.ranges(for: FindUnitID(segment: segment, path: [$0])) }
+                    ),
+                    onOpenLink: onOpenLink,
+                    findSegment: segment
                 )
             } else {
-                StaticTextRun(blocks: blocks, bodySize: bodySize)
+                StaticTextRun(blocks: blocks, segment: segment, bodySize: bodySize, find: find)
             }
         }
         .task {
@@ -352,18 +412,21 @@ private struct TextRunView: View {
 /// typeface reaches these via the ambient `.fontDesign` applied in `ArticleBlockView`.
 private struct StaticTextRun: View {
     let blocks: [Block]
+    let segment: Int
     let bodySize: CGFloat
+    let find: FindHighlights
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                let highlights = find.ranges(for: FindUnitID(segment: segment, path: [index]))
                 switch block {
                 case .paragraph(let runs):
-                    Text(attributedString(from: runs))
+                    Text(attributedString(from: runs, highlights: highlights))
                         .font(.system(size: bodySize))
                         .fixedSize(horizontal: false, vertical: true)
                 case .heading(let level, let runs):
-                    Text(attributedString(from: runs))
+                    Text(attributedString(from: runs, highlights: highlights))
                         .font(.system(size: ReaderAttributedText.headingSize(bodySize, level), weight: .bold))
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
@@ -383,15 +446,24 @@ private struct StaticTextRun: View {
 /// its own opaque type. The lead image is skipped here (the header renders it once).
 private struct BlockNodeView: View {
     let block: Block
+    /// This block's find unit. Children are `unit.appending(...)` exactly as `ArticleFindIndex`
+    /// keys them: `(item, block)` under a list, `(block)` under a blockquote or summary.
+    let unit: FindUnitID
     let bodySize: CGFloat
     /// UIKit typeface design for text baked into a `SelectableText` (`UITextView`).
     let design: UIFontDescriptor.SystemDesign
     let leadImageRef: String?
+    let find: FindHighlights
     let onOpenLink: (URL) -> Void
     let onPlayVideo: (Embed) -> Void
     let onShowImage: (String) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+
+    /// A `SelectableText` here is the segment's only text view just when this block *is* the
+    /// segment (a top-level code block or image). Nested ones share the segment and stay untagged,
+    /// so the find reveal scrolls to their segment instead of a wrong text view.
+    private var findSegment: Int? { unit.path.isEmpty ? unit.segment : nil }
 
     var body: some View {
         switch block {
@@ -400,11 +472,11 @@ private struct BlockNodeView: View {
         // item or blockquote, which stays a SwiftUI `Text` (its baseline alignment and dark-mode
         // color treatment matter there) and is selectable via the ambient `.textSelection(.enabled)`.
         case .paragraph(let runs):
-            Text(attributedString(from: runs))
+            Text(attributedString(from: runs, highlights: find.ranges(for: unit)))
                 .font(.system(size: bodySize))
                 .fixedSize(horizontal: false, vertical: true)
         case .heading(let level, let runs):
-            Text(attributedString(from: runs))
+            Text(attributedString(from: runs, highlights: find.ranges(for: unit)))
                 .font(.system(size: ReaderAttributedText.headingSize(bodySize, level), weight: .bold))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
@@ -419,22 +491,24 @@ private struct BlockNodeView: View {
             // unexpected one is still legible rather than silently dropped. Nothing is in flight
             // down here, so an empty one is dropped rather than left showing a skeleton forever.
             if !inner.isEmpty {
-                SummaryCardView(blocks: inner, bodySize: bodySize, design: design,
+                SummaryCardView(blocks: inner, unit: unit, bodySize: bodySize, design: design, find: find,
                                 onOpenLink: onOpenLink, onPlayVideo: onPlayVideo, onShowImage: onShowImage)
             }
         case .image(let ref, let caption):
             // The lead image is rendered in the header; skip it here to avoid a duplicate.
             if ref != leadImageRef {
-                BlockImageView(ref: ref, caption: caption, bodySize: bodySize,
-                               design: design, onOpenLink: onOpenLink, onShowImage: onShowImage)
+                BlockImageView(ref: ref, caption: caption, unit: unit, bodySize: bodySize,
+                               design: design, find: find, onOpenLink: onOpenLink, onShowImage: onShowImage)
             }
         case .embed(let embed):
             EmbedCardView(embed: embed, baseSize: bodySize, onOpen: openExternal, onPlayVideo: onPlayVideo)
         case .codeBlock(let text, _):
             // Code pins a monospaced face regardless of the chosen body typeface.
             SelectableText(
-                attributedText: ReaderAttributedText.make(string: text, size: bodySize * 0.9, design: .monospaced),
-                onOpenLink: onOpenLink
+                attributedText: ReaderAttributedText.make(string: text, size: bodySize * 0.9, design: .monospaced,
+                                                          highlights: find.ranges(for: unit)),
+                onOpenLink: onOpenLink,
+                findSegment: findSegment
             )
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -452,10 +526,11 @@ private struct BlockNodeView: View {
                         .font(.system(size: bodySize))
                         .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(itemBlocks.enumerated()), id: \.offset) { _, b in
-                            BlockNodeView(block: b, bodySize: bodySize, design: design,
-                                          leadImageRef: leadImageRef, onOpenLink: onOpenLink,
-                                          onPlayVideo: onPlayVideo, onShowImage: onShowImage)
+                        ForEach(Array(itemBlocks.enumerated()), id: \.offset) { j, b in
+                            BlockNodeView(block: b, unit: unit.appending(index, j), bodySize: bodySize,
+                                          design: design, leadImageRef: leadImageRef, find: find,
+                                          onOpenLink: onOpenLink, onPlayVideo: onPlayVideo,
+                                          onShowImage: onShowImage)
                         }
                     }
                 }
@@ -468,9 +543,9 @@ private struct BlockNodeView: View {
         HStack(spacing: 0) {
             Rectangle().fill(Color.accentColor.opacity(0.6)).frame(width: 3)
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(inner.enumerated()), id: \.offset) { _, b in
-                    BlockNodeView(block: b, bodySize: bodySize, design: design,
-                                  leadImageRef: leadImageRef, onOpenLink: onOpenLink,
+                ForEach(Array(inner.enumerated()), id: \.offset) { j, b in
+                    BlockNodeView(block: b, unit: unit.appending(j), bodySize: bodySize, design: design,
+                                  leadImageRef: leadImageRef, find: find, onOpenLink: onOpenLink,
                                   onPlayVideo: onPlayVideo, onShowImage: onShowImage)
                 }
             }
@@ -491,8 +566,11 @@ private struct BlockNodeView: View {
 private struct BlockImageView: View {
     let ref: String
     let caption: [InlineRun]
+    /// The caption's find unit (the image block's own).
+    let unit: FindUnitID
     let bodySize: CGFloat
     var design: UIFontDescriptor.SystemDesign = .default
+    var find: FindHighlights = .empty
     var onOpenLink: (URL) -> Void = { _ in }
     /// Tapping the image (not the caption) opens it full-screen with pinch-to-zoom.
     var onShowImage: (String) -> Void = { _ in }
@@ -502,12 +580,15 @@ private struct BlockImageView: View {
             ReaderImageView(ref: ref)
                 .contentShape(Rectangle())
                 .onTapGesture { onShowImage(ref) }
-            let captionRuns = caption.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let captionRuns = Block.captionRuns(caption)
             if !captionRuns.isEmpty {
                 SelectableText(
                     attributedText: ReaderAttributedText.make(runs: captionRuns, baseSize: bodySize * 0.8,
-                                                              design: design, color: .secondaryLabel),
-                    onOpenLink: onOpenLink
+                                                              design: design, color: .secondaryLabel,
+                                                              highlights: find.ranges(for: unit)),
+                    onOpenLink: onOpenLink,
+                    // Only a top-level image is its segment's one text view; see BlockNodeView.findSegment.
+                    findSegment: unit.path.isEmpty ? unit.segment : nil
                 )
             }
         }
@@ -518,8 +599,9 @@ private struct BlockImageView: View {
 /// (`inlinePresentationIntent` + `.link`) so it stays unambiguous with both SwiftUI and UIKit
 /// attribute scopes in view. Bold/italic/code/strikethrough relayer the surrounding `Text`'s base
 /// font; links carry a `.link` so the `openURL` override routes the tap externally (tinted by the
-/// view's `.tint`).
-private func attributedString(from runs: [InlineRun]) -> AttributedString {
+/// view's `.tint`). `highlights` (find matches, in UTF-16 offsets of the runs' joined text) are
+/// painted as SwiftUI-scope background fills; a range that does not fit the text is skipped.
+private func attributedString(from runs: [InlineRun], highlights: [FindHighlightRange] = []) -> AttributedString {
     var result = AttributedString()
     for run in runs {
         var piece = AttributedString(run.text)
@@ -535,6 +617,12 @@ private func attributedString(from runs: [InlineRun]) -> AttributedString {
             piece.link = url
         }
         result += piece
+    }
+    for highlight in highlights {
+        guard let range = Range(highlight.range, in: result) else { continue }
+        // Explicitly the SwiftUI scope: `backgroundColor` also exists in the UIKit scope, and both
+        // are in view here.
+        result[range].swiftUI.backgroundColor = FindHighlightStyle.color(isCurrent: highlight.isCurrent)
     }
     return result
 }

@@ -115,6 +115,14 @@ extension Block {
         return hashes
     }
 
+    /// The caption runs an image block actually draws: whitespace-only runs are dropped, and a
+    /// caption that is nothing but whitespace draws no caption at all. Shared by the renderer
+    /// (`BlockImageView`) and the find index (`ArticleFindIndex`), so a match's offsets are computed
+    /// against exactly the text that is on screen.
+    static func captionRuns(_ caption: [InlineRun]) -> [InlineRun] {
+        caption.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
     private static func imageHash(fromRef ref: String) -> String? {
         let prefix = "\(ReaderWeb.imageScheme)://"
         guard ref.hasPrefix(prefix) else { return nil }
