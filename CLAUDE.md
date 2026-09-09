@@ -823,7 +823,19 @@ source and issue board live at
   model (`MacFocusPane`), the sidebar's programmatic-scroll-follow (`SidebarScrollRequest`,
   `.scrollPosition(id:anchor:)`), the remembered sidebar width (`AppSettings.macSidebarWidth`,
   `SidebarWidth`), and the `MacToolbarStyle` chrome-convention helper — is unaffected
-  and still applies exactly as before.
+  and still applies exactly as before. **The sidebar's launch reveal is gated on
+  `ArticleStore.hasLoaded`, not on an empty timeline.** `MacSidebarView` hides its rows until the
+  launch anchor scroll has landed, and reveals them early only when there is nothing to scroll to.
+  It appears *before* the store publishes anything (`start()` runs from the scene's `.task` and
+  waits on the disk cache), so "the timeline is empty" is true at `onAppear` on every launch; judging
+  "nothing to restore" from that alone revealed the rows immediately, and `scrollToTarget` then
+  treated "already revealed" as "already landed" and never issued the scroll — the reader opened on
+  the anchored article while the sidebar sat at the top. The gate now also requires `store.hasLoaded`
+  with an empty `store.summaries` (not `model.filteredArticles`, which the parent's own `onChange`
+  recomputes and may still be stale in the same update), and the first scroll request only stops
+  early on "revealed" when the reveal was still pending when the request arrived, so an empty
+  library filled by the first sync, or the 1.5s reveal backstop on a slow cache load, still scrolls
+  (`MacSidebarLaunchScrollTests` hosts the real view and pins both).
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
@@ -1016,6 +1028,11 @@ source and issue board live at
   The embed-poster placeholder added `EmbedPosterTests` (4 cases: the SF Symbol every provider's
   glyph resolves to, and that a `nil`/`""`/real `thumbnailRef` each pick the right branch), measured
   at **510 passing, 7 failing** — the same standing `SummaryBlockTests` crashes, no new failures.
+  The Mac sidebar launch-scroll fix added `MacSidebarLaunchScrollTests` (2 cases): it hosts the real
+  `MacSidebarView` (made internal for this) in a `UIHostingController` around a `TimelineModel` +
+  `ArticleStore`, starts the store only *after* the view is on screen (the real launch order), and
+  asserts the List's outermost `UIScrollView` actually moved off the top — the same "pick the
+  scroll view that scrolls" rule as the reader scroll tests. Both cases failed before the fix.
   Find in Article added `ArticleFindTests` (the unit segmentation, text-run offsets vs. the merged
   attributed string, forgiving matching, the keep-or-move-forward refinement rule, wrap-around,
   highlight painting) and `ReaderFindScrollTests` (a `ReaderBlockViewController` in a window scrolls

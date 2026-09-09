@@ -350,7 +350,7 @@ struct MacRootView: View {
 
 /// The sidebar: a filter menu pinned at the top, a search field, and the article list bound to the
 /// model's selection so ↑/↓ (and the Next/Previous menu commands) move the reader.
-private struct MacSidebarView: View {
+struct MacSidebarView: View {
     @Bindable var model: TimelineModel
     /// Shared with `MacRootView` so a filter toggle here fires its `.onChange` (AppSettings
     /// observation is per-instance — a separate instance would not notify the root).
@@ -462,6 +462,9 @@ private struct MacSidebarView: View {
             // straight through — the tag/feed filter settings `recomputeDisplayed()` re-applies on top of
             // `searchResults`.
             .onChange(of: model.filteredArticles) { _, _ in recomputeDisplayed(); revealIfNothingToRestore() }
+            // An empty library's only signal: `summaries` never changes, so this is what lets the
+            // "No Articles" state show without waiting on `scheduleRevealFallback`.
+            .onChange(of: store.hasLoaded) { _, _ in revealIfNothingToRestore() }
             .onChange(of: searchResults) { _, _ in recomputeDisplayed() }
             .onChange(of: settings.disabledTagNames) { _, _ in recomputeDisplayed() }
             .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
@@ -546,10 +549,16 @@ private struct MacSidebarView: View {
             return
         }
         hasHandledFirstScrollRequest = true
+        // "Revealed" only means "landed" when the reveal was still pending at request time. The
+        // rows can legitimately be visible before the first request ever arrives -- a library that
+        // was empty at launch and is filled by the first sync, or `scheduleRevealFallback` firing
+        // on a slow cache load -- and in that case there is nothing to wait for, but every scroll
+        // attempt below must still be made rather than skipped.
+        let revealWasPending = !isRevealed
         Task { @MainActor in
             for delayMS in [0, 60, 250] {
                 try? await Task.sleep(nanoseconds: UInt64(delayMS) * 1_000_000)
-                if isRevealed { return }
+                if revealWasPending, isRevealed { return }
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
@@ -575,11 +584,21 @@ private struct MacSidebarView: View {
         isRevealed = ManagedListReveal.isRowFullyVisible(row: frame, inList: listFrame)
     }
 
-    /// If the first delivery of `filteredArticles` is empty, no scroll request will ever arrive (there
+    /// If the store has loaded and the library is empty, no scroll request will ever arrive (there
     /// is nothing to restore an anchor to), so hiding the rows forever would leave the sidebar
     /// permanently blank instead of showing its "No Articles" empty state.
+    ///
+    /// `store.hasLoaded` is the load-bearing half of that condition. This view appears *before*
+    /// `ArticleStore` publishes anything -- `start()` runs from the scene's `.task`, and its first
+    /// publish waits on the disk cache -- so on every launch the timeline is empty at `onAppear`.
+    /// Judging "nothing to restore" from that emptiness alone revealed the rows right away, and the
+    /// launch scroll that arrived with the index a moment later was then treated as already landed
+    /// (see `scrollToTarget`): the reader opened on the anchored article while the sidebar sat at
+    /// the top of the list. `store.summaries` rather than `model.filteredArticles` because the
+    /// latter is derived by the parent's own `onChange` and may not have been recomputed yet when
+    /// `hasLoaded` flips in the same update.
     private func revealIfNothingToRestore() {
-        guard !isRevealed, !hasHandledFirstScrollRequest, model.filteredArticles.isEmpty else { return }
+        guard !isRevealed, !hasHandledFirstScrollRequest, store.hasLoaded, store.summaries.isEmpty else { return }
         isRevealed = true
     }
 
