@@ -42,8 +42,19 @@ struct YanaCommands: Commands {
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(model == nil || model?.hasServer != true)
 
-            Button("Find") { model?.requestSearchFocus() }
+            // ⌘F is find-in-the-open-document, as in Mail and Safari; the sidebar's article search
+            // moves to ⌥⌘F, Mail's mailbox-search shortcut. ⌘G / ⇧⌘G step through the matches.
+            Button("Find in Article") { model?.requestFind(.begin) }
                 .keyboardShortcut("f", modifiers: .command)
+                .disabled(model?.selectedSummary == nil)
+            Button("Find Next") { model?.requestFind(.next) }
+                .keyboardShortcut("g", modifiers: .command)
+                .disabled(model?.selectedSummary == nil)
+            Button("Find Previous") { model?.requestFind(.previous) }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(model?.selectedSummary == nil)
+            Button("Search Articles") { model?.requestSearchFocus() }
+                .keyboardShortcut("f", modifiers: [.command, .option])
                 .disabled(model == nil)
 
             Divider()

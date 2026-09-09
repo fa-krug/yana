@@ -14,6 +14,8 @@ struct MacReaderDetailView: UIViewControllerRepresentable {
     /// Bumped by the host after a summary / force-reload writes new content so the visible page
     /// re-renders (same mechanism as the iOS `ReaderHostView.reloadToken`).
     let reloadToken: Int
+    /// The latest "Find in Article" menu command (see `ReaderFindRequest`); applied once per token.
+    var findRequest: ReaderFindRequest?
     var onRefresh: (() -> Void)?
     /// True when the reader pane owns keyboard focus; drives first-responder so Esc/scroll keys reach it.
     var isFocused: Bool = false
@@ -26,6 +28,7 @@ struct MacReaderDetailView: UIViewControllerRepresentable {
         vc.onRefresh = onRefresh
         vc.onEscape = onEscape
         context.coordinator.lastReloadToken = reloadToken
+        context.coordinator.lastFindToken = findRequest?.token
         vc.show(articles: articles, index: index)
         return vc
     }
@@ -39,12 +42,21 @@ struct MacReaderDetailView: UIViewControllerRepresentable {
             vc.reloadCurrent()
         }
         vc.show(articles: articles, index: index)
-        if isFocused, !vc.isFirstResponder { vc.becomeFirstResponder() }
+        if let findRequest, findRequest.token != context.coordinator.lastFindToken {
+            context.coordinator.lastFindToken = findRequest.token
+            vc.handleFindRequest(findRequest.kind)
+        }
+        // Never steal focus back from the find field: it is inside this controller's view but is
+        // not the controller itself, and every SwiftUI update passes through here while it has focus.
+        if isFocused, !vc.isFirstResponder, !vc.isFindFieldFocused { vc.becomeFirstResponder() }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    @MainActor final class Coordinator { var lastReloadToken = 0 }
+    @MainActor final class Coordinator {
+        var lastReloadToken = 0
+        var lastFindToken: Int?
+    }
 }
 
 /// Hosts one `ReaderBlockViewController` child at a time and swaps it when the selected article
@@ -67,7 +79,133 @@ final class MacReaderContainerViewController: UIViewController {
         [UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(handleEscape))]
     }
 
-    @objc private func handleEscape() { onEscape?() }
+    /// Esc closes an open find bar first; only a second Esc hands focus back to the sidebar.
+    @objc private func handleEscape() {
+        if isFindActive { endFind() } else { onEscape?() }
+    }
+
+    // MARK: - Find in article
+
+    /// The "Find in Article" bar, docked at the top of the detail pane (Safari's placement on the
+    /// Mac). Built on first use; the pages get a matching top safe-area inset while it is up so the
+    /// body scrolls under it rather than being covered by it.
+    private var findBar: ReaderFindBar?
+    private var findBarTopConstraint: NSLayoutConstraint?
+    private(set) var isFindActive = false
+
+    /// Whether the find field has keyboard focus -- `MacReaderDetailView` must not pull first
+    /// responder back to this controller while it does.
+    var isFindFieldFocused: Bool { findBar?.isFieldFocused ?? false }
+
+    /// A menu-bar command (see `ReaderFindRequest`). ⌘G/⇧⌘G with the bar closed open it, matching
+    /// how Safari treats Find Next with no search up.
+    func handleFindRequest(_ kind: ReaderFindRequest.Kind) {
+        switch kind {
+        case .begin:
+            beginFind()
+        case .next:
+            if isFindActive { findBar?.onNext?() } else { beginFind() }
+        case .previous:
+            if isFindActive { findBar?.onPrevious?() } else { beginFind() }
+        }
+    }
+
+    func beginFind() {
+        guard currentIdentifier != nil else { return }
+        let bar = findBar ?? installFindBar()
+        if !isFindActive {
+            isFindActive = true
+            bar.isHidden = false
+            view.setNeedsLayout()
+            syncFindWithCurrentPage()
+        }
+        bar.focusField()
+    }
+
+    func endFind() {
+        guard isFindActive else { return }
+        isFindActive = false
+        findBar?.resignFirstResponder()
+        findBar?.isHidden = true
+        for page in cache.values { page.endFind() }
+        updateFindInsets()
+        // Hand keyboard focus back to the pane, so the arrow/Esc keys keep working.
+        becomeFirstResponder()
+    }
+
+    private func installFindBar() -> ReaderFindBar {
+        let bar = ReaderFindBar(separatorEdge: .bottom)
+        bar.isHidden = true
+        bar.onQueryChange = { [weak self] query in
+            self?.currentPage?.setFindQuery(query)
+            self?.updateFindStatus()
+        }
+        bar.onNext = { [weak self] in
+            self?.currentPage?.findNext()
+            self?.updateFindStatus()
+        }
+        bar.onPrevious = { [weak self] in
+            self?.currentPage?.findPrevious()
+            self?.updateFindStatus()
+        }
+        bar.onDone = { [weak self] in self?.endFind() }
+        view.addSubview(bar)
+        // Pinned below whatever safe area this pane inherits (never under the window toolbar), but
+        // not to `safeAreaLayoutGuide` itself: that guide includes the inset this bar adds, which
+        // would push the bar down by its own height. `viewSafeAreaInsetsDidChange` keeps the
+        // constant at the inherited part only.
+        let top = bar.topAnchor.constraint(equalTo: view.topAnchor, constant: inheritedTopInset)
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            top,
+        ])
+        findBarTopConstraint = top
+        findBar = bar
+        return bar
+    }
+
+    private var currentPage: ReaderBlockViewController? {
+        guard let id = currentIdentifier else { return nil }
+        return cache[id]
+    }
+
+    /// The safe area this pane inherits from its ancestors, without the part it adds itself.
+    private var inheritedTopInset: CGFloat {
+        view.safeAreaInsets.top - additionalSafeAreaInsets.top
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        findBarTopConstraint?.constant = inheritedTopInset
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateFindInsets()
+    }
+
+    /// Reserve the bar's height in the pages' top safe area while it is up (see `beginFind`).
+    private func updateFindInsets() {
+        let top: CGFloat = (isFindActive && findBar?.isHidden == false) ? (findBar?.bounds.height ?? 0) : 0
+        let insets = UIEdgeInsets(top: top, left: 0, bottom: 0, right: 0)
+        if additionalSafeAreaInsets != insets { additionalSafeAreaInsets = insets }
+    }
+
+    /// Re-run the bar's query on the newly selected article and clear every other cached page, so
+    /// clicking through the sidebar carries the search along (each page lands on its first match).
+    private func syncFindWithCurrentPage() {
+        guard isFindActive, let bar = findBar else { return }
+        let current = currentPage
+        for page in cache.values where page !== current { page.endFind() }
+        current?.setFindQuery(bar.query)
+        updateFindStatus()
+    }
+
+    private func updateFindStatus() {
+        guard isFindActive else { return }
+        findBar?.setStatus(currentPage?.findStatus ?? .idle)
+    }
 
     /// Cache of built page VCs keyed by article identifier; `lruOrder` tracks recency (last = MRU).
     private var cache: [String: ReaderBlockViewController] = [:]
@@ -101,6 +239,7 @@ final class MacReaderContainerViewController: UIViewController {
             swapIn(vc)
             currentIdentifier = summary.identifier
             touch(summary.identifier)
+            syncFindWithCurrentPage()
         }
 
         let direction: PrewarmPlan.Direction
@@ -118,6 +257,7 @@ final class MacReaderContainerViewController: UIViewController {
     func reloadCurrent() {
         guard let id = currentIdentifier else { return }
         cache[id]?.reload()
+        updateFindStatus()
     }
 
     // MARK: - Child management
@@ -161,6 +301,7 @@ final class MacReaderContainerViewController: UIViewController {
     }
 
     private func showPlaceholder() {
+        endFind()
         guard currentChild !== placeholder else { return }
         swapIn(placeholder)
         currentIdentifier = nil
