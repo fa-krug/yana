@@ -177,6 +177,7 @@ struct MacRootView: View {
                 index: model.currentIndex,
                 resolveArticle: { model.resolve($0) },
                 reloadToken: model.reloadToken,
+                findRequest: model.findRequest,
                 onRefresh: { model.triggerRefresh() },
                 isFocused: focusedPane == .reader,
                 onEscape: { focusedPane = .sidebar }

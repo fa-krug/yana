@@ -18,6 +18,20 @@ struct SidebarScrollRequest: Equatable {
     let token: Int
 }
 
+/// A one-shot "Find in Article" command for the Mac detail pane, issued by the menu-bar commands
+/// through `TimelineModel.requestFind` and consumed by `MacReaderDetailView`. `token` always
+/// increments so pressing ⌘G twice is two requests, not one deduplicated value.
+struct ReaderFindRequest: Equatable {
+    enum Kind: Equatable {
+        /// Open the find bar (or refocus it) -- ⌘F.
+        case begin
+        /// Step to the next / previous match -- ⌘G / ⇧⌘G. Opens the bar when it is closed.
+        case next, previous
+    }
+    let kind: Kind
+    let token: Int
+}
+
 /// Shared timeline engine for the Mac window: filtering, selection/anchor memory, and the article
 /// actions (refresh, star, summarize, force-update, copy link). Mirrors the logic
 /// `ReaderScreen` runs on iOS, so the two surfaces behave identically; it is factored out here so
@@ -42,8 +56,12 @@ final class TimelineModel {
     /// Server-side article id to view in `ManagementWebView`, set by `openOnServer`; `nil` means
     /// the sheet `MacRootView` binds to this is dismissed.
     var openOnServerArticleID: Int?
-    /// Bumped by the Find menu command; `MacSidebarView` observes it and focuses the search field.
+    /// Bumped by the Search Articles menu command (⌥⌘F); `MacSidebarView` observes it and focuses
+    /// the sidebar search field.
     private(set) var searchFocusToken = 0
+    /// The latest "Find in Article" menu command (⌘F / ⌘G / ⇧⌘G); `MacReaderDetailView` observes
+    /// it and drives the detail pane's find bar. See `ReaderFindRequest`.
+    private(set) var findRequest: ReaderFindRequest?
     /// Set from a row's Delete context item; `MacRootView` presents the confirmation alert
     /// bound to it (a context-menu button cannot present its own alert).
     var summaryPendingDelete: ArticleSummary?
@@ -126,6 +144,11 @@ final class TimelineModel {
 
     /// Bumps `searchFocusToken` so `MacSidebarView` moves keyboard focus to its search field.
     func requestSearchFocus() { searchFocusToken += 1 }
+
+    /// Bumps `findRequest` so the detail pane opens its find bar, or steps its matches.
+    func requestFind(_ kind: ReaderFindRequest.Kind) {
+        findRequest = ReaderFindRequest(kind: kind, token: (findRequest?.token ?? 0) + 1)
+    }
 
     /// Deletes the article locally (no server call — matches the iOS `ArticleListView` swipe-to-
     /// delete, which is also local-only) and flags the same orphaned-image prune gate Task 3 added,

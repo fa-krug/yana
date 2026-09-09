@@ -16,7 +16,14 @@ final class ReaderBlockViewController: UIViewController {
 
     private var host: UIHostingController<ArticleBlockView>!
 
-    var summaryPending = false { didSet { if summaryPending != oldValue { rebuild() } } }
+    var summaryPending = false {
+        didSet {
+            guard summaryPending != oldValue else { return }
+            // The placeholder summary shifts the segment ids every find unit is keyed by.
+            invalidateFindIndex()
+            rebuild()
+        }
+    }
 
     /// Set by the pager on the page it is about to *display* so that page's first paint renders the
     /// body as plain text and upgrades to the selectable `UITextView` a runloop later (keeping the
@@ -82,7 +89,155 @@ final class ReaderBlockViewController: UIViewController {
 
     deinit { NotificationCenter.default.removeObserver(self) }
 
-    func reload() { rebuild() }
+    /// Re-render after the article's content changed underneath this page. The find index is
+    /// rebuilt against the new body and the query re-run (without scrolling), so highlights and the
+    /// bar's count never describe text that is no longer there.
+    func reload() {
+        invalidateFindIndex()
+        rebuild()
+    }
+
+    // MARK: - Find in article
+
+    /// The searchable text of this page, built once per body and dropped whenever the body (or the
+    /// summary placeholder, which shifts segment ids) changes.
+    private var findIndex: ArticleFindIndex?
+    private(set) var findState = ArticleFindState()
+    private var findScrollRequest: FindScrollRequest?
+    /// The retry loop of a coarse-then-fine reveal (see `revealMatch`), cancelled by the next one.
+    private var findRevealTask: Task<Void, Never>?
+
+    /// What the find bar shows for this page.
+    var findStatus: FindStatus { findState.status }
+
+    /// Search this page for `query`, highlight every match, and scroll the current one on screen.
+    /// Called on every keystroke: the state keeps the reader on the same match while the query is
+    /// refined and otherwise moves forward from where they were (`ArticleFindState.update`).
+    func setFindQuery(_ query: String) {
+        findState.update(query: query, in: currentFindIndex())
+        applyFind(reveal: true)
+    }
+
+    func findNext() {
+        findState.next()
+        applyFind(reveal: true)
+    }
+
+    func findPrevious() {
+        findState.previous()
+        applyFind(reveal: true)
+    }
+
+    /// Clear the highlights and forget the query. Cheap when nothing was being searched, so the
+    /// pager can call it on every cached page when a search ends or moves to another page.
+    func endFind() {
+        findRevealTask?.cancel()
+        findRevealTask = nil
+        guard findState != ArticleFindState() || findScrollRequest != nil else { return }
+        findState = ArticleFindState()
+        findScrollRequest = nil
+        rebuild()
+    }
+
+    private func invalidateFindIndex() {
+        findIndex = nil
+        // Re-run a live query against the new body so `findState` never points into text that is
+        // gone. No reveal: a content refresh must not scroll the reader.
+        if findState.hasQuery {
+            findState.update(query: findState.query, in: currentFindIndex())
+        }
+    }
+
+    private func currentFindIndex() -> ArticleFindIndex {
+        if let findIndex { return findIndex }
+        let index = ArticleFindIndex(segments: BodySegment.segments(from: article.blocks,
+                                                                     summaryPending: summaryPending))
+        findIndex = index
+        return index
+    }
+
+    private func applyFind(reveal: Bool) {
+        rebuild()
+        findRevealTask?.cancel()
+        findRevealTask = nil
+        guard reveal, let match = findState.current else { return }
+        // A restore still waiting for the body to grow would drag the reader back off the match.
+        releasePendingReadingOffset()
+        revealMatch(match)
+    }
+
+    /// Scroll `match` on screen. Two routes, because the body is a `LazyVStack`:
+    ///
+    /// - **Fine**: the match is in a `ReaderTextView` tagged with its segment (a text run, a
+    ///   top-level code block or caption) that the stack has already built. Its line rect is
+    ///   measured with TextKit and the scroll view centers it -- or stays put when it is already
+    ///   fully visible, so refining a query does not jitter the page.
+    /// - **Coarse**: the text view does not exist yet (its segment is off screen and unbuilt), or
+    ///   the match is SwiftUI `Text` nested in a list/blockquote with no text view of its own. The
+    ///   segment is scrolled to via SwiftUI (`FindScrollRequest`), which makes the lazy stack build
+    ///   it; for a text-view match the fine route is then retried over a few frames, since the
+    ///   view lands a runloop or two later and the coarse jump only reached its segment's middle.
+    private func revealMatch(_ match: FindMatch) {
+        if match.isTextViewBacked, revealInTextView(match) { return }
+        findScrollRequest = FindScrollRequest(segment: match.unit.segment,
+                                              token: (findScrollRequest?.token ?? 0) + 1)
+        rebuild()
+        guard match.isTextViewBacked else { return }
+        findRevealTask = Task { @MainActor [weak self] in
+            for delay in [16, 50, 120, 250, 500] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard !Task.isCancelled, let self, self.findState.current == match else { return }
+                if self.revealInTextView(match) { return }
+            }
+        }
+    }
+
+    /// The fine route of `revealMatch`; false when the match's text view is not built yet.
+    @discardableResult
+    private func revealInTextView(_ match: FindMatch) -> Bool {
+        guard let scroll = bodyScrollView,
+              let textView = findTextView(segment: match.unit.segment),
+              textView.bounds.width > 0 else { return false }
+        let range = match.textViewRange
+        guard range.location >= 0, NSMaxRange(range) <= textView.textStorage.length else { return false }
+        let layout = textView.layoutManager
+        layout.ensureLayout(forCharacterRange: range)
+        let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        var rect = layout.boundingRect(forGlyphRange: glyphs, in: textView.textContainer)
+        rect.origin.x += textView.textContainerInset.left
+        rect.origin.y += textView.textContainerInset.top
+        // Converting *to* a scroll view yields content coordinates (its bounds origin is the offset).
+        scrollToReveal(textView.convert(rect, to: scroll), in: scroll)
+        return true
+    }
+
+    /// The one `ReaderTextView` drawing `segment`, if the lazy stack has built it.
+    private func findTextView(segment: Int) -> ReaderTextView? {
+        guard isViewLoaded, let root = host?.view else { return nil }
+        var queue: [UIView] = [root]
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            if let textView = next as? ReaderTextView, textView.findSegment == segment { return textView }
+            queue.append(contentsOf: next.subviews)
+        }
+        return nil
+    }
+
+    /// Bring `rect` (content coordinates) into view: left alone when it is already fully inside the
+    /// visible region, otherwise centered there, clamped to the scrollable range.
+    private func scrollToReveal(_ rect: CGRect, in scroll: UIScrollView) {
+        let inset = scroll.adjustedContentInset
+        let visibleHeight = scroll.bounds.height - inset.top - inset.bottom
+        guard visibleHeight > 0 else { return }
+        let visibleTop = scroll.contentOffset.y + inset.top
+        let margin: CGFloat = 8
+        if rect.minY >= visibleTop + margin, rect.maxY <= visibleTop + visibleHeight - margin { return }
+        let minY = -inset.top
+        let maxY = max(minY, scroll.contentSize.height + inset.bottom - scroll.bounds.height)
+        let wanted = rect.midY - inset.top - visibleHeight / 2
+        let y = min(max(wanted, minY), maxY)
+        scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: y), animated: true)
+    }
 
     // MARK: - Reading position
 
@@ -197,7 +352,9 @@ final class ReaderBlockViewController: UIViewController {
             onOpenLink: { [weak self] url in self?.openExternally(url) },
             onPlayVideo: { [weak self] embed in self?.playVideo(embed) },
             onShowImage: { [weak self] ref in self?.showImage(ref) },
-            onRefresh: onRefresh
+            onRefresh: onRefresh,
+            find: findState.highlights,
+            findScrollRequest: findScrollRequest
         )
     }
 

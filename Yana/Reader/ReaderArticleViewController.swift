@@ -170,6 +170,12 @@ final class ReaderArticleViewController: UIViewController,
     /// Reads the current article aloud; lives at the pager level so one synthesizer survives swipes.
     private let speech = ReaderSpeechController()
 
+    /// The "Find in Article" bar, built on first use and docked at the bottom above the keyboard.
+    /// It belongs to the pager, not a page: the query survives a swipe and is re-run on whatever
+    /// page lands (`syncFindWithDisplayedPage`).
+    private var findBar: ReaderFindBar?
+    private(set) var isFindActive = false
+
     private var isFullscreenAvailable: Bool { traitCollection.userInterfaceIdiom == .phone }
     private var displayedPage: ReaderBlockViewController? {
         pageController.viewControllers?.first as? ReaderBlockViewController
@@ -238,9 +244,15 @@ final class ReaderArticleViewController: UIViewController,
             navigationController?.setToolbarHidden(true, animated: false)
             return
         }
-        navigationController?.setToolbarHidden(false, animated: false)
+        navigationController?.setToolbarHidden(isFindActive, animated: false)
         applyFullscreen(settings.articleFullscreenEnabled && isFullscreenAvailable, animated: false)
         displayedPage?.reload()
+        updateFindStatus()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateFindInsets()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -431,6 +443,7 @@ final class ReaderArticleViewController: UIViewController,
     /// down to the nav bar (filter + overflow menu, which still reaches Settings), hiding the
     /// article toolbar and any full-screen mode. Idempotent while already empty.
     private func applyEmptyState() {
+        endFind()
         isShowingEmptyState = true
         navigationController?.setNavigationBarHidden(false, animated: false)
         navigationController?.setToolbarHidden(true, animated: false)
@@ -533,6 +546,7 @@ final class ReaderArticleViewController: UIViewController,
         pageController.setViewControllers([page], direction: .forward, animated: false)
         recordWiredNeighbors()
         updateStarItem()
+        syncFindWithDisplayedPage()
     }
 
     /// Re-run a reconciliation deferred while the pager was busy. Re-checks `isPagerBusy` (a swipe
@@ -685,6 +699,13 @@ final class ReaderArticleViewController: UIViewController,
         )
         var actions: [UIMenuElement] = []
 
+        // Always offered for an article: every body has text to search. Sits first because it acts
+        // on what is on screen right now rather than on the server.
+        actions.append(UIAction(
+            title: String(localized: "Find in Article"),
+            image: UIImage(systemName: "magnifyingglass")
+        ) { [weak self] _ in self?.beginFind() })
+
         if let updateAction {
             actions.append(updateAction)
         }
@@ -726,12 +747,132 @@ final class ReaderArticleViewController: UIViewController,
 
     func reloadCurrentPage() {
         displayedPage?.reload()
+        updateFindStatus()
     }
 
     /// Toggle the pending-summary placeholder on the visible page (the only one being summarized).
     func setSummarizing(_ summarizing: Bool) {
         displayedPage?.summaryPending = summarizing
+        updateFindStatus()
     }
+
+    // MARK: - Find in article
+
+    /// Open the find bar over the displayed page (from the overflow menu or ⌘F). The toolbar hides
+    /// while it is up -- the bar takes its place at the bottom, Safari-style -- and the pages get a
+    /// matching bottom safe-area inset so the last match can still be scrolled clear of it.
+    func beginFind() {
+        guard !isShowingEmptyState else { return }
+        let bar = findBar ?? installFindBar()
+        if !isFindActive {
+            isFindActive = true
+            bar.isHidden = false
+            navigationController?.setToolbarHidden(true, animated: false)
+            view.setNeedsLayout()
+            syncFindWithDisplayedPage()
+        }
+        bar.focusField()
+    }
+
+    /// Close the find bar, clear every cached page's highlights and bring the toolbar back (unless
+    /// full-screen mode has it hidden anyway). Safe to call when no search is open.
+    func endFind() {
+        guard isFindActive else { return }
+        isFindActive = false
+        findBar?.resignFirstResponder()
+        findBar?.isHidden = true
+        for page in pageCache.values { page.endFind() }
+        if !isShowingEmptyState {
+            navigationController?.setToolbarHidden(settings.articleFullscreenEnabled && isFullscreenAvailable,
+                                                   animated: false)
+        }
+        updateFindInsets()
+    }
+
+    private func installFindBar() -> ReaderFindBar {
+        let bar = ReaderFindBar(separatorEdge: .top)
+        bar.isHidden = true
+        bar.onQueryChange = { [weak self] query in
+            self?.displayedPage?.setFindQuery(query)
+            self?.updateFindStatus()
+        }
+        bar.onNext = { [weak self] in
+            self?.displayedPage?.findNext()
+            self?.updateFindStatus()
+        }
+        bar.onPrevious = { [weak self] in
+            self?.displayedPage?.findPrevious()
+            self?.updateFindStatus()
+        }
+        bar.onDone = { [weak self] in self?.endFind() }
+        view.addSubview(bar)
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            // Rides the keyboard: on top of it while typing, on the bottom safe area otherwise.
+            bar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+        ])
+        findBar = bar
+        return bar
+    }
+
+    /// Re-run the bar's query on the page now displayed and drop the highlights everywhere else.
+    /// Called whenever the displayed page changes while a search is open, so swiping carries the
+    /// search along: the new page lands on its first match and the count describes that page.
+    private func syncFindWithDisplayedPage() {
+        guard isFindActive, let bar = findBar else { return }
+        let displayed = displayedPage
+        for page in pageCache.values where page !== displayed { page.endFind() }
+        displayed?.setFindQuery(bar.query)
+        updateFindStatus()
+    }
+
+    private func updateFindStatus() {
+        guard isFindActive else { return }
+        findBar?.setStatus(displayedPage?.findStatus ?? .idle)
+    }
+
+    /// Reserve the bar's footprint in the pages' bottom safe area. Measured from the bar's actual
+    /// frame, so with the keyboard up it covers keyboard + bar (the bar sits on the keyboard) and
+    /// with it down just the bar; the pages inherit the pager's safe area, and SwiftUI turns it
+    /// into the body scroll view's bottom inset.
+    private func updateFindInsets() {
+        var bottom: CGFloat = 0
+        if isFindActive, let bar = findBar, !bar.isHidden, bar.bounds.height > 0 {
+            let safeBottom = view.bounds.maxY - view.safeAreaInsets.bottom
+            bottom = max(0, safeBottom - bar.frame.minY)
+        }
+        let insets = UIEdgeInsets(top: 0, left: 0, bottom: bottom, right: 0)
+        if pageController.additionalSafeAreaInsets != insets {
+            pageController.additionalSafeAreaInsets = insets
+        }
+    }
+
+    /// Hardware-keyboard shortcuts (iPad, or an iPhone with a keyboard attached): ⌘F opens the
+    /// bar, and while it is open ⌘G / ⇧⌘G step through the matches and Esc closes it. Found through
+    /// the responder chain from the find field, so they work while typing in it.
+    override var keyCommands: [UIKeyCommand]? {
+        guard !isShowingEmptyState else { return nil }
+        var commands = [
+            UIKeyCommand(title: String(localized: "Find in Article"), action: #selector(findFromKeyboard),
+                         input: "f", modifierFlags: .command),
+        ]
+        if isFindActive {
+            commands += [
+                UIKeyCommand(title: String(localized: "Find Next"), action: #selector(findNextFromKeyboard),
+                             input: "g", modifierFlags: .command),
+                UIKeyCommand(title: String(localized: "Find Previous"), action: #selector(findPreviousFromKeyboard),
+                             input: "g", modifierFlags: [.command, .shift]),
+                UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(endFindFromKeyboard)),
+            ]
+        }
+        return commands
+    }
+
+    @objc private func findFromKeyboard() { beginFind() }
+    @objc private func findNextFromKeyboard() { findBar?.onNext?() }
+    @objc private func findPreviousFromKeyboard() { findBar?.onPrevious?() }
+    @objc private func endFindFromKeyboard() { endFind() }
 
     @objc private func shareArticle() {
         guard let article = currentArticle(), let url = URL(string: article.url) else { return }
@@ -769,7 +910,8 @@ final class ReaderArticleViewController: UIViewController,
     private func applyFullscreen(_ hidden: Bool, animated: Bool) {
         settings.articleFullscreenEnabled = hidden
         navigationController?.setNavigationBarHidden(hidden, animated: animated)
-        navigationController?.setToolbarHidden(hidden, animated: animated)
+        // The find bar stands in for the toolbar while a search is open, whatever full-screen says.
+        navigationController?.setToolbarHidden(hidden || isFindActive, animated: animated)
         // Apply to every cached page, not just the visible one: neighbors are prewarmed ahead of the
         // swipe and bake in the tap-zone state from when they were created. If a neighbor was warmed
         // before fullscreen was toggled, it would otherwise keep stale (hidden) tap zones, so after
@@ -838,6 +980,8 @@ final class ReaderArticleViewController: UIViewController,
         onIndexChange?(i)
         onArticleDisplayed?(vc.article)
         prewarmNeighbors(around: i)
+        // An open search follows the swipe onto the new page.
+        syncFindWithDisplayedPage()
     }
 
     // MARK: - Memory

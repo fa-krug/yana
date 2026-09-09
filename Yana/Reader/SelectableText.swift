@@ -12,9 +12,14 @@ import UIKit
 struct SelectableText: UIViewRepresentable {
     let attributedText: NSAttributedString
     var onOpenLink: (URL) -> Void = { _ in }
+    /// The body segment whose only text view this is, when it is one (a coalesced text run, a
+    /// top-level code block, the lead/standalone image's caption). `ReaderBlockViewController`
+    /// locates the view for the current find match by this tag to scroll the match itself on
+    /// screen, not just its segment. `nil` for a text view that shares its segment with others.
+    var findSegment: Int? = nil
 
-    func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+    func makeUIView(context: Context) -> ReaderTextView {
+        let textView = ReaderTextView()
         // Opt into the legacy TextKit 1 layout engine. For static, non-editable, non-scrolling prose
         // (all this view ever holds) TextKit 1 has markedly lower per-view setup and sizing overhead
         // than the iOS-16 TextKit 2 default — and there is one of these per body text run, so it adds
@@ -36,8 +41,9 @@ struct SelectableText: UIViewRepresentable {
         return textView
     }
 
-    func updateUIView(_ textView: UITextView, context: Context) {
+    func updateUIView(_ textView: ReaderTextView, context: Context) {
         context.coordinator.onOpenLink = onOpenLink
+        textView.findSegment = findSegment
         // Rebuilding produces an equal string for unchanged content, so this no-ops (and keeps the
         // current selection) unless the text actually changed — e.g. a font/size change or reload.
         if textView.attributedText != attributedText {
@@ -54,7 +60,7 @@ struct SelectableText: UIViewRepresentable {
     /// change or reload, so memoize the last measurement (keyed by width + string) on the coordinator
     /// — the pager's repeated passes and the post-prewarm on-screen appearance then reuse the height
     /// instead of re-laying out the glyphs each time.
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: ReaderTextView, context: Context) -> CGSize? {
         let width: CGFloat
         if let proposed = proposal.width, proposed.isFinite, proposed > 0 {
             width = proposed
@@ -97,15 +103,51 @@ struct SelectableText: UIViewRepresentable {
     }
 }
 
+/// The `UITextView` `SelectableText` hosts. A subclass only so the reader can tell its text views
+/// apart when walking the view tree: `findSegment` tags the one text view drawing a given body
+/// segment (see `SelectableText.findSegment`), which is how the current find match is scrolled to
+/// its own line rather than to the top of a long run of prose.
+final class ReaderTextView: UITextView {
+    var findSegment: Int?
+}
+
+/// The two highlight fills "Find in Article" paints: a soft wash over every match and a stronger
+/// one over the current match, in both UIKit (`SelectableText`) and SwiftUI (`Text`) terms so the
+/// two text paths look the same.
+enum FindHighlightStyle {
+    static func uiColor(isCurrent: Bool) -> UIColor {
+        isCurrent
+            ? UIColor.systemOrange.withAlphaComponent(0.7)
+            : UIColor.systemYellow.withAlphaComponent(0.35)
+    }
+
+    static func color(isCurrent: Bool) -> Color {
+        Color(uiColor: uiColor(isCurrent: isCurrent))
+    }
+
+    /// Paints `highlights` (ranges in `text`'s own UTF-16 offsets, shifted by `offset` into
+    /// `result`) as background fills, skipping any range that does not fit -- a highlight computed
+    /// against text this string does not hold must never crash the renderer.
+    static func apply(_ highlights: [FindHighlightRange], to result: NSMutableAttributedString, offset: Int = 0) {
+        for highlight in highlights {
+            let range = NSRange(location: offset + highlight.range.location, length: highlight.range.length)
+            guard range.location >= 0, NSMaxRange(range) <= result.length else { continue }
+            result.addAttribute(.backgroundColor, value: uiColor(isCurrent: highlight.isCurrent), range: range)
+        }
+    }
+}
+
 /// Builds the `NSAttributedString`s that back `SelectableText`. Mirrors the SwiftUI
 /// `attributedString(from:)` styling (bold/italic/code/strikethrough + links) but in UIKit terms,
 /// baking in the point size, weight, and the reader's chosen typeface `design` — the SwiftUI
 /// `.fontDesign` modifier only reaches SwiftUI `Text`, not a hosted `UITextView`.
 enum ReaderAttributedText {
     static func make(runs: [InlineRun], baseSize: CGFloat, weight: UIFont.Weight = .regular,
-                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label) -> NSAttributedString {
+                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label,
+                     highlights: [FindHighlightRange] = []) -> NSAttributedString {
         let result = NSMutableAttributedString()
         appendRuns(runs, into: result, baseSize: baseSize, weight: weight, design: design, color: color)
+        FindHighlightStyle.apply(highlights, to: result)
         return result
     }
 
@@ -122,8 +164,14 @@ enum ReaderAttributedText {
     /// baked into per-paragraph `NSParagraphStyle`s + fonts so the merged run lays out exactly like
     /// the individual blocks it replaces. Non-text blocks (images, embeds, lists, quotes, code,
     /// dividers) are not passed here — they break a run and render standalone.
+    ///
+    /// `highlights(i)` returns the find highlights of block `i`, in that block's own text offsets;
+    /// they are shifted to where the block's text landed in the merged string. `FindUnit`'s
+    /// `textViewOffset` mirrors that same arithmetic (each block's UTF-16 length plus one newline),
+    /// which `ArticleFindTests` pins against this method.
     static func make(blocks: [Block], baseSize: CGFloat,
-                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label) -> NSAttributedString {
+                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label,
+                     highlights: (Int) -> [FindHighlightRange] = { _ in [] }) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for (i, block) in blocks.enumerated() {
             let isLast = i == blocks.count - 1
@@ -142,6 +190,7 @@ enum ReaderAttributedText {
             }
             let start = result.length
             appendRuns(runs, into: result, baseSize: size, weight: weight, design: design, color: color)
+            FindHighlightStyle.apply(highlights(i), to: result, offset: start)
             if !isLast { result.append(NSAttributedString(string: "\n")) }
             // Apply the paragraph style over the whole paragraph, including its terminating newline,
             // so `paragraphSpacing` (the gap after) takes effect. The last block carries no trailing
@@ -193,9 +242,12 @@ enum ReaderAttributedText {
     }
 
     static func make(string: String, size: CGFloat, weight: UIFont.Weight = .regular,
-                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label) -> NSAttributedString {
+                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label,
+                     highlights: [FindHighlightRange] = []) -> NSAttributedString {
         let font = UIFont(descriptor: systemDescriptor(size: size, weight: weight, design: design), size: size)
-        return NSAttributedString(string: string, attributes: [.font: font, .foregroundColor: color])
+        let result = NSMutableAttributedString(string: string, attributes: [.font: font, .foregroundColor: color])
+        FindHighlightStyle.apply(highlights, to: result)
+        return result
     }
 
     private static func systemDescriptor(size: CGFloat, weight: UIFont.Weight,

@@ -702,6 +702,36 @@ source and issue board live at
   the DEBUG-only `DebugSeed`/`ScreenshotSeed` fixtures now author `[Block]` values directly, the
   same shape the server delivers. If you find yourself wanting an HTML parser here, the content
   should be arriving from the server as blocks instead.
+  **Find in Article** (`Yana/Reader/ArticleFind.swift`, `Yana/Reader/ReaderFindBar.swift`): a
+  live, type-ahead search inside the displayed article on both platforms — every match is
+  highlighted, the current one stronger, and the reader scrolls to it as the query is typed, with
+  previous/next controls (and ⌘G/⇧⌘G, Return for next). It is opened from the iOS overflow menu
+  (or ⌘F on a hardware keyboard) and from the Mac "Article" menu, where **⌘F is now Find in
+  Article and the sidebar's article search moved to ⌥⌘F ("Search Articles")**, matching Mail's
+  find-in-message vs. search-mailbox split. Three things the design hinges on:
+  - **Matches are keyed by the renderer's own segmentation, not by block index.** `BodySegment`
+    (`ArticleBlockView.swift`, now internal) is the one place that decides how the body splits into
+    render units, and `ArticleFindIndex` is built from those segments so a match's `FindUnitID`
+    (`segment` + the nested `path` `BlockNodeView` recurses by) names exactly the view that draws it.
+    That is what lets the highlights land in the right `SelectableText`/`Text` and lets the reveal
+    scroll find the right `ReaderTextView` (tagged `findSegment`). A text run merges several blocks
+    into one string, so `FindUnit.textViewOffset` mirrors `ReaderAttributedText.make(blocks:)`'s
+    join arithmetic; `ArticleFindTests` pins the two against each other.
+  - **The reveal is coarse-then-fine because the body is a `LazyVStack`.** A match in an unbuilt
+    segment is first brought on screen via SwiftUI (`FindScrollRequest` → `ScrollViewReader.scrollTo`,
+    not animated), then `ReaderBlockViewController.revealInTextView` retries over a few frames until
+    the text view exists and measures the match's line with TextKit to center it (animated, and only
+    if it is not already visible, so refining a query does not jitter). Text nested in a list or
+    blockquote is SwiftUI `Text` and can only be scrolled to at segment granularity.
+  - **The bar belongs to the pager/container, the state to the page.** `ReaderFindBar` (shared
+    UIKit view; bottom-docked on the keyboard layout guide on iOS with the toolbar hidden while it is
+    up, top-docked in the Mac detail pane) only forwards events; each `ReaderBlockViewController`
+    owns its `ArticleFindState`, and a swipe/sidebar click re-runs the same query on the newly
+    displayed page (`syncFindWithDisplayedPage`/`syncFindWithCurrentPage`) and clears every other
+    cached page's highlights. Both hosts reserve the bar's footprint through `additionalSafeAreaInsets`
+    so the body scrolls under it rather than being covered. Refining the query keeps the reader on
+    the match under them when it still matches and otherwise moves forward, never back to the top
+    (`ArticleFindState.update`).
 - **Views** (`Yana/Views/`): feed/tag/AI-provider **management moved entirely to the server's own
   web UI**. `ManagementWebView` (`Yana/Views/ManagementWebView.swift`) hosts it in a `WKWebView`
   that bootstraps a fresh, short-lived, single-use server session on every appearance — see
@@ -1003,6 +1033,11 @@ source and issue board live at
   `ArticleStore`, starts the store only *after* the view is on screen (the real launch order), and
   asserts the List's outermost `UIScrollView` actually moved off the top — the same "pick the
   scroll view that scrolls" rule as the reader scroll tests. Both cases failed before the fix.
+  Find in Article added `ArticleFindTests` (the unit segmentation, text-run offsets vs. the merged
+  attributed string, forgiving matching, the keep-or-move-forward refinement rule, wrap-around,
+  highlight painting) and `ReaderFindScrollTests` (a `ReaderBlockViewController` in a window scrolls
+  a match in an unbuilt segment on screen and highlights it; a miss reports `.noMatches` and stays
+  put) — written without a Mac to run them on, so treat the first simulator run as their verification.
   Read the pass/fail counts off `xcrun xcresulttool get test-results summary --path <bundle>`: the
   "Executed N tests" line `xcodebuild` prints at the end counts only the XCTest UI tests, not the
   Swift Testing cases.
