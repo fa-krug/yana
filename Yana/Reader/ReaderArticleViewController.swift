@@ -352,7 +352,7 @@ final class ReaderArticleViewController: UIViewController,
         articleListItem.accessibilityIdentifier = "reader.articleList"
 
         filterItem = UIBarButtonItem(
-            image: UIImage(systemName: "line.3.horizontal.decrease.circle"),
+            image: UIImage(systemName: "line.3.horizontal.decrease"),
             style: .plain, target: self, action: #selector(showFilter)
         )
         filterItem.accessibilityLabel = String(localized: "Filter articles")
@@ -383,7 +383,7 @@ final class ReaderArticleViewController: UIViewController,
         // Overflow menu, rebuilt each time it opens so conditional items track the current
         // article + AI state. UIDeferredMenuElement.uncached re-invokes the provider per present.
         menuItem = UIBarButtonItem(
-            image: UIImage(systemName: "ellipsis.circle"),
+            image: UIImage(systemName: "ellipsis"),
             menu: UIMenu(children: [
                 UIDeferredMenuElement.uncached { [weak self] completion in
                     completion(self?.buildMenuActions() ?? [])
@@ -405,7 +405,7 @@ final class ReaderArticleViewController: UIViewController,
 
     private func configureToolbar() {
         shareItem = UIBarButtonItem(barButtonSystemItem: .action, target: self, action: #selector(shareArticle))
-        speakItem = UIBarButtonItem(image: UIImage(systemName: "play.circle"), style: .plain, target: self, action: #selector(toggleSpeech))
+        speakItem = UIBarButtonItem(image: UIImage(systemName: "play"), style: .plain, target: self, action: #selector(toggleSpeech))
         let flex = { UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil) }
         // Read-aloud + Share + Open-in-Browser grouped together at the right edge, with the
         // read-aloud (play/pause) button left-most of the group. Open-in-Browser is dropped while
@@ -426,7 +426,7 @@ final class ReaderArticleViewController: UIViewController,
 
     private func updateSpeakItem() {
         let speaking = speech.state == .speaking
-        speakItem.image = UIImage(systemName: speaking ? "pause.circle" : "play.circle")
+        speakItem.image = UIImage(systemName: speaking ? "pause" : "play")
         speakItem.accessibilityLabel = speaking
             ? String(localized: "Pause reading")
             : String(localized: "Read article aloud")
@@ -446,9 +446,7 @@ final class ReaderArticleViewController: UIViewController,
     }
 
     func setFilterActive(_ active: Bool) {
-        filterItem.image = UIImage(systemName: active
-            ? "line.3.horizontal.decrease.circle.fill"
-            : "line.3.horizontal.decrease.circle")
+        filterItem.tintColor = active ? .tintColor : nil
     }
 
     private func updateStarItem() {
