@@ -16,18 +16,16 @@ struct ManagementWebView: View {
     let serverBaseURL: URL
     var path: String = "/"
     var title: LocalizedStringKey? = "Manage"
-    /// Shows a leading back-chevron toolbar button that dismisses this view. For the two call
+    /// Shows a leading close-button toolbar item that dismisses this view. For the two call
     /// sites that present this as the root of their own sheet-local `NavigationStack` (create
-    /// feed, view article) there is no pushed-from screen to supply an automatic back button, so
-    /// one is added explicitly; the pushed usage from Settings already gets one for free from its
-    /// enclosing stack and leaves this `false`.
+    /// feed, view article) there is no pushed-from screen to supply a dismiss control, so one is
+    /// added explicitly; the pushed usage from Settings already gets a back button for free from
+    /// its enclosing stack and leaves this `false`.
     var showsBackButton: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var loadURL: URL?
     @State private var diagnostic: ManagementWebViewDiagnostic?
-    /// The live web view, handed up by `ManagementWKWebView` once created, purely so the back
-    /// button below can query/drive its back-forward list -- this view never otherwise touches it.
     @State private var webView: WKWebView?
     @State private var canGoBack = false
 
@@ -58,17 +56,13 @@ struct ManagementWebView: View {
         .toolbar {
             if showsBackButton {
                 ToolbarItem(placement: .navigation) {
-                    // Goes back a page within the server's web UI while there's in-page history to
-                    // unwind (matching the edge-swipe gesture `allowsBackForwardNavigationGestures`
-                    // enables below), and only dismisses this sheet once there's nowhere left to go.
+                    // Always closes this sheet. In-page back navigation within the server's web UI
+                    // is handled by the edge-swipe gesture `allowsBackForwardNavigationGestures`
+                    // enables below, so this button's only job is to dismiss.
                     Button {
-                        if canGoBack {
-                            webView?.goBack()
-                        } else {
-                            dismiss()
-                        }
-                    } label: { Image(systemName: "chevron.backward") }
-                        .accessibilityLabel(Text(canGoBack ? "Back" : "Close"))
+                        dismiss()
+                    } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel(Text("Close"))
                 }
             }
         }
