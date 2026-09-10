@@ -190,66 +190,56 @@ struct MacRootView: View {
         }
     }
 
-    /// The four article actions live in **one** `ControlGroup`, which is the system's joined toolbar
-    /// group: it draws the shared capsule and the segment spacing itself, replacing the hand-rolled
-    /// `glassEffect` pill this used to be. `ToolbarItemGroup` is *not* the equivalent on Catalyst —
-    /// verified: its members render as separate round buttons, not a group. The overflow `Menu`
-    /// deliberately stays outside as its own item.
+    /// The article actions and the overflow menu are each their **own** `ToolbarItem`, grouped only
+    /// for placement via `ToolbarItemGroup` — matching MySquad's Mac toolbars (its `ProjectsView`,
+    /// for one), which never joins icon buttons into a `ControlGroup` capsule. Catalyst then renders
+    /// each as its own separate round button with the system's own spacing between them, and — because
+    /// nothing pads the label independently of the button's own hit/focus region — the keyboard-focus
+    /// and pointer-hover ring the system draws covers the whole button, not just the SF Symbol glyph.
     ///
-    /// The `ControlGroup` must be hosted **directly** by a `ToolbarItem`. Nested inside a
-    /// `ToolbarItemGroup` (as it was before commit 0cf55dc) it renders its content empty once the
-    /// toolbar re-validates, which is the blank-pill bug that motivated hand-rolling in the first
-    /// place; hosted directly it renders its segments.
-    ///
-    /// Two constraints shape the contents: the item set must stay constant, because
-    /// adding/removing an item makes Catalyst re-validate the toolbar and flicker — hence the
-    /// "Update all" button cross-fades its icon to a spinner in place rather than a spinner item
-    /// appearing beside it — and the icons stay in one visual family (no mixed `.circle` variants),
-    /// which is what made the old pill read as a jumble.
+    /// This replaces an earlier hand-joined `ControlGroup` capsule (itself replacing a hand-rolled
+    /// `glassEffect` pill): visually tidy, but each segment's focus ring only ever framed its glyph,
+    /// not the segment — which is the bug this reverts. A bare `Image(systemName:)` label (no visible
+    /// title, `accessibilityLabel`/`.help` carry the name) is what MySquad's own Mac toolbar buttons
+    /// use, too.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            ControlGroup {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                if let article = model.selectedArticle() { model.toggleStar(article) }
+            } label: {
+                Image(systemName: isSelectedStarred ? "star.fill" : "star")
+            }
+            .disabled(model.selectedSummary == nil)
+            .help(Text(isSelectedStarred ? "Unstar" : "Star"))
+            .accessibilityLabel(Text(isSelectedStarred ? "Unstar" : "Star"))
+
+            Button {
+                if let article = model.selectedArticle() { toggleSpeech(article) }
+            } label: {
+                Image(systemName: speech.state == .speaking ? "pause.fill" : "play.fill")
+            }
+            .disabled(model.selectedSummary == nil)
+            .help(Text("Read Aloud"))
+            .accessibilityLabel(Text("Read Aloud"))
+
+            // Dropped while unpaired/demo: those articles' `url`s aren't real pages worth
+            // leaving the app for.
+            if model.hasServer {
                 Button {
-                    if let article = model.selectedArticle() { model.toggleStar(article) }
+                    if let article = model.selectedArticle() { model.openWebsite(article) }
                 } label: {
-                    Label(isSelectedStarred ? "Unstar" : "Star",
-                          systemImage: isSelectedStarred ? "star.fill" : "star")
-                        .macToolbarIcon()
+                    Image(systemName: "safari")
                 }
                 .disabled(model.selectedSummary == nil)
-                .help(Text(isSelectedStarred ? "Unstar" : "Star"))
+                .help(Text("Open in Browser"))
+                .accessibilityLabel(Text("Open in Browser"))
+            }
 
-                Button {
-                    if let article = model.selectedArticle() { toggleSpeech(article) }
-                } label: {
-                    Label("Read Aloud",
-                          systemImage: speech.state == .speaking ? "pause.fill" : "play.fill")
-                        .macToolbarIcon()
-                }
-                .disabled(model.selectedSummary == nil)
-                .help(Text("Read Aloud"))
-
-                // Dropped while unpaired/demo: those articles' `url`s aren't real pages worth
-                // leaving the app for.
-                if model.hasServer {
-                    Button {
-                        if let article = model.selectedArticle() { model.openWebsite(article) }
-                    } label: {
-                        Label("Open in Browser", systemImage: "safari").macToolbarIcon()
-                    }
-                    .disabled(model.selectedSummary == nil)
-                    .help(Text("Open in Browser"))
-                }
-
-                if model.hasServer {
-                    updateButton
-                }
+            if model.hasServer {
+                updateButton
             }
         }
 
-        // The overflow menu stays its OWN toolbar item, never a segment of the group: it is a
-        // pull-down, not a peer action, and a lone item's label padding keeps it a round button
-        // rather than an upright oval.
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 // ⌘, is now claimed by the app-menu Settings item (`YanaCommands`'s
@@ -286,7 +276,7 @@ struct MacRootView: View {
                     }
                 }
             } label: {
-                Label("More", systemImage: "ellipsis").macToolbarIcon()
+                Image(systemName: "ellipsis")
             }
             // A pull-down chevron beside the ellipsis is redundant — the glyph already reads as
             // "more". `.menuIndicator(.hidden)` is the standard way to drop it.
@@ -324,7 +314,6 @@ struct MacRootView: View {
                 ProgressView().controlSize(.small).opacity(showSpinner ? 1 : 0)
                     .allowsHitTesting(false)
             }
-            .macToolbarIcon()
         }
         .help(showSpinner ? Text("Show progress on server") : Text("Update all"))
         .accessibilityLabel(showSpinner ? Text("Show progress on server") : Text("Update all"))
@@ -536,9 +525,8 @@ struct MacSidebarView: View {
     /// The filter menu lives in the sidebar's own toolbar, next to its native search field, instead
     /// of a hand-rolled labeled row above the list — that row rendered "Filter" as a text+icon pill
     /// (the system's default look for a labeled `Menu`), which read as an unstyled, oversized control
-    /// against the dark source list. Hosting it as a `ToolbarItem` gets the same icon-only
-    /// round-button chrome every other Mac toolbar control in this app uses (`macToolbarIcon()`,
-    /// `MacRootView.toolbar`).
+    /// against the dark source list. Hosting it as a `ToolbarItem` gets the same icon-only round
+    /// button every other single Mac toolbar control in this app uses (`MacRootView.toolbar`).
     @ToolbarContentBuilder private var sidebarToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             MacFilterMenu(settings: settings)
@@ -741,12 +729,12 @@ private struct MacFilterMenu: View {
                 }
             }
         } label: {
-            Label("Filter", systemImage: isFiltering
+            Image(systemName: isFiltering
                   ? "line.3.horizontal.decrease.circle.fill"
                   : "line.3.horizontal.decrease.circle")
-                .macToolbarIcon()
         }
         .help(Text("Filter"))
+        .accessibilityLabel(Text("Filter"))
     }
 
     private func toggle(_ title: String, isOn: Bool, set: @escaping (Bool) -> Void) -> some View {
