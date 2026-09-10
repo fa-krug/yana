@@ -40,9 +40,7 @@ struct MacRootView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            MacSidebarView(model: model, settings: settings,
-                           onCreateFeed: { showingCreateFeed = true },
-                           focusedPane: $focusedPane)
+            MacSidebarView(model: model, settings: settings, focusedPane: $focusedPane)
                 .navigationSplitViewColumnWidth(
                     min: SidebarWidth.min, ideal: restoredSidebarWidth, max: SidebarWidth.max)
                 .navigationTitle("Yana")
@@ -71,6 +69,11 @@ struct MacRootView: View {
                     showsBackButton: true
                 )
             }
+            // Matches `MacSettingsWindow`'s own sizing. Left unset, this sheet takes Catalyst's
+            // default small form-sheet size -- a cramped, floating card in the middle of the
+            // window, dead space all around -- since neither `ManagementWebView` nor its wrapping
+            // `NavigationStack` requests a size of its own.
+            .frame(minWidth: 700, minHeight: 560)
         }
         .sheet(isPresented: Binding(
             get: { model.openOnServerPath != nil },
@@ -85,6 +88,7 @@ struct MacRootView: View {
                         showsBackButton: true
                     )
                 }
+                .frame(minWidth: 700, minHeight: 560)
             }
         }
         .alert(
@@ -312,7 +316,13 @@ struct MacRootView: View {
         } label: {
             ZStack {
                 Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
+                // On Catalyst a ProgressView bridges to a UIActivityIndicatorView that -- unlike
+                // the one ReaderArticleViewController builds by hand and explicitly disables
+                // interaction on -- accepts touches by default, so it swallows the tap meant for
+                // the Button underneath: nothing happened when this spinner was tapped while
+                // showing. allowsHitTesting(false) lets the touch fall through to the button.
                 ProgressView().controlSize(.small).opacity(showSpinner ? 1 : 0)
+                    .allowsHitTesting(false)
             }
             .macToolbarIcon()
         }
@@ -360,7 +370,6 @@ struct MacSidebarView: View {
     /// Shared with `MacRootView` so a filter toggle here fires its `.onChange` (AppSettings
     /// observation is per-instance — a separate instance would not notify the root).
     let settings: AppSettings
-    let onCreateFeed: () -> Void
     @FocusState.Binding var focusedPane: MacFocusPane?
 
     @Environment(\.modelContext) private var modelContext
@@ -437,84 +446,102 @@ struct MacSidebarView: View {
         // original "breaks chrome" finding predates that reveal-gating discovery and was bundled in a
         // commit that also fixed an unrelated Mac-idiom bug, so it was never re-isolated and retested.
         ScrollViewReader { proxy in
-            List(selection: $model.selection) {
-                ForEach(displayed) { summary in
-                    MacArticleRow(summary: summary, model: model,
-                                  isSelected: model.selection == summary.stableKey)
-                        .listRowInsets(Self.rowInsets)
-                        .tag(summary.stableKey)
-                        // Only the row currently being scrolled to reports its position, and only
-                        // while the launch reveal is still pending -- every other row pays nothing.
-                        .modifier(SidebarTargetRowProbe(
-                            isTarget: !isRevealed && summary.identifier == model.scrollTarget?.id,
-                            onPosition: targetRowDidReport))
+            sidebarList(proxy: proxy)
+                .toolbar { sidebarToolbar }
+                .task(id: searchText) {
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    guard !Task.isCancelled else { return }
+                    debouncedSearch = searchText
+                }
+                .task(id: debouncedSearch) { await runSearch() }
+                .focused($focusedPane, equals: .sidebar)
+                .onKeyPress(.return) {
+                    guard model.selectedSummary != nil else { return .ignored }
+                    focusedPane = .reader
+                    return .handled
+                }
+                .background(widthReader)
+        }
+    }
+
+    /// Split out from `body` so the type checker resolves this half of the modifier chain
+    /// independently from the other half — adding `.toolbar` to the combined chain pushed it past
+    /// the compiler's inference timeout.
+    @ViewBuilder
+    private func sidebarList(proxy: ScrollViewProxy) -> some View {
+        List(selection: $model.selection) {
+            ForEach(displayed) { summary in
+                MacArticleRow(summary: summary, model: model,
+                              isSelected: model.selection == summary.stableKey)
+                    .listRowInsets(Self.rowInsets)
+                    .tag(summary.stableKey)
+                    // Only the row currently being scrolled to reports its position, and only
+                    // while the launch reveal is still pending -- every other row pays nothing.
+                    .modifier(SidebarTargetRowProbe(
+                        isTarget: !isRevealed && summary.identifier == model.scrollTarget?.id,
+                        onPosition: targetRowDidReport))
+            }
+        }
+        // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.
+        .accessibilityIdentifier("mac.sidebar.list")
+        .listStyle(.sidebar)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { listFrame = $0 }
+        // Rows stay invisible (but laid out, so the scroll below can resolve them) until the
+        // launch anchor has been scrolled to -- see `scrollToTarget(_:proxy:)`.
+        .opacity(isRevealed ? 1 : 0)
+        .onAppear {
+            recomputeDisplayed()
+            revealIfNothingToRestore()
+            scheduleRevealFallback()
+        }
+        // `displayed`'s real inputs: the model's filtered timeline, the live search results, and —
+        // only relevant while a search is active, since browsing already reads `model.filteredArticles`
+        // straight through — the tag/feed filter settings `recomputeDisplayed()` re-applies on top of
+        // `searchResults`.
+        .onChange(of: model.filteredArticles) { _, _ in recomputeDisplayed(); revealIfNothingToRestore() }
+        // An empty library's only signal: `summaries` never changes, so this is what lets the
+        // "No Articles" state show without waiting on `scheduleRevealFallback`.
+        .onChange(of: store.hasLoaded) { _, _ in revealIfNothingToRestore() }
+        .onChange(of: searchResults) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.disabledTagNames) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.disabledFeedNames) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.starredOnly) { _, _ in recomputeDisplayed() }
+        .onChange(of: settings.readFilter) { _, _ in recomputeDisplayed() }
+        .onChange(of: model.scrollTarget) { _, target in
+            guard let target, target.token != lastAppliedScrollToken else { return }
+            lastAppliedScrollToken = target.token
+            scrollToTarget(target.id, proxy: proxy)
+        }
+        // The selection highlight follows the tint. The brand accent is a bright lavender that
+        // fills the whole selected pill at full saturation — glaring against the dark sidebar — so
+        // damp it toward a deeper violet for the sidebar only. Derived from the accent so it stays
+        // on-brand and adapts to light/dark; iOS is untouched (this is the Mac window).
+        .tint(Self.selectionTint)
+        .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
+        .searchFocused($searchFieldFocused)
+        .onChange(of: model.searchFocusToken) { _, _ in searchFieldFocused = true }
+        .overlay {
+            if displayed.isEmpty {
+                if searchText.isEmpty {
+                    ContentUnavailableView("No Articles", systemImage: "tray",
+                                           description: Text("Pair a Yana Server that has feeds and articles configured."))
+                } else {
+                    ContentUnavailableView.search(text: searchText)
                 }
             }
-            // Screenshot/UI-test navigation target. EN/DE labels differ, so tests key off identifiers.
-            .accessibilityIdentifier("mac.sidebar.list")
-            .listStyle(.sidebar)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { listFrame = $0 }
-            // Rows stay invisible (but laid out, so the scroll below can resolve them) until the
-            // launch anchor has been scrolled to -- see `scrollToTarget(_:proxy:)`.
-            .opacity(isRevealed ? 1 : 0)
-            .onAppear {
-                recomputeDisplayed()
-                revealIfNothingToRestore()
-                scheduleRevealFallback()
-            }
-            // `displayed`'s real inputs: the model's filtered timeline, the live search results, and —
-            // only relevant while a search is active, since browsing already reads `model.filteredArticles`
-            // straight through — the tag/feed filter settings `recomputeDisplayed()` re-applies on top of
-            // `searchResults`.
-            .onChange(of: model.filteredArticles) { _, _ in recomputeDisplayed(); revealIfNothingToRestore() }
-            // An empty library's only signal: `summaries` never changes, so this is what lets the
-            // "No Articles" state show without waiting on `scheduleRevealFallback`.
-            .onChange(of: store.hasLoaded) { _, _ in revealIfNothingToRestore() }
-            .onChange(of: searchResults) { _, _ in recomputeDisplayed() }
-            .onChange(of: settings.disabledTagNames) { _, _ in recomputeDisplayed() }
-            .onChange(of: settings.includeUntagged) { _, _ in recomputeDisplayed() }
-            .onChange(of: settings.disabledFeedNames) { _, _ in recomputeDisplayed() }
-            .onChange(of: settings.starredOnly) { _, _ in recomputeDisplayed() }
-            .onChange(of: settings.readFilter) { _, _ in recomputeDisplayed() }
-            .onChange(of: model.scrollTarget) { _, target in
-                guard let target, target.token != lastAppliedScrollToken else { return }
-                lastAppliedScrollToken = target.token
-                scrollToTarget(target.id, proxy: proxy)
-            }
-            // The selection highlight follows the tint. The brand accent is a bright lavender that
-            // fills the whole selected pill at full saturation — glaring against the dark sidebar — so
-            // damp it toward a deeper violet for the sidebar only. Derived from the accent so it stays
-            // on-brand and adapts to light/dark; iOS is untouched (this is the Mac window).
-            .tint(Self.selectionTint)
-            .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search articles"))
-            .searchFocused($searchFieldFocused)
-            .onChange(of: model.searchFocusToken) { _, _ in searchFieldFocused = true }
-            .overlay {
-                if displayed.isEmpty {
-                    if searchText.isEmpty {
-                        ContentUnavailableView("No Articles", systemImage: "tray",
-                                               description: Text("Pair a Yana Server that has feeds and articles configured."))
-                    } else {
-                        ContentUnavailableView.search(text: searchText)
-                    }
-                }
-            }
-            .safeAreaInset(edge: .top) {
-                MacFilterBar(settings: settings, onCreateFeed: onCreateFeed)
-            }
-            .task(id: searchText) {
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                guard !Task.isCancelled else { return }
-                debouncedSearch = searchText
-            }
-            .task(id: debouncedSearch) { await runSearch() }
-            .focused($focusedPane, equals: .sidebar)
-            .onKeyPress(.return) {
-                guard model.selectedSummary != nil else { return .ignored }
-                focusedPane = .reader
-                return .handled
-            }
-            .background(widthReader)
+        }
+    }
+
+    /// The filter menu lives in the sidebar's own toolbar, next to its native search field, instead
+    /// of a hand-rolled labeled row above the list — that row rendered "Filter" as a text+icon pill
+    /// (the system's default look for a labeled `Menu`), which read as an unstyled, oversized control
+    /// against the dark source list. Hosting it as a `ToolbarItem` gets the same icon-only
+    /// round-button chrome every other Mac toolbar control in this app uses (`macToolbarIcon()`,
+    /// `MacRootView.toolbar`).
+    @ToolbarContentBuilder private var sidebarToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            MacFilterMenu(settings: settings)
         }
     }
 
@@ -655,92 +682,71 @@ private struct SidebarTargetRowProbe: ViewModifier {
     }
 }
 
-private struct MacFilterBar: View {
+/// Icon-only filter menu hosted in the sidebar's toolbar (`MacSidebarView.sidebarToolbar`).
+private struct MacFilterMenu: View {
     let settings: AppSettings
-    let onCreateFeed: () -> Void
     @Query(sort: \Tag.name) private var tags: [Tag]
     @Query(sort: \Feed.name) private var feeds: [Feed]
 
     private var isFiltering: Bool { settings.isTimelineFilterActive }
-    /// Matches `MacEmptyLibraryView.isPaired`/`TimelineModel.hasServer`: an unpaired/demo-mode
-    /// device has no `serverBaseURL` to point the "Add Feed" web view at, so it's dropped here for
-    /// the same reason the empty-library CTA drops it.
-    private var isPaired: Bool { AuthenticatedClient.current() != nil }
 
     var body: some View {
-        HStack {
-            Menu {
-                toggle(String(localized: "Starred Only"), isOn: settings.starredOnly) {
-                    settings.starredOnly = $0
-                }
-                // Three-way, unlike the toggles around it -- a `Picker` inside the menu renders as
-                // a checkmarked group, which is the Mac convention for a radio-style choice.
-                Picker(selection: Binding(
-                    get: { settings.readFilter },
-                    set: { settings.readFilter = $0 }
-                )) {
-                    ForEach(ReadFilterMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                } label: {
-                    Text("Read State")
-                }
-                Section("Tags") {
-                    ForEach(tags) { tag in
-                        toggle(tag.name, isOn: !settings.disabledTagNames.contains(tag.name)) { active in
-                            var set = settings.disabledTagNames
-                            if active { set.remove(tag.name) } else { set.insert(tag.name) }
-                            settings.disabledTagNames = set
-                        }
-                    }
-                    toggle(String(localized: "Untagged"), isOn: settings.includeUntagged) {
-                        settings.includeUntagged = $0
-                    }
-                }
-                if !feeds.isEmpty {
-                    Section("Feeds") {
-                        ForEach(feeds) { feed in
-                            toggle(feed.name, isOn: !settings.disabledFeedNames.contains(feed.name)) { active in
-                                var set = settings.disabledFeedNames
-                                if active { set.remove(feed.name) } else { set.insert(feed.name) }
-                                settings.disabledFeedNames = set
-                            }
-                        }
-                    }
-                }
-                if isFiltering {
-                    Divider()
-                    Button("Clear All") {
-                        settings.disabledTagNames = []
-                        settings.disabledFeedNames = []
-                        settings.includeUntagged = true
-                        settings.starredOnly = false
-                        settings.readFilter = .all
-                    }
+        Menu {
+            toggle(String(localized: "Starred Only"), isOn: settings.starredOnly) {
+                settings.starredOnly = $0
+            }
+            // Three-way, unlike the toggles around it -- a `Picker` inside the menu renders as
+            // a checkmarked group, which is the Mac convention for a radio-style choice.
+            Picker(selection: Binding(
+                get: { settings.readFilter },
+                set: { settings.readFilter = $0 }
+            )) {
+                ForEach(ReadFilterMode.allCases) { mode in
+                    Text(mode.displayName).tag(mode)
                 }
             } label: {
-                Label("Filter", systemImage: isFiltering
-                      ? "line.3.horizontal.decrease.circle.fill"
-                      : "line.3.horizontal.decrease.circle")
+                Text("Read State")
             }
-            .menuStyle(.borderlessButton)
-
-            Spacer()
-
-            // Dropped while unpaired/demo, matching `MacEmptyLibraryView`: there is no server to
-            // point `ManagementWebView(path: "/feeds/new")` at.
-            if isPaired {
-                Button(action: onCreateFeed) {
-                    Image(systemName: "plus")
+            Section("Tags") {
+                ForEach(tags) { tag in
+                    toggle(tag.name, isOn: !settings.disabledTagNames.contains(tag.name)) { active in
+                        var set = settings.disabledTagNames
+                        if active { set.remove(tag.name) } else { set.insert(tag.name) }
+                        settings.disabledTagNames = set
+                    }
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(Text("Add Feed"))
-                .help(Text("Add Feed"))
+                toggle(String(localized: "Untagged"), isOn: settings.includeUntagged) {
+                    settings.includeUntagged = $0
+                }
             }
+            if !feeds.isEmpty {
+                Section("Feeds") {
+                    ForEach(feeds) { feed in
+                        toggle(feed.name, isOn: !settings.disabledFeedNames.contains(feed.name)) { active in
+                            var set = settings.disabledFeedNames
+                            if active { set.remove(feed.name) } else { set.insert(feed.name) }
+                            settings.disabledFeedNames = set
+                        }
+                    }
+                }
+            }
+            if isFiltering {
+                Divider()
+                Button("Clear All") {
+                    settings.disabledTagNames = []
+                    settings.disabledFeedNames = []
+                    settings.includeUntagged = true
+                    settings.starredOnly = false
+                    settings.readFilter = .all
+                }
+            }
+        } label: {
+            Label("Filter", systemImage: isFiltering
+                  ? "line.3.horizontal.decrease.circle.fill"
+                  : "line.3.horizontal.decrease.circle")
+                .macToolbarIcon()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(Text("Filter"))
     }
 
     private func toggle(_ title: String, isOn: Bool, set: @escaping (Bool) -> Void) -> some View {
