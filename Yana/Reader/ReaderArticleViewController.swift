@@ -49,6 +49,9 @@ final class ReaderArticleViewController: UIViewController,
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
     var onOpenOnServer: ((Article) -> Void)?
+    /// Fired when the nav-bar progress indicator is tapped while a refresh runs, so the host can
+    /// open the server's job page for the operation behind it (`OperationMonitor.progressPagePath`).
+    var onShowProgressOnServer: (() -> Void)?
     /// Invoked by the empty-timeline page's shortcut button to begin creating the first feed.
     var onCreateFeed: (() -> Void)?
     /// Invoked by the empty-timeline page's shortcut button (unpaired variant) to start pairing.
@@ -355,8 +358,24 @@ final class ReaderArticleViewController: UIViewController,
         filterItem.accessibilityLabel = String(localized: "Filter articles")
         // The loading indicator only joins the left group while a refresh runs (see
         // setRefreshing). A stopped indicator's bar-button item still reserves width, so it is
-        // added/removed rather than left in place hidden.
-        indicatorItem = UIBarButtonItem(customView: activityIndicator)
+        // added/removed rather than left in place hidden. It is a button, not a bare spinner:
+        // tapping it opens the server's page for the job it stands for (`onShowProgressOnServer`).
+        // The spinner is a non-interactive subview so the whole 44pt target takes the tap.
+        let indicatorButton = UIButton(type: .system)
+        indicatorButton.addAction(UIAction { [weak self] _ in self?.onShowProgressOnServer?() },
+                                  for: .touchUpInside)
+        indicatorButton.accessibilityLabel = String(localized: "Show progress on server")
+        indicatorButton.accessibilityIdentifier = "reader.progress"
+        activityIndicator.isUserInteractionEnabled = false
+        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
+        indicatorButton.addSubview(activityIndicator)
+        NSLayoutConstraint.activate([
+            indicatorButton.widthAnchor.constraint(equalToConstant: 44),
+            indicatorButton.heightAnchor.constraint(equalToConstant: 44),
+            activityIndicator.centerXAnchor.constraint(equalTo: indicatorButton.centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: indicatorButton.centerYAnchor),
+        ])
+        indicatorItem = UIBarButtonItem(customView: indicatorButton)
         navigationItem.leftBarButtonItems = [articleListItem]
 
         starItem = UIBarButtonItem(image: UIImage(systemName: "star"), style: .plain, target: self, action: #selector(toggleStar))

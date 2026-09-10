@@ -23,6 +23,9 @@ struct ArticleListView: View {
     @State private var showFilter = false
     @State private var summaryToDelete: ArticleSummary?
     @State private var toast: ToastMessage?
+    /// Server web UI path shown in a `ManagementWebView` sheet after a tap on the progress
+    /// indicator (the current job's page); `nil` means dismissed.
+    @State private var progressPagePath: String?
 
     private var isUpdating: Bool { UpdateActivity.shared.isUpdating }
 
@@ -178,15 +181,23 @@ struct ArticleListView: View {
             }
             ToolbarItem(placement: .topBarLeading) {
                 if isUpdating {
-                    Button { OperationMonitor.shared.stopWatching(settings: settings) } label: {
-                        ZStack {
-                            ProgressView()
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(.secondary)
+                    // Tapping the spinner opens the server's page for the job it stands for, the
+                    // same as the reader's nav-bar indicator; "stop watching" moved to the menu a
+                    // long press reveals, so the spinner keeps one primary meaning on every surface.
+                    Menu {
+                        Button(role: .destructive) {
+                            OperationMonitor.shared.stopWatching(settings: settings)
+                        } label: {
+                            Label("Stop updating", systemImage: "stop.fill")
                         }
+                    } label: {
+                        ProgressView()
+                    } primaryAction: {
+                        guard AuthenticatedClient.current() != nil else { return }
+                        progressPagePath = OperationMonitor.shared.progressPagePath
                     }
-                    .accessibilityLabel(Text("Stop updating"))
+                    .menuIndicator(.hidden)
+                    .accessibilityLabel(Text("Show progress on server"))
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -200,6 +211,21 @@ struct ArticleListView: View {
             }
         }
         .sheet(isPresented: $showFilter) { TagFilterView() }
+        .sheet(isPresented: Binding(
+            get: { progressPagePath != nil },
+            set: { if !$0 { progressPagePath = nil } }
+        )) {
+            if let path = progressPagePath {
+                NavigationStack {
+                    ManagementWebView(
+                        serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
+                        path: path,
+                        title: nil,
+                        showsBackButton: true
+                    )
+                }
+            }
+        }
         .toast($toast)
         .alert(
             String(localized: "Delete Article?"),

@@ -67,11 +67,30 @@ final class OperationMonitor {
     /// freely. Keying by `id` alone would let an in-flight reload silently refuse to also track a
     /// same-numbered Update All run (`track` treats an existing key as "already watching this").
     private var inFlight: [String: Task<Void, Never>] = [:]
+    /// The operations behind `inFlight`, same keys. `inFlight` only holds the tasks, and a task
+    /// cannot say which operation it is polling; the progress indicator needs that to open the
+    /// server page for it (`currentOperation`).
+    private var watched: [String: TrackedOperation] = [:]
     /// The reader's already-registered `Article` object for a reload, when there is one. Not part
     /// of `TrackedOperation` because it cannot be persisted; absent after a relaunch, which is
     /// fine, since a freshly launched reader fetches the row after the write anyway. Keyed by
     /// `monitorKey` for the same reason as `inFlight`.
     private var visibleArticles: [String: WeakArticle] = [:]
+
+    /// The operation the progress indicator stands for: the most recently started one still being
+    /// watched, `nil` when nothing is. With one operation in flight (the normal case) it is that
+    /// one; with several, the newest is what the user most plausibly just triggered.
+    var currentOperation: TrackedOperation? {
+        watched.values.max { $0.startedAt < $1.startedAt }
+    }
+
+    /// The server web UI path the progress indicator opens: the current operation's own page when
+    /// there is one, else the jobs list. Never `nil`, so the indicator always leads somewhere
+    /// useful even when the busy state comes from something not tracked here (a summarize
+    /// request, or a wait whose row already finished between the tap and the read).
+    var progressPagePath: String {
+        currentOperation?.serverPagePath ?? TrackedOperation.jobsPagePath
+    }
 
     private let pollInterval: Duration
     private let slowPollInterval: Duration
@@ -107,6 +126,7 @@ final class OperationMonitor {
         let key = operation.monitorKey
         if let existing = inFlight[key] { return existing }
         if let visibleArticle { visibleArticles[key] = WeakArticle(visibleArticle) }
+        watched[key] = operation
         isActive = true
         // Restores the spinner's begin()/end() balance that used to live in the trigger call
         // sites' `UpdateActivity.shared.restart { ... }` wrappers, removed in Task 10 once this
@@ -119,6 +139,7 @@ final class OperationMonitor {
             let outcome = await self.monitor(operation, settings: settings, container: container,
                                              client: client, observer: observer)
             self.inFlight[key] = nil
+            self.watched[key] = nil
             self.visibleArticles[key] = nil
             self.activity.end()
             // Only clear the persisted record once an outcome was actually reached. `monitor`
@@ -293,6 +314,7 @@ final class OperationMonitor {
     func stopWatching(settings: AppSettings) {
         for task in inFlight.values { task.cancel() }
         inFlight.removeAll()
+        watched.removeAll()
         visibleArticles.removeAll()
         settings.trackedOperations = []
         isActive = false

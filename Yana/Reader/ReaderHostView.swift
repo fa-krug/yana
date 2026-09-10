@@ -30,6 +30,8 @@ struct ReaderHostView: UIViewControllerRepresentable {
     var onCopyLink: ((Article) -> Void)?
     var onSummarize: ((Article) -> Void)?
     var onOpenOnServer: ((Article) -> Void)?
+    /// Fired when the nav-bar progress indicator is tapped; see `ReaderArticleViewController`.
+    var onShowProgressOnServer: (() -> Void)?
     let aiReady: Bool
     let hasServer: Bool
     let isSummarizing: Bool
@@ -52,6 +54,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
         reader.onOpenOnServer = onOpenOnServer
+        reader.onShowProgressOnServer = onShowProgressOnServer
         reader.onCreateFeed = onCreateFeed
         reader.onPairServer = onPairServer
         reader.aiReady = aiReady
@@ -81,6 +84,7 @@ struct ReaderHostView: UIViewControllerRepresentable {
         reader.onCopyLink = onCopyLink
         reader.onSummarize = onSummarize
         reader.onOpenOnServer = onOpenOnServer
+        reader.onShowProgressOnServer = onShowProgressOnServer
         reader.onCreateFeed = onCreateFeed
         reader.onPairServer = onPairServer
         reader.aiReady = aiReady
@@ -124,9 +128,10 @@ struct ReaderScreen: View {
     @State private var isSummarizing = false
     @State private var reloadToken = 0
     @State private var showingCreateFeed = false
-    /// Server-side article id to view in `ManagementWebView`, set by the reader's "Open on Server"
-    /// menu action; `nil` means the sheet is dismissed.
-    @State private var openOnServerArticleID: Int?
+    /// Server web UI path to view in `ManagementWebView`: an article page from the reader's "Open
+    /// on Server" menu action, or the current job's page from a tap on the progress indicator.
+    /// `nil` means the sheet is dismissed.
+    @State private var openOnServerPath: String?
     /// Set by the Settings "Show Welcome Screen Again" row; consumed once the Settings sheet has
     /// fully dismissed so the welcome cover presents cleanly (no stacked-presentation race).
     @State private var restartOnboardingPending = false
@@ -240,7 +245,13 @@ struct ReaderScreen: View {
                     onForceUpdateArticle: forceUpdateArticle,
                     onCopyLink: copyLink,
                     onSummarize: summarize,
-                    onOpenOnServer: { openOnServerArticleID = $0.serverID },
+                    onOpenOnServer: { article in
+                        if let id = article.serverID { openOnServerPath = "/articles/\(id)" }
+                    },
+                    onShowProgressOnServer: {
+                        guard hasServer else { return }
+                        openOnServerPath = OperationMonitor.shared.progressPagePath
+                    },
                     aiReady: aiReady,
                     hasServer: hasServer,
                     isSummarizing: isSummarizing,
@@ -289,14 +300,14 @@ struct ReaderScreen: View {
             }
         }
         .sheet(isPresented: Binding(
-            get: { openOnServerArticleID != nil },
-            set: { if !$0 { openOnServerArticleID = nil } }
+            get: { openOnServerPath != nil },
+            set: { if !$0 { openOnServerPath = nil } }
         )) {
-            if let id = openOnServerArticleID {
+            if let path = openOnServerPath {
                 NavigationStack {
                     ManagementWebView(
                         serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
-                        path: "/articles/\(id)",
+                        path: path,
                         title: nil,
                         showsBackButton: true
                     )

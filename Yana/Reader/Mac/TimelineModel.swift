@@ -53,9 +53,10 @@ final class TimelineModel {
     private(set) var scrollTarget: SidebarScrollRequest?
     var isSummarizing = false
     var toast: ToastMessage?
-    /// Server-side article id to view in `ManagementWebView`, set by `openOnServer`; `nil` means
-    /// the sheet `MacRootView` binds to this is dismissed.
-    var openOnServerArticleID: Int?
+    /// Server web UI path to view in `ManagementWebView`: an article page from `openOnServer`, or
+    /// the current job's page from `showProgressOnServer`. `nil` means the sheet `MacRootView`
+    /// binds to this is dismissed.
+    var openOnServerPath: String?
     /// Bumped by the Search Articles menu command (⌥⌘F); `MacSidebarView` observes it and focuses
     /// the sidebar search field.
     private(set) var searchFocusToken = 0
@@ -349,7 +350,14 @@ final class TimelineModel {
 
     func openOnServer(_ article: Article) {
         guard AuthenticatedClient.current() != nil, let serverID = article.serverID else { return }
-        openOnServerArticleID = serverID
+        openOnServerPath = "/articles/\(serverID)"
+    }
+
+    /// Opens the server's page for the operation the toolbar spinner stands for -- the reload's
+    /// job, or the jobs list for an "Update All" run (see `TrackedOperation.serverPagePath`).
+    func showProgressOnServer() {
+        guard AuthenticatedClient.current() != nil else { return }
+        openOnServerPath = OperationMonitor.shared.progressPagePath
     }
 
     /// Server-interaction sequencing shared with `ReaderScreen` (iOS) via `ReaderActions.summarize`;

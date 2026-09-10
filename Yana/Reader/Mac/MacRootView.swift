@@ -73,14 +73,14 @@ struct MacRootView: View {
             }
         }
         .sheet(isPresented: Binding(
-            get: { model.openOnServerArticleID != nil },
-            set: { if !$0 { model.openOnServerArticleID = nil } }
+            get: { model.openOnServerPath != nil },
+            set: { if !$0 { model.openOnServerPath = nil } }
         )) {
-            if let id = model.openOnServerArticleID {
+            if let path = model.openOnServerPath {
                 NavigationStack {
                     ManagementWebView(
                         serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!,
-                        path: "/articles/\(id)",
+                        path: path,
                         title: nil,
                         showsBackButton: true
                     )
@@ -299,10 +299,16 @@ struct MacRootView: View {
 
     /// "Update all", whose icon cross-fades to a plain, indeterminate spinner while a run is in
     /// flight so the busy indicator sits inside the group without changing the item set or the
-    /// group's width (both children stay laid out — only their opacity changes).
+    /// group's width (both children stay laid out — only their opacity changes). While the spinner
+    /// shows, the button stays enabled but changes meaning: it opens the server's page for the
+    /// job in flight instead of triggering another run (`TimelineModel.showProgressOnServer`).
     private var updateButton: some View {
         Button {
-            model.triggerRefresh()
+            if showSpinner {
+                model.showProgressOnServer()
+            } else {
+                model.triggerRefresh()
+            }
         } label: {
             ZStack {
                 Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
@@ -310,9 +316,8 @@ struct MacRootView: View {
             }
             .macToolbarIcon()
         }
-        .disabled(showSpinner)
-        .help(Text("Update all"))
-        .accessibilityLabel(showSpinner ? Text("Updating") : Text("Update all"))
+        .help(showSpinner ? Text("Show progress on server") : Text("Update all"))
+        .accessibilityLabel(showSpinner ? Text("Show progress on server") : Text("Update all"))
     }
 
     /// The sidebar's launch width: the last persisted value clamped to bounds, or the ideal default
