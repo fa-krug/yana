@@ -2705,6 +2705,17 @@
         }
       }
     },
+    "Show progress on server": {
+      "comment": "Label for the progress spinner shown while a server job runs; tapping it opens that job's page on the server.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fortschritt auf dem Server anzeigen"
+          }
+        }
+      }
+    },
     "Stop updating": {
       "comment": "Accessibility label for the button that stops an ongoing feed update.",
       "localizations": {
@@ -2723,17 +2734,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alle aktualisieren"
-          }
-        }
-      }
-    },
-    "Updating": {
-      "comment": "Accessibility label for the toolbar progress spinner shown while an update is in progress.",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wird aktualisiert"
           }
         }
       }

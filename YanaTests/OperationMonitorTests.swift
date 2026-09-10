@@ -78,6 +78,76 @@ struct OperationMonitorTests {
         }
     }
 
+    // The progress indicator opens the server page for whatever the monitor is watching, so the
+    // monitor has to know *which* operation each in-flight task belongs to -- `inFlight` alone
+    // holds only tasks. With nothing watched it falls back to the jobs list, never to nothing.
+    @Test func currentOperationNamesTheWatchedOperationAndFallsBackToTheJobsList() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let gate = HeldContentRequest()
+            // Ends `failed`, not `completed`: a completed reload goes on to fetch the article's
+            // content, which would park a second request on the same one-shot gate.
+            let api = client { request in
+                gate.noteStarted()
+                gate.waitUntilReleased()
+                return self.json(request, """
+                {"jobId":42,"runId":null,"kind":"article.reload","progress":100,
+                 "status":"failed","error":"boom","startedAt":null,"finishedAt":null}
+                """)
+            }
+
+            let monitor = makeMonitor()
+            #expect(monitor.currentOperation == nil)
+            #expect(monitor.progressPagePath == "/jobs")
+
+            let operation = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 42,
+                                             startedAt: .now)
+            settings.trackedOperations = [operation]
+            let task = monitor.track(operation, settings: settings, container: container, client: api)
+            #expect(monitor.currentOperation == operation)
+            #expect(monitor.progressPagePath == "/jobs/42")
+
+            gate.release()
+            await task.value
+            #expect(monitor.currentOperation == nil)
+            #expect(monitor.progressPagePath == "/jobs")
+        }
+    }
+
+    @Test func currentOperationPrefersTheNewestOfSeveralAndClearsOnStopWatching() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = makeSettings()
+            let gate = HeldContentRequest()
+            let api = client { request in
+                gate.noteStarted()
+                gate.waitUntilReleased()
+                return (HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil,
+                                        headerFields: nil)!, Data())
+            }
+
+            let monitor = makeMonitor()
+            let older = TrackedOperation(kind: .reloadArticle(serverID: 100), id: 7,
+                                         startedAt: Date(timeIntervalSince1970: 1_000))
+            let newer = TrackedOperation(kind: .updateAll, id: 3,
+                                         startedAt: Date(timeIntervalSince1970: 2_000))
+            settings.trackedOperations = [older, newer]
+            monitor.track(older, settings: settings, container: container, client: api)
+            monitor.track(newer, settings: settings, container: container, client: api)
+            #expect(monitor.currentOperation == newer)
+            #expect(monitor.progressPagePath == "/jobs")
+
+            let tasks = monitor.inFlightTasks
+            monitor.stopWatching(settings: settings)
+            #expect(monitor.currentOperation == nil)
+            // One signal per parked stub thread (see `HeldContentRequest.release`).
+            gate.release()
+            gate.release()
+            for task in tasks { await task.value }
+        }
+    }
+
     @Test func stopsOnAFailedJobAndClearsThePersistedRecord() async throws {
         try await MockURLProtocol.lock.withLock {
             let container = try makeContainer()

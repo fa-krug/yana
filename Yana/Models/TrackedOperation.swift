@@ -32,4 +32,22 @@ struct TrackedOperation: Codable, Equatable, Sendable {
         case .updateAll: "run-\(id)"
         }
     }
+
+    /// The server web UI's jobs list (`src/app/(app)/jobs/page.tsx` in `yana-server`). This is
+    /// where a progress indicator lands when there is no single job to show -- an "Update All"
+    /// run, or a busy state with no tracked operation behind it at all.
+    static let jobsPagePath = "/jobs"
+
+    /// Where the server's web UI shows this operation, relative to the server base URL, for
+    /// `ManagementWebView` to open when the user taps the progress indicator.
+    ///
+    /// A reload is one job with its own detail page (`/jobs/:id`, with the job's log lines and
+    /// cancel action). A run has no page of its own in the server UI -- it is only visible as the
+    /// batch of jobs it enqueued, so it lands on the jobs list, where those jobs sit at the top.
+    var serverPagePath: String {
+        switch kind {
+        case .reloadArticle: "\(Self.jobsPagePath)/\(id)"
+        case .updateAll: Self.jobsPagePath
+        }
+    }
 }

@@ -332,9 +332,20 @@ source and issue board live at
   stream purely to move `progressPercent` forward sooner between polls (clamped to
   `max(existing, incoming)`) — a missed or duplicated event costs nothing, because it is never
   what ends the wait. **That percentage is not shown anywhere:** every busy surface (the iOS reader's
-  nav-bar indicator, the article list's stop button, the Mac toolbar's update button) draws a plain
+  nav-bar indicator, the article list's spinner, the Mac toolbar's update button) draws a plain
   indeterminate spinner, so `UpdateActivity.progressPercent` is monitor state only and there is no
-  `progressLabel` any more. **No timeout is ever treated as success.** This replaces `UpdateAndSync`,
+  `progressLabel` any more. **Every one of those spinners is a button that opens the server's own
+  page for the job in flight:** `OperationMonitor.currentOperation` (the newest operation still
+  being watched, backed by a `watched` table keyed like `inFlight`) resolves through
+  `TrackedOperation.serverPagePath` to `/jobs/<id>` for a reload (the server UI's job detail page,
+  with its log and cancel action) or to the `/jobs` list for an "Update All" run (the server has no
+  run page; the run is only visible as the jobs it enqueued), and `progressPagePath` falls back to
+  `/jobs` when nothing is tracked. All three surfaces present it in the same `ManagementWebView`
+  sheet the "Open on Server" article action uses (`ReaderScreen.openOnServerPath` /
+  `TimelineModel.openOnServerPath`, a path rather than an article id). The article list's former
+  stop-glyph tap ("stop watching") is now the long-press menu on that same spinner (a `Menu` with a
+  `primaryAction`); the Mac update button is no longer disabled while busy, it changes meaning
+  instead. **No timeout is ever treated as success.** This replaces `UpdateAndSync`,
   whose `pollForReloadedContent` waited ten seconds for a single SSE event and then fetched the
   article and reported "Reloaded" regardless of what the server was actually doing — since the
   server's own worker only claims a pending job on a two-second poll and then refetches and
@@ -1008,7 +1019,9 @@ source and issue board live at
   exercised a type that no longer exists — and added five new suites in its place: `JobStatusTests`
   (`JobStatusResponse`/`RunStatusResponse` decoding, including the fractional-seconds
   `startedAt`/`finishedAt` shape and the unrecognized-status-stays-non-terminal rule),
-  `TrackedOperationTests` (`monitorKey`'s job/run collision-avoidance), `OperationMonitorTests` (the
+  `TrackedOperationTests` (`monitorKey`'s job/run collision-avoidance, and `serverPagePath`'s
+  job-page-vs-jobs-list rule), `OperationMonitorTests` (the `currentOperation`/`progressPagePath`
+  bookkeeping across track/finish/`stopWatching`, plus the
   poll loop's terminal/gone/permanent-failure/retryable branches, the no-timeout-is-success
   guarantee, `resume()`'s relaunch pickup, and the SSE-nudge-forward-only clamp), `ReaderActionsTriggerTests`
   (`startReload`/`startUpdateAll` persisting a `TrackedOperation` before handing off to the monitor),
