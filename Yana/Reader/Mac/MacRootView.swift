@@ -729,9 +729,8 @@ private struct MacFilterMenu: View {
                 }
             }
         } label: {
-            Image(systemName: isFiltering
-                  ? "line.3.horizontal.decrease.circle.fill"
-                  : "line.3.horizontal.decrease.circle")
+            Image(systemName: "line.3.horizontal.decrease")
+                .foregroundStyle(isFiltering ? Color.accentColor : Color.primary)
         }
         .help(Text("Filter"))
         .accessibilityLabel(Text("Filter"))

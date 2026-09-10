@@ -33,7 +33,7 @@ struct ServerMigrationNoticeView: View {
             url: URL(string: "https://github.com/fa-krug/yana/releases/tag/v1.1.0")!
         ),
         Option(
-            icon: "arrow.uturn.backward.circle",
+            icon: "arrow.uturn.backward",
             tint: .purple,
             detail: "If this change isn’t for you, just let me know and I’ll refund your purchase.",
             actionTitle: "Request a Refund",

@@ -202,9 +202,8 @@ struct ArticleListView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showFilter = true } label: {
-                    Image(systemName: isFilterActive
-                          ? "line.3.horizontal.decrease.circle.fill"
-                          : "line.3.horizontal.decrease.circle")
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .foregroundStyle(isFilterActive ? Color.accentColor : Color.primary)
                 }
                 .accessibilityLabel(Text("Filter articles"))
                 .accessibilityValue(isFilterActive ? Text("Filter active") : Text(""))
