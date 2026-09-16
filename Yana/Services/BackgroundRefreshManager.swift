@@ -116,7 +116,7 @@ final class BackgroundRefreshManager {
             let engine = SyncEngine(container: container, client: client)
             await Self.runRefresh(
                 engine: engine,
-                postsNotification: UIApplication.shared.applicationState != .active
+                postsNotification: !PlatformApp.isActive
             )
         }
     }
@@ -192,7 +192,7 @@ final class BackgroundRefreshManager {
                 let engine = SyncEngine(container: self.container, client: client)
                 await Self.runRefresh(
                     engine: engine,
-                    postsNotification: UIApplication.shared.applicationState != .active
+                    postsNotification: !PlatformApp.isActive
                 )
             }
         }

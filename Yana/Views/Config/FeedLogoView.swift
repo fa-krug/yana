@@ -1,21 +1,20 @@
 import SwiftUI
-import UIKit
 
 /// A small rounded feed logo, with a neutral placeholder when no logo is cached yet.
 ///
 /// Feed logos go through the same decoded-bitmap cache as article images (`ReaderImageCache`:
 /// off-main decode, downsampling, byte-limited `NSCache`) instead of a per-row main-thread
-/// `Data(contentsOf:)` + `UIImage(data:)` with no cache (audit P8).
+/// `Data(contentsOf:)` + image decode with no cache (audit P8).
 struct FeedLogoView: View {
     let hash: String?
     var size: CGFloat = 28
 
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
 
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image).resizable().scaledToFill()
+                Image(platformImage: image).resizable().scaledToFill()
             } else {
                 Image(systemName: "globe")
                     .resizable().scaledToFit().padding(4)

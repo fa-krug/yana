@@ -1,6 +1,10 @@
-import UIKit
 import ImageIO
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// In-memory cache of decoded reader images, keyed by their `yana-img://<hash>` (or remote URL)
 /// ref. Exists so a page that has already been seen — or whose lead image was preloaded ahead of a
@@ -17,11 +21,11 @@ import UniformTypeIdentifiers
 final class ReaderImageCache: @unchecked Sendable {
     static let shared = ReaderImageCache()
 
-    private let cache = NSCache<NSString, UIImage>()
+    private let cache = NSCache<NSString, PlatformImage>()
     private let lock = NSLock()
     /// Refs with an in-flight load, so concurrent requests (e.g. the page rendering while a prewarm
     /// runs) share one disk read instead of decoding the same file twice.
-    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+    private var inFlight: [String: Task<PlatformImage?, Never>] = [:]
 
     /// Bounds how many images decode at once. The reader body renders every block up front (a
     /// non-lazy `VStack`), so an image-heavy article — e.g. a multi-page Heise story — would
@@ -48,16 +52,16 @@ final class ReaderImageCache: @unchecked Sendable {
     }
 
     /// Synchronous lookup — returns the decoded image if it is already in memory, else nil.
-    func cached(_ ref: String) -> UIImage? {
+    func cached(_ ref: String) -> PlatformImage? {
         cache.object(forKey: ref as NSString)
     }
 
     /// Returns the cached image, or loads it off the main thread, caches it, and returns it.
     /// Coalesces concurrent loads of the same ref onto one task.
-    func image(for ref: String) async -> UIImage? {
+    func image(for ref: String) async -> PlatformImage? {
         if let hit = cached(ref) { return hit }
 
-        let task: Task<UIImage?, Never> = lock.withLock {
+        let task: Task<PlatformImage?, Never> = lock.withLock {
             if let existing = inFlight[ref] { return existing }
             let task = Task { await Self.load(ref) }
             inFlight[ref] = task
@@ -78,7 +82,7 @@ final class ReaderImageCache: @unchecked Sendable {
 
     /// Reads and decodes the image for a `yana-img://<hash>` ref from the local `ImageStore`, or a
     /// remote URL fallback. Runs entirely off the main thread.
-    private static func load(_ ref: String) async -> UIImage? {
+    private static func load(_ ref: String) async -> PlatformImage? {
         // Hold a decode slot for the whole read+decode so only a few images allocate their bitmaps
         // at the same time (the rest queue on the gate).
         await decodeGate.acquire()
@@ -106,24 +110,31 @@ final class ReaderImageCache: @unchecked Sendable {
     /// Decodes (and downsamples) the image at `url` into a draw-ready bitmap, fully realized on the
     /// calling background thread so the first on-screen draw doesn't pay a synchronous decode — the
     /// hitch behind the image "pop-in". Falls back to a plain file load if ImageIO can't open it.
-    private static func decodedImage(at url: URL) -> UIImage? {
+    private static func decodedImage(at url: URL) -> PlatformImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-            return UIImage(contentsOfFile: url.path)
+            return PlatformImage(contentsOfFile: url.path)
         }
-        return decodedImage(from: source) ?? UIImage(contentsOfFile: url.path)
+        return decodedImage(from: source) ?? PlatformImage(contentsOfFile: url.path)
     }
 
-    private static func decodedImage(from data: Data) -> UIImage? {
+    private static func decodedImage(from data: Data) -> PlatformImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-            return UIImage(data: data)
+            return PlatformImage(data: data)
         }
-        return decodedImage(from: source) ?? UIImage(data: data)
+        return decodedImage(from: source) ?? PlatformImage(data: data)
     }
 
-    private static func decodedImage(from source: CGImageSource) -> UIImage? {
+    private static func decodedImage(from source: CGImageSource) -> PlatformImage? {
         // Animated GIFs (e.g. Giphy) decode into a playable multi-frame image; anything else takes
         // the single-frame thumbnail path.
+        //
+        // iOS only: `NSImage` has no `animatedImage(with:duration:)` — the AppKit way to play a GIF
+        // is to hand the raw bytes to an `NSImageView(animates: true)` and let it drive the frames,
+        // which is a different shape entirely (bytes in, not a decoded frame array). Until that
+        // lands (macOS migration Stage 6f) a GIF simply renders as its first frame on macOS.
+        #if !os(macOS)
         if let animated = animatedImage(from: source) { return animated }
+        #endif
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,   // bake in EXIF orientation
@@ -132,7 +143,7 @@ final class ReaderImageCache: @unchecked Sendable {
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,  // never upscales smaller images
         ]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return UIImage(cgImage: cg)
+        return PlatformImage.fromCGImage(cg)
     }
 
     /// Frames of an animated GIF are held in memory decoded, so cap them below the still-image
@@ -165,6 +176,10 @@ final class ReaderImageCache: @unchecked Sendable {
     /// Builds a playable animated `UIImage` from a multi-frame GIF source, downsampling each frame.
     /// Returns nil for still images (single frame or non-GIF) so the caller falls back to the
     /// still-image thumbnail path.
+    ///
+    /// iOS only — see the call site in `decodedImage(from source:)` for why (TODO: macOS migration
+    /// Stage 6f). `animatedFrameLimit` above is the pure, unit-tested half and stays cross-platform.
+    #if !os(macOS)
     private static func animatedImage(from source: CGImageSource) -> UIImage? {
         guard let type = CGImageSourceGetType(source), UTType(type as String) == .gif else { return nil }
         let available = CGImageSourceGetCount(source)
@@ -198,6 +213,7 @@ final class ReaderImageCache: @unchecked Sendable {
         if totalDuration <= 0 { totalDuration = Double(frames.count) * 0.1 }
         return UIImage.animatedImage(with: frames, duration: totalDuration)
     }
+    #endif
 
     /// Per-frame delay for a GIF frame (seconds). Browsers clamp very short delays to ~0.1s, so we
     /// match that to keep fast GIFs from playing unnaturally quickly.
@@ -211,8 +227,21 @@ final class ReaderImageCache: @unchecked Sendable {
 
     /// Approximate decoded byte size, used as the `NSCache` cost so `totalCostLimit` bounds memory.
     /// For animated images all frames are resident, so scale the single-frame estimate by the count.
-    private static func cost(of image: UIImage) -> Int {
+    ///
+    /// Forked rather than shimmed: `UIImage` exposes its backing `CGImage` and its frame array
+    /// directly, while `NSImage` is a *collection of representations* with no frame concept at all,
+    /// so the two estimates are computed from genuinely different things. The macOS branch measures
+    /// the first representation's pixel dimensions at 4 bytes per pixel and has no frame multiplier,
+    /// which is correct as long as macOS has no animated path (see `animatedImage(from:)`).
+    #if os(macOS)
+    private static func cost(of image: PlatformImage) -> Int {
+        guard let rep = image.representations.first else { return 0 }
+        return rep.pixelsWide * rep.pixelsHigh * 4
+    }
+    #else
+    private static func cost(of image: PlatformImage) -> Int {
         guard let cg = image.cgImage else { return 0 }
         return cg.bytesPerRow * cg.height * max(1, image.images?.count ?? 1)
     }
+    #endif
 }

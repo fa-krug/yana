@@ -62,7 +62,7 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         self.onCancel = onCancel
         self.onFailed = onFailed
 
-        let deviceName = UIDevice.current.name
+        let deviceName = PlatformApp.deviceName
         let url = DevicePairing.pairingURL(serverBaseURL: serverBaseURL, session: pairingSession, deviceName: deviceName)
 
         // Passing a *reference* to `handleAuthCallback` rather than an inline closure literal

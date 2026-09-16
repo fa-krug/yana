@@ -52,7 +52,7 @@ struct MacSidebarLaunchScrollTests {
         @FocusState private var focusedPane: MacFocusPane?
 
         var body: some View {
-            MacSidebarView(model: model, settings: settings, onCreateFeed: {}, focusedPane: $focusedPane)
+            MacSidebarView(model: model, settings: settings, focusedPane: $focusedPane)
                 .onAppear {
                     model.applyTimeline()
                 }

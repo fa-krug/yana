@@ -335,13 +335,11 @@ final class TimelineModel {
     /// Open the article's original web page in the default browser. On the Mac the desktop
     /// expectation is the system browser, so this opens the URL directly rather than an in-app sheet.
     func openWebsite(_ article: Article) {
-        #if canImport(UIKit)
         // Same guard as iOS (ReaderArticleViewController.openInBrowser): article.url is
         // server-supplied feed data, so never hand a non-web scheme to LSOpen (audit).
         guard let url = URL(string: article.url),
               url.scheme == "http" || url.scheme == "https" else { return }
-        UIApplication.shared.open(url)
-        #endif
+        PlatformApp.open(url)
     }
 
     /// True when a server is paired, gating the "Open on Server" action alongside a per-article

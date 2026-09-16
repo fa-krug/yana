@@ -75,12 +75,13 @@ struct ArticleBlockView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    /// The in-app base size (`ArticleTextSize`) scaled by the system Dynamic Type setting via
-    /// `UIFontMetrics`, so the reader honors Accessibility → Larger Text on top of the user's chosen
-    /// size. Reading `dynamicTypeSize` above makes the view recompute when the setting changes.
+    /// The in-app base size (`ArticleTextSize`) scaled by the system Dynamic Type setting, so the
+    /// reader honors Accessibility → Larger Text on top of the user's chosen size. Reading
+    /// `dynamicTypeSize` above makes the view recompute when the setting changes. macOS has no
+    /// Dynamic Type and `PlatformFont.scaledBodyValue` returns the size unscaled there.
     private var bodySize: CGFloat {
         _ = dynamicTypeSize
-        return UIFontMetrics(forTextStyle: .body).scaledValue(for: CGFloat(textSize.pointSize))
+        return PlatformFont.scaledBodyValue(for: CGFloat(textSize.pointSize))
     }
 
     var body: some View {

@@ -222,8 +222,8 @@ enum ReaderAttributedText {
         let baseDescriptor = systemDescriptor(size: baseSize, weight: weight, design: design)
         for run in runs {
             var traits = baseDescriptor.symbolicTraits
-            if run.styles.contains(.bold) { traits.insert(.traitBold) }
-            if run.styles.contains(.italic) { traits.insert(.traitItalic) }
+            if run.styles.contains(.bold) { traits.insert(.yanaBold) }
+            if run.styles.contains(.italic) { traits.insert(.yanaItalic) }
             var descriptor = baseDescriptor.withSymbolicTraits(traits) ?? baseDescriptor
             // Inline `code` pins a monospaced face at the same size, like the SwiftUI `.code` intent.
             if run.styles.contains(.code) {
