@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftData
 import SwiftUI
 import Testing
@@ -440,3 +441,4 @@ struct ReaderPageReassertScrollTests {
                 "the restore was not retried when the body grew: stuck at \(grown.contentOffset.y)")
     }
 }
+#endif

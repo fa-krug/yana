@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import UIKit
 
@@ -423,3 +424,4 @@ final class ReaderBlockViewController: UIViewController {
 
     @objc private func tapZoneTapped() { onRequestShowBars() }
 }
+#endif

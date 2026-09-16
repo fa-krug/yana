@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import UIKit
 
@@ -109,163 +110,14 @@ struct SelectableText: UIViewRepresentable {
 /// its own line rather than to the top of a long run of prose.
 final class ReaderTextView: UITextView {
     var findSegment: Int?
-}
 
-/// The two highlight fills "Find in Article" paints: a soft wash over every match and a stronger
-/// one over the current match, in both UIKit (`SelectableText`) and SwiftUI (`Text`) terms so the
-/// two text paths look the same.
-enum FindHighlightStyle {
-    static func uiColor(isCurrent: Bool) -> UIColor {
-        isCurrent
-            ? UIColor.systemOrange.withAlphaComponent(0.7)
-            : UIColor.systemYellow.withAlphaComponent(0.35)
-    }
-
-    static func color(isCurrent: Bool) -> Color {
-        Color(uiColor: uiColor(isCurrent: isCurrent))
-    }
-
-    /// Paints `highlights` (ranges in `text`'s own UTF-16 offsets, shifted by `offset` into
-    /// `result`) as background fills, skipping any range that does not fit -- a highlight computed
-    /// against text this string does not hold must never crash the renderer.
-    static func apply(_ highlights: [FindHighlightRange], to result: NSMutableAttributedString, offset: Int = 0) {
-        for highlight in highlights {
-            let range = NSRange(location: offset + highlight.range.location, length: highlight.range.length)
-            guard range.location >= 0, NSMaxRange(range) <= result.length else { continue }
-            result.addAttribute(.backgroundColor, value: uiColor(isCurrent: highlight.isCurrent), range: range)
-        }
+    /// The text this view draws, under a name both platforms share. `NSTextView` has no
+    /// `attributedText` at all (its content lives in `textStorage`), so the reader's find machinery
+    /// would otherwise have to fork purely over a property name. Here it is a straight alias.
+    var readerAttributedString: NSAttributedString {
+        get { attributedText }
+        set { attributedText = newValue }
     }
 }
 
-/// Builds the `NSAttributedString`s that back `SelectableText`. Mirrors the SwiftUI
-/// `attributedString(from:)` styling (bold/italic/code/strikethrough + links) but in UIKit terms,
-/// baking in the point size, weight, and the reader's chosen typeface `design` — the SwiftUI
-/// `.fontDesign` modifier only reaches SwiftUI `Text`, not a hosted `UITextView`.
-enum ReaderAttributedText {
-    static func make(runs: [InlineRun], baseSize: CGFloat, weight: UIFont.Weight = .regular,
-                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label,
-                     highlights: [FindHighlightRange] = []) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        appendRuns(runs, into: result, baseSize: baseSize, weight: weight, design: design, color: color)
-        FindHighlightStyle.apply(highlights, to: result)
-        return result
-    }
-
-    /// Vertical gap between coalesced blocks inside one `SelectableText`, matching the reader's
-    /// top-level VStack spacing so a merged text run looks identical to separate blocks.
-    private static let blockSpacing: CGFloat = 16
-    /// Extra space above a heading (on top of the preceding block's trailing gap), mirroring the
-    /// former per-heading `.padding(.top, 4)`.
-    private static let headingSpacingBefore: CGFloat = 4
-
-    /// Build one attributed string spanning several consecutive top-level text blocks (paragraphs
-    /// and headings) so a whole run of prose renders through a single `UITextView` instead of one
-    /// per block — the reader's dominant per-page cost. Inter-block spacing and heading emphasis are
-    /// baked into per-paragraph `NSParagraphStyle`s + fonts so the merged run lays out exactly like
-    /// the individual blocks it replaces. Non-text blocks (images, embeds, lists, quotes, code,
-    /// dividers) are not passed here — they break a run and render standalone.
-    ///
-    /// `highlights(i)` returns the find highlights of block `i`, in that block's own text offsets;
-    /// they are shifted to where the block's text landed in the merged string. `FindUnit`'s
-    /// `textViewOffset` mirrors that same arithmetic (each block's UTF-16 length plus one newline),
-    /// which `ArticleFindTests` pins against this method.
-    static func make(blocks: [Block], baseSize: CGFloat,
-                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label,
-                     highlights: (Int) -> [FindHighlightRange] = { _ in [] }) -> NSAttributedString {
-        let result = NSMutableAttributedString()
-        for (i, block) in blocks.enumerated() {
-            let isLast = i == blocks.count - 1
-            let runs: [InlineRun]
-            let size: CGFloat
-            let weight: UIFont.Weight
-            let spacingBefore: CGFloat
-            switch block {
-            case .paragraph(let r):
-                runs = r; size = baseSize; weight = .regular; spacingBefore = 0
-            case .heading(let level, let r):
-                runs = r; size = headingSize(baseSize, level); weight = .bold
-                spacingBefore = headingSpacingBefore
-            default:
-                continue   // only paragraphs/headings are coalesced; callers pass nothing else
-            }
-            let start = result.length
-            appendRuns(runs, into: result, baseSize: size, weight: weight, design: design, color: color)
-            FindHighlightStyle.apply(highlights(i), to: result, offset: start)
-            if !isLast { result.append(NSAttributedString(string: "\n")) }
-            // Apply the paragraph style over the whole paragraph, including its terminating newline,
-            // so `paragraphSpacing` (the gap after) takes effect. The last block carries no trailing
-            // gap — the enclosing VStack spaces it from the next segment.
-            let style = NSMutableParagraphStyle()
-            style.paragraphSpacing = isLast ? 0 : blockSpacing
-            style.paragraphSpacingBefore = spacingBefore
-            result.addAttribute(.paragraphStyle, value: style,
-                                range: NSRange(location: start, length: result.length - start))
-        }
-        return result
-    }
-
-    /// Body-relative heading point size. Shared by both standalone headings (`BlockNodeView`,
-    /// nested inside a list/blockquote) and coalesced top-level headings (`StaticTextRun`) so the
-    /// fast-Text-to-SelectableText swap never reflows.
-    static func headingSize(_ baseSize: CGFloat, _ level: Int) -> CGFloat {
-        switch level {
-        case 1: return baseSize * 1.5
-        case 2: return baseSize * 1.3
-        case 3: return baseSize * 1.15
-        default: return baseSize * 1.05
-        }
-    }
-
-    private static func appendRuns(_ runs: [InlineRun], into result: NSMutableAttributedString,
-                                   baseSize: CGFloat, weight: UIFont.Weight,
-                                   design: UIFontDescriptor.SystemDesign, color: UIColor) {
-        let baseDescriptor = systemDescriptor(size: baseSize, weight: weight, design: design)
-        for run in runs {
-            var traits = baseDescriptor.symbolicTraits
-            if run.styles.contains(.bold) { traits.insert(.yanaBold) }
-            if run.styles.contains(.italic) { traits.insert(.yanaItalic) }
-            var descriptor = baseDescriptor.withSymbolicTraits(traits) ?? baseDescriptor
-            // Inline `code` pins a monospaced face at the same size, like the SwiftUI `.code` intent.
-            if run.styles.contains(.code) {
-                descriptor = descriptor.withDesign(.monospaced) ?? descriptor
-            }
-            let font = UIFont(descriptor: descriptor, size: baseSize)
-            var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-            if run.styles.contains(.strikethrough) {
-                attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
-            }
-            if let link = run.link, let url = URL(string: link) {
-                attrs[.link] = url
-            }
-            result.append(NSAttributedString(string: run.text, attributes: attrs))
-        }
-    }
-
-    static func make(string: String, size: CGFloat, weight: UIFont.Weight = .regular,
-                     design: UIFontDescriptor.SystemDesign, color: UIColor = .label,
-                     highlights: [FindHighlightRange] = []) -> NSAttributedString {
-        let font = UIFont(descriptor: systemDescriptor(size: size, weight: weight, design: design), size: size)
-        let result = NSMutableAttributedString(string: string, attributes: [.font: font, .foregroundColor: color])
-        FindHighlightStyle.apply(highlights, to: result)
-        return result
-    }
-
-    private static func systemDescriptor(size: CGFloat, weight: UIFont.Weight,
-                                         design: UIFontDescriptor.SystemDesign) -> UIFontDescriptor {
-        let base = UIFont.systemFont(ofSize: size, weight: weight)
-        return base.fontDescriptor.withDesign(design) ?? base.fontDescriptor
-    }
-}
-
-extension ArticleFont {
-    /// UIKit equivalent of `design`, for text baked into a `UITextView` (which the SwiftUI
-    /// `.fontDesign` modifier does not reach).
-    var uiDesign: UIFontDescriptor.SystemDesign {
-        switch self {
-        case .system: .default
-        case .serif: .serif
-        case .rounded: .rounded
-        case .monospaced: .monospaced
-        }
-    }
-}
+#endif

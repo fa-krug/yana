@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftData
 import SwiftUI
 import Testing
@@ -115,3 +116,4 @@ struct ReaderSyncUpdateScrollTests {
         #expect(after == 900, "the reader jumped to \(after) after a sync updated the article")
     }
 }
+#endif
