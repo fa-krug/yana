@@ -105,7 +105,7 @@ struct ServerMigrationNoticeView: View {
 
     private var footer: some View {
         HStack {
-            #if targetEnvironment(macCatalyst)
+            #if os(macOS)
             Spacer()
             continueButton
             #else
@@ -123,7 +123,7 @@ struct ServerMigrationNoticeView: View {
         Button(action: onDismiss) {
             Text("Continue")
                 .font(.headline)
-                #if !targetEnvironment(macCatalyst)
+                #if !os(macOS)
                 .frame(maxWidth: .infinity)
                 #endif
         }

@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    #if targetEnvironment(macCatalyst)
+    #if os(macOS)
     /// Delay before the Mac's one-shot launch refresh, long enough that the window is up and first
     /// paint is done before the refresh starts.
     private static let launchRefreshDelay: Duration = .seconds(3)
@@ -138,7 +138,7 @@ struct YanaApp: App {
                         ReadingPositionLiveSync.shared.start(settings: appSettings)
                         OperationMonitor.shared.startEvents(settings: appSettings)
                         OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
-                        #if targetEnvironment(macCatalyst)
+                        #if os(macOS)
                         appDelegate.refreshOnFocus()
                         #endif
                     default:
@@ -180,7 +180,7 @@ struct YanaApp: App {
                     // trigger takes.
                     OperationMonitor.shared.startEvents(settings: appSettings)
                     OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
-                    #if targetEnvironment(macCatalyst)
+                    #if os(macOS)
                     // Kick the Mac's launch refresh now that the window is up — deferred so it
                     // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
                     // Skipped for screenshot capture: a real fetch would spin the toolbar
@@ -195,20 +195,23 @@ struct YanaApp: App {
                 }
         }
         .modelContainer(AppContainer.shared)
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         // Mac menu-bar commands (article navigation, star, read-aloud, update).
         .commands { YanaCommands() }
         #endif
 
-        #if targetEnvironment(macCatalyst)
-        // The SwiftUI `Settings` scene AND the singleton `Window` scene are both macOS-only
-        // (unavailable in Mac Catalyst, which compiles against the iOS SDK), so the Settings screen
-        // is presented as its own `WindowGroup` instead, opened via `openWindow(id:)` (⌘, and the
-        // More-menu Settings item in `MacRootView`). A plain `WindowGroup(id:)` with no `for:` value
-        // opens a NEW window on every `openWindow(id:)` call — not a singleton. The documented
-        // singleton path is value-based: bind `for: Bool.self` and always open/pass the same
-        // constant (`true`) — SwiftUI matches on that value and refocuses the existing window
-        // instead of creating a duplicate.
+        #if os(macOS)
+        // The Settings screen is presented as its own `WindowGroup`, opened via `openWindow(id:)`
+        // (⌘, and the More-menu Settings item in `MacRootView`). A plain `WindowGroup(id:)` with no
+        // `for:` value opens a NEW window on every `openWindow(id:)` call — not a singleton — so
+        // this uses the value-based singleton path instead: bind `for: Bool.self` and always
+        // open/pass the same constant (`true`), which SwiftUI matches on to refocus the existing
+        // window rather than create a duplicate.
+        //
+        // NOTE: this shape exists because Mac Catalyst had neither the SwiftUI `Settings` scene nor
+        // the singleton `Window(id:)` scene (it compiled against the iOS SDK). Natively both are
+        // available and this should collapse to a plain `Window(id:)`. **Stage 4b owns that**;
+        // only the gate is flipped here.
         WindowGroup(id: WindowID.settings, for: Bool.self) { _ in
             MacSettingsWindow(appState: appState)
                 .environment(appState)
@@ -218,10 +221,9 @@ struct YanaApp: App {
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 620)
 
-        // Onboarding as its own window, replacing the `.fullScreenCover` used on iOS. `Window(id:)`
-        // is `@available(iOS, unavailable)` and does not compile under Mac Catalyst (which builds
-        // against the iOS SDK), so this uses the same value-based `WindowGroup` singleton pattern as
-        // the Settings window above: bind `for: Bool.self` and always open/pass the constant `true`.
+        // Onboarding as its own window, replacing the `.fullScreenCover` used on iOS. Uses the
+        // same value-based `WindowGroup` singleton pattern as the Settings window above, for the
+        // same inherited-from-Catalyst reason, and collapses to `Window(id:)` in Stage 4b.
         WindowGroup(id: WindowID.welcome, for: Bool.self) { _ in
             WelcomeWindowRoot(appState: appState)
                 .environment(appState)
@@ -231,7 +233,7 @@ struct YanaApp: App {
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 640)
         // Locks the window to its content's size (which `WelcomeView` now pins to exactly this
-        // size on Mac Catalyst) rather than leaving it freely resizable — onboarding is a small,
+        // size on macOS) rather than leaving it freely resizable — onboarding is a small,
         // fixed wizard, not a document window, so there's no reason a user (or a restored prior
         // frame) should be able to stretch it into a mostly-empty giant window.
         .windowResizability(.contentSize)

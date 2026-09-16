@@ -1,4 +1,4 @@
-#if targetEnvironment(macCatalyst)
+#if os(macOS)
 import XCTest
 
 /// Captures Mac App Store screenshots from the Mac Catalyst build.

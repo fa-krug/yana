@@ -11,8 +11,13 @@ import UIKit
 enum ReaderCloseButton {
     /// Distance from the safe-area edges. The Mac needs more: the overlay fills a *window*, whose
     /// rounded top corner and title bar crowd a button pinned tight to the trailing edge.
+    ///
+    /// The 18pt is **inherited from Catalyst**, where it was measured against a Catalyst window's
+    /// corner radius and title bar. It is carried over unchanged rather than guessed at again; it
+    /// is due a revisit in Stage 6f, when the AppKit image/video viewers land and there is a real
+    /// native window to measure against.
     static var edgeInset: CGFloat {
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         18
         #else
         12
@@ -20,9 +25,10 @@ enum ReaderCloseButton {
     }
 
     /// Distance below the safe-area top, matched to `edgeInset` on the Mac so the button sits on a
-    /// diagonal off the window corner rather than tucked into it.
+    /// diagonal off the window corner rather than tucked into it. Inherited from Catalyst along
+    /// with `edgeInset`; revisit both together in Stage 6f.
     static var topInset: CGFloat {
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         18
         #else
         8

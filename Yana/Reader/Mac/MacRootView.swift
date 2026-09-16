@@ -4,7 +4,7 @@ import SwiftUI
 /// Which pane owns keyboard focus in the Mac window (Mail-style two-pane model).
 enum MacFocusPane: Hashable { case sidebar, reader }
 
-/// The Mac (Mac Catalyst) window: a two-column `NavigationSplitView` with the article list
+/// The Mac window: a two-column `NavigationSplitView` with the article list
 /// permanently in the sidebar and the reader in the detail pane. This is the structural difference
 /// from iOS — where the list is a sheet over a full-screen swipe pager — while everything below the
 /// UI (aggregation, sync, the block reader) is shared.

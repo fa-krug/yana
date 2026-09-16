@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Stable identifiers for the Mac (Mac Catalyst) auxiliary windows opened via `openWindow`.
+/// Stable identifiers for the Mac auxiliary windows opened via `openWindow`.
 ///
 /// The feed editor is deliberately NOT here: editing pushes inside the Settings window (like the
 /// Tags pane) and creating presents a sheet (like Add Tag), so it needs no window of its own.

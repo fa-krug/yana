@@ -26,10 +26,12 @@ final class BackgroundRefreshManager {
     private let now: () -> Date
     private let onScheduleAttempt: @MainActor () -> Void          // test seam; default no-op
 
-    #if targetEnvironment(macCatalyst)
-    /// The Mac has no `BGTaskScheduler` background-refresh, and `NSBackgroundActivityScheduler` is
-    /// unavailable in Mac Catalyst — so a cancellable repeating `Task` drives periodic updates while
-    /// the app is running instead (paired with a refresh-on-launch via `runNow()`).
+    #if os(macOS)
+    /// The Mac has no `BGTaskScheduler` background-refresh, so a cancellable repeating `Task`
+    /// drives periodic updates while the app is running instead (paired with a refresh-on-launch
+    /// via `runNow()`). The loop dates from Mac Catalyst, where `NSBackgroundActivityScheduler` was
+    /// unavailable; it IS available natively and should replace this. **Stage 4c owns that** —
+    /// only the gate is flipped here.
     private var macRefreshLoop: Task<Void, Never>?
     #endif
 
@@ -98,9 +100,9 @@ final class BackgroundRefreshManager {
     /// precondition traps (EXC_BREAKPOINT) the moment iOS runs the task off the main thread.
     func register() {
         guard secondsProvider() != nil else { return }
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         // No BGTaskScheduler background-refresh on the Mac — nothing to register. Scheduling is
-        // handled by `schedule()` via `NSBackgroundActivityScheduler`.
+        // handled by `schedule()` (see `scheduleMac`).
         #else
         registerHandler(for: Self.taskIdentifier)
         registerHandler(for: Self.processingTaskIdentifier)
@@ -148,7 +150,7 @@ final class BackgroundRefreshManager {
     /// is the long window that lets AI-heavy feeds finish their AI pass instead of being dropped.
     func schedule() {
         guard let seconds = secondsProvider() else {
-            #if targetEnvironment(macCatalyst)
+            #if os(macOS)
             // Interval switched to .off while a loop is armed: kill it (audit U4).
             macRefreshLoop?.cancel()
             macRefreshLoop = nil
@@ -156,7 +158,7 @@ final class BackgroundRefreshManager {
             return
         }
         onScheduleAttempt()
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         scheduleMac(seconds: seconds)
         #else
         let begin = Self.nextBeginDate(from: now(), interval: seconds)
@@ -175,11 +177,12 @@ final class BackgroundRefreshManager {
         #endif
     }
 
-    #if targetEnvironment(macCatalyst)
+    #if os(macOS)
     /// Arm (or re-arm) a repeating loop that runs `runRefresh` at the configured interval while the
     /// Mac app is running. Re-armed each call (cancel + restart) so an interval change takes effect.
-    /// `NSBackgroundActivityScheduler` is unavailable in Mac Catalyst, so this is a plain awaiting
-    /// loop on the main actor; the desktop model keeps the app open, and launch/focus call `runNow()`.
+    /// A plain awaiting loop on the main actor, inherited from Catalyst (where
+    /// `NSBackgroundActivityScheduler` was unavailable); the desktop model keeps the app open, and
+    /// launch/focus call `runNow()`. Replacing it with the real scheduler is Stage 4c's job.
     private func scheduleMac(seconds: TimeInterval) {
         macRefreshLoop?.cancel()
         let clamped = seconds > 0 ? seconds : Self.minimumInterval

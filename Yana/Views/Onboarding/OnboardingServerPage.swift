@@ -45,7 +45,7 @@ struct OnboardingServerPage: View {
 
     var body: some View {
         // Centered rather than top-aligned: this page's content is short (two small sections),
-        // and pinning it to the top on a tall window (Mac Catalyst, or an iPad in landscape) left
+        // and pinning it to the top on a tall window (macOS, or an iPad in landscape) left
         // a big dead gap below it that read as broken. `GeometryReader` supplies the available
         // height so the content can center within it via `.frame(minHeight:alignment:)`, while
         // the `ScrollView` still keeps it reachable (rather than clipped) if a large Dynamic Type
@@ -73,7 +73,7 @@ struct OnboardingServerPage: View {
         // Not a `.sheet`: `DevicePairingView`'s own body renders nothing (`Color.clear`) — its
         // only job is starting the coordinator, which presents `ASWebAuthenticationSession`'s
         // own system-level browser sheet. Wrapping that in a SwiftUI sheet just adds a second,
-        // empty translucent card underneath it (visible on Mac Catalyst as a blank rounded panel
+        // empty translucent card underneath it (visible on the Mac as a blank rounded panel
         // behind the real auth prompt) for no benefit — this way there's nothing of ours to show
         // at all until the system sheet appears.
         .background {

@@ -70,9 +70,9 @@ struct WelcomeView: View {
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: step)
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         // On iOS this view fills whatever full-screen container hosts it, which is correct there.
-        // On Mac Catalyst it hosts in its own `WindowGroup` (`WelcomeWindowRoot`), and without a
+        // On macOS it hosts in its own `WindowGroup` (`WelcomeWindowRoot`), and without a
         // fixed size the window can be resized (or restored from a previous, larger frame)
         // arbitrarily tall — every step then stretches to fill that, leaving a large dead gap
         // below sparser steps like `OnboardingServerPage`. Pinning this to the window's

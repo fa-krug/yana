@@ -262,7 +262,7 @@ struct ArticleListView: View {
     /// The Mac's roomier rows read better with a touch more space between title and subline;
     /// iOS keeps the compact 4pt to preserve its denser timeline-adjacent look.
     private var rowLineSpacing: CGFloat {
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         6
         #else
         4

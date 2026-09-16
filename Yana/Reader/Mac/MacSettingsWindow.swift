@@ -1,6 +1,6 @@
 import SwiftUI
 
-#if targetEnvironment(macCatalyst)
+#if os(macOS)
 
 /// The Mac Settings window: a System-Settings-style two-pane layout. The sidebar lists the
 /// `SettingsPane`s; the detail shows the selected pane. Each pane reuses the same section views as

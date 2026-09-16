@@ -19,7 +19,7 @@ struct ContentView: View {
     /// Automation guard for the server-migration eligibility evaluation and auto-show trigger.
     /// Beyond `skipOnboarding`'s launch arguments, the Mac App Store screenshot lane
     /// (`-UITEST_MAC_SCREENSHOTS`) runs against a developer's real `de.fa-krug.Yana` container
-    /// (Catalyst has no `erase_simulator` equivalent), so without this guard a Mac that already
+    /// (the Mac has no `erase_simulator` equivalent), so without this guard a Mac that already
     /// completed onboarding would get permanently classified as pre-migration and would pop the
     /// notice window mid-capture. `MacScreenshotWindow` only exists in DEBUG builds.
     private static var skipServerMigrationAutomation: Bool {
@@ -31,7 +31,7 @@ struct ContentView: View {
         #endif
     }
 
-    /// The Mac (Mac Catalyst) build shows a two-column window with a permanent article-list sidebar;
+    /// The Mac build shows a two-column window with a permanent article-list sidebar;
     /// iPhone/iPad keep the full-screen swipe reader. `WelcomeView` (onboarding) is presented by
     /// whichever root is active.
     private var isMac: Bool { UIDevice.current.userInterfaceIdiom == .mac }

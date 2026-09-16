@@ -20,7 +20,7 @@ enum MacScreenshotWindow {
 
     /// Parses an optional `-UITEST_MAC_WINDOW_SIZE 1440x900` override, falling back to
     /// `defaultSize` for anything missing, malformed, or non-positive. Pure so it is testable on
-    /// every platform (the geometry call below is Catalyst-only, this is not).
+    /// every platform (the geometry call below is macOS-only, this is not).
     static func size(from arguments: [String]) -> CGSize {
         guard let flagIndex = arguments.firstIndex(of: sizeArgument),
               case let valueIndex = flagIndex + 1,
@@ -43,6 +43,10 @@ enum MacScreenshotWindow {
     /// is the common case when onAppear fires during first layout, before activation). A one-shot
     /// UIScene.didActivateNotification observer re-applies the pin once the scene actually activates.
     ///
+    /// NOTE: this whole `UIWindowScene.sizeRestrictions` convergence dance is inherited from Mac
+    /// Catalyst and does not describe a native AppKit window. **Stage 10 owns replacing it**; only
+    /// the gate is flipped here.
+    ///
     /// Fix 2: sizeRestrictions constrain the *content* area, while .Mac(systemFrame:) targets the
     /// AppKit window frame including the title bar. Requesting both at the same size is contradictory,
     /// so we only set sizeRestrictions and rely on the min==max clamp to force the content size.
@@ -52,7 +56,7 @@ enum MacScreenshotWindow {
     static func applyWindowGeometryIfRequested() {
         guard isRequested else { return }
 
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         let target = size(from: ProcessInfo.processInfo.arguments)
 
         // Prefer the active scene; fall back to any connected window scene so that a call from
@@ -82,7 +86,7 @@ enum MacScreenshotWindow {
         #endif
     }
 
-    #if targetEnvironment(macCatalyst)
+    #if os(macOS)
     /// Apply the size clamp and poll until the content area converges, then relax restrictions.
     @MainActor
     private static func pinScene(_ scene: UIWindowScene, to target: CGSize) {
