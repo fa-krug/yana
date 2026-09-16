@@ -68,7 +68,7 @@ struct WelcomeView: View {
 
             footer
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Color(PlatformColor.yanaWindowBackground).ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: step)
         // NOTE: no macOS `.frame` here. The Welcome window is a real `Window` scene with
         // `.defaultSize` + `.windowResizability(.contentSize)` (see `YanaApp`), which pins the

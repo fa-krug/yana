@@ -54,6 +54,9 @@ final class ReaderBlockViewController: NSViewController {
     private var observedScrollView: NSScrollView?
     private var observedDocumentView: NSView?
 
+    /// Retries attaching the growth observation while a restore is pending; see `armObservationRetry`.
+    private var observationRetryTask: Task<Void, Never>?
+
     /// True between `willStartLiveScroll` and `didEndLiveScroll`.
     ///
     /// **This stands in for UIKit's `isDragging` / `isDecelerating`, and it is a weaker signal.**
@@ -358,6 +361,36 @@ final class ReaderBlockViewController: NSViewController {
         pendingReadingOffset = offset
         observeBodyScroll()
         applyPendingReadingOffset()
+        armObservationRetry()
+    }
+
+    /// Keep trying to attach `observeBodyScroll`'s growth observation over the next few frames,
+    /// while a restore is still pending.
+    ///
+    /// **A restore can be asked for before the body's scroll view exists at all** — that is the cold
+    /// launch case, where the page is built and handed its saved position before it is ever put in a
+    /// window. `observeBodyScroll` can only attach once SwiftUI has built the scroll view, and there
+    /// is no second chance to do so: `viewDidLayout` is not a reliable retry hook here for exactly
+    /// the reason the growth observation exists in the first place — this controller's view is
+    /// pinned to fixed constraints, so the body appearing and growing *inside* the hosting
+    /// controller never lays this view out again. Without this the observation was simply never
+    /// attached and the pending offset sat there forever (measured: the restore landed at 0).
+    ///
+    /// Bounded rather than open-ended, on the same frame schedule as the find reveal's retry: if the
+    /// body has not appeared within half a second the page is not going to hold a restore anyway,
+    /// and the pending value is harmless — `applyPendingReadingOffset` is still called from every
+    /// `viewDidLayout` and from every growth notification once one does attach.
+    private func armObservationRetry() {
+        observationRetryTask?.cancel()
+        observationRetryTask = Task { @MainActor [weak self] in
+            for delay in [16, 50, 120, 250, 500] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                guard !Task.isCancelled, let self, self.pendingReadingOffset != nil else { return }
+                self.observeBodyScroll()
+                self.applyPendingReadingOffset()
+                if self.observedScrollView != nil { return }
+            }
+        }
     }
 
     override func viewDidLayout() {
@@ -443,6 +476,8 @@ final class ReaderBlockViewController: NSViewController {
 
     private func releasePendingReadingOffset() {
         pendingReadingOffset = nil
+        observationRetryTask?.cancel()
+        observationRetryTask = nil
     }
 
     /// The range the clip view's bounds origin may take, AppKit's equivalent of UIKit's
@@ -502,30 +537,32 @@ final class ReaderBlockViewController: NSViewController {
 
     /// Open an image in its own window.
     ///
-    /// TODO(Stage 6d): `ReaderImageViewerViewController` is still UIKit-only. Once its AppKit twin
-    /// lands this becomes `presentAsModalWindow(ReaderImageViewerViewController(ref: ref))` — AppKit
-    /// resolves the presenting chain itself, so there is no `topmostPresenter` equivalent to find.
+    /// `presentAsModalWindow(_:)` rather than iOS's full-screen `present(_:animated:)`: the Mac
+    /// convention for "look at this image" is a window with a close control, and AppKit resolves
+    /// the presenting chain itself, so there is no `topmostPresenter` equivalent to go hunting for.
     private func showImage(_ ref: String) {
-        _ = ref
+        presentAsModalWindow(ReaderImageViewerViewController(ref: ref))
     }
 
-    /// Play a video embed in its own window, falling back to opening the embed's URL externally when
-    /// it isn't an inline-playable video.
-    ///
-    /// TODO(Stage 6e): `ReaderVideoPlayerViewController` is still UIKit-only. Until its AppKit twin
-    /// lands every embed takes the external-open fallback, which is the same safety net the iOS
-    /// version uses for an unplayable embed — degraded, not wrong.
+    /// Play a video embed in its own window. Falls back to opening the embed's URL externally when
+    /// it isn't an inline-playable video (the card already routes those through `onOpenLink`, so
+    /// this is just a safety net).
     private func playVideo(_ embed: Embed) {
-        if let url = URL(string: embed.externalURL) { openExternally(url) }
+        if let player = ReaderVideoPlayerViewController.make(for: embed) {
+            presentAsModalWindow(player)
+        } else if let url = URL(string: embed.externalURL) {
+            openExternally(url)
+        }
     }
 
-    /// TODO(Stage 6f): route through `ReaderLinkPolicy.openExternally` once it grows a macOS branch.
-    /// Its iOS path asks for a `universalLinksOnly` open first and only falls back to a browser; on
-    /// macOS `NSWorkspace.shared.open(_:)` already consults the system's own URL claimants, so this
-    /// interim call is the same outcome, just without the policy's `useSystemBrowser` setting —
-    /// which `ReaderSettingsSection` already hides on the Mac.
+    /// The Mac branch of `ReaderLinkPolicy.openExternally` collapses to `NSWorkspace.shared.open`,
+    /// and ignores both `useSystemBrowser` (there is no in-app browser on macOS to choose against,
+    /// which is why `ReaderSettingsSection` hides that toggle here) and the presenter. The call is
+    /// routed through the policy anyway so the two platforms keep one link-opening entry point.
     private func openExternally(_ url: URL) {
-        PlatformApp.open(url)
+        ReaderLinkPolicy.openExternally(url, useSystemBrowser: settings.useSystemBrowser) { [weak self] in
+            self
+        }
     }
 
     // MARK: - Full-screen tap zones

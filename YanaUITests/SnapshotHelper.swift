@@ -159,7 +159,8 @@ open class Snapshot: NSObject {
                 return
             }
 
-            app.typeKey(XCUIKeyboardKeySecondaryFn, modifierFlags: [])
+            // Renamed since this helper was vendored; the old global constant no longer compiles.
+            app.typeKey(XCUIKeyboardKey.secondaryFn.rawValue, modifierFlags: [])
         #else
 
             guard self.app != nil else {
@@ -195,6 +196,10 @@ open class Snapshot: NSObject {
         #endif
     }
 
+    // Vendored fastlane helper, now gated: its only caller is inside the `#if os(iOS)` branch of
+    // `snapshot(_:)` above, and `UIImage`/`UIGraphicsImageRenderer` do not exist on macOS (the
+    // `#if os(OSX)` branch of `snapshot(_:)` types ⌘-Fn instead and never touches an image).
+    #if os(iOS)
     class func fixLandscapeOrientation(image: UIImage) -> UIImage {
         #if os(watchOS)
             return image
@@ -211,6 +216,7 @@ open class Snapshot: NSObject {
             }
         #endif
     }
+    #endif
 
     class func waitForLoadingIndicatorToDisappear(within timeout: TimeInterval) {
         #if os(tvOS)

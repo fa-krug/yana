@@ -17,7 +17,7 @@ struct InitialSyncLoadingView: View {
                 .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Color(PlatformColor.yanaWindowBackground).ignoresSafeArea())
         .accessibilityIdentifier("initialSyncLoadingScreen")
     }
 }

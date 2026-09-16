@@ -1,3 +1,8 @@
+// TODO(Stage 9): this suite is *about* the Mac but is written against UIKit
+// (`UIHostingController` + the outermost `UIScrollView`), so it is gated to iOS for now — where it
+// still exercises the real `MacSidebarView`. Stage 9 owes it an `NSHostingView`/`NSScrollView`
+// rewrite; the migration is what makes running it on macOS honest.
+#if os(iOS)
 import Foundation
 import SwiftData
 import SwiftUI
@@ -180,3 +185,4 @@ struct MacSidebarLaunchScrollTests {
         window.isHidden = true
     }
 }
+#endif

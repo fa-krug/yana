@@ -1,9 +1,6 @@
 import Foundation
 import SwiftData
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#endif
 
 /// A one-shot request to scroll the Mac sidebar to a specific row. `TimelineModel` bumps this only
 /// from programmatic selection changes (`moveSelection`, the anchor restore in `applyTimeline`, a
@@ -327,9 +324,7 @@ final class TimelineModel {
     }
 
     func copyLink(_ article: Article) {
-        #if canImport(UIKit)
-        UIPasteboard.general.string = article.url
-        #endif
+        PlatformPasteboard.setString(article.url)
     }
 
     /// Open the article's original web page in the default browser. On the Mac the desktop

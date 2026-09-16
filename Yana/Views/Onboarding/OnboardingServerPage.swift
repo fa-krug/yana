@@ -137,8 +137,12 @@ struct OnboardingServerPage: View {
                                 .foregroundStyle(.secondary)
                         }
                         TextField("", text: $serverURLText)
+                            // Software-keyboard hints, so iOS-only: the Mac has a hardware keyboard
+                            // with no URL layout to switch to and no autocapitalization to suppress.
+                            #if os(iOS)
                             .keyboardType(.URL)
                             .textInputAutocapitalization(.never)
+                            #endif
                             .autocorrectionDisabled()
                             .focused($isURLFieldFocused)
                             .submitLabel(.go)

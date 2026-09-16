@@ -156,19 +156,28 @@ struct ReaderSyncUpdateScrollTestsMacOS {
     @Test func aRestoreIsHeldUntilTheBodyCanHoldItAndThenLands() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)
-        let article = try makeArticle(context, comments: 3)
+        // A much longer body than the other two tests use, and deliberately so: the window is 900pt
+        // tall, so with the 3-comment article the whole scrollable range is only ~695pt and a
+        // restore to y = 900 is a position the body genuinely cannot hold. Clamping short would be
+        // the *correct* outcome there, which makes it useless as a test of "the restore was held
+        // until it could land exactly". This body is tall enough that 900 is reachable.
+        let article = try makeArticle(context, comments: 60)
 
         let page = ReaderBlockViewController(article: article, allowsFullscreen: false,
                                              onRefresh: nil, onRequestShowBars: {})
+        // Asked for before the page is in a window at all — the body does not exist yet, let alone
+        // at a height that can hold y = 900. Ordering matters: once the page is on screen SwiftUI
+        // may lay the body out far enough that the restore lands on the spot and is released, which
+        // would make the "still pending" assertion below a statement about layout timing rather
+        // than about the hold-until-it-fits rule this test exists for.
+        page.restoreReadingOffset(CGPoint(x: 0, y: 900))
+        #expect(page.hasPendingReadingOffset)
+
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 900),
                               styleMask: [.titled], backing: .buffered, defer: false)
         window.contentViewController = page
         window.orderFront(nil)
         defer { window.orderOut(nil) }
-        // Asked for before anything has laid out — the body does not exist yet, let alone at a
-        // height that can hold y = 900.
-        page.restoreReadingOffset(CGPoint(x: 0, y: 900))
-        #expect(page.hasPendingReadingOffset)
 
         window.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(800))

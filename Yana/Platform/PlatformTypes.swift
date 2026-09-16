@@ -64,6 +64,18 @@ extension PlatformColor {
         #endif
     }
 
+    /// The recessed fill behind a small piece of content sitting *on* a window surface — the
+    /// placeholder tile behind a feed logo. UIKit's `secondarySystemBackground` names a step in its
+    /// layered-background ramp, which AppKit does not have; `controlBackgroundColor` is the Mac's
+    /// equivalent "content well inside a window" color and tracks light/dark the same way.
+    static var yanaSecondaryBackground: PlatformColor {
+        #if os(macOS)
+        .controlBackgroundColor
+        #else
+        .secondarySystemBackground
+        #endif
+    }
+
     static var yanaWindowBackground: PlatformColor {
         #if os(macOS)
         .windowBackgroundColor

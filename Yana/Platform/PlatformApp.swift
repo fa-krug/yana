@@ -77,3 +77,22 @@ enum PlatformApp {
         #endif
     }
 }
+
+/// The system pasteboard, behind the one operation Yana performs on it.
+///
+/// Not a typealias: `UIPasteboard` and `NSPasteboard` disagree about more than the name. UIKit's
+/// `string` setter replaces the pasteboard's contents outright, while AppKit requires an explicit
+/// `clearContents()` first — writing without it appends to whatever the previous owner declared and
+/// the write is rejected. Wrapping the pair keeps that ordering in one place.
+enum PlatformPasteboard {
+    @MainActor
+    static func setString(_ value: String) {
+        #if os(macOS)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(value, forType: .string)
+        #else
+        UIPasteboard.general.string = value
+        #endif
+    }
+}

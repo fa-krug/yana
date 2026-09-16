@@ -27,7 +27,9 @@ struct ServerSettingsSection: View {
             .sheet(isPresented: $isChangingServer) {
                 NavigationStack {
                     OnboardingServerPage(onPaired: { isChangingServer = false }, isOnboardingFlow: false)
+                        #if os(iOS)
                         .navigationBarTitleDisplayMode(.inline)
+                        #endif
                         .toolbar {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button { isChangingServer = false } label: { Image(systemName: "xmark") }

@@ -1,5 +1,9 @@
 import Testing
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 @testable import Yana
 
 /// A video embed whose poster can't be shown -- a private/deleted YouTube video has no publicly
@@ -17,7 +21,14 @@ struct EmbedPosterTests {
     func everyProviderHasAGlyphThatResolves(provider: Embed.Provider) {
         let name = EmbedPoster.glyph(for: provider)
         #expect(!name.isEmpty)
-        #expect(UIImage(systemName: name) != nil,
+        // "does this SF Symbol exist" has a different spelling per framework; the assertion is the
+        // same on both, so only the lookup is forked.
+        #if os(macOS)
+        let symbolExists = NSImage(systemSymbolName: name, accessibilityDescription: nil) != nil
+        #else
+        let symbolExists = UIImage(systemName: name) != nil
+        #endif
+        #expect(symbolExists,
                 "\(provider.rawValue) glyph \"\(name)\" is not an SF Symbol")
     }
 

@@ -160,10 +160,11 @@ schemes:
         Yana-macOS: all
     run:
       config: Debug
-    # The macOS test action stays empty until the macOS target actually builds.
     test:
       config: Debug
-      targets: []
+      targets:
+        - YanaTests-macOS
+        - YanaUITests-macOS
     profile:
       config: Release
     analyze:

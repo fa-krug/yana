@@ -22,7 +22,7 @@ struct FeedLogoView: View {
             }
         }
         .frame(width: size, height: size)
-        .background(Color(.secondarySystemBackground))
+        .background(Color(PlatformColor.yanaSecondaryBackground))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityLabel(Text("Feed logo"))
         .task(id: hash) {

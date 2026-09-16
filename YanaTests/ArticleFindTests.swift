@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import UIKit
 @testable import Yana
 
 /// Pins the pure half of "Find in Article" (`ArticleFind.swift`): that the searchable units follow
@@ -195,7 +194,7 @@ struct ArticleFindTests {
             block == 1 ? [FindHighlightRange(range: NSRange(location: 0, length: 4), isCurrent: true)] : []
         }
         var effective = NSRange()
-        let color = text.attribute(.backgroundColor, at: 16, effectiveRange: &effective) as? UIColor
+        let color = text.attribute(.backgroundColor, at: 16, effectiveRange: &effective) as? PlatformColor
         #expect(color != nil)
         #expect(effective == NSRange(location: 16, length: 4))
         #expect(text.attribute(.backgroundColor, at: 0, effectiveRange: nil) == nil)

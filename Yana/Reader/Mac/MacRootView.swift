@@ -314,13 +314,14 @@ struct MacRootView: View {
         } label: {
             ZStack {
                 Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
-                // On Catalyst a ProgressView bridges to a UIActivityIndicatorView that -- unlike
-                // the one ReaderArticleViewController builds by hand and explicitly disables
-                // interaction on -- accepts touches by default, so it swallows the tap meant for
-                // the Button underneath: nothing happened when this spinner was tapped while
-                // showing. allowsHitTesting(false) lets the touch fall through to the button.
+                // The `allowsHitTesting(false)` that used to sit here was a Mac Catalyst
+                // workaround: there a ProgressView bridged to a UIActivityIndicatorView which --
+                // unlike the one ReaderArticleViewController builds by hand and explicitly disables
+                // interaction on -- accepted touches by default and swallowed the click meant for
+                // the Button underneath, so tapping the spinner did nothing. Natively a
+                // ProgressView is an NSProgressIndicator drawn as part of the button's own label,
+                // which is not a click target of its own, so the workaround has nothing left to fix.
                 ProgressView().controlSize(.small).opacity(showSpinner ? 1 : 0)
-                    .allowsHitTesting(false)
             }
         }
         .help(showSpinner ? Text("Show progress on server") : Text("Update all"))

@@ -127,6 +127,16 @@ final class AppDelegate: NSObject, PlatformApplicationDelegate {
     /// start smooth: a full sync runs the feed fetch plus `@MainActor` upserts, and each
     /// save triggers a debounced full `ArticleStore` re-index — all of which would otherwise contend
     /// with the window's first paint.
+    ///
+    /// **`@MainActor` on the declaration, not just on the `Task`.** Without it this method is
+    /// non-isolated, so handing `self` — a non-`Sendable` class — to a `@MainActor` task body is a
+    /// transfer across an isolation boundary, which Swift 6 rejects (`sending 'self' risks causing
+    /// data races`). The annotation is not a workaround for that diagnostic: it states the isolation
+    /// this code already had. `AppDelegate` is created and only ever touched by AppKit on the main
+    /// thread, `backgroundRefresh` is itself `@MainActor`, and the one caller is a SwiftUI scene
+    /// `.task`, which is main-actor isolated. With the declaration isolated there is no boundary
+    /// left to cross, so nothing is being silenced — the capture is genuinely actor-local.
+    @MainActor
     func scheduleLaunchRefresh() {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.launchRefreshDelay)

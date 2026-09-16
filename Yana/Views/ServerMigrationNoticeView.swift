@@ -73,7 +73,7 @@ struct ServerMigrationNoticeView: View {
             }
             footer
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Color(PlatformColor.yanaWindowBackground).ignoresSafeArea())
     }
 
     private func optionCard(_ option: Option) -> some View {

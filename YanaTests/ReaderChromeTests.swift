@@ -1,5 +1,8 @@
+// Pager chrome: `ReaderArticleViewController` is the iOS-only `UIPageViewController` host, and the
+// Mac has no pager at all (its detail pane shows one article, see `MacReaderDetailView`), so there
+// is nothing here for a macOS twin to assert.
+#if os(iOS)
 import Testing
-import UIKit
 @testable import Yana
 
 /// Regression tests for the reader nav-bar chrome.
@@ -39,3 +42,4 @@ struct ReaderChromeTests {
         #expect(reader.navigationItem.rightBarButtonItems?.count == atRest?.count)
     }
 }
+#endif
