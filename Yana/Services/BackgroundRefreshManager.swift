@@ -1,7 +1,10 @@
-import BackgroundTasks
 import Foundation
 import SwiftData
-import UIKit
+#if os(macOS)
+import AppKit
+#else
+import BackgroundTasks
+#endif
 
 /// Best-effort periodic aggregation via `BGAppRefreshTask`. Registered once at launch,
 /// scheduled at `AppSettings.updateInterval`, and re-scheduled after every run.
@@ -27,19 +30,31 @@ final class BackgroundRefreshManager {
     private let onScheduleAttempt: @MainActor () -> Void          // test seam; default no-op
 
     #if os(macOS)
-    /// The Mac has no `BGTaskScheduler` background-refresh, so a cancellable repeating `Task`
-    /// drives periodic updates while the app is running instead (paired with a refresh-on-launch
-    /// via `runNow()`). The loop dates from Mac Catalyst, where `NSBackgroundActivityScheduler` was
-    /// unavailable; it IS available natively and should replace this. **Stage 4c owns that** —
-    /// only the gate is flipped here.
-    private var macRefreshLoop: Task<Void, Never>?
+    /// The Mac has no `BGTaskScheduler`, so periodic refresh runs through
+    /// `NSBackgroundActivityScheduler` instead (paired with a refresh-on-launch and on-focus via
+    /// `runNow()`). Held so `schedule()` can re-arm it at a new interval, and invalidate it when
+    /// the interval is switched to `.off`.
+    ///
+    /// This replaced a repeating `Task.sleep` loop inherited from Mac Catalyst, where the
+    /// scheduler was unavailable. The scheduler is not merely the tidier spelling: it gets
+    /// system-managed tolerance (so several apps' periodic work coalesces into one wake), it does
+    /// not park a suspended task on the main actor, and it re-fires after the machine wakes from
+    /// sleep — a sleeping `Task.sleep` does not, so a laptop closed for four hours resumed
+    /// mid-sleep and then waited out the whole remaining interval before refreshing.
+    private var macRefreshActivity: NSBackgroundActivityScheduler?
+
+    /// Unique per process — `NSBackgroundActivityScheduler` keys its persisted scheduling state on
+    /// this, so two schedulers sharing an identifier would fight over one slot.
+    static let macActivityIdentifier = "de.fa-krug.Yana.mac-background-refresh"
     #endif
 
+    #if !os(macOS)
     /// Guards against the refresh and processing tasks both firing close together: the first to
     /// run does the sync; the other just re-arms. Each handler builds its own `SyncEngine`, so
     /// there's no shared state on that object to coordinate the two — the guard has to live on
-    /// the (main-actor) manager.
+    /// the (main-actor) manager. iOS-only: the Mac has one scheduler, so nothing to serialize.
     private var isRunning = false
+    #endif
 
     init(
         container: ModelContainer,
@@ -101,8 +116,9 @@ final class BackgroundRefreshManager {
     func register() {
         guard secondsProvider() != nil else { return }
         #if os(macOS)
-        // No BGTaskScheduler background-refresh on the Mac — nothing to register. Scheduling is
-        // handled by `schedule()` (see `scheduleMac`).
+        // No launch-time registration on the Mac: `NSBackgroundActivityScheduler` carries its own
+        // block and needs no pre-launch handler. Scheduling is handled by `schedule()` (see
+        // `scheduleMac`).
         #else
         registerHandler(for: Self.taskIdentifier)
         registerHandler(for: Self.processingTaskIdentifier)
@@ -123,6 +139,7 @@ final class BackgroundRefreshManager {
         }
     }
 
+    #if !os(macOS)
     /// Register one launch handler. Both the app-refresh and processing tasks run the same work;
     /// only their scheduling and the runtime the system grants differ.
     private func registerHandler(for identifier: String) {
@@ -143,6 +160,7 @@ final class BackgroundRefreshManager {
             }
         }
     }
+    #endif
 
     /// Submit the next requests. Best-effort: submission failures are ignored (e.g. when running
     /// in the simulator or when the system declines). Both task kinds are re-armed every run:
@@ -151,9 +169,9 @@ final class BackgroundRefreshManager {
     func schedule() {
         guard let seconds = secondsProvider() else {
             #if os(macOS)
-            // Interval switched to .off while a loop is armed: kill it (audit U4).
-            macRefreshLoop?.cancel()
-            macRefreshLoop = nil
+            // Interval switched to .off while a scheduler is armed: kill it (audit U4).
+            macRefreshActivity?.invalidate()
+            macRefreshActivity = nil
             #endif
             return
         }
@@ -178,20 +196,38 @@ final class BackgroundRefreshManager {
     }
 
     #if os(macOS)
-    /// Arm (or re-arm) a repeating loop that runs `runRefresh` at the configured interval while the
-    /// Mac app is running. Re-armed each call (cancel + restart) so an interval change takes effect.
-    /// A plain awaiting loop on the main actor, inherited from Catalyst (where
-    /// `NSBackgroundActivityScheduler` was unavailable); the desktop model keeps the app open, and
-    /// launch/focus call `runNow()`. Replacing it with the real scheduler is Stage 4c's job.
+    /// Arm (or re-arm) the repeating `NSBackgroundActivityScheduler` that runs `runRefresh` at the
+    /// configured interval. Re-armed on every call (invalidate + recreate) so a change to
+    /// `AppSettings.updateInterval` takes effect immediately (audit U4); the desktop model keeps
+    /// the app open, and launch/focus additionally call `runNow()`.
+    ///
+    /// Three things here are load-bearing and easy to get wrong:
+    ///
+    /// - **`repeats = true`.** Without it the activity does not fire *at all* — not even once.
+    /// - **The block runs off the main thread**, so it hops onto the main actor before touching
+    ///   anything on this `@MainActor` type.
+    /// - **`completion` must be called exactly once.** Calling it twice, or not at all, stalls the
+    ///   scheduler permanently — it will never fire again for this identifier. The `defer` at the
+    ///   top of the hop is what guarantees that across every early return (not paired, cancelled)
+    ///   and any error thrown inside.
     private func scheduleMac(seconds: TimeInterval) {
-        macRefreshLoop?.cancel()
-        let clamped = seconds > 0 ? seconds : Self.minimumInterval
-        let nanos = UInt64(clamped * 1_000_000_000)
-        macRefreshLoop = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: nanos)
-                guard !Task.isCancelled, let self else { break }
-                guard let client = AuthenticatedClient.current() else { continue }   // not paired yet
+        macRefreshActivity?.invalidate()
+        let interval = max(seconds, Self.minimumInterval)
+        let activity = NSBackgroundActivityScheduler(identifier: Self.macActivityIdentifier)
+        activity.repeats = true
+        activity.interval = interval
+        // Let the system slide the wake by up to 20% to coalesce it with other scheduled work —
+        // periodic feed refresh has no deadline, and this is the whole point of using the
+        // scheduler rather than a timer.
+        activity.tolerance = interval * 0.2
+        activity.qualityOfService = .utility
+        activity.schedule { [weak self] completion in
+            // `completion` is `@Sendable`, so it crosses the hop below as-is. It is called
+            // exactly once, from the `defer` — see the note above about stalling the scheduler.
+            Task { @MainActor in
+                defer { completion(.finished) }
+                guard let self else { return }
+                guard let client = AuthenticatedClient.current() else { return }   // not paired yet
                 let engine = SyncEngine(container: self.container, client: client)
                 await Self.runRefresh(
                     engine: engine,
@@ -199,9 +235,15 @@ final class BackgroundRefreshManager {
                 )
             }
         }
+        macRefreshActivity = activity
     }
+
+    /// Test seam: whether a repeating scheduler is currently armed. `schedule()` arms one and the
+    /// `.off` path tears it down, which is the behaviour `BackgroundRefreshManagerTests` pins.
+    var hasArmedMacActivity: Bool { macRefreshActivity != nil }
     #endif
 
+    #if !os(macOS)
     /// Run one background refresh, then reschedule. Always completes the task and never
     /// throws out — a background failure must be silent (spec §6).
     func handle(task: BGTask) {
@@ -235,4 +277,5 @@ final class BackgroundRefreshManager {
             task.setTaskCompleted(success: false)
         }
     }
+    #endif
 }

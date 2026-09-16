@@ -1,7 +1,10 @@
-import BackgroundTasks
 import SwiftData
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 
 /// Single shared SwiftData container, used by both the app delegate (for background
 /// refresh) and the SwiftUI scene.
@@ -48,15 +51,26 @@ enum AppContainer {
     }()
 }
 
+/// The application-delegate protocol for the current platform. Only the *conformance* differs
+/// between iOS and macOS; the work `AppDelegate` does at launch is identical, so it lives once in
+/// `commonDidFinishLaunching()` below rather than being duplicated per platform.
+#if os(macOS)
+typealias PlatformApplicationDelegate = NSApplicationDelegate
+#else
+typealias PlatformApplicationDelegate = UIApplicationDelegate
+#endif
+
 /// Registers the background-refresh task before launch completes and schedules the first run.
-final class AppDelegate: NSObject, UIApplicationDelegate {
+///
+/// A delegate is kept on macOS too, rather than folding this into `scenePhase`: the DEBUG seeds
+/// (`UITestReset`/`DebugSeed`/`ScreenshotSeed`) must run exactly once and before any view reads the
+/// store, and `scenePhase` fires both too late (after the first view body) and repeatedly.
+final class AppDelegate: NSObject, PlatformApplicationDelegate {
     @MainActor private lazy var backgroundRefresh = BackgroundRefreshManager(container: AppContainer.shared)
 
+    /// Everything the app does at launch, on both platforms.
     @MainActor
-    func application(
-        _ application: UIApplication,
-        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
-    ) -> Bool {
+    private func commonDidFinishLaunching() {
         // Demo-mode banner dismissal is per-launch, not permanent — see `AppSettings.hasDismissedDemoBanner`.
         AppSettings().hasDismissedDemoBanner = false
         #if DEBUG
@@ -74,8 +88,32 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         StartupTrace.measure("backgroundRefresh.schedule") { backgroundRefresh.schedule() }
 
         StartupTrace.event("didFinishLaunching.end")
+    }
+
+    #if os(macOS)
+    @MainActor
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        commonDidFinishLaunching()
+    }
+
+    /// Keep the app running when the last window closes, so it can be reopened from the Dock.
+    ///
+    /// This is the native replacement for the `UIApplicationSceneManifest` /
+    /// `UIApplicationSupportsMultipleScenes` flag Mac Catalyst forced on us (still documented, for
+    /// iOS reasons only, in `Info-iOS.plist`): Catalyst owned the `NSApplicationDelegate` itself, so
+    /// this method could not be overridden and the multiple-scene flag was the only supported lever.
+    @MainActor
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    #else
+    @MainActor
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        commonDidFinishLaunching()
         return true
     }
+    #endif
 
     #if os(macOS)
     /// Delay before the Mac's one-shot launch refresh, long enough that the window is up and first
@@ -84,9 +122,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     /// Run one refresh shortly after launch — but off the synchronous launch path and past first
     /// paint. The Mac isn't woken by the system for background refresh, so this keeps content fresh
-    /// on open; the repeating loop armed by `schedule()` covers the rest while the app stays open.
+    /// on open; the `NSBackgroundActivityScheduler` armed by `schedule()` covers the rest.
     /// Deferring it (rather than calling `runNow()` from `didFinishLaunching`) is what keeps cold
-    /// start smooth: a full `updateAll()` runs the feed fetch plus `@MainActor` upserts, and each
+    /// start smooth: a full sync runs the feed fetch plus `@MainActor` upserts, and each
     /// save triggers a debounced full `ArticleStore` re-index — all of which would otherwise contend
     /// with the window's first paint.
     func scheduleLaunchRefresh() {
@@ -97,122 +135,46 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     /// Run one refresh immediately when the window regains focus (audit U4) — the Mac's
-    /// repeating loop only fires on its own interval, so a user returning to the app after a
+    /// scheduler only fires on its own interval, so a user returning to the app after a
     /// while sees stale content until the next tick without this.
     @MainActor func refreshOnFocus() { backgroundRefresh.runNow() }
     #endif
 
     /// Re-arm scheduling after the user changes the update interval -- on iOS the next BGTask
-    /// re-schedules itself, but the Mac loop is armed once at launch and never re-read the
+    /// re-schedules itself, but the Mac scheduler is armed once at launch and never re-read the
     /// setting (audit U4).
     @MainActor func rearmBackgroundRefresh() { backgroundRefresh.schedule() }
 }
 
 @main
 struct YanaApp: App {
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #else
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    #endif
     @State private var appState = AppState()
     @State private var appSettings = AppSettings()
     @State private var articleStore = ArticleStore(container: AppContainer.shared)
     @Environment(\.scenePhase) private var scenePhase
 
+    // `body` is forked wholesale rather than `#if`-ing individual scenes inside one builder:
+    // `Settings` and `Window` do not exist on iOS at all, and a result builder is a far less
+    // forgiving place to hide a platform gate than a plain declaration. The window *content* is
+    // shared through `mainContent` below, so the two bodies cannot drift.
+    #if os(macOS)
     var body: some Scene {
         WindowGroup {
-            ContentView(appState: appState)
-                .environment(appState)
-                .environment(articleStore)
-                .environment(appSettings)
-                .onChange(of: scenePhase) { _, phase in
-                    switch phase {
-                    case .background:
-                        // The timeline index cache is written on a delay (see
-                        // `ArticleStore.cacheWriteDelay`); flush it before the app can be suspended
-                        // so the next cold start paints from an up-to-date cache.
-                        Task { await articleStore.flushCache() }
-                        // No point paying for an open SSE connection while nothing is watching it.
-                        ReadingPositionLiveSync.shared.stop()
-                        // No point paying for an open SSE connection while nothing is watching.
-                        // The poll loops keep running; they are what actually ends a wait.
-                        OperationMonitor.shared.stopEvents()
-                    case .active:
-                        ReadingPositionLiveSync.shared.start(settings: appSettings)
-                        OperationMonitor.shared.startEvents(settings: appSettings)
-                        OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
-                        #if os(macOS)
-                        appDelegate.refreshOnFocus()
-                        #endif
-                    default:
-                        break
-                    }
-                }
-                .onChange(of: appSettings.updateInterval) { _, _ in
-                    appDelegate.rearmBackgroundRefresh()
-                }
-                .task {
-                    StartupTrace.event("scene.task.begin")
-                    articleStore.start()
-                    // NOTE: two one-time repair sweeps used to run here on EVERY launch -- a
-                    // legacy-HTML -> blocks conversion and a duplicate-Article cleanup. Both were
-                    // self-terminating fixes for bugs that no longer exist, and the dedup sweep in
-                    // particular re-read the entire article table on each launch just to find
-                    // nothing. Don't reintroduce a permanent launch-time sweep for a transient data
-                    // fix; if one is ever needed again, gate it behind a one-shot AppSettings flag.
-                    // Pull the server's article/feed state on every foreground launch. `nil` from
-                    // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error.
-                    // Routed through `InitialSyncGate`: on every launch after the device's first
-                    // sync has ever completed, this is the same fire-and-forget, error-swallowing
-                    // sync as before (a spotty connection at launch must never block first paint or
-                    // crash the app); on the very first one, it blocks the reader behind
-                    // `AppState.isPerformingInitialSync` until the historical backlog has landed and
-                    // settled.
-                    if let client = AuthenticatedClient.current() {
-                        await InitialSyncGate.run(
-                            container: AppContainer.shared, client: client,
-                            articleStore: articleStore, appState: appState, settings: appSettings
-                        )
-                    }
-                    // `.onChange(of: scenePhase)` below only fires on a CHANGE, so the very first
-                    // `.active` state on a cold launch needs this called explicitly here too;
-                    // `start()` is idempotent, so this and the scene-phase handler never race.
-                    ReadingPositionLiveSync.shared.start(settings: appSettings)
-                    // Anything this device triggered and never saw finish -- including in a
-                    // previous launch -- is picked back up here, through the same path a fresh
-                    // trigger takes.
-                    OperationMonitor.shared.startEvents(settings: appSettings)
-                    OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
-                    #if os(macOS)
-                    // Kick the Mac's launch refresh now that the window is up — deferred so it
-                    // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
-                    // Skipped for screenshot capture: a real fetch would spin the toolbar
-                    // progress view and can raise an error toast, both of which would land in
-                    // the captured frame.
-                    var skipLaunchRefresh = false
-                    #if DEBUG
-                    skipLaunchRefresh = MacScreenshotWindow.isRequested
-                    #endif
-                    if !skipLaunchRefresh { appDelegate.scheduleLaunchRefresh() }
-                    #endif
-                }
+            mainContent
         }
         .modelContainer(AppContainer.shared)
-        #if os(macOS)
         // Mac menu-bar commands (article navigation, star, read-aloud, update).
         .commands { YanaCommands() }
-        #endif
 
-        #if os(macOS)
-        // The Settings screen is presented as its own `WindowGroup`, opened via `openWindow(id:)`
-        // (⌘, and the More-menu Settings item in `MacRootView`). A plain `WindowGroup(id:)` with no
-        // `for:` value opens a NEW window on every `openWindow(id:)` call — not a singleton — so
-        // this uses the value-based singleton path instead: bind `for: Bool.self` and always
-        // open/pass the same constant (`true`), which SwiftUI matches on to refocus the existing
-        // window rather than create a duplicate.
-        //
-        // NOTE: this shape exists because Mac Catalyst had neither the SwiftUI `Settings` scene nor
-        // the singleton `Window(id:)` scene (it compiled against the iOS SDK). Natively both are
-        // available and this should collapse to a plain `Window(id:)`. **Stage 4b owns that**;
-        // only the gate is flipped here.
-        WindowGroup(id: WindowID.settings, for: Bool.self) { _ in
+        // The real `Settings` scene: a genuine singleton, wired to ⌘, and placed in the app menu
+        // by AppKit itself, so nothing here (and nothing in `YanaCommands`) has to claim that
+        // shortcut. Call sites open it with `@Environment(\.openSettings)`.
+        Settings {
             MacSettingsWindow(appState: appState)
                 .environment(appState)
                 .environment(articleStore)
@@ -221,10 +183,10 @@ struct YanaApp: App {
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 620)
 
-        // Onboarding as its own window, replacing the `.fullScreenCover` used on iOS. Uses the
-        // same value-based `WindowGroup` singleton pattern as the Settings window above, for the
-        // same inherited-from-Catalyst reason, and collapses to `Window(id:)` in Stage 4b.
-        WindowGroup(id: WindowID.welcome, for: Bool.self) { _ in
+        // Onboarding as its own window, replacing the `.fullScreenCover` used on iOS. `Window`
+        // (rather than `WindowGroup`) is itself the singleton — repeated `openWindow(id:)` calls
+        // refocus the one window instead of opening duplicates.
+        Window("Welcome", id: WindowID.welcome) {
             WelcomeWindowRoot(appState: appState)
                 .environment(appState)
                 .environment(articleStore)
@@ -232,18 +194,105 @@ struct YanaApp: App {
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 720, height: 640)
-        // Locks the window to its content's size (which `WelcomeView` now pins to exactly this
-        // size on macOS) rather than leaving it freely resizable — onboarding is a small,
-        // fixed wizard, not a document window, so there's no reason a user (or a restored prior
-        // frame) should be able to stretch it into a mostly-empty giant window.
+        // Locks the window to its content's size rather than leaving it freely resizable —
+        // onboarding is a small, fixed wizard, not a document window, so there's no reason a user
+        // (or a restored prior frame) should be able to stretch it into a mostly-empty giant
+        // window. `.contentSize` plus `.defaultSize` is what pins it; `WelcomeView` no longer
+        // needs a hard `.frame` of its own.
         .windowResizability(.contentSize)
 
-        WindowGroup(id: WindowID.serverNotice, for: Bool.self) { _ in
+        Window("Server Update Notice", id: WindowID.serverNotice) {
             ServerMigrationNoticeWindowRoot(appState: appState)
                 .environment(appSettings)
         }
         .modelContainer(AppContainer.shared)
         .defaultSize(width: 680, height: 640)
-        #endif
+    }
+    #else
+    var body: some Scene {
+        WindowGroup {
+            mainContent
+        }
+        .modelContainer(AppContainer.shared)
+    }
+    #endif
+
+    /// The root window's content, shared by both platforms' `body` above.
+    private var mainContent: some View {
+        ContentView(appState: appState)
+            .environment(appState)
+            .environment(articleStore)
+            .environment(appSettings)
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .background:
+                    // The timeline index cache is written on a delay (see
+                    // `ArticleStore.cacheWriteDelay`); flush it before the app can be suspended
+                    // so the next cold start paints from an up-to-date cache.
+                    Task { await articleStore.flushCache() }
+                    // No point paying for an open SSE connection while nothing is watching it.
+                    ReadingPositionLiveSync.shared.stop()
+                    // No point paying for an open SSE connection while nothing is watching.
+                    // The poll loops keep running; they are what actually ends a wait.
+                    OperationMonitor.shared.stopEvents()
+                case .active:
+                    ReadingPositionLiveSync.shared.start(settings: appSettings)
+                    OperationMonitor.shared.startEvents(settings: appSettings)
+                    OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
+                    #if os(macOS)
+                    appDelegate.refreshOnFocus()
+                    #endif
+                default:
+                    break
+                }
+            }
+            .onChange(of: appSettings.updateInterval) { _, _ in
+                appDelegate.rearmBackgroundRefresh()
+            }
+            .task {
+                StartupTrace.event("scene.task.begin")
+                articleStore.start()
+                // NOTE: two one-time repair sweeps used to run here on EVERY launch -- a
+                // legacy-HTML -> blocks conversion and a duplicate-Article cleanup. Both were
+                // self-terminating fixes for bugs that no longer exist, and the dedup sweep in
+                // particular re-read the entire article table on each launch just to find
+                // nothing. Don't reintroduce a permanent launch-time sweep for a transient data
+                // fix; if one is ever needed again, gate it behind a one-shot AppSettings flag.
+                // Pull the server's article/feed state on every foreground launch. `nil` from
+                // `AuthenticatedClient` means "not paired yet" -- nothing to do, not an error.
+                // Routed through `InitialSyncGate`: on every launch after the device's first
+                // sync has ever completed, this is the same fire-and-forget, error-swallowing
+                // sync as before (a spotty connection at launch must never block first paint or
+                // crash the app); on the very first one, it blocks the reader behind
+                // `AppState.isPerformingInitialSync` until the historical backlog has landed and
+                // settled.
+                if let client = AuthenticatedClient.current() {
+                    await InitialSyncGate.run(
+                        container: AppContainer.shared, client: client,
+                        articleStore: articleStore, appState: appState, settings: appSettings
+                    )
+                }
+                // `.onChange(of: scenePhase)` above only fires on a CHANGE, so the very first
+                // `.active` state on a cold launch needs this called explicitly here too;
+                // `start()` is idempotent, so this and the scene-phase handler never race.
+                ReadingPositionLiveSync.shared.start(settings: appSettings)
+                // Anything this device triggered and never saw finish -- including in a
+                // previous launch -- is picked back up here, through the same path a fresh
+                // trigger takes.
+                OperationMonitor.shared.startEvents(settings: appSettings)
+                OperationMonitor.shared.resume(settings: appSettings, container: AppContainer.shared)
+                #if os(macOS)
+                // Kick the Mac's launch refresh now that the window is up — deferred so it
+                // doesn't contend with cold-start rendering (see `scheduleLaunchRefresh`).
+                // Skipped for screenshot capture: a real fetch would spin the toolbar
+                // progress view and can raise an error toast, both of which would land in
+                // the captured frame.
+                var skipLaunchRefresh = false
+                #if DEBUG
+                skipLaunchRefresh = MacScreenshotWindow.isRequested
+                #endif
+                if !skipLaunchRefresh { appDelegate.scheduleLaunchRefresh() }
+                #endif
+            }
     }
 }

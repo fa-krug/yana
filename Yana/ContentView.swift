@@ -98,7 +98,7 @@ struct ContentView: View {
                 ) {
                     migrationNoticeWillShow = true
                     if isMac {
-                        openWindow(id: WindowID.serverNotice, value: true)
+                        openWindow(id: WindowID.serverNotice)
                     } else {
                         appState.showServerMigrationNotice = true
                     }
@@ -154,7 +154,7 @@ struct ContentView: View {
         ) else { return }
         appState.welcomeInitialStep = step
         if isMac {
-            openWindow(id: WindowID.welcome, value: true)
+            openWindow(id: WindowID.welcome)
         } else {
             appState.showWelcome = true
         }

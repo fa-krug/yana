@@ -92,11 +92,11 @@ struct MacSettingsWindow: View {
                         // Onboarding" click and skip straight past the welcome/feature pages.
                         // Mirrors the iOS reset in ReaderHostView.swift.
                         appState.welcomeInitialStep = .welcome
-                        openWindow(id: WindowID.welcome, value: true)
+                        openWindow(id: WindowID.welcome)
                         dismiss()
                     },
                     onShowServerNotice: {
-                        openWindow(id: WindowID.serverNotice, value: true)
+                        openWindow(id: WindowID.serverNotice)
                         dismiss()
                     }
                 )

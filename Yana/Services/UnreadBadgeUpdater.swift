@@ -1,7 +1,5 @@
 import Foundation
-#if canImport(UIKit)
 import UserNotifications
-#endif
 
 /// Opt-in app-icon badge showing the unread count *within the user's current timeline filter*
 /// (tag/feed/starred-only/read-state selections), not the full library. Hooked into
@@ -37,13 +35,17 @@ enum UnreadBadgeUpdater {
     }
 
     /// Recomputes and pushes the system badge, or clears it when the setting is off.
+    ///
+    /// Not platform-gated: nothing in here is UIKit, only `UserNotifications`, and
+    /// `setBadgeCount` drives the Dock tile on macOS exactly as it drives the home-screen icon on
+    /// iOS. (It carried a `#if canImport(UIKit)` while the Mac build was Catalyst, which was
+    /// never about badging — it was about the file compiling at all.) Using it rather than
+    /// `NSApp.dockTile.badgeLabel` keeps one code path and one authorization prompt.
     static func refresh(summaries: [ArticleSummary], settings: AppSettings = AppSettings()) {
-        #if canImport(UIKit)
         guard settings.showUnreadBadge else {
             UNUserNotificationCenter.current().setBadgeCount(0)
             return
         }
         UNUserNotificationCenter.current().setBadgeCount(count(from: summaries, settings: settings))
-        #endif
     }
 }

@@ -70,16 +70,11 @@ struct WelcomeView: View {
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: step)
-        #if os(macOS)
-        // On iOS this view fills whatever full-screen container hosts it, which is correct there.
-        // On macOS it hosts in its own `WindowGroup` (`WelcomeWindowRoot`), and without a
-        // fixed size the window can be resized (or restored from a previous, larger frame)
-        // arbitrarily tall — every step then stretches to fill that, leaving a large dead gap
-        // below sparser steps like `OnboardingServerPage`. Pinning this to the window's
-        // `.defaultSize` (see `YanaApp`) and pairing that with `.windowResizability(.contentSize)`
-        // keeps the window itself locked to this size instead.
-        .frame(width: 720, height: 640)
-        #endif
+        // NOTE: no macOS `.frame` here. The Welcome window is a real `Window` scene with
+        // `.defaultSize` + `.windowResizability(.contentSize)` (see `YanaApp`), which pins the
+        // window itself — so this view does not have to pin its own size to stop a restored,
+        // oversized frame stretching sparser steps like `OnboardingServerPage` into dead space.
+        // A hard frame was the workaround while this was a Catalyst `WindowGroup`.
     }
 
     // MARK: Chrome

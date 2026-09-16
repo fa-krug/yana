@@ -13,10 +13,24 @@ struct MacRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
     @Environment(\.openWindow) private var openWindow
+    // `openSettings` is macOS-only API, and this file is still compiled into the iOS target
+    // (`ContentView` picks the Mac root at runtime, by idiom). Stage 5 makes the file macOS-only,
+    // at which point this gate and `showSettings()` below can collapse.
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    #endif
     @Environment(AppSettings.self) private var settings
 
     @State private var model: TimelineModel
     @State private var speech = ReaderSpeechController()
+
+    /// Opens the app's `Settings` scene. See the `#if` on `openSettings` above for why this is a
+    /// method rather than the call written inline.
+    private func showSettings() {
+        #if os(macOS)
+        openSettings()
+        #endif
+    }
     @FocusState private var focusedPane: MacFocusPane?
     /// Keep the article-list sidebar open by default (and after relaunch) — it is the primary
     /// navigation on the Mac, not a collapsible drawer.
@@ -54,7 +68,7 @@ struct MacRootView: View {
                 DemoModeBanner(
                     onPairNow: {
                         appState.welcomeInitialStep = .server
-                        openWindow(id: WindowID.welcome, value: true)
+                        openWindow(id: WindowID.welcome)
                     },
                     onDismiss: { settings.hasDismissedDemoBanner = true }
                 )
@@ -172,7 +186,7 @@ struct MacRootView: View {
                 onCreateFeed: { showingCreateFeed = true },
                 onPairServer: {
                     appState.welcomeInitialStep = .server
-                    openWindow(id: WindowID.welcome, value: true)
+                    openWindow(id: WindowID.welcome)
                 }
             )
         } else {
@@ -242,10 +256,10 @@ struct MacRootView: View {
 
         ToolbarItem(placement: .primaryAction) {
             Menu {
-                // ⌘, is now claimed by the app-menu Settings item (`YanaCommands`'s
-                // `.appSettings` command group) — this button keeps the action but not the shortcut,
-                // so only one control claims it.
-                Button { openWindow(id: WindowID.settings, value: true) } label: { Label("Settings", systemImage: "gearshape") }
+                // ⌘, is claimed by the app-menu Settings item that the `Settings` scene installs
+                // for us — this button keeps the action but not the shortcut, so only one control
+                // claims it. `openSettings()` targets that same singleton scene.
+                Button { showSettings() } label: { Label("Settings", systemImage: "gearshape") }
                 if model.selectedSummary != nil {
                     Divider()
                     let article = model.selectedArticle()

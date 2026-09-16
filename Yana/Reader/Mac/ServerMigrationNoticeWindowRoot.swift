@@ -21,7 +21,7 @@ struct ServerMigrationNoticeWindowRoot: View {
                 hasSkippedServerPairing: settings.hasSkippedServerPairing
             ) {
                 appState.welcomeInitialStep = step
-                openWindow(id: WindowID.welcome, value: true)
+                openWindow(id: WindowID.welcome)
             }
         })
         .toggleStyle(.switch)

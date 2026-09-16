@@ -22,7 +22,6 @@ extension FocusedValues {
 struct YanaCommands: Commands {
     @FocusedValue(\.timelineModel) private var model
     @FocusedValue(\.readerSpeech) private var speech
-    @Environment(\.openWindow) private var openWindow
 
     private var navDisabled: Bool { model == nil }
 
@@ -30,12 +29,10 @@ struct YanaCommands: Commands {
         // No multi-window on Mac, so drop the default New Window / New item menu slot.
         CommandGroup(replacing: .newItem) {}
 
-        // The toolbar overflow menu's own Settings item drops its shortcut so this is the single
-        // claimant of ⌘, (Mac finding 8).
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings…") { openWindow(id: WindowID.settings, value: true) }
-                .keyboardShortcut(",", modifiers: .command)
-        }
+        // NOTE: there is deliberately no `.appSettings` command group here any more. The real
+        // `Settings` scene (`YanaApp`) puts its own item in the app menu and claims ⌘, itself, so
+        // replacing the group would only take the shortcut away from the scene that owns it. This
+        // block existed because Mac Catalyst had no `Settings` scene at all.
 
         CommandMenu("Article") {
             Button("Update all") { model?.triggerRefresh() }
