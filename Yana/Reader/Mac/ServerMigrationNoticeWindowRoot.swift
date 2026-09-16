@@ -1,3 +1,5 @@
+// macOS-only: on iOS the notice is a `.fullScreenCover` over the reader, not a window.
+#if os(macOS)
 import SwiftUI
 
 /// Hosts `ServerMigrationNoticeView` in its own Mac window, mirroring `WelcomeWindowRoot`. If the
@@ -30,3 +32,4 @@ struct ServerMigrationNoticeWindowRoot: View {
         }
     }
 }
+#endif

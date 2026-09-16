@@ -1,3 +1,7 @@
+// The iOS reader's swipe pager. iOS-only in its entirety: the Mac window has never had a pager --
+// `MacReaderDetailView` shows the single article the sidebar has selected -- and this file is
+// `UIPageViewController` from top to bottom, with no AppKit counterpart to port it to.
+#if os(iOS)
 import UIKit
 import SafariServices
 import SwiftUI
@@ -1014,3 +1018,4 @@ final class ReaderArticleViewController: UIViewController,
 
     deinit { NotificationCenter.default.removeObserver(self) }
 }
+#endif

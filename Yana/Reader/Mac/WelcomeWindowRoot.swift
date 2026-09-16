@@ -1,3 +1,5 @@
+// macOS-only: on iOS onboarding is a `.fullScreenCover` over the reader, not a window.
+#if os(macOS)
 import SwiftUI
 
 /// Hosts the onboarding `WelcomeView` in its own Mac window. Replaces the `.fullScreenCover`'s
@@ -32,3 +34,4 @@ struct WelcomeWindowRoot: View {
         }
     }
 }
+#endif

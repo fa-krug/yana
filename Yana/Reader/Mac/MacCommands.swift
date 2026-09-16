@@ -1,3 +1,7 @@
+// The Mac menu-bar commands and the focused-value keys they read. macOS-only: `YanaCommands` is
+// attached to the macOS `WindowGroup` in `YanaApp`, and `MacRootView` (also macOS-only) is the
+// sole publisher of the focused values below.
+#if os(macOS)
 import SwiftUI
 
 /// Focused values the Mac menu-bar commands read to act on the frontmost window's timeline + speech
@@ -115,3 +119,4 @@ struct YanaCommands: Commands {
         }
     }
 }
+#endif
