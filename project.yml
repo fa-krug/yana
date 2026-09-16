@@ -4,6 +4,7 @@ options:
   bundleIdPrefix: de.fa-krug
   deploymentTarget:
     iOS: "26.0"
+    macOS: "26.0"
   xcodeVersion: "15.0"
   generateEmptyDirectories: true
   developmentLanguage: en
@@ -37,6 +38,7 @@ targets:
       - path: Yana
         excludes:
           - "Info-iOS.plist"
+          - "Info-macOS.plist"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana
@@ -44,23 +46,40 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Yana/Entitlements/Yana-iOS.entitlements
         INFOPLIST_FILE: Yana/Info-iOS.plist
         GENERATE_INFOPLIST_FILE: false
-        # 1,2 = iPhone/iPad; 6 = Mac. Family 6 opts the Mac Catalyst build into the
-        # native Mac idiom ("Optimize Interface for Mac") instead of the scaled-iPad
-        # idiom. iOS ignores 6, so the iPhone/iPad build stays a universal 1,2 app.
-        TARGETED_DEVICE_FAMILY: "1,2,6"
-        # Ship a real Mac app via Mac Catalyst (not the "Designed for iPad" runtime).
-        # The Mac build mirrors the iOS 26 deployment target -> macOS 26. Keeping the same
-        # PRODUCT_BUNDLE_IDENTIFIER across platforms (DERIVE = NO) means the Mac build shares the
-        # Keychain. macOS-only entitlements (App Sandbox, network client) live in the
-        # shared entitlements file and are ignored on iOS.
-        SUPPORTS_MACCATALYST: true
+        # 1 = iPhone, 2 = iPad. The Mac build is a separate native target (Yana-macOS),
+        # not family 6 / Mac Catalyst any more.
+        TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
-        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: false
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.news
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Yana uses Face ID to protect your reading data."
+
+  Yana-macOS:
+    type: application
+    platform: macOS
+    sources:
+      - path: Yana
+        excludes:
+          - "Info-iOS.plist"
+          - "Info-macOS.plist"
+    settings:
+      base:
+        # Both targets produce "Yana.app"; there is no collision because each platform
+        # has its own BUILT_PRODUCTS_DIR. The bundle identifier is deliberately identical
+        # to the iOS target's: that is what keeps the Keychain access group shared.
+        PRODUCT_NAME: Yana
+        PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana
+        SWIFT_EMIT_LOC_STRINGS: YES
+        CODE_SIGN_ENTITLEMENTS: Yana/Entitlements/Yana-macOS.entitlements
+        INFOPLIST_FILE: Yana/Info-macOS.plist
+        GENERATE_INFOPLIST_FILE: false
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
   YanaTests:
     type: bundle.unit-test
@@ -75,12 +94,6 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Yana.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Yana"
         BUNDLE_LOADER: "$(TEST_HOST)"
-        # The Mac screenshot lane runs `xcodebuild test` against a Mac Catalyst destination,
-        # and xcodebuild builds every test target in the scheme even with -only-testing. So
-        # both test bundles must support Catalyst, not just the UI-test one.
-        SUPPORTS_MACCATALYST: true
-        TARGETED_DEVICE_FAMILY: "1,2,6"
-        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: false
 
   YanaUITests:
     type: bundle.ui-testing
@@ -93,9 +106,34 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana.uitests
         GENERATE_INFOPLIST_FILE: true
-        SUPPORTS_MACCATALYST: true
-        TARGETED_DEVICE_FAMILY: "1,2,6"
-        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: false
+
+  YanaTests-macOS:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: YanaTests
+    dependencies:
+      - target: Yana-macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana.tests.macos
+        GENERATE_INFOPLIST_FILE: true
+        # BUNDLE_EXECUTABLE_FOLDER_PATH expands to "Contents/MacOS" on macOS and to
+        # nothing on iOS, so this one string works verbatim on both platforms.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Yana.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Yana"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+  YanaUITests-macOS:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: YanaUITests
+    dependencies:
+      - target: Yana-macOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.fa-krug.Yana.uitests.macos
+        GENERATE_INFOPLIST_FILE: true
 
 schemes:
   Yana:
@@ -109,6 +147,23 @@ schemes:
       targets:
         - YanaTests
         - YanaUITests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  Yana-macOS:
+    build:
+      targets:
+        Yana-macOS: all
+    run:
+      config: Debug
+    # The macOS test action stays empty until the macOS target actually builds.
+    test:
+      config: Debug
+      targets: []
     profile:
       config: Release
     analyze:

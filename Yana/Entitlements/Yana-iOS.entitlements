@@ -2,12 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- macOS (Mac Catalyst) only: App Sandbox is required for a Mac App Store build and is
-	     ignored on iOS. `network.client` lets the sandboxed Mac app fetch feeds/API calls. -->
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
+	<!-- The macOS target has its own entitlements file (Yana-macOS.entitlements) carrying
+	     the App Sandbox / network keys. This group is identical in both files on purpose:
+	     that is what keeps the device token Keychain item shared across platforms. -->
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)de.fa-krug.Yana</string>

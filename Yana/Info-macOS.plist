@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Yana</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.news</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<!-- GENERATE_INFOPLIST_FILE is false, so the project's INFOPLIST_KEY_* build settings
+	     are ignored for this target; these two keys must be written literally here. -->
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Sascha Krug. All rights reserved.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<!-- Users self-host the Yana Server, very often on their own LAN over plain HTTP. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>de.fa-krug.Yana.pairing</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>yana</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
