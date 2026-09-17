@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Yana iOS is a **native SwiftUI iOS/Mac Catalyst app** that is a **thin, offline-first client**
+Yana is a **native SwiftUI app shipped as two platform targets over one shared `Yana/` source
+tree** — `Yana` (iOS/iPadOS) and `Yana-macOS` (native macOS, AppKit-backed where the reader needs
+a view layer). It is a **thin, offline-first client**
 for a self-hosted **Yana Server** (`yana-server`, a separate project). The server does all the
 work — fetching/parsing feeds, running scrapers, calling AI providers — and this app pairs with a
 server the user runs themselves, syncs the resulting articles/feeds/images down into a local
@@ -20,13 +22,27 @@ source and issue board live at
 ## Commands
 
 ### Development
-- `xcodegen generate` — generate the Xcode project from `project.yml`
+- `xcodegen generate` — generate the Xcode project from `project.yml` (six targets: the `Yana` and
+  `Yana-macOS` apps plus a test pair each, `YanaTests`/`YanaUITests` and
+  `YanaTests-macOS`/`YanaUITests-macOS`; two schemes, `Yana` and `Yana-macOS`)
 - `open Yana.xcodeproj` — open the project in Xcode
-- Build and run via Xcode: select **Yana** scheme
+- Build and run via Xcode: select **Yana** (iOS) or **Yana-macOS**
+
+**The iOS target and scheme are called `Yana`, not `Yana-iOS`, on purpose.** The sibling project
+`../mysquad` names its macOS target `MySquad` and its iOS one `MySquad-iOS`; deviating from that
+here kept every existing `-scheme Yana -destination 'platform=iOS Simulator'` invocation,
+`fastlane/Snapfile`'s `scheme("Yana")` and `only_testing(["YanaUITests/ScreenshotUITests"])`, and
+every command documented in this file working untouched across the migration. Do not "fix" the
+inconsistency: renaming `Yana` to `Yana-iOS` would silently point the iPhone screenshot lane at a
+macOS build.
 
 ### Building from command line
 - `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build` — build iOS target
-- `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test` — run tests
+- `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test` — run the iOS tests
+- `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' build` — build the macOS target
+- `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test` —
+  run the macOS unit tests. `-only-testing` matters: the macOS **UI** tests need an interactive
+  desktop session and cannot run from a non-interactive shell at all (see **Tests**).
 
 ### Prerequisites
 - `brew install xcodegen` — install XcodeGen (required to generate `.xcodeproj`)
@@ -83,7 +99,7 @@ source and issue board live at
   **2880×1800**, the largest allowed Mac size). Output: `fastlane/screenshots_mac/{en-US,de-DE}/`,
   committed like the iPhone set.
 - **This shares nothing with the iPhone lane, by necessity:** `capture_screenshots` (fastlane
-  snapshot) drives iOS Simulator destinations only and cannot target Mac Catalyst, and
+  snapshot) drives iOS Simulator destinations only and cannot target a macOS destination, and
   `frame_screenshots` (frameit) has no Mac device frames. So the Mac path is its own test
   (`YanaUITests/MacScreenshotUITests.swift`), its own lane, and its own output directory — kept
   **outside** `fastlane/screenshots/` so the iOS lane's `frame_screenshots` never sees it.
@@ -96,12 +112,23 @@ source and issue board live at
 - Shots are **plain captures — no device frame, no gradient, no captions** (the Mac App Store
   convention). Localization comes from the app chrome itself, forced via `-AppleLanguages` /
   `-AppleLocale` launch arguments.
-- How it works: the test attaches each window capture as an `XCTAttachment`
-  (`lifetime = .keepAlways`) — the only sandbox-safe route out, since the Catalyst test runner
-  cannot write outside its container. The lane then runs `xcresulttool export attachments`,
-  resolves names through the emitted `manifest.json`, and composites the two Settings shots over
-  the `01_Reader` capture with `fastlane/mac_composite.swift` (CoreGraphics; `sips` cannot
-  composite and ImageMagick would be a new dependency).
+- How it works: the lane drives `xcodebuild test` directly (`-scheme Yana-macOS`,
+  `-destination "platform=macOS"`, `-only-testing:YanaUITests-macOS/MacScreenshotUITests/<method>`)
+  rather than `scan`/`run_tests`, which assumes a simulator destination. The test attaches each
+  window capture as an `XCTAttachment` (`lifetime = .keepAlways`); the lane then runs
+  `xcresulttool export attachments`, resolves names through the emitted `manifest.json` (XCTest
+  rewrites `01_Reader.png` to `01_Reader_0_<UUID>.png`, so the lane strips that suffix rather than
+  matching verbatim), and composites the two Settings shots over the `01_Reader` capture with
+  `fastlane/mac_composite.swift` (CoreGraphics; `sips` cannot composite and ImageMagick would be a
+  new dependency).
+- **Why the attachment round-trip survives the native port.** It is *not* a Catalyst leftover, and
+  the explanation this file used to carry ("the Catalyst test runner cannot write outside its
+  container") was wrong. Xcode derives a UI-test runner's entitlements from the app under test, and
+  Yana is sandboxed, so `YanaUITests-macOS-Runner.app` is signed with
+  `com.apple.security.app-sandbox` and only a **read-only**
+  `temporary-exception.files.absolute-path` for `/`, with no write exception anywhere. Writing PNGs
+  straight to a path of the lane's choosing therefore fails. Verify rather than assume before
+  touching this: `codesign -d --entitlements - <DerivedData>/Build/Products/Debug/YanaUITests-macOS-Runner.app`.
 - Content is the same DEBUG-only offline fixture as the iPhone set (`ScreenshotSeed`, via
   `-UITEST_SCREENSHOTS`). Per-locale isolation replaces `erase_simulator`: there is no simulator
   to erase, so the test passes `-UITEST_RESET_LIBRARY` alongside it and relies on `YanaApp`
@@ -109,21 +136,36 @@ source and issue board live at
 - `-UITEST_MAC_SCREENSHOTS` (`Yana/Utilities/MacScreenshotWindow.swift`) pins the main window to
   1440×900pt — 2880×1800 at 2x — and suppresses the Mac launch refresh (whose spinner and error
   toast would otherwise land in a frame) and the pre-server-migration notice window (see
-  **Architecture**), both of which would otherwise pop up mid-capture.
+  **Architecture**), both of which would otherwise pop up mid-capture. The pin is just
+  `setContentSize` on `NSApp.mainWindow`, applied once from the root view's `onAppear` and once more
+  on the next main-queue turn so it lands after SwiftUI's own first layout pass. There is no
+  convergence poll: AppKit sets a window size synchronously. **AppKit does constrain a window's
+  frame to the screen's visible area**, though, and a 1440×900pt content area plus the title bar
+  needs roughly 928pt of usable height, so a shorter display silently yields a shorter window and
+  re-pinning cannot fix it. `MacScreenshotWindow` only logs that mismatch; the lane's `sips`
+  2880×1800 assertion is the real backstop.
 - The capture run uses a **throwaway SwiftData store** in the system temp directory
   (`yana-screenshots.store` + its `-wal`/`-shm` siblings, deleted before each run). The developer's
   real Mac library under `~/Library/Application Support/` is never touched.
-- Gotchas: exact sizing **requires a Retina (2x) display** — the lane fails loudly if the direct
-  shots are not exactly 2880×1800, and the compositor fails loudly if the base image has the wrong
-  aspect ratio. Neither falls back silently. Both `YanaTests` and `YanaUITests` must keep
-  `SUPPORTS_MACCATALYST`, because `xcodebuild` builds every test target in the scheme even with
-  `-only-testing`. Per-locale isolation works via `-UITEST_RESET_LIBRARY` (not `erase_simulator`,
+- Gotchas: exact sizing **requires a Retina (2x) display with enough room** (see the window-pin
+  note above) — the lane fails loudly if the direct shots are not exactly 2880×1800, and the
+  compositor fails loudly if the base image has the wrong aspect ratio. Neither falls back
+  silently. Per-locale isolation works via `-UITEST_RESET_LIBRARY` (not `erase_simulator`,
   which has no Mac equivalent); UserDefaults and Keychain carry over between runs, which is why the
   test pins settings via a UserDefaults argument domain rather than relying on persisted state.
-  The Mac surfaces carry `mac.*` accessibility identifiers purely so the test can navigate
-  locale-independently; the sidebar search field is matched as `app.searchFields` because
-  `.searchable` does not forward an identifier reliably.
-- **Codesigning gotchas (Mac Catalyst only — the iPhone lane ad-hoc signs and is immune):**
+  AppKit also persists window state, so the test passes `-ApplePersistenceIgnoreState YES` — a
+  Settings window left open by a previous run would otherwise be restored and change which window
+  `app.windows` resolves to. The Mac surfaces carry `mac.*` accessibility identifiers purely so the
+  test can navigate locale-independently; the sidebar search field is matched as `app.searchFields`
+  because `.searchable` does not forward an identifier reliably. And a SwiftUI `List` on AppKit is
+  backed by an `NSOutlineView`, so its rows surface as `.outlineRow` — or, depending on the row's
+  own accessibility configuration, only as a combined `StaticText` label — never as `.cell`; a
+  readiness check written against `app.cells` alone waits forever.
+- **The captures committed under `fastlane/screenshots/` and `fastlane/screenshots_mac/` are stale
+  Catalyst-era assets.** Neither lane has been re-run since the native macOS migration, because
+  both need an interactive desktop session. They remain the current App Store material until
+  someone re-runs them there.
+- **Codesigning gotchas (macOS builds only — the iPhone lane ad-hoc signs and is immune):**
   - `codesign … errSecInternalComponent` means `codesign` cannot read the signing key. Two distinct
     causes: (a) the login keychain's signing keys lack `codesign:` in their partition list — fix with
     `security unlock-keychain ~/Library/Keychains/login.keychain-db` then
@@ -133,8 +175,12 @@ source and issue board live at
     Terminal, not from an automation/agent shell.
   - `invalid or unsupported format for signature … <Framework>.cstemp` means a PREVIOUS codesign run
     died partway and left `.cstemp` turds inside the copied XCTest frameworks. Clear them with
-    `rm -rf <DerivedData>/Build/Products/Debug-maccatalyst` and re-run; deleting only the `.cstemp`
+    `rm -rf <DerivedData>/Build/Products/Debug` and re-run; deleting only the `.cstemp`
     files is not enough, because the frameworks themselves are left half-signed.
+  - `ENABLE_HARDENED_RUNTIME: YES` is set on the `Yana-macOS` target and does **not** block the
+    injected XCTest frameworks, because a debug build carries `get-task-allow`. Verified by the
+    macOS unit suite running against it, so do not pre-emptively add
+    `com.apple.security.cs.disable-library-validation` or make hardened runtime Release-only.
 
 ### Website (GitHub Pages)
 - The project ships a self-contained marketing + legal site under `docs/site/`, deployed to GitHub
@@ -158,6 +204,52 @@ source and issue board live at
   overwrite the files under `assets/img/`.
 
 ## Architecture
+
+### Platform split: iOS and macOS over one source tree
+
+Both app targets compile the whole of `Yana/`. There is no per-platform source directory and no
+XcodeGen `excludes:` list to keep in sync; divergence is expressed in the source itself, three ways.
+
+- **`Yana/Platform/` — the shim layer, for things that differ in spelling but not in shape.**
+  `PlatformTypes.swift` holds the typealiases (`PlatformImage`, `PlatformColor`, `PlatformFont`,
+  `PlatformFontDescriptor`, `PlatformView`, `PlatformViewController`, `PlatformHostingController`)
+  plus the semantic helpers where AppKit's name genuinely differs: `PlatformColor.yanaLabel` /
+  `.yanaSecondaryLabel` / `.yanaSeparator` / `.yanaSecondaryBackground` / `.yanaWindowBackground`,
+  the symbolic-trait members `yanaBold`/`yanaItalic` (an `OptionSet` member, so no typealias
+  reaches it), `PlatformFont.scaledBodyValue(for:)`, `Image(platformImage:)` and
+  `PlatformImage.fromCGImage(_:)`. `PlatformApp.swift` holds the application-level calls —
+  `open`, `isActive`, `didBecomeActiveNotification`, `willResignActiveNotification`, `deviceName`
+  — plus `PlatformPasteboard`. `PlatformImageRenderer.swift` stands in for
+  `UIGraphicsImageRenderer`, which has no NSImage equivalent and which the screenshot fixture
+  factories depend on.
+  Two deliberate **non**-users of the shim, both load-bearing:
+  `ReaderLinkPolicy.openExternally` keeps a real `#if` rather than routing through
+  `PlatformApp.open`, because the iOS path is `UIApplication.open(_:options: [.universalLinksOnly:
+  true])` with a completion handler that falls back to an in-app Safari view, and
+  `NSWorkspace.shared.open` has no analogue for either half — shimming it would silently drop the
+  universal-link-first behavior. `PlatformPasteboard` is a helper rather than a typealias because
+  `NSPasteboard` requires `clearContents()` before a write and `UIPasteboard` does not.
+  `PlatformFont.scaledBodyValue(for:)` returns its argument unscaled on macOS: there is no
+  `NSFontMetrics`, and the reader's own `ArticleTextSize` picker is the Mac's text-size control.
+- **Whole-file `#if` with matching type names, where divergence is total.** `SelectableText.swift`
+  / `SelectableTextMacOS.swift`, `ReaderBlockViewController.swift` /
+  `ReaderBlockViewControllerMacOS.swift`, `ReaderFindBar.swift` / `ReaderFindBarMacOS.swift`,
+  `ReaderImageViewerViewController.swift` / `…MacOS.swift`,
+  `ReaderVideoPlayerViewController.swift` / `…MacOS.swift`. The two files declare the **same type
+  name** under mutually exclusive `#if`s, so every call site stays unconditional. Files with no
+  macOS counterpart at all are simply `#if os(iOS)` in their entirety
+  (`ReaderArticleViewController.swift`, `ReaderHostView.swift`).
+- **Inline `#if os(macOS)` for small deltas**, everywhere else.
+
+**The rule is `#if os(macOS)`, never `targetEnvironment(macCatalyst)`.** Mac Catalyst is gone from
+this project; a `targetEnvironment` check would be dead code that compiles.
+
+**Verifying new platform code before the target builds:** the Swift driver aborts **whole-module**
+compilation at the first unresolvable import, so a single file with an unconditional
+`import UIKit` makes the whole macOS build report exactly one error and validate nothing else.
+Counting compile errors is therefore useless as a migration burn-down; count files with an
+unconditional UIKit import instead. To typecheck a file in isolation:
+`swiftc -typecheck -swift-version 6 -strict-concurrency=complete -target arm64-apple-macos26.0 <files>`.
 
 ### SwiftUI + SwiftData + thin sync client
 
@@ -237,7 +329,7 @@ source and issue board live at
   which intercepts the callback scheme directly, but kept since it documents the scheme in use). This
   session's cookies land in Safari's shared cookie jar (`HTTPCookieStorage.shared`), not the
   `WKWebsiteDataStore` `ManagementWebView` reads from — the two are entirely separate on iOS with no
-  automatic sharing, and on Mac Catalyst App Sandbox isolates the app's `HTTPCookieStorage.shared`
+  automatic sharing, and on the Mac App Sandbox isolates the app's `HTTPCookieStorage.shared`
   from the system's out-of-process Safari auth agent `ASWebAuthenticationSession` runs through there,
   so a one-shot cookie copy at pairing time never reliably reached `ManagementWebView`'s cookie store
   at all on that platform. `ManagementWebView` no longer depends on this session's cookies: instead,
@@ -597,7 +689,11 @@ source and issue board live at
   on the reader's `viewWillDisappear`, applied to the page a cold launch opens on (`configure`) and
   to the displayed page on `willEnterForeground`. Without it every relaunch resumed the right
   article at its top, which for a long half-read article is barely better than losing the position.
-  Three things worth knowing:
+  **This persistence is iOS-only:** `saveReadingOffset` lives on `ReaderArticleViewController`,
+  which the Mac does not have. the macOS `ReaderBlockViewController` implements the same
+  `readingOffset`/`restoreReadingOffset` pair, but on the Mac it only backs `MacReaderDetailView`'s
+  in-session page cache (revisiting a recently-viewed article restores its exact offset), not a
+  restore across relaunch. Three things worth knowing:
   - **It is scoped to the anchor by construction, not by a second key.**
     `TimelineAnchorWriter.record` zeroes it whenever the anchor moves to another article, so a
     non-zero value always belongs to the article being restored; `restoreSavedReadingOffset` still
@@ -643,18 +739,24 @@ source and issue board live at
   `SyncEngine.sync()` directly (in place of the old `AggregationService.updateAll()`) and posts a
   new-article notification via `NotificationService`/`NewArticleNotification` when enabled, the
   system authorized it, and the sync pulled down at least one new article summary — otherwise
-  silent, matching the old behavior. On Mac Catalyst (no `BGTaskScheduler`), a cancellable
-  repeating in-process `Task` loop (`scheduleMac`) drives periodic updates while the app is running
-  instead. That loop is re-armed, not just armed once at launch (audit U4): `YanaApp.swift`'s
-  `.onChange(of: appSettings.updateInterval)` calls `AppDelegate.rearmBackgroundRefresh()` →
-  `BackgroundRefreshManager.schedule()`, which cancels and restarts `macRefreshLoop` at the new
-  interval, and switching the interval to `.off` takes the `guard secondsProvider() != nil else`
-  branch, which cancels the loop outright instead of leaving a stale one running against an
-  abandoned setting. Returning to the foreground also triggers an out-of-band run: `scenePhase`
+  silent, matching the old behavior. On macOS (no `BGTaskScheduler`) an
+  `NSBackgroundActivityScheduler` drives the periodic updates instead. Three traps it carries, all
+  recorded in the file: **`repeats = true` is mandatory** — without it the activity never fires at
+  all, not even once; **`completion(.finished)` must be called exactly once**, or the scheduler
+  stalls permanently for that identifier and never fires again, which is why it is invoked from a
+  leading `defer`; and **the block runs off the main actor**, so the body hops to `@MainActor`
+  itself. Unlike the `Task.sleep` loop this replaced, the scheduler also re-fires on wake from
+  sleep, so a MacBook closed for four hours refreshes on reopen instead of waiting out the
+  remainder of a tick it slept through. It is re-armed, not just armed once at launch (audit U4):
+  `YanaApp.swift`'s `.onChange(of: appSettings.updateInterval)` calls
+  `AppDelegate.rearmBackgroundRefresh()` → `BackgroundRefreshManager.schedule()`, which
+  invalidates and recreates the activity at the new interval, and switching the interval to `.off`
+  invalidates it outright instead of leaving a stale one running against an abandoned setting.
+  Returning to the foreground also triggers an out-of-band run: `scenePhase`
   going `.active` calls `AppDelegate.refreshOnFocus()` → `runNow()`, so a user who left the app
-  backgrounded for a while sees fresh content immediately rather than waiting for the loop's own
-  tick. Both `runNow()` and the loop's per-tick `runRefresh` call pass
-  `postsNotification: UIApplication.shared.applicationState != .active`, so a foreground-triggered
+  backgrounded for a while sees fresh content immediately rather than waiting for the scheduler's own
+  tick. Both `runNow()` and the per-tick `runRefresh` call pass
+  `postsNotification: !PlatformApp.isActive`, so a foreground-triggered
   run (focus, launch) never fires a "new articles arrived" system notification while the user is
   already looking at the window — that noise is reserved for runs that actually happened while
   backgrounded.
@@ -664,11 +766,13 @@ source and issue board live at
   styled
   `InlineRun`s — and rendered by `ArticleBlockView` (per-block SwiftUI; `AttributedString` text for
   selection/Dynamic Type/accessibility; images loaded from the local `ImageStore` by `yana-img://`
-  ref (tapping an image opens it full-screen with pinch-to-zoom, double-tap-to-zoom and swipe-down-
-  to-dismiss via `ReaderImageViewerViewController`); video embeds shown as tappable poster cards and
-  tweet embeds as text cards — tapping a video plays it full-screen in-app via
+  ref (clicking or tapping an image opens it in `ReaderImageViewerViewController` — full-screen on
+  iOS with pinch-to-zoom, double-tap-to-zoom and swipe-down-to-dismiss, a modal window on macOS,
+  see the macOS reader notes below); video embeds shown as tappable poster cards and
+  tweet embeds as text cards — activating a video plays it in-app via
   `ReaderVideoPlayerViewController` (YouTube/Dailymotion in a `WKWebView` privacy-mode player; a
-  direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController`),
+  direct HLS/MP4 stream such as a Reddit `v.redd.it` post in a native `AVPlayerViewController` on
+  iOS, an `AVPlayerView` on macOS),
   while tweets/unplayable embeds open externally. **A poster card with no poster draws
   `EmbedPosterPlaceholder` (`Yana/Reader/EmbedPoster.swift`), not an empty box.** Two unrelated
   causes land there: the embed genuinely has no thumbnail anywhere (a private/deleted/region-blocked
@@ -687,12 +791,17 @@ source and issue board live at
   `Embed.Provider.allCases` in tests so a provider added later can't ship with no artwork. Note this
   fixes the *presentation* only: the server still emits an embed for an unavailable video, so the
   play button still opens something that won't play. **How the player is loaded is per-provider,
-  decided by `ReaderVideoPlayerViewController.requiresEmbedderContext(_:)` — do not unify the two
+  decided by `ReaderVideoEmbed.requiresEmbedderContext(_:)` — do not unify the two
   branches.** Dailymotion (and anything else) loads **top-level**, which makes the provider
   first-party so a `WKUserScript` can pre-seed its consent-notice localStorage flag; **YouTube must
   stay inside the `<iframe>` wrapper** (`html(embedURL:)`, based on `ReaderWeb.baseOrigin`) with the
   matching `origin=` parameter, since its `/embed/` endpoint refuses a top-level navigation with
-  "Error 153." `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight
+  "Error 153." That decision, `playerURL(for:)`, `noticeSuppressionScript(for:)` and
+  `html(embedURL:)` all live in the shared `Yana/Reader/ReaderVideoEmbed.swift` rather than in
+  either player, because `ArticleBlockView.isPlayableVideo` needs the same logic on both platforms.
+  **`ReaderHostView`/`ReaderScreen` and the pager it wraps are `#if os(iOS)` in their entirety** —
+  the Mac has never had a pager (see the macOS reader notes below). On iOS,
+  `ReaderHostView`/`ReaderScreen` is the SwiftUI bridge that reads the full lightweight
   index from `ArticleStore`, remembers scroll position, and hosts the Settings and Filter sheets. It
   wraps `ReaderArticleViewController` — a `UIPageViewController`-based pager with an opaque native nav
   bar, a bottom toolbar, and tap-to-hide full-screen mode — whose pages are each a
@@ -702,8 +811,14 @@ source and issue board live at
   `persistentID`. Body
   text size is driven by `ArticleTextSize`; links open in `SFSafariViewController` or the system
   browser via `ReaderLinkPolicy`. Read-aloud is handled by `ReaderSpeechController` (AVSpeechSynthesizer;
-  matches the article's detected language, keeps playing when locked/backgrounded, wires up Now
-  Playing / remote controls). **Where blocks come from now:** production content arrives already
+  matches the article's detected language, keeps playing when locked/backgrounded on iOS, wires up Now
+  Playing / remote controls). **`AVAudioSession` does not exist on macOS**, so
+  `activateAudioSession()`/`deactivateAudioSession()` are empty there and nothing replaces them —
+  the Mac plays to the default output device and has no "keep playing while backgrounded" concept
+  to opt into. `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter` are unchanged and do work on macOS,
+  **including the `playbackState = .playing` assignment in `updateNowPlaying(playing:)`, which is
+  what makes the media keys and Control Center reach `togglePlayPauseCommand`**; drop it and they
+  silently stop working. **Where blocks come from now:** production content arrives already
   parsed into `[Block]` from the server via `BlockWireDecoding`'s `WireDocument`.
   **There is no HTML anywhere in this client any more, and no HTML parser.** `BlockParser`
   (`Yana/Reader/BlockParser.swift`) is now only `plainText(_:)`, which flattens any `[Block]` body
@@ -734,15 +849,60 @@ source and issue board live at
     the text view exists and measures the match's line with TextKit to center it (animated, and only
     if it is not already visible, so refining a query does not jitter). Text nested in a list or
     blockquote is SwiftUI `Text` and can only be scrolled to at segment granularity.
-  - **The bar belongs to the pager/container, the state to the page.** `ReaderFindBar` (shared
-    UIKit view; bottom-docked on the keyboard layout guide on iOS with the toolbar hidden while it is
-    up, top-docked in the Mac detail pane) only forwards events; each `ReaderBlockViewController`
+    **The final coordinate conversion is not the same on both platforms.** The UIKit comment saying
+    "converting *to* a scroll view yields content coordinates" is a UIKit fact and does not hold in
+    AppKit, where `textView.convert(rect, to: scroll)` yields **clip-view** coordinates. The macOS
+    reveal therefore converts to `scroll.documentView`. The mistake is invisible on the first reveal
+    in a page, because the clip view is then at the top and both conversions agree — see the
+    mutation-check note under **Tests**.
+  - **The bar belongs to the pager/container, the state to the page.** `ReaderFindBar` is two files
+    now — `ReaderFindBar.swift` (UIKit) and `ReaderFindBarMacOS.swift` (AppKit) under matching type
+    names — bottom-docked on the keyboard layout guide on iOS with the toolbar hidden while it is
+    up, top-docked in the Mac detail pane. **Its contract is what both hosts program against**
+    (`onQueryChange`/`onNext`/`onPrevious`/`onDone`, `query`, `isFieldFocused`, `setStatus(_:)`,
+    `focusField()`, `clearQuery()`, and the `reader.findBar` / `reader.find.*` accessibility
+    identifiers the UI tests match on), so keep the two in step. The bar only forwards events; each
+    `ReaderBlockViewController`
     owns its `ArticleFindState`, and a swipe/sidebar click re-runs the same query on the newly
     displayed page (`syncFindWithDisplayedPage`/`syncFindWithCurrentPage`) and clears every other
-    cached page's highlights. Both hosts reserve the bar's footprint through `additionalSafeAreaInsets`
-    so the body scrolls under it rather than being covered. Refining the query keeps the reader on
+    cached page's highlights. **How the bar's footprint is reserved differs by platform.** iOS uses
+    `additionalSafeAreaInsets` so the body scrolls under it rather than being covered; that property
+    does not exist on macOS, so `MacReaderDetailView` holds two mutually exclusive top constraints
+    on the content container (`contentTopToContainer` / `contentTopToFindBar`) and swaps which is
+    active as the bar comes and goes. Esc reaches the Mac bar through `cancelOperation(_:)`, which
+    AppKit routes down the responder chain by itself. Refining the query keeps the reader on
     the match under them when it still matches and otherwise moves forward, never back to the top
     (`ArticleFindState.update`).
+  - **`ReaderAttributedText` and `FindHighlightStyle` live in their own shared file**
+    (`Yana/Reader/ReaderAttributedText.swift`), not inside either `SelectableText`. They are not
+    view code, and single-sourcing them is load-bearing: `ArticleFindTests` pins
+    `ReaderAttributedText.make(blocks:)`'s join arithmetic against `FindUnit.textViewOffset`, and a
+    per-platform copy would let one side drift out from under that test.
+- **The macOS reader** (`Yana/Reader/*MacOS.swift`, `Yana/Reader/Mac/MacReaderDetailView.swift`):
+  the same block model and the same find/reading-position state machines, rendered by AppKit.
+  `SelectableTextMacOS.swift`'s `SelectableText` is an `NSViewRepresentable` over a **bare
+  `NSTextView`** — deliberately never `NSTextView.scrollableTextView()`, see the scroll-view rule
+  below — and `ReaderBlockViewControllerMacOS.swift`'s `ReaderBlockViewController` is an
+  `NSViewController` around an `NSHostingController`.
+  `MacReaderDetailView` hosts one page at a time through `NSViewControllerRepresentable`; there is
+  no pager on the Mac and there never was, which is why `ReaderArticleViewController.swift` and
+  `ReaderHostView.swift` are `#if os(iOS)` outright. Things worth knowing before touching it:
+  - **The scroll-view selection rule is the opposite of the iOS one, on purpose.** See **Tests**
+    for the full statement of both; in short, an iOS reader page has two scroll views and the
+    macOS one has exactly one.
+  - **The image viewer is a modal window, not a takeover.** `NSScrollView.allowsMagnification`
+    replaced the whole `UIScrollViewDelegate` zoom/re-centering machinery, and gives trackpad pinch
+    for free; a double click steps the magnification; Esc (`cancelOperation(_:)`), the close button
+    and the window's own close control replace **drag-to-dismiss, which was dropped** as a touch
+    idiom rather than reimplemented. Presented with `presentAsModalWindow(_:)`. The document view
+    is **not** auto-layout-managed and is resized to the scroll view's own bounds on each
+    `viewDidLayout`, with the image letterboxing inside it: `NSClipView` does not reliably center a
+    document smaller than the viewport, and constraining the document view to the clip view
+    silently kills panning at every magnification above 1.
+  - **Dark-mode repaint needs a forwarding view.** `viewDidChangeEffectiveAppearance()` is declared
+    on `NSView` with no `NSViewController` counterpart, so both the macOS `ReaderBlockViewController`
+    and `MacReaderDetailView`'s container install a small `NSView` subclass whose only job is to
+    forward it. Without it the layer background keeps its old colour across a light/dark switch.
 - **Views** (`Yana/Views/`): feed/tag/AI-provider **management moved entirely to the server's own
   web UI**. `ManagementWebView` (`Yana/Views/ManagementWebView.swift`) hosts it in a `WKWebView`
   that bootstraps a fresh, short-lived, single-use server session on every appearance — see
@@ -821,20 +981,31 @@ source and issue board live at
   stored token, clears the server address, wipes the mirror, and falls back into the same
   demo-content mode `OnboardingServerPage`'s "Skip for now" offers, clearing `hasCompletedInitialSync`
   too so a later re-pair goes through the loading screen again instead of silently skipping it.
-- **Mac Catalyst windowing** (`Yana/Reader/Mac/`): structurally unchanged by this rework — `MacRootView`
-  is still a permanent two-column `NavigationSplitView` (article-list sidebar + reader detail), with
-  Welcome/Settings/the pre-server-migration notice as separate singleton `WindowGroup`s
-  (`WindowID.welcome`/`.settings`/`.serverNotice`, each bound `for: Bool.self` and always opened with
-  the constant `true` so SwiftUI dedupes to one window). What changed is **content, not structure**:
-  `MacSettingsWindow`'s sidebar panes are now `SettingsPane.general/reader/manage/ai/about` (no more
+- **macOS windowing** (`Yana/Reader/Mac/`): `MacRootView` is a permanent two-column
+  `NavigationSplitView` (article-list sidebar + reader detail) in a `WindowGroup`. The three
+  auxiliary windows are **real macOS scenes** now, not the `WindowGroup(id:for: Bool.self)`
+  always-opened-with-`true` singleton workaround Mac Catalyst forced. Settings is a `Settings`
+  scene: a true singleton, wired to ⌘, for free, placed in the App menu where a Mac user looks for
+  it. Because it is not a `WindowGroup` it has no id, so `WindowID.settings` is gone,
+  `MacCommands`' `CommandGroup(replacing: .appSettings)` was deleted, and call sites
+  (`MacRootView`'s More menu) use `@Environment(\.openSettings)` / `openSettings()`. Welcome and the
+  pre-server-migration notice are `Window("…", id: WindowID.welcome)` and
+  `Window("…", id: WindowID.serverNotice)`, opened with a plain `openWindow(id:)`. Quitting on
+  last-window-close is stopped by `applicationShouldTerminateAfterLastWindowClosed → false` on the
+  `AppDelegate`, which replaced the `UIApplicationSceneManifest`/`UIApplicationSupportsMultipleScenes`
+  Info.plist hack. The `AppDelegate` itself is forked by conformance —
+  `@NSApplicationDelegateAdaptor` on macOS, `@UIApplicationDelegateAdaptor` on iOS — with the launch
+  work (the `hasDismissedDemoBanner` reset, `UITestReset`, `DebugSeed`, `ScreenshotSeed`, arming
+  background refresh) shared in `commonDidFinishLaunching()`, because `scenePhase` fires too late
+  and too often for the seeds. On content:
+  `MacSettingsWindow`'s sidebar panes are `SettingsPane.general/reader/manage/ai/about` (no more
   `.feeds`/`.tags`/`.integrations`/`.diagnostics` — `.manage` pushes the same `ManagementWebView` iOS
   uses; the hidden-diagnostics reveal was removed entirely, see **Views**). Creating a
   feed is a sheet presenting `ManagementWebView(path: "/feeds/new")`, not the deleted
   `FeedEditorView`/`WindowID.feedEditor`. Everything else — the Mail-style two-pane keyboard focus
   model (`MacFocusPane`), the sidebar's programmatic-scroll-follow (`SidebarScrollRequest`,
   `.scrollPosition(id:anchor:)`), the remembered sidebar width (`AppSettings.macSidebarWidth`,
-  `SidebarWidth`), and the `MacToolbarStyle` chrome-convention helper — is unaffected
-  and still applies exactly as before. **The sidebar's launch reveal is gated on
+  `SidebarWidth`) — is unaffected and still applies exactly as before. **The sidebar's launch reveal is gated on
   `ArticleStore.hasLoaded`, not on an empty timeline.** `MacSidebarView` hides its rows until the
   launch anchor scroll has landed, and reveals them early only when there is nothing to scroll to.
   It appears *before* the store publishes anything (`start()` runs from the scene's `.task` and
@@ -846,14 +1017,17 @@ source and issue board live at
   recomputes and may still be stale in the same update), and the first scroll request only stops
   early on "revealed" when the reveal was still pending when the request arrived, so an empty
   library filled by the first sync, or the 1.5s reveal backstop on a slow cache load, still scrolls
-  (`MacSidebarLaunchScrollTests` hosts the real view and pins both).
+  (`MacSidebarLaunchScrollTestsMacOS` hosts the real view and pins both).
 - **Utilities** (`Yana/Utilities/`): constants and extensions.
 
 ### Project structure
 
 - `Yana/YanaApp.swift` — app entry point; owns the shared `AppContainer.shared` `ModelContainer`
   (`Feed`/`Tag`/`Article` only — no `cloudKitDatabase` configuration) and an `AppDelegate`
-  (`UIApplicationDelegateAdaptor`) that registers/schedules background refresh on launch. The scene's
+  (`@UIApplicationDelegateAdaptor` on iOS, `@NSApplicationDelegateAdaptor` on macOS, sharing
+  `commonDidFinishLaunching()`) that registers/schedules background refresh on launch, and the
+  scene list, which is `#if`-forked between the iOS `WindowGroup` and the macOS
+  `WindowGroup` + `Settings` + two `Window(id:)` scenes. The scene's
   `.task` starts `ArticleStore` and then — if `AuthenticatedClient.current()`
   resolves a client — runs a foreground `SyncEngine.sync()`, swallowing any error (a spotty
   connection at launch must never block first paint or crash the app). It deliberately runs **no**
@@ -861,8 +1035,12 @@ source and issue board live at
   `serverID` rows) passes that used to run here on every launch were self-terminating fixes for
   bugs that no longer exist, and the dedup pass re-read the whole article table each launch to find
   nothing. Gate any future one-off repair behind a one-shot `AppSettings` flag instead.
-- `Yana/ContentView.swift` — root view (opens directly into the reader on iPhone/iPad; `MacRootView`
-  on the Mac idiom). Presents `WelcomeView` for onboarding/re-pairing and
+- `Yana/ContentView.swift` — root view, **forked at compile time**: `var body` is `#if os(macOS)`
+  (`MacRootView`) / `#else` (`ReaderScreen`), because the two branches reference types that only
+  exist on their own platform and `.fullScreenCover` does not exist on macOS at all. The shared
+  `onAppear` / `scenePhase` / `.yanaSessionInvalidated` wiring is factored into a single
+  `ContentRootLifecycle` `ViewModifier` so the two roots cannot drift. Presents `WelcomeView` for
+  onboarding/re-pairing and
   `ServerMigrationNoticeView` for the one-time pre-migration notice, both gated and skippable under
   the `-UITEST_SKIP_ONBOARDING` / `-UITEST_SCREENSHOTS` launch arguments (see **Onboarding /
   re-pairing** above for the exact gating logic).
@@ -984,11 +1162,13 @@ source and issue board live at
   behaviour (including the "created off-main is not enough" case) so a future SwiftData change is
   caught, and `SyncReactionMainThreadTests` measures main-actor responsiveness across the sync-reaction
   chain — a regression there shows up as a stall, not a wrong value.
-- **Platform:** iOS 26.0+ (iPhone, iPad, and Mac Catalyst).
+- **Platform:** iOS 26.0+ (iPhone, iPad) and macOS 26.0+ (native).
 
 ### Tests
-- `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`); as of this
-  change, 457 tests in 96 suites (the summary block added two suites — `BlockSummarySlotTests` for
+- `YanaTests/` — unit tests using the Swift Testing framework (`import Testing`). **The current
+  numbers are in "Current measured baselines" below; everything in this paragraph is the history of
+  how the suite got there, and its intermediate counts are historical, not current.** (The summary
+  block added two suites — `BlockSummarySlotTests` for
   the shared slot helpers and `SummaryBlockTests` for what the summarize action writes and how the
   summary reaches `plainText`/read-aloud — plus five cases across
   `BlockWireDecodingTests`/`BlockImageHashesTests`/`SyncWriterTests`; the read-state filter before it
@@ -1041,16 +1221,15 @@ source and issue board live at
   The embed-poster placeholder added `EmbedPosterTests` (4 cases: the SF Symbol every provider's
   glyph resolves to, and that a `nil`/`""`/real `thumbnailRef` each pick the right branch), measured
   at **510 passing, 7 failing** — the same standing `SummaryBlockTests` crashes, no new failures.
-  The Mac sidebar launch-scroll fix added `MacSidebarLaunchScrollTests` (2 cases): it hosts the real
-  `MacSidebarView` (made internal for this) in a `UIHostingController` around a `TimelineModel` +
-  `ArticleStore`, starts the store only *after* the view is on screen (the real launch order), and
-  asserts the List's outermost `UIScrollView` actually moved off the top — the same "pick the
-  scroll view that scrolls" rule as the reader scroll tests. Both cases failed before the fix.
+  The Mac sidebar launch-scroll fix added a 2-case suite hosting the real `MacSidebarView` (made
+  internal for this) around a `TimelineModel` + `ArticleStore`, starting the store only *after* the
+  view is on screen (the real launch order) and asserting the List's outermost scroll view actually
+  moved off the top. Both cases failed before the fix.
   Find in Article added `ArticleFindTests` (the unit segmentation, text-run offsets vs. the merged
   attributed string, forgiving matching, the keep-or-move-forward refinement rule, wrap-around,
   highlight painting) and `ReaderFindScrollTests` (a `ReaderBlockViewController` in a window scrolls
   a match in an unbuilt segment on screen and highlights it; a miss reports `.noMatches` and stays
-  put) — written without a Mac to run them on, so treat the first simulator run as their verification.
+  put).
   Read the pass/fail counts off `xcrun xcresulttool get test-results summary --path <bundle>`: the
   "Executed N tests" line `xcodebuild` prints at the end counts only the XCTest UI tests, not the
   Swift Testing cases.
@@ -1058,16 +1237,62 @@ source and issue board live at
   `SyncReactionMainThreadTests.importBatchesLeaveTheMainActorResponsive` measures a wall-clock stall
   against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
   treating a failure there as real.
-- `YanaTests/ReaderPageReassertScrollTests.swift`/`ReaderSyncUpdateScrollTests.swift` — pin that
+- **Current measured baselines** (both read off `xcodebuild`'s own exit code, never through a pipe):
+  - iOS, `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`:
+    **530 passing, 7 failing, exit 65**. All seven are the standing `SummaryBlockTests` signal-trap
+    crashes (Apple Intelligence is unavailable in the simulator), confirmed by name. **Exit 65 is
+    the pass condition here**, not a failure.
+  - macOS unit,
+    `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test`:
+    **519 passing, 7 failing, 1 expected failure, exit 65**. Same seven crashes; the expected
+    failure is the `withKnownIssue`-wrapped animated find-reveal assertion in
+    `ReaderFindScrollTestsMacOS` (see the animation trap below).
+  - macOS UI tests **cannot be run from a non-interactive shell at all**. They need an interactive
+    desktop session and fail in two different ways across runs without one. `-only-testing` the
+    unit bundle when driving the macOS scheme from a script.
+- **Testing traps measured during the macOS migration.** All four cost real time; none is obvious
+  from the outside.
+  - **An `xcodebuild` test runner is never the active application** — `NSApplication.activate()`
+    does not take — so AppKit implicit animations are inert in it. A test asserting on an animated
+    scroll must poll and tolerate the animation never running. That is why one find-reveal
+    assertion is wrapped in `withKnownIssue`; it can only be evaluated properly from Xcode on a
+    real desktop session.
+  - **A mutation check can be invalid without looking invalid.** Reverting `revealInTextView` to
+    the UIKit coordinate conversion did **not** fail the first macOS find tests, because the first
+    reveal in a page runs with the clip view at the top, where both conversions agree. The test
+    that actually catches it forces a reveal against a large non-zero clip origin. Check that a
+    macOS scroll test fails for the right reason before trusting it.
+  - **`ArticleWrites.markRead` defaults its `settings:` argument to a live `AppSettings()`**, so it
+    resolves `AuthenticatedClient.current()` against the developer's *real* server URL and login
+    Keychain. Any macOS unit test that parks the timeline on an article will therefore fire a real
+    `PATCH /api/v1/articles/<id>` against that server unless its fixtures carry **no `serverID`** —
+    `ArticleWrites.setRead` guards on `let serverID = article.serverID`, which makes the whole write
+    path structurally unreachable without one. `MacSidebarLaunchScrollTestsMacOS` depends on this
+    and says so in its type doc; do not add `serverID`s to those fixtures.
+  - **Compile-error counts are not a migration burn-down.** See **Platform split** — the Swift
+    driver aborts whole-module compilation at the first unresolvable import.
+- `YanaTests/ReaderPageReassertScrollTests.swift` (iOS only, the Mac has no pager) and
+  `ReaderSyncUpdateScrollTests.swift` / `ReaderSyncUpdateScrollTestsMacOS.swift` — pin that
   the reader keeps its within-article scroll position across an in-place sync update, a sync that
   appends articles next to the displayed one, a page re-assertion, a foreground return, and a
-  relaunch. **Measuring this needs care, and getting it wrong invents bugs:** a reader page contains
-  two `UIScrollView`s, and the one deeper in the tree is `SelectableText`'s `UITextView`, with
-  `isScrollEnabled == false` and `contentSize == bounds`. Writing `contentOffset` on it succeeds and
-  reads back but scrolls nothing and is dropped on the next text layout, so a "walk the tree, take
-  the last scroll view" helper reports a reading position the reader never had — which is how a
-  since-disproved `setViewControllers`-zeroes-the-offset root cause got as far as a fix. Both files
-  select the outermost `isScrollEnabled` scroll view (SwiftUI's `HostingScrollView`) instead.
+  relaunch. **Measuring this needs care, and getting it wrong invents bugs — and the rule for
+  picking the scroll view is different on each platform. Do not "harmonize" them.**
+  - **iOS: take the outermost `isScrollEnabled` scroll view** (SwiftUI's `HostingScrollView`). A
+    reader page contains two `UIScrollView`s, and the deeper one is `SelectableText`'s `UITextView`
+    with `isScrollEnabled == false` and `contentSize == bounds`. Writing `contentOffset` on it
+    succeeds and reads back but scrolls nothing and is dropped on the next text layout, so a "walk
+    the tree, take the last scroll view" helper reports a reading position the reader never had —
+    which is how a since-disproved `setViewControllers`-zeroes-the-offset root cause got as far as
+    a fix.
+  - **macOS: assert there is exactly one `NSScrollView`, and take it.** The macOS `SelectableText`
+    deliberately builds a **bare** `NSTextView` with no enclosing scroll view — never
+    `NSTextView.scrollableTextView()` — precisely so that this ambiguity cannot arise. There is no
+    `isScrollEnabled` on AppKit to filter by, and the macOS `ReaderBlockViewController.bodyScrollView`
+    depends on the guarantee, so the macOS tests *assert* the count rather than assuming it. Adding
+    a scroll view around that text view would break the reading-position restore silently;
+    the assertion is what catches it.
+  Position is `scroll.contentView.bounds.origin` on macOS (SwiftUI's document view is flipped, so
+  y still increases downward and the number means what `contentOffset` means on iOS).
 - `YanaTests/TestHelper.swift` — shared test utilities
 - `YanaTests/SyncWriterTests.swift`/`SyncEngineTests.swift`/`RunBoundedTests.swift` — pin `SyncWriter`'s
   upsert/removal/content-apply behavior directly (including the `IN`-predicate `TERNARY`-crash trap
@@ -1088,9 +1313,23 @@ source and issue board live at
   `ScreenshotUITests.testCaptureScreenshots` and `YanaUITests.testSettingsRestoreShowsWelcomeAgain`.
   `MacScreenshotUITests.swift` selects the Settings sidebar pane by its current raw values
   (`general/reader/manage/ai/about`, matching `SettingsPane` in `Yana/Reader/Mac/WindowID.swift`) —
-  the stale `"feeds"` lookup this used to carry was fixed. Mac Catalyst tests aren't part of the iOS
-  Simulator `xcodebuild test` run above, so this suite is verified separately.
+  the stale `"feeds"` lookup this used to carry was fixed. `MacScreenshotUITests.swift` is
+  `#if os(macOS)` and builds into `YanaUITests-macOS`, so it is not part of the iOS Simulator run
+  and must be verified separately — from an interactive desktop session, which is the only place
+  the macOS UI tests run at all.
+- **Which test files are gated, and why:** `MacSidebarLaunchScrollTestsMacOS.swift`,
+  `ReaderFindScrollTestsMacOS.swift` and `ReaderSyncUpdateScrollTestsMacOS.swift` are macOS-only
+  twins of the corresponding iOS files (`MacSidebarLaunchScrollTests.swift` was **replaced** by its
+  twin rather than kept, since that test is about the Mac and the Catalyst version was only ever
+  honest by accident). `ReaderPageReassertScrollTests.swift` is iOS-only: it is about the pager.
+  `ReaderChromeTests.swift`, `BackgroundRefreshManagerTests.swift` and `EmbedPosterTests.swift`
+  carry inline `#if`s but run on both. Everything else in `YanaTests/` is shared unchanged. Both
+  test targets build from the same `YanaTests/` directory, so gating is always at file or statement
+  level, never via XcodeGen `excludes:`.
 - Run tests: `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`
+  (iOS) and
+  `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test`
+  (macOS unit)
 - All tests use `@MainActor` for safe concurrency
 - **UI-test isolation:** XCTest reuses **one** simulator app container across test classes and runs
   them alphabetically, so `ScreenshotUITests` runs first and seeds a whole fixture library via
@@ -1156,7 +1395,8 @@ source and issue board live at
 6. **Starred** — star/unstar an article (`Article.starred`, a plain boolean synced via `PATCH /articles/:id`); starred articles are exempt from server-side retention
 7. **Update / Reload** — trigger the server's aggregation run (pull-down on the reader, "Update All") or a single article's re-fetch (swipe/reader overflow menu "Reload"), then poll `/articles/sync` or `/articles/:id/content` to pull the result down
 8. **Retention** — server-side only; the client mirrors whatever the server decides to keep, receiving deletions through `/articles/sync`'s `removed` list
-9. **Background refresh** — best-effort periodic sync via `BGAppRefreshTask`/`BGProcessingTask`
+9. **Background refresh** — best-effort periodic sync via `BGAppRefreshTask`/`BGProcessingTask` on
+   iOS, `NSBackgroundActivityScheduler` on macOS
 10. **AI summarization** — optional, per-device choice between the server's configured AI provider (`POST /api/v1/ai/prompt`) or on-device Apple Intelligence
 
 ### Enhanced
