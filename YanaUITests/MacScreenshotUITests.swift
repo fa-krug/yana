@@ -1,13 +1,26 @@
 #if os(macOS)
 import XCTest
 
-/// Captures Mac App Store screenshots from the Mac Catalyst build.
+/// Captures Mac App Store screenshots from the native macOS build.
 ///
 /// This deliberately does NOT use fastlane's SnapshotHelper: `capture_screenshots` drives iOS
 /// Simulator destinations only, and frameit has no Mac device frames. Instead each shot is an
 /// `XCTAttachment`, which the `screenshots_mac` lane exports from the .xcresult with
-/// `xcresulttool export attachments`. Attachments are the only sandbox-safe channel here — the
-/// Catalyst test runner cannot write outside its own container.
+/// `xcresulttool export attachments`.
+///
+/// **The attachment round-trip survived the move off Mac Catalyst, and here is why.** The obvious
+/// native simplification is to write the PNGs straight to a directory handed in through the
+/// environment, on the theory that a native macOS XCUITest runner is an ordinary unsandboxed
+/// process. It is not. Xcode derives `YanaUITests-macOS-Runner.app`'s entitlements from the app
+/// under test, and this app is sandboxed (it ships through the Mac App Store), so the runner is
+/// signed with `com.apple.security.app-sandbox` too. Checked against the built runner:
+///
+///     codesign -d --entitlements - YanaUITests-macOS-Runner.app
+///
+/// comes back with `app-sandbox`, `network.client`, the testmanagerd mach-lookup exceptions, and
+/// a **read-only** `temporary-exception.files.absolute-path` for `/`. There is no write exception
+/// anywhere in it, so the runner cannot write to the lane's temp directory. Attachments remain the
+/// only channel out that does not depend on the runner's container layout.
 final class MacScreenshotUITests: XCTestCase {
     /// Async feed logos have no cache (`FeedLogoView` refetches per view), so every shot that
     /// shows one needs a settle beat or the logo renders as the globe placeholder.
@@ -43,20 +56,11 @@ final class MacScreenshotUITests: XCTestCase {
             // Force the app locale; there is no simulator language setting to lean on.
             "-AppleLanguages", "(\(languageCode))",
             "-AppleLocale", localeIdentifier,
-            // Suppress iCloud sync so it cannot interfere with seeded state.
-            // Uses the argument domain — nothing persists to the real UserDefaults store.
-            "-settings.iCloudSyncEnabled", "0",
-            // Force the active AI provider to OpenAI so the AI pane shows a deterministic
-            // set of fields (API key + URL + model) regardless of any prior user config.
-            // Key: AppSettings.Key.activeAIProvider ("settings.activeAIProvider", line 118 in
-            // AppSettings.swift); stored value: AIProvider.openai.rawValue == "openai" (line 5).
-            // Uses the argument domain — nothing persists to the real UserDefaults store.
-            "-settings.activeAIProvider", "openai",
-            // Mac Catalyst is AppKit-hosted and PERSISTS window state, so a Settings window left
-            // open by a previous run gets restored on the next launch — which silently changed
-            // which window `app.windows` returned first and produced a 1440x1344 capture of the
-            // restored Settings window instead of the main window. This is the standard AppKit
-            // flag to ignore saved window state, so every run starts with just the main window.
+            // AppKit PERSISTS window state, so a Settings window left open by a previous run gets
+            // restored on the next launch — which silently changed which window `app.windows`
+            // returned first and produced a 1440x1344 capture of the restored Settings window
+            // instead of the main window. This is the standard AppKit flag to ignore saved window
+            // state, so every run starts with just the main window.
             "-ApplePersistenceIgnoreState", "YES",
         ]
         app.launch()
@@ -65,8 +69,8 @@ final class MacScreenshotUITests: XCTestCase {
         let sidebar = app.descendants(matching: .any).matching(identifier: "mac.sidebar.list").firstMatch
         XCTAssertTrue(sidebar.waitForExistence(timeout: 60),
                       "Mac sidebar never appeared — seeding may have failed")
-        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 60),
-                      "sidebar rendered no article rows")
+        XCTAssertTrue(Self.waitForArticleRows(in: app, timeout: 60),
+                      "sidebar rendered no article rows — ScreenshotSeed may not have landed")
         Thread.sleep(forTimeInterval: Self.logoSettle)
         let mainWindow = Self.window(of: app, containing: "mac.sidebar.list")
         XCTAssertTrue(mainWindow.waitForExistence(timeout: 15), "main window not found by content")
@@ -85,7 +89,7 @@ final class MacScreenshotUITests: XCTestCase {
         // Assert a result row actually matching the query appeared — not merely that rows exist,
         // since the unfiltered list has rows too.
         //
-        // Match `staticTexts`, NOT `cells`: on the Catalyst source list the Cell element carries no
+        // Match `staticTexts`, NOT `cells`: on the AppKit source list the Cell element carries no
         // label of its own (verified against a captured accessibility hierarchy — the cells came
         // back as bare `Cell, 0x…, {{610,288},{340,71}}`). `MacArticleRow`'s
         // `.accessibilityElement(children: .combine)` label lands on a child StaticText instead,
@@ -125,6 +129,28 @@ final class MacScreenshotUITests: XCTestCase {
         let frame = window.frame
         XCTAssertTrue(frame.width >= 700 && frame.height >= 560,
                       "Settings capture target for the \(pane) pane is too small: \(frame)")
+    }
+
+    /// Wait until the sidebar has rendered at least one article row.
+    ///
+    /// Deliberately not just `app.cells`: a SwiftUI `List` on AppKit is backed by an
+    /// `NSOutlineView`, whose rows surface as `.outlineRow` (or, depending on the row's own
+    /// accessibility configuration, only as the combined `StaticText` label `MacArticleRow`
+    /// produces) rather than as `.cell`. Accepting any of the three keeps the seed check honest
+    /// instead of failing on an element-type difference that has nothing to do with seeding.
+    @MainActor
+    private static func waitForArticleRows(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if app.cells.count > 0 || app.outlineRows.count > 0 { return true }
+            // The seed's hero article title, matched loosely so a copy tweak elsewhere in the
+            // fixture does not silently turn this into an always-true check.
+            if app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[cd] 'e-ink'")
+            ).count > 0 { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        } while Date() < deadline
+        return false
     }
 
     /// Resolve a WINDOW by a marker identifier somewhere inside it.
@@ -251,9 +277,8 @@ final class MacScreenshotUITests: XCTestCase {
 
     /// Read a PNG's pixel dimensions straight from its IHDR header.
     ///
-    /// Deliberately NOT via `XCUIScreenshot.image`: the iOS SDK types that as `UIImage`, but the
-    /// Mac Catalyst UI-test runner is a real AppKit process and hands back an `NSImage` at runtime,
-    /// so `.scale` raises "unrecognized selector". Parsing the bytes sidesteps the whole
+    /// Deliberately NOT via `XCUIScreenshot.image`: that is an `NSImage` here and a `UIImage` on
+    /// iOS, and `NSImage.size` is in points, not pixels. Parsing the bytes sidesteps the whole
     /// UIImage/NSImage ambiguity and gives true pixels rather than points × scale.
     ///
     /// Layout: 8-byte signature, then the IHDR chunk (4-byte length, 4-byte type `IHDR`), whose

@@ -40,26 +40,66 @@ enum MacScreenshotWindow {
 
     /// Pin the main window to the target size. Call from the Mac root view's `onAppear`.
     ///
-    /// Deliberately minimal: `setContentSize` on the app's first window is the whole native
+    /// Deliberately minimal: `setContentSize` on the app's main window is the whole native
     /// implementation. What this replaced was a `UIWindowScene.sizeRestrictions` min == max clamp
     /// plus a 3-second, 100 ms convergence poll — machinery that existed because Mac Catalyst
     /// could only *request* a geometry change from the window server and had to wait to see
     /// whether it took. AppKit sets the size synchronously, so none of that applies.
     ///
-    /// **Stage 10 owns the rest**: verifying the resulting capture is exactly 2880x1800 against
-    /// the real `screenshots_mac` lane, and deciding whether the window also needs pinning on
-    /// later activations the way the Catalyst version re-applied on `didActivateNotification`.
+    /// **Why there is still a second, deferred pin and not a re-pin observer.** Two things can
+    /// change the size after this first call, and neither is the Catalyst negotiation:
+    ///
+    /// 1. SwiftUI itself may finish its first layout pass after `onAppear` and re-apply a window
+    ///    size of its own. One hop to the next main-queue turn is enough to land after it; a
+    ///    standing observer would not help, because there is no repeated event to observe.
+    /// 2. AppKit constrains a window's frame to the screen's visible area. A 1440x900pt content
+    ///    area plus the title bar needs roughly 928pt of usable height, so a display that is only
+    ///    900pt tall silently yields a shorter window. **Re-pinning cannot fix that** — the
+    ///    constraint would just re-apply — which is why the `screenshots_mac` lane's `sips`
+    ///    2880x1800 assertion is the real backstop, and why the capture needs a Retina display
+    ///    with enough room rather than merely a Retina display.
+    ///
+    /// Nothing else resizes the window during a capture run: the lane passes
+    /// `-ApplePersistenceIgnoreState YES` so no saved frame is restored, the user is not present
+    /// to drag a corner, and the Settings/Welcome windows are separate scenes.
     @MainActor
     static func applyWindowGeometryIfRequested() {
         guard isRequested else { return }
 
         #if os(macOS)
         let target = size(from: ProcessInfo.processInfo.arguments)
-        // The main window is the only one up when this runs (the root view's `onAppear`); the
-        // Settings and Welcome windows are opened later and explicitly, so there is nothing to
-        // disambiguate against here.
-        NSApplication.shared.windows.first?.setContentSize(target)
+        pin(to: target)
+        // See (1) above: land once more after SwiftUI's own first layout pass.
+        DispatchQueue.main.async {
+            // `assumeIsolated` rather than `Task { @MainActor }`: this must run on the next
+            // runloop turn (after SwiftUI's layout pass), and a Task can be scheduled earlier.
+            MainActor.assumeIsolated { pin(to: target, reportMismatch: true) }
+        }
         #endif
     }
+
+    #if os(macOS)
+    /// Set the capture window's content size.
+    ///
+    /// `NSApp.mainWindow` rather than `windows.first`: `windows` is ordering-undefined and also
+    /// contains windows AppKit creates on its own behalf, so `first` is not reliably the document
+    /// window even when it is the only one the user can see.
+    @MainActor
+    private static func pin(to target: CGSize, reportMismatch: Bool = false) {
+        guard let window = NSApplication.shared.mainWindow
+                ?? NSApplication.shared.windows.first(where: { $0.isVisible && $0.canBecomeMain })
+                ?? NSApplication.shared.windows.first
+        else { return }
+        window.setContentSize(target)
+        guard reportMismatch else { return }
+        let actual = window.contentLayoutRect.size
+        if abs(actual.width - target.width) > 1 || abs(actual.height - target.height) > 1 {
+            // Logged rather than asserted: the lane's `sips` check is what fails the run. This
+            // just names the cause in the app's own output, where a short display is obvious.
+            NSLog("MacScreenshotWindow: wanted \(target), got \(actual) — "
+                  + "the display may be too short for a \(target.height)pt content area")
+        }
+    }
+    #endif
 }
 #endif
