@@ -1,7 +1,11 @@
 import Foundation
 import WebKit
+#if os(macOS)
+import AppKit
+#else
 import UIKit
 import SafariServices
+#endif
 
 /// Decides whether a WebView navigation must leave the reader and open in the in-app browser.
 ///
@@ -37,8 +41,26 @@ enum ReaderLinkPolicy {
     /// Shared by the in-article link handler and the reader's "Open in Browser" toolbar action so both
     /// behave the same. `presenter` is evaluated lazily after the universal-link check, since the
     /// in-app Safari view must be presented from the top-most controller in the window.
+    ///
+    /// **The macOS branch is a genuinely smaller function, not a port with pieces missing.** Neither
+    /// half of the iOS behavior exists there: `NSWorkspace` has no `universalLinksOnly` option
+    /// (macOS resolves an installed app's claim on a URL itself, inside `open(_:)`, with the user's
+    /// default-handler choice as the tiebreak), and there is no `SFSafariViewController`, so there is
+    /// no in-app browser for `useSystemBrowser` to select against. `ReaderSettingsSection` already
+    /// hides that toggle on the Mac for the same reason. Both parameters are kept in the signature
+    /// and ignored so the two call sites stay unforked.
+    #if os(macOS)
     @MainActor
-    static func openExternally(_ url: URL, useSystemBrowser: Bool, presenter: @escaping () -> UIViewController?) {
+    static func openExternally(_ url: URL, useSystemBrowser: Bool,
+                               presenter: @escaping () -> PlatformViewController?) {
+        _ = useSystemBrowser
+        _ = presenter
+        NSWorkspace.shared.open(url)
+    }
+    #else
+    @MainActor
+    static func openExternally(_ url: URL, useSystemBrowser: Bool,
+                               presenter: @escaping () -> PlatformViewController?) {
         let scheme = url.scheme?.lowercased()
         guard scheme == "http" || scheme == "https" else {
             UIApplication.shared.open(url); return
@@ -62,4 +84,5 @@ enum ReaderLinkPolicy {
             }
         }
     }
+    #endif
 }

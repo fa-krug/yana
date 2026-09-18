@@ -8,6 +8,13 @@ struct TintedIconLabelStyle: LabelStyle {
     var size: CGFloat = 29
 
     func makeBody(configuration: Configuration) -> some View {
+        #if os(macOS)
+        // System Settings rows carry no icon at all: a label is plain text in the leading column,
+        // and the control sits opposite it. The iOS tile here was drawn into that same column, so
+        // it overlapped the titles and pushed every control out of alignment. The sections are
+        // shared with iOS, so the style -- not each call site -- is where the platform splits.
+        configuration.title
+        #else
         HStack(spacing: 12) {
             configuration.icon
                 .font(.system(size: size * 0.52, weight: .semibold))
@@ -16,6 +23,7 @@ struct TintedIconLabelStyle: LabelStyle {
                 .background(tint.gradient, in: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
             configuration.title
         }
+        #endif
     }
 }
 

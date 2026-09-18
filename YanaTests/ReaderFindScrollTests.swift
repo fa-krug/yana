@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftData
 import SwiftUI
 import Testing
@@ -135,3 +136,4 @@ struct ReaderFindScrollTests {
         #expect(page.findStatus == .idle)
     }
 }
+#endif

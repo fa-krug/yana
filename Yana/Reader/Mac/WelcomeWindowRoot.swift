@@ -1,8 +1,10 @@
+// macOS-only: on iOS onboarding is a `.fullScreenCover` over the reader, not a window.
+#if os(macOS)
 import SwiftUI
 
 /// Hosts the onboarding `WelcomeView` in its own Mac window. Replaces the `.fullScreenCover`'s
 /// `onFinish` closure: on finish it sets the completion flag and closes the window. If the window
-/// is ever restored (by Catalyst, from a previous quit) after onboarding is already done AND the
+/// is ever restored (by the system, from a previous quit) after onboarding is already done AND the
 /// device is still paired, there is nothing to show, so it closes itself immediately. It must
 /// NOT self-close just because `hasCompletedOnboarding` is true on its own: that's also exactly
 /// `ContentView`'s re-pairing-gate precondition, which opens this same window with
@@ -32,3 +34,4 @@ struct WelcomeWindowRoot: View {
         }
     }
 }
+#endif

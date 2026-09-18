@@ -68,18 +68,13 @@ struct WelcomeView: View {
 
             footer
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Color(PlatformColor.yanaWindowBackground).ignoresSafeArea())
         .animation(.easeInOut(duration: 0.25), value: step)
-        #if targetEnvironment(macCatalyst)
-        // On iOS this view fills whatever full-screen container hosts it, which is correct there.
-        // On Mac Catalyst it hosts in its own `WindowGroup` (`WelcomeWindowRoot`), and without a
-        // fixed size the window can be resized (or restored from a previous, larger frame)
-        // arbitrarily tall — every step then stretches to fill that, leaving a large dead gap
-        // below sparser steps like `OnboardingServerPage`. Pinning this to the window's
-        // `.defaultSize` (see `YanaApp`) and pairing that with `.windowResizability(.contentSize)`
-        // keeps the window itself locked to this size instead.
-        .frame(width: 720, height: 640)
-        #endif
+        // NOTE: no macOS `.frame` here. The Welcome window is a real `Window` scene with
+        // `.defaultSize` + `.windowResizability(.contentSize)` (see `YanaApp`), which pins the
+        // window itself — so this view does not have to pin its own size to stop a restored,
+        // oversized frame stretching sparser steps like `OnboardingServerPage` into dead space.
+        // A hard frame was the workaround while this was a Catalyst `WindowGroup`.
     }
 
     // MARK: Chrome
@@ -118,14 +113,19 @@ struct WelcomeView: View {
     }
 
     private var footer: some View {
+        // The Mac lays its buttons out right-aligned at their natural width, with the primary
+        // action last and bound to Return -- the platform's own wizard/sheet convention. iOS keeps
+        // the full-width stacked pair, which is its convention. Sharing one `HStack` and only
+        // swapping the sizing is what keeps the two from drifting apart.
         VStack(spacing: 16) {
             pageDots
             HStack(spacing: 12) {
+                #if os(macOS)
+                Spacer()
+                #endif
                 if step != .welcome {
                     Button(action: goBack) {
-                        Text("Back")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
+                        footerLabel("Back")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
@@ -137,39 +137,60 @@ struct WelcomeView: View {
                 // step instead of floating inside the form; other steps just advance the pager.
                 if step == .aiMode {
                     Button(action: finish) {
-                        Text("Finish")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
+                        footerLabel("Finish")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .accessibilityIdentifier("onboardingFinishButton")
                 } else if step == .server {
                     Button(action: serverState.primaryAction) {
-                        Text(serverState.isPaired ? "Continue" : "Skip for now")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
+                        footerLabel(serverState.isPaired ? "Continue" : "Skip for now")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(serverState.isSkipping)
                     .accessibilityIdentifier(serverState.isPaired ? "onboardingServerContinueButton" : "onboardingSkipServerButton")
                 } else {
                     Button(action: goForward) {
-                        Text("Continue")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
+                        footerLabel("Continue")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
                     .accessibilityIdentifier("onboardingContinueButton")
                 }
             }
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)
-        .padding(.bottom, 8)
+        // iOS sits on the home indicator's safe area, so 8pt below the buttons is already a full
+        // inset there. A Mac window has no such inset: 8pt put the button hard against the frame.
+        .padding(.bottom, footerBottomInset)
         .background(.bar)
+    }
+
+    private var footerBottomInset: CGFloat {
+        #if os(macOS)
+        20
+        #else
+        8
+        #endif
+    }
+
+    /// A Mac push button sizes to its title and uses the system button font; stretching it across
+    /// the window and bolding it is an iOS look that reads as wrong there.
+    @ViewBuilder
+    private func footerLabel(_ title: LocalizedStringKey) -> some View {
+        #if os(macOS)
+        Text(title)
+            .frame(minWidth: 96)
+        #else
+        Text(title)
+            .font(.headline)
+            .frame(maxWidth: .infinity)
+        #endif
     }
 
     private var pageDots: some View {
@@ -253,6 +274,11 @@ private struct WelcomeIntroPage: View {
             .padding(.horizontal, 24)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            // The same measure the two form steps use, so the content's left edge does not jump
+            // as the user pages through the wizard, and so the body text keeps a readable line
+            // length instead of running the full width of the window.
+            .frame(maxWidth: 420)
+            .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("welcomeScreen")
     }

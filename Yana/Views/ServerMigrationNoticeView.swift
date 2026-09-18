@@ -73,7 +73,7 @@ struct ServerMigrationNoticeView: View {
             }
             footer
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(Color(PlatformColor.yanaWindowBackground).ignoresSafeArea())
     }
 
     private func optionCard(_ option: Option) -> some View {
@@ -105,7 +105,7 @@ struct ServerMigrationNoticeView: View {
 
     private var footer: some View {
         HStack {
-            #if targetEnvironment(macCatalyst)
+            #if os(macOS)
             Spacer()
             continueButton
             #else
@@ -115,20 +115,35 @@ struct ServerMigrationNoticeView: View {
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)
-        .padding(.bottom, 8)
+        // Matches `WelcomeView.footerBottomInset`, and for the same reason: a Mac window has no
+        // home-indicator safe area, so 8pt puts the button against the window frame.
+        .padding(.bottom, footerBottomInset)
         .background(.bar)
+    }
+
+    private var footerBottomInset: CGFloat {
+        #if os(macOS)
+        20
+        #else
+        8
+        #endif
     }
 
     private var continueButton: some View {
         Button(action: onDismiss) {
+            #if os(macOS)
+            // A Mac push button keeps the system button font and sizes to its title.
+            Text("Continue")
+                .frame(minWidth: 96)
+            #else
             Text("Continue")
                 .font(.headline)
-                #if !targetEnvironment(macCatalyst)
                 .frame(maxWidth: .infinity)
-                #endif
+            #endif
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
+        .keyboardShortcut(.defaultAction)
         .accessibilityIdentifier("serverMigrationNoticeDismissButton")
     }
 }

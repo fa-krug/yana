@@ -36,7 +36,7 @@ struct SettingsScreenView: View {
                 }
             )
         }
-        // Keep the toggle control on the trailing edge (matching the row pickers). On Mac Catalyst
+        // Keep the toggle control on the trailing edge (matching the row pickers). On the Mac
         // the default form Toggle is a leading checkbox, which sits before the row's tinted icon and
         // looks misaligned; a switch matches iOS (its default) and the trailing pickers.
         .toggleStyle(.switch)

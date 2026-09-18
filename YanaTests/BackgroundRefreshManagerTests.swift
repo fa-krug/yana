@@ -186,4 +186,42 @@ struct BackgroundRefreshManagerTests {
         active.schedule()
         #expect(activeScheduled == true)
     }
+
+    #if os(macOS)
+    /// The Mac's periodic refresh is an `NSBackgroundActivityScheduler`, armed by `schedule()` and
+    /// torn down when the interval is switched to `.off`. This pins the lifecycle that
+    /// `AppDelegate.rearmBackgroundRefresh()` depends on (audit U4): re-reading the interval has to
+    /// actually replace the armed scheduler, and `.off` has to leave nothing running against an
+    /// abandoned setting.
+    ///
+    /// It asserts on the scheduler's *presence*, not on it firing: the system decides when an
+    /// activity runs (that is the point of using it over a timer), so a firing assertion would be
+    /// a test of launchd, not of this class. This replaced an equivalent set of assertions about
+    /// the repeating `Task` loop the scheduler took over from.
+    @Test("Mac: schedule() arms a repeating scheduler, .off tears it down")
+    func macSchedulerLifecycle() throws {
+        let container = try makeContainer()
+
+        var seconds: TimeInterval? = 300
+        let manager = BackgroundRefreshManager(
+            container: container,
+            secondsProvider: { seconds },
+            now: { Date(timeIntervalSince1970: 0) })
+
+        #expect(manager.hasArmedMacActivity == false)   // nothing armed before the first schedule
+
+        manager.schedule()
+        #expect(manager.hasArmedMacActivity == true)
+
+        // An interval change re-arms rather than stacking a second scheduler.
+        seconds = 900
+        manager.schedule()
+        #expect(manager.hasArmedMacActivity == true)
+
+        // .off must invalidate and drop it, not leave it running at the previous interval.
+        seconds = nil
+        manager.schedule()
+        #expect(manager.hasArmedMacActivity == false)
+    }
+    #endif
 }

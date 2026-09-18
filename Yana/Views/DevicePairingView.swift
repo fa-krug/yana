@@ -1,5 +1,10 @@
 import AuthenticationServices
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// Drives the device-pairing flow via `ASWebAuthenticationSession` — a system-managed, Safari-
 /// context browser sheet — rather than an in-app `WKWebView`. This is required for iCloud
@@ -62,7 +67,7 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         self.onCancel = onCancel
         self.onFailed = onFailed
 
-        let deviceName = UIDevice.current.name
+        let deviceName = PlatformApp.deviceName
         let url = DevicePairing.pairingURL(serverBaseURL: serverBaseURL, session: pairingSession, deviceName: deviceName)
 
         // Passing a *reference* to `handleAuthCallback` rather than an inline closure literal
@@ -75,7 +80,9 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         // all four crashed at the identical symbol, before ever reaching the body). That thunk
         // traps (`EXC_BREAKPOINT` in `dispatch_assert_queue`) on the background XPC queue
         // (`com.apple.NSXPCConnection...SafariLaunchAgent`) this completion handler actually
-        // fires from on Mac Catalyst. `handleAuthCallback` below is declared `nonisolated`, so a
+        // fires from on macOS (originally diagnosed on Mac Catalyst; the auth agent is the same
+        // out-of-process Safari agent natively, so the trap is the same).
+        // `handleAuthCallback` below is declared `nonisolated`, so a
         // reference to it carries no such isolation for Swift to wrap — exactly why
         // `presentationAnchor`'s `nonisolated` method (not a closure) never had this problem.
         let authSession = ASWebAuthenticationSession(
@@ -129,11 +136,14 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        // On iOS this delegate callback lands on the main thread, but on Mac Catalyst
+        // On iOS this delegate callback lands on the main thread, but on macOS
         // `ASWebAuthenticationSession` invokes it from a background XPC queue talking to the
         // system's Safari-hosted auth agent — so `MainActor.assumeIsolated` cannot be assumed
         // true here and traps if called directly off-main. Hop to main synchronously instead
         // (this delegate method must return its anchor synchronously, so we can't `await`).
+        //
+        // This was first diagnosed under Mac Catalyst, but the auth agent is the same
+        // out-of-process XPC service on the native Mac build: do not "simplify" the hop away.
         if Thread.isMainThread {
             return MainActor.assumeIsolated { Self.resolveAnchor() }
         }
@@ -142,8 +152,19 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         }
     }
 
+    /// `ASPresentationAnchor` is a `UIWindow` on iOS and an `NSWindow` on macOS, so this is a
+    /// genuine two-implementation fork rather than a spelling difference.
     @MainActor
     private static func resolveAnchor() -> ASPresentationAnchor {
+        #if os(macOS)
+        // The session sheet hangs off whichever window is frontmost. The empty `NSWindow()` at
+        // the end is unreachable in practice (this is only called while the presenting view is
+        // on screen) but keeps the return non-optional without a force-unwrap.
+        return NSApplication.shared.keyWindow
+            ?? NSApplication.shared.mainWindow
+            ?? NSApplication.shared.windows.first
+            ?? NSWindow()
+        #else
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         if let keyWindow = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
             return keyWindow
@@ -152,5 +173,6 @@ private final class DevicePairingCoordinator: NSObject, ASWebAuthenticationPrese
         // on screen, so some scene is guaranteed to be connected to anchor a fresh window
         // to (avoiding the scene-less `UIWindow()` initializer, deprecated as of iOS 26).
         return UIWindow(windowScene: scenes.first!)
+        #endif
     }
 }

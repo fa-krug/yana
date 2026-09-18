@@ -4,7 +4,13 @@ import SwiftUI
 /// Which pane owns keyboard focus in the Mac window (Mail-style two-pane model).
 enum MacFocusPane: Hashable { case sidebar, reader }
 
-/// The Mac (Mac Catalyst) window: a two-column `NavigationSplitView` with the article list
+// Only `MacRootView` itself is macOS-only. The rest of this file -- `MacFocusPane` above and
+// `MacSidebarView` plus its row/menu/empty-state helpers below -- stays cross-platform on purpose:
+// `MacSidebarLaunchScrollTests` hosts the real `MacSidebarView` in a `UIHostingController` on the
+// iOS simulator (the only suite that currently runs), so a whole-file gate here would silently
+// drop that coverage.
+#if os(macOS)
+/// The Mac window: a two-column `NavigationSplitView` with the article list
 /// permanently in the sidebar and the reader in the detail pane. This is the structural difference
 /// from iOS — where the list is a sheet over a full-screen swipe pager — while everything below the
 /// UI (aggregation, sync, the block reader) is shared.
@@ -13,10 +19,12 @@ struct MacRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ArticleStore.self) private var store
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @Environment(AppSettings.self) private var settings
 
     @State private var model: TimelineModel
     @State private var speech = ReaderSpeechController()
+
     @FocusState private var focusedPane: MacFocusPane?
     /// Keep the article-list sidebar open by default (and after relaunch) — it is the primary
     /// navigation on the Mac, not a collapsible drawer.
@@ -54,7 +62,7 @@ struct MacRootView: View {
                 DemoModeBanner(
                     onPairNow: {
                         appState.welcomeInitialStep = .server
-                        openWindow(id: WindowID.welcome, value: true)
+                        openWindow(id: WindowID.welcome)
                     },
                     onDismiss: { settings.hasDismissedDemoBanner = true }
                 )
@@ -172,7 +180,7 @@ struct MacRootView: View {
                 onCreateFeed: { showingCreateFeed = true },
                 onPairServer: {
                     appState.welcomeInitialStep = .server
-                    openWindow(id: WindowID.welcome, value: true)
+                    openWindow(id: WindowID.welcome)
                 }
             )
         } else {
@@ -203,86 +211,131 @@ struct MacRootView: View {
     /// title, `accessibilityLabel`/`.help` carry the name) is what MySquad's own Mac toolbar buttons
     /// use, too.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        // Two capsules, not one run of six buttons: the article's own actions (read aloud, share,
+        // open the page) first, then the ones acting on the library or the app (star, update all,
+        // everything else). **`ToolbarSpacer(.fixed)` is what breaks the glass group** -- declaring
+        // two `ToolbarItemGroup`s does not; they merge back into a single capsule. Same pattern as
+        // `../mysquad`'s `ActivityProjectListView`.
         ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                if let article = model.selectedArticle() { model.toggleStar(article) }
-            } label: {
-                Image(systemName: isSelectedStarred ? "star.fill" : "star")
-            }
-            .disabled(model.selectedSummary == nil)
-            .help(Text(isSelectedStarred ? "Unstar" : "Star"))
-            .accessibilityLabel(Text(isSelectedStarred ? "Unstar" : "Star"))
-
-            Button {
-                if let article = model.selectedArticle() { toggleSpeech(article) }
-            } label: {
-                Image(systemName: speech.state == .speaking ? "pause.fill" : "play.fill")
-            }
-            .disabled(model.selectedSummary == nil)
-            .help(Text("Read Aloud"))
-            .accessibilityLabel(Text("Read Aloud"))
-
+            readAloudButton
+            shareButton
             // Dropped while unpaired/demo: those articles' `url`s aren't real pages worth
             // leaving the app for.
             if model.hasServer {
-                Button {
-                    if let article = model.selectedArticle() { model.openWebsite(article) }
-                } label: {
-                    Image(systemName: "safari")
-                }
-                .disabled(model.selectedSummary == nil)
-                .help(Text("Open in Browser"))
-                .accessibilityLabel(Text("Open in Browser"))
+                openInBrowserButton
             }
+        }
 
+        ToolbarSpacer(.fixed)
+
+        ToolbarItemGroup(placement: .primaryAction) {
+            starButton
             if model.hasServer {
                 updateButton
             }
+            moreMenu
         }
+    }
 
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                // ⌘, is now claimed by the app-menu Settings item (`YanaCommands`'s
-                // `.appSettings` command group) — this button keeps the action but not the shortcut,
-                // so only one control claims it.
-                Button { openWindow(id: WindowID.settings, value: true) } label: { Label("Settings", systemImage: "gearshape") }
-                if model.selectedSummary != nil {
-                    Divider()
-                    let article = model.selectedArticle()
-                    let config = ReaderMenuBuilder.config(
-                        hasURL: !(article?.url.isEmpty ?? true), aiReady: model.aiReady,
-                        hasServerArticle: model.hasServer && article?.serverID != nil
-                    )
-                    if config.showSummarize {
-                        Button {
-                            if let article { model.summarize(article) }
-                        } label: { Label("Summarize", systemImage: "sparkles") }
-                            .disabled(model.isSummarizing)
-                    }
-                    if config.showReload {
-                        Button {
-                            if let article { model.forceUpdateArticle(article) }
-                        } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
-                    }
-                    if config.showCopyLink {
-                        Button {
-                            if let article { model.copyLink(article) }
-                        } label: { Label("Copy link", systemImage: "link") }
-                    }
-                    if config.showOpenOnServer {
-                        Button {
-                            if let article { model.openOnServer(article) }
-                        } label: { Label("Open on Server", systemImage: "server.rack") }
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            // A pull-down chevron beside the ellipsis is redundant — the glyph already reads as
-            // "more". `.menuIndicator(.hidden)` is the standard way to drop it.
-            .menuIndicator(.hidden)
-            .help(Text("More"))
+    private var starButton: some View {
+        Button {
+            if let article = model.selectedArticle() { model.toggleStar(article) }
+        } label: {
+            Image(systemName: isSelectedStarred ? "star.fill" : "star")
         }
+        .disabled(model.selectedSummary == nil)
+        .help(Text(isSelectedStarred ? "Unstar" : "Star"))
+        .accessibilityLabel(Text(isSelectedStarred ? "Unstar" : "Star"))
+    }
+
+    private var readAloudButton: some View {
+        Button {
+            if let article = model.selectedArticle() { toggleSpeech(article) }
+        } label: {
+            Image(systemName: speech.state == .speaking ? "pause.fill" : "play.fill")
+        }
+        .disabled(model.selectedSummary == nil)
+        .help(Text("Read Aloud"))
+        .accessibilityLabel(Text("Read Aloud"))
+    }
+
+    /// `ShareLink` needs a real item up front, so this resolves the article's own URL the same way
+    /// the sidebar's context menu does -- out of `ArticleSummary.identifier`, which holds the
+    /// article's link whenever it is one -- rather than faulting in the full `Article` on every
+    /// toolbar rebuild. Nothing to share means no button, which is why it is not merely disabled.
+    @ViewBuilder
+    private var shareButton: some View {
+        if let url = sharableURL {
+            ShareLink(item: url) {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .help(Text("Share"))
+            .accessibilityLabel(Text("Share"))
+        }
+    }
+
+    private var sharableURL: URL? {
+        guard let summary = model.selectedSummary,
+              let url = URL(string: summary.identifier),
+              url.scheme == "http" || url.scheme == "https" else {
+            return nil
+        }
+        return url
+    }
+
+    private var openInBrowserButton: some View {
+        Button {
+            if let article = model.selectedArticle() { model.openWebsite(article) }
+        } label: {
+            Image(systemName: "safari")
+        }
+        .disabled(model.selectedSummary == nil)
+        .help(Text("Open in Browser"))
+        .accessibilityLabel(Text("Open in Browser"))
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            // ⌘, is claimed by the app-menu Settings item that the `Settings` scene installs
+            // for us — this button keeps the action but not the shortcut, so only one control
+            // claims it. `openSettings()` targets that same singleton scene.
+            Button { openSettings() } label: { Label("Settings", systemImage: "gearshape") }
+            if model.selectedSummary != nil {
+                Divider()
+                let article = model.selectedArticle()
+                let config = ReaderMenuBuilder.config(
+                    hasURL: !(article?.url.isEmpty ?? true), aiReady: model.aiReady,
+                    hasServerArticle: model.hasServer && article?.serverID != nil
+                )
+                if config.showSummarize {
+                    Button {
+                        if let article { model.summarize(article) }
+                    } label: { Label("Summarize", systemImage: "sparkles") }
+                        .disabled(model.isSummarizing)
+                }
+                if config.showReload {
+                    Button {
+                        if let article { model.forceUpdateArticle(article) }
+                    } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+                }
+                if config.showCopyLink {
+                    Button {
+                        if let article { model.copyLink(article) }
+                    } label: { Label("Copy link", systemImage: "link") }
+                }
+                if config.showOpenOnServer {
+                    Button {
+                        if let article { model.openOnServer(article) }
+                    } label: { Label("Open on Server", systemImage: "server.rack") }
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+        }
+        // A pull-down chevron beside the ellipsis is redundant — the glyph already reads as
+        // "more". `.menuIndicator(.hidden)` is the standard way to drop it.
+        .menuIndicator(.hidden)
+        .help(Text("More"))
     }
 
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }
@@ -306,13 +359,14 @@ struct MacRootView: View {
         } label: {
             ZStack {
                 Image(systemName: "arrow.clockwise").opacity(showSpinner ? 0 : 1)
-                // On Catalyst a ProgressView bridges to a UIActivityIndicatorView that -- unlike
-                // the one ReaderArticleViewController builds by hand and explicitly disables
-                // interaction on -- accepts touches by default, so it swallows the tap meant for
-                // the Button underneath: nothing happened when this spinner was tapped while
-                // showing. allowsHitTesting(false) lets the touch fall through to the button.
+                // The `allowsHitTesting(false)` that used to sit here was a Mac Catalyst
+                // workaround: there a ProgressView bridged to a UIActivityIndicatorView which --
+                // unlike the one ReaderArticleViewController builds by hand and explicitly disables
+                // interaction on -- accepted touches by default and swallowed the click meant for
+                // the Button underneath, so tapping the spinner did nothing. Natively a
+                // ProgressView is an NSProgressIndicator drawn as part of the button's own label,
+                // which is not a click target of its own, so the workaround has nothing left to fix.
                 ProgressView().controlSize(.small).opacity(showSpinner ? 1 : 0)
-                    .allowsHitTesting(false)
             }
         }
         .help(showSpinner ? Text("Show progress on server") : Text("Update all"))
@@ -351,6 +405,7 @@ struct MacRootView: View {
         }
     }
 }
+#endif
 
 /// The sidebar: a filter menu pinned at the top, a search field, and the article list bound to the
 /// model's selection so ↑/↓ (and the Next/Previous menu commands) move the reader.

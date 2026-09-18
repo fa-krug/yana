@@ -5,16 +5,14 @@ import SwiftUI
 /// `ManagedList`'s doc comment for why callers now own that modifier — without having to spell out
 /// `ManagedList`'s generic parameters just to reach a placement constant.
 enum ManagedListSearch {
-    /// On Mac Catalyst the automatic placement crams the search field into the compact toolbar row
-    /// next to the other bar buttons, which throws off the field's internal vertical text centering.
-    /// A dedicated always-on drawer gives it a full-width row at its natural height. iOS keeps
-    /// `.automatic` (the search field already renders correctly there).
+    /// Both platforms use `.automatic`. The always-on `.navigationBarDrawer` this used to force on
+    /// the Mac worked around a *Catalyst* defect — the automatic placement crammed the search field
+    /// into the compact toolbar row next to the other bar buttons, throwing off its internal
+    /// vertical text centering. Native SwiftUI on macOS places a `.searchable` field in the window
+    /// toolbar correctly, and `.navigationBarDrawer` is an iOS/tvOS-only case that does not even
+    /// compile there. **Visually unverified** — re-check by eye once the Mac app runs.
     static var placement: SearchFieldPlacement {
-        #if targetEnvironment(macCatalyst)
-        .navigationBarDrawer(displayMode: .always)
-        #else
         .automatic
-        #endif
     }
 }
 
@@ -107,15 +105,13 @@ struct ManagedList<Item: Identifiable, Row: View, Leading: View>: View {
         onMove != nil && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Mac Catalyst renders `List` rows with AppKit's tight default metrics, which crams the
-    /// config lists (Articles/Feeds/Tags) into a cramped, hard-to-scan wall of text. Give each
-    /// row extra vertical breathing room on the Mac; iOS keeps SwiftUI's native row insets (nil).
+    /// Both platforms keep SwiftUI's native row insets (nil). The explicit 10/16 padding this used
+    /// to apply on the Mac compensated for *Catalyst* bridging `List` to AppKit's tight default row
+    /// metrics, which crammed the config lists into a hard-to-scan wall of text. Native SwiftUI on
+    /// macOS uses its own metrics, so the old delta no longer describes anything real.
+    /// **Visually unverified** — re-tune by eye once the Mac app runs.
     private var rowInsets: EdgeInsets? {
-        #if targetEnvironment(macCatalyst)
-        EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16)
-        #else
         nil
-        #endif
     }
 
     var body: some View {

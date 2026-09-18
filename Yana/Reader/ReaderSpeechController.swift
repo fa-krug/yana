@@ -100,7 +100,20 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - Audio session
 
+    /// **There is no `AVAudioSession` on macOS, and nothing replaces it.** The session exists on iOS
+    /// to negotiate for a shared, exclusive audio output: it is what keeps speech audible with the
+    /// ringer silenced, what lets the synthesizer keep running once the app is backgrounded or the
+    /// screen locks, and what nominates the app as the system "Now Playing" app. macOS has none of
+    /// those problems to solve — every app plays to the default output device whenever it likes, and
+    /// an app is never suspended out from under its own playback — so the macOS branch is genuinely
+    /// empty rather than a stub standing in for missing work.
+    ///
+    /// The two functions survive as empty bodies on macOS so their three call sites do not fork.
+    /// Note the Now Playing half is *not* gated: `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`
+    /// both exist on macOS, and the `playbackState = .playing` in `updateNowPlaying(playing:)` is
+    /// what makes the media keys and Control Center reach this controller there.
     private func activateAudioSession() {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         // `.playback`/`.spokenAudio` keeps reading audible even with the ringer silenced and lets the
         // synthesizer keep running while the app is backgrounded or the screen is locked (paired with
@@ -108,10 +121,13 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         // lock-screen transport controls drive this controller.
         try? session.setCategory(.playback, mode: .spokenAudio)
         try? session.setActive(true)
+        #endif
     }
 
     private func deactivateAudioSession() {
+        #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
 
     // MARK: - Lock-screen Now Playing

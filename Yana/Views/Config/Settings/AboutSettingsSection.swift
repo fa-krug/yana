@@ -43,9 +43,21 @@ struct AboutSettingsSection: View {
                 .accessibilityIdentifier("settings.showServerNotice")
             }
         } header: {
-            Text("About")
+            sectionHeader
         } footer: {
             Text("Yana is free and open source. The list of built-in sources grows from what people ask for, so suggest one on the issue board. Thanks to the NetNewsWire team, whose clean reader view shaped how articles look here.")
         }
+    }
+
+    /// The Mac Settings window already names this pane in its sidebar, so repeating it as a
+    /// section header printed the same word twice. iOS has no such sidebar: there the header is
+    /// the only thing naming the group, so it stays.
+    @ViewBuilder
+    private var sectionHeader: some View {
+        #if os(macOS)
+        EmptyView()
+        #else
+        Text("About")
+        #endif
     }
 }

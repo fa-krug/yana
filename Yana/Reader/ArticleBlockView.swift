@@ -1,5 +1,9 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 
 /// Value snapshot of an article for native rendering. Decoupled from the `@Model` `Article` so the
 /// SwiftUI view renders pure values (no model access mid-layout).
@@ -75,12 +79,13 @@ struct ArticleBlockView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    /// The in-app base size (`ArticleTextSize`) scaled by the system Dynamic Type setting via
-    /// `UIFontMetrics`, so the reader honors Accessibility → Larger Text on top of the user's chosen
-    /// size. Reading `dynamicTypeSize` above makes the view recompute when the setting changes.
+    /// The in-app base size (`ArticleTextSize`) scaled by the system Dynamic Type setting, so the
+    /// reader honors Accessibility → Larger Text on top of the user's chosen size. Reading
+    /// `dynamicTypeSize` above makes the view recompute when the setting changes. macOS has no
+    /// Dynamic Type and `PlatformFont.scaledBodyValue` returns the size unscaled there.
     private var bodySize: CGFloat {
         _ = dynamicTypeSize
-        return UIFontMetrics(forTextStyle: .body).scaledValue(for: CGFloat(textSize.pointSize))
+        return PlatformFont.scaledBodyValue(for: CGFloat(textSize.pointSize))
     }
 
     var body: some View {
@@ -124,6 +129,12 @@ struct ArticleBlockView: View {
         })
         .modifier(RefreshableIfAvailable(onRefresh: onRefresh))
         .modifier(LeadImageReveal(leadImageRef: leadImageRef))
+        #if os(macOS)
+        // An AppKit `NSScrollView` fills itself with `controlBackgroundColor` unless told not to,
+        // which would put a second shade inside the otherwise-clear reader page (see
+        // `ReaderBlockViewController.applyBackgroundColor`) and undo the blend with the toolbar.
+        .scrollContentBackground(.hidden)
+        #endif
     }
 
     @ViewBuilder private func segmentView(_ segment: BodySegment) -> some View {
@@ -134,16 +145,16 @@ struct ArticleBlockView: View {
             // stretch of prose instead of one per block, the reader's main per-page cost.
             // TextRunView renders it as plain SwiftUI Text first when `deferSelectableText`
             // is set, then upgrades to the selectable UITextView after first paint.
-            TextRunView(blocks: blocks, segment: segment.id, bodySize: bodySize, uiDesign: font.uiDesign,
+            TextRunView(blocks: blocks, segment: segment.id, bodySize: bodySize, uiDesign: font.platformDesign,
                         deferSelectable: deferSelectableText, find: find, onOpenLink: onOpenLink)
         case .summary(let inner):
             SummaryCardView(blocks: inner, unit: FindUnitID(segment: segment.id), bodySize: bodySize,
-                            design: font.uiDesign, find: find,
+                            design: font.platformDesign, find: find,
                             onOpenLink: onOpenLink, onPlayVideo: onPlayVideo,
                             onShowImage: onShowImage)
         case .single(let block):
             BlockNodeView(block: block, unit: FindUnitID(segment: segment.id), bodySize: bodySize,
-                          design: font.uiDesign, leadImageRef: leadImageRef, find: find,
+                          design: font.platformDesign, leadImageRef: leadImageRef, find: find,
                           onOpenLink: onOpenLink, onPlayVideo: onPlayVideo, onShowImage: onShowImage)
         }
     }
@@ -195,7 +206,7 @@ struct ArticleBlockView: View {
             // summary block included -- renders in document order.
             if case let .image(ref, caption)? = bodyBlocks.first {
                 BlockImageView(ref: ref, caption: caption, unit: .leadImage, bodySize: bodySize,
-                               design: font.uiDesign, find: find, onOpenLink: onOpenLink,
+                               design: font.platformDesign, find: find, onOpenLink: onOpenLink,
                                onShowImage: onShowImage)
             }
         }
@@ -307,7 +318,7 @@ private struct SummaryCardView: View {
     /// The card's own find unit; its blocks are `unit.appending(index)`, as `ArticleFindIndex` keys them.
     let unit: FindUnitID
     let bodySize: CGFloat
-    let design: UIFontDescriptor.SystemDesign
+    let design: PlatformFontDescriptor.SystemDesign
     let find: FindHighlights
     let onOpenLink: (URL) -> Void
     let onPlayVideo: (Embed) -> Void
@@ -366,12 +377,12 @@ private struct TextRunView: View {
     /// The run's body segment id; block `i` of the run is find unit `(segment, [i])`.
     let segment: Int
     let bodySize: CGFloat
-    let uiDesign: UIFontDescriptor.SystemDesign
+    let uiDesign: PlatformFontDescriptor.SystemDesign
     let find: FindHighlights
     let onOpenLink: (URL) -> Void
     @State private var selectable: Bool
 
-    init(blocks: [Block], segment: Int, bodySize: CGFloat, uiDesign: UIFontDescriptor.SystemDesign,
+    init(blocks: [Block], segment: Int, bodySize: CGFloat, uiDesign: PlatformFontDescriptor.SystemDesign,
          deferSelectable: Bool, find: FindHighlights, onOpenLink: @escaping (URL) -> Void) {
         self.blocks = blocks
         self.segment = segment
@@ -451,7 +462,7 @@ private struct BlockNodeView: View {
     let unit: FindUnitID
     let bodySize: CGFloat
     /// UIKit typeface design for text baked into a `SelectableText` (`UITextView`).
-    let design: UIFontDescriptor.SystemDesign
+    let design: PlatformFontDescriptor.SystemDesign
     let leadImageRef: String?
     let find: FindHighlights
     let onOpenLink: (URL) -> Void
@@ -569,7 +580,7 @@ private struct BlockImageView: View {
     /// The caption's find unit (the image block's own).
     let unit: FindUnitID
     let bodySize: CGFloat
-    var design: UIFontDescriptor.SystemDesign = .default
+    var design: PlatformFontDescriptor.SystemDesign = .default
     var find: FindHighlights = .empty
     var onOpenLink: (URL) -> Void = { _ in }
     /// Tapping the image (not the caption) opens it full-screen with pinch-to-zoom.
@@ -584,7 +595,7 @@ private struct BlockImageView: View {
             if !captionRuns.isEmpty {
                 SelectableText(
                     attributedText: ReaderAttributedText.make(runs: captionRuns, baseSize: bodySize * 0.8,
-                                                              design: design, color: .secondaryLabel,
+                                                              design: design, color: .yanaSecondaryLabel,
                                                               highlights: find.ranges(for: unit)),
                     onOpenLink: onOpenLink,
                     // Only a top-level image is its segment's one text view; see BlockNodeView.findSegment.
@@ -639,7 +650,7 @@ private struct ReaderImageView: View {
     /// `EmbedPosterPlaceholder` instead, since a poster card with nothing in it is a bare play
     /// glyph floating in the body.
     let placeholder: AnyView?
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
 
     init(ref: String, placeholder: AnyView? = nil) {
         self.ref = ref
@@ -666,22 +677,66 @@ private struct ReaderImageView: View {
         }
     }
 
-    /// Animated images (GIFs) play in a `UIImageView`-backed view — SwiftUI's `Image` shows only the
-    /// first frame. Still images use the plain resizable `Image`.
-    @ViewBuilder private func content(for image: UIImage) -> some View {
-        if image.images != nil, image.size.width > 0, image.size.height > 0 {
+    /// Animated images (GIFs) play in an image-view-backed representable — SwiftUI's `Image` shows
+    /// only the first frame on either platform. Still images use the plain resizable `Image`.
+    @ViewBuilder private func content(for image: PlatformImage) -> some View {
+        if image.readerIsAnimated, image.size.width > 0, image.size.height > 0 {
             AnimatedImageView(image: image)
                 .aspectRatio(image.size.width / image.size.height, contentMode: .fit)
         } else {
-            Image(uiImage: image)
+            Image(platformImage: image)
                 .resizable()
                 .scaledToFit()
         }
     }
 }
 
-/// Plays an animated `UIImage` (a GIF decoded into frames) — a `UIImageView` auto-animates such an
-/// image, whereas SwiftUI's `Image` renders only the first frame.
+private extension PlatformImage {
+    /// Whether this image has more than one frame to play.
+    ///
+    /// The two frameworks model an animated image completely differently, so there is no shim for
+    /// this in `PlatformTypes`. UIKit decodes a GIF into a frame array up front and exposes it as
+    /// `images`; AppKit keeps the GIF as a single multi-frame bitmap representation and lets
+    /// `NSImageView` drive the animation, so the frame count has to be asked of the representation.
+    var readerIsAnimated: Bool {
+        #if os(macOS)
+        guard let rep = representations.first as? NSBitmapImageRep,
+              let frames = rep.value(forProperty: .frameCount) as? Int else { return false }
+        return frames > 1
+        #else
+        images != nil
+        #endif
+    }
+}
+
+/// Plays an animated image (a GIF) — a platform image view auto-animates such an image, whereas
+/// SwiftUI's `Image` renders only the first frame.
+///
+/// Two spellings of one view, because `UIViewRepresentable` and `NSViewRepresentable` are distinct
+/// protocols with distinct requirement names; everything below the protocol is the same intent.
+/// `NSImageView` needs `animates` set explicitly (UIKit infers it from the frame array being
+/// present) and has no `clipsToBounds` — the enclosing `.aspectRatio` + clip shape already bound it.
+#if os(macOS)
+private struct AnimatedImageView: NSViewRepresentable {
+    let image: NSImage
+
+    func makeNSView(context: Context) -> NSImageView {
+        let view = NSImageView()
+        view.animates = true
+        view.imageScaling = .scaleProportionallyUpOrDown
+        // Let SwiftUI's frame/aspectRatio drive the size rather than the image's intrinsic size.
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSImageView, context: Context) {
+        nsView.image = image
+    }
+}
+#else
 private struct AnimatedImageView: UIViewRepresentable {
     let image: UIImage
 
@@ -701,6 +756,7 @@ private struct AnimatedImageView: UIViewRepresentable {
         uiView.image = image
     }
 }
+#endif
 
 /// A tappable embed card: a 16:9 poster with a play glyph for videos, or a text card for tweets.
 /// Tapping a video poster plays it full-screen in-app (`onPlayVideo`); a tweet card — and any video

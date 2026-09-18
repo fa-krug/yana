@@ -32,7 +32,7 @@ struct ReaderSettingsSection: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(Text("Text size preview"))
 
-            #if !targetEnvironment(macCatalyst)
+            #if !os(macOS)
             // The Mac always opens the default browser (TimelineModel.openWebsite), so the toggle would lie there.
             Toggle(isOn: $settings.useSystemBrowser) {
                 Label(String(localized: "Use System Browser"), systemImage: "safari")
@@ -50,14 +50,27 @@ struct ReaderSettingsSection: View {
                     .labelStyle(.tintedIcon(.indigo))
             }
         } header: {
-            Text("Reader")
+            sectionHeader
         } footer: {
-            #if targetEnvironment(macCatalyst)
+            #if os(macOS)
             Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. To add more voices, open System Settings, then Accessibility, then Spoken Content.")
             #else
             Text("Read-aloud uses the voice you choose here, or the most natural one installed for the article's language when set to Automatic, and keeps playing when the screen is locked or you switch apps. To add more natural voices, open Settings → Accessibility → Live Speech → Add Preferred Voice…")
             #endif
         }
+    }
+
+    /// The Mac Settings window already names this group -- in the sidebar for the panes that own a
+    /// whole page, and in the row's own label for the server row -- so repeating it as a section
+    /// header just printed the same word twice. iOS has no such sidebar: the header is the only
+    /// thing naming the group there, so it stays.
+    @ViewBuilder
+    private var sectionHeader: some View {
+        #if os(macOS)
+        EmptyView()
+        #else
+        Text("Reader")
+        #endif
     }
 
     /// Installed speech voices, sorted by language then name, for the read-aloud voice picker.

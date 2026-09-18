@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 import Testing
 @testable import Yana
 
@@ -10,7 +9,9 @@ import Testing
 @Suite("Feed logo image loading")
 struct FeedLogoViewTests {
     @Test func loadsStoredImageByHash() async {
-        let png = UIGraphicsImageRenderer(size: CGSize(width: 16, height: 16)).image { _ in }.pngData()!
+        // Through the Stage 1 shim rather than `UIGraphicsImageRenderer`, which has no AppKit
+        // equivalent — this suite is otherwise entirely cross-platform.
+        let png = PlatformImageRenderer.pngData(size: CGSize(width: 16, height: 16)) { _ in }
         let hash = await ImageStore.shared.storeData(png, ext: "png")
         let image = await ReaderImageCache.shared.image(for: "yana-img://\(hash)")
         #expect(image != nil)

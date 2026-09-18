@@ -1,3 +1,7 @@
+// The iOS reader root (`ReaderScreen`) and the UIKit pager bridge around it. iOS-only in its
+// entirety: the Mac's root is `MacRootView`'s two-column split view, which hosts
+// `MacReaderDetailView` directly and never goes through this file.
+#if os(iOS)
 import SwiftData
 import SwiftUI
 import UIKit
@@ -530,3 +534,4 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(iOS)
 import UIKit
 
 /// A modal, full-screen image viewer for the reader's inline images. Tapping an article image opens
@@ -180,3 +181,4 @@ extension ReaderImageViewerViewController: UIGestureRecognizerDelegate {
         true
     }
 }
+#endif

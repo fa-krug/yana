@@ -1,4 +1,10 @@
+import CoreGraphics
+import Foundation
+#if os(macOS)
+import AppKit
+#else
 import UIKit
+#endif
 
 /// Generates fully-original, license-clean lead images for App Store screenshot fixtures.
 /// Deterministic (same `index` always yields the same bytes) so the fixture is reproducible
@@ -8,12 +14,12 @@ enum ScreenshotImageFactory {
     private static let size = CGSize(width: 1200, height: 800)
 
     /// Warm, magazine-y gradient pairs (top-left color, bottom-right color).
-    private static let palettes: [(top: UIColor, bottom: UIColor)] = [
-        (UIColor(red: 0.98, green: 0.55, blue: 0.36, alpha: 1), UIColor(red: 0.62, green: 0.16, blue: 0.24, alpha: 1)),
-        (UIColor(red: 0.29, green: 0.36, blue: 0.66, alpha: 1), UIColor(red: 0.09, green: 0.11, blue: 0.28, alpha: 1)),
-        (UIColor(red: 0.98, green: 0.78, blue: 0.32, alpha: 1), UIColor(red: 0.82, green: 0.35, blue: 0.14, alpha: 1)),
-        (UIColor(red: 0.31, green: 0.62, blue: 0.55, alpha: 1), UIColor(red: 0.08, green: 0.27, blue: 0.28, alpha: 1)),
-        (UIColor(red: 0.72, green: 0.32, blue: 0.58, alpha: 1), UIColor(red: 0.30, green: 0.11, blue: 0.36, alpha: 1))
+    private static let palettes: [(top: PlatformColor, bottom: PlatformColor)] = [
+        (PlatformColor(red: 0.98, green: 0.55, blue: 0.36, alpha: 1), PlatformColor(red: 0.62, green: 0.16, blue: 0.24, alpha: 1)),
+        (PlatformColor(red: 0.29, green: 0.36, blue: 0.66, alpha: 1), PlatformColor(red: 0.09, green: 0.11, blue: 0.28, alpha: 1)),
+        (PlatformColor(red: 0.98, green: 0.78, blue: 0.32, alpha: 1), PlatformColor(red: 0.82, green: 0.35, blue: 0.14, alpha: 1)),
+        (PlatformColor(red: 0.31, green: 0.62, blue: 0.55, alpha: 1), PlatformColor(red: 0.08, green: 0.27, blue: 0.28, alpha: 1)),
+        (PlatformColor(red: 0.72, green: 0.32, blue: 0.58, alpha: 1), PlatformColor(red: 0.30, green: 0.11, blue: 0.36, alpha: 1))
     ]
 
     /// Renders a deterministic, tasteful abstract lead image (1200x800) for the given index:
@@ -24,9 +30,7 @@ enum ScreenshotImageFactory {
         let paletteIndex = safeIndex % palettes.count
         let palette = palettes[paletteIndex]
 
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { ctx in
-            let cgContext = ctx.cgContext
+        return PlatformImageRenderer.jpegData(size: size, compressionQuality: 0.9) { cgContext in
             let rect = CGRect(origin: .zero, size: size)
 
             // Diagonal multi-stop gradient between the two palette colors.
@@ -71,12 +75,12 @@ enum ScreenshotImageFactory {
                 circle2Radius = size.width * 0.18
             }
 
-            cgContext.setFillColor(UIColor.white.withAlphaComponent(0.10).cgColor)
+            cgContext.setFillColor(PlatformColor.white.withAlphaComponent(0.10).cgColor)
             cgContext.addEllipse(in: CGRect(x: circle1Center.x - circle1Radius, y: circle1Center.y - circle1Radius,
                                              width: circle1Radius * 2, height: circle1Radius * 2))
             cgContext.fillPath()
 
-            cgContext.setFillColor(UIColor.white.withAlphaComponent(0.08).cgColor)
+            cgContext.setFillColor(PlatformColor.white.withAlphaComponent(0.08).cgColor)
             cgContext.addEllipse(in: CGRect(x: circle2Center.x - circle2Radius, y: circle2Center.y - circle2Radius,
                                              width: circle2Radius * 2, height: circle2Radius * 2))
             cgContext.fillPath()
@@ -84,8 +88,8 @@ enum ScreenshotImageFactory {
 
             // Soft bottom vignette for text legibility.
             let vignetteColors = [
-                UIColor.black.withAlphaComponent(0).cgColor,
-                UIColor.black.withAlphaComponent(0.55).cgColor
+                PlatformColor.black.withAlphaComponent(0).cgColor,
+                PlatformColor.black.withAlphaComponent(0.55).cgColor
             ] as CFArray
             if let vignette = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: vignetteColors, locations: [0.0, 1.0]) {
                 cgContext.saveGState()
@@ -100,7 +104,5 @@ enum ScreenshotImageFactory {
                 cgContext.restoreGState()
             }
         }
-
-        return image.jpegData(compressionQuality: 0.9) ?? Data()
     }
 }

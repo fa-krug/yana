@@ -1,7 +1,9 @@
+// macOS-only: on iOS the notice is a `.fullScreenCover` over the reader, not a window.
+#if os(macOS)
 import SwiftUI
 
 /// Hosts `ServerMigrationNoticeView` in its own Mac window, mirroring `WelcomeWindowRoot`. If the
-/// window is restored after the notice has already been dismissed (Mac Catalyst can restore
+/// window is restored after the notice has already been dismissed (macOS can restore
 /// windows left open at last quit), it closes itself immediately.
 struct ServerMigrationNoticeWindowRoot: View {
     @Bindable var appState: AppState
@@ -21,7 +23,7 @@ struct ServerMigrationNoticeWindowRoot: View {
                 hasSkippedServerPairing: settings.hasSkippedServerPairing
             ) {
                 appState.welcomeInitialStep = step
-                openWindow(id: WindowID.welcome, value: true)
+                openWindow(id: WindowID.welcome)
             }
         })
         .toggleStyle(.switch)
@@ -30,3 +32,4 @@ struct ServerMigrationNoticeWindowRoot: View {
         }
     }
 }
+#endif

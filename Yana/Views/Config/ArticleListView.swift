@@ -89,6 +89,29 @@ struct ArticleListView: View {
         return currentArticleID != nil && summary.identifier == currentArticleID
     }
 
+
+    /// The leading toolbar slot the update spinner sits in. `.topBarLeading` is iOS-only;
+    /// `.navigation` is the cross-platform spelling of the same leading-edge slot and is what the
+    /// Mac toolbar understands. Resolved as a property rather than `#if`-ing the `ToolbarItem`
+    /// itself, because a conditional-compilation block cannot split a trailing closure's braces.
+    private static var updateIndicatorPlacement: ToolbarItemPlacement {
+        #if os(iOS)
+        .topBarLeading
+        #else
+        .navigation
+        #endif
+    }
+
+    /// The trailing toolbar slot the filter button sits in. Same story as
+    /// `updateIndicatorPlacement`: `.topBarTrailing` is iOS-only, `.primaryAction` is the
+    /// cross-platform name for the same slot.
+    private static var filterPlacement: ToolbarItemPlacement {
+        #if os(iOS)
+        .topBarTrailing
+        #else
+        .primaryAction
+        #endif
+    }
     var body: some View {
         let isPaired = AuthenticatedClient.current() != nil
         let currentItemID = results.first { isCurrent($0) }?.id
@@ -179,7 +202,7 @@ struct ArticleListView: View {
                 Button { dismiss() } label: { Image(systemName: "xmark") }
                     .accessibilityLabel(Text("Close"))
             }
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: Self.updateIndicatorPlacement) {
                 if isUpdating {
                     // Tapping the spinner opens the server's page for the job it stands for, the
                     // same as the reader's nav-bar indicator; "stop watching" moved to the menu a
@@ -200,7 +223,7 @@ struct ArticleListView: View {
                     .accessibilityLabel(Text("Show progress on server"))
                 }
             }
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: Self.filterPlacement) {
                 Button { showFilter = true } label: {
                     Image(systemName: "line.3.horizontal.decrease")
                         .foregroundStyle(isFilterActive ? Color.accentColor : Color.primary)
@@ -262,7 +285,7 @@ struct ArticleListView: View {
     /// The Mac's roomier rows read better with a touch more space between title and subline;
     /// iOS keeps the compact 4pt to preserve its denser timeline-adjacent look.
     private var rowLineSpacing: CGFloat {
-        #if targetEnvironment(macCatalyst)
+        #if os(macOS)
         6
         #else
         4

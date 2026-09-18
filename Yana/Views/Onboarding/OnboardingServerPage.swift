@@ -45,15 +45,27 @@ struct OnboardingServerPage: View {
 
     var body: some View {
         // Centered rather than top-aligned: this page's content is short (two small sections),
-        // and pinning it to the top on a tall window (Mac Catalyst, or an iPad in landscape) left
+        // and pinning it to the top on a tall window (macOS, or an iPad in landscape) left
         // a big dead gap below it that read as broken. `GeometryReader` supplies the available
         // height so the content can center within it via `.frame(minHeight:alignment:)`, while
         // the `ScrollView` still keeps it reachable (rather than clipped) if a large Dynamic Type
         // size or a very short window ever makes it taller than that.
-        GeometryReader { proxy in
-            ScrollView {
+        Group {
+            if isOnboardingFlow {
+                // The wizard hands this page a full window pane, so it centers/top-aligns within
+                // that height (see `contentAlignment`) and stays scrollable if it ever exceeds it.
+                GeometryReader { proxy in
+                    ScrollView {
+                        content
+                            .frame(minHeight: proxy.size.height, alignment: contentAlignment)
+                    }
+                }
+            } else {
+                // Settings' re-pair sheet instead sizes *itself* to this page. A `GeometryReader`
+                // there reports the height it is proposed, which in a self-sizing Mac sheet is
+                // zero -- and, once given one, leaves the content stranded at the top of a mostly
+                // empty panel. Laying the content out directly lets the sheet hug it.
                 content
-                    .frame(minHeight: proxy.size.height, alignment: .center)
             }
         }
         .accessibilityIdentifier("onboardingServerScreen")
@@ -73,7 +85,7 @@ struct OnboardingServerPage: View {
         // Not a `.sheet`: `DevicePairingView`'s own body renders nothing (`Color.clear`) — its
         // only job is starting the coordinator, which presents `ASWebAuthenticationSession`'s
         // own system-level browser sheet. Wrapping that in a SwiftUI sheet just adds a second,
-        // empty translucent card underneath it (visible on Mac Catalyst as a blank rounded panel
+        // empty translucent card underneath it (visible on the Mac as a blank rounded panel
         // behind the real auth prompt) for no benefit — this way there's nothing of ours to show
         // at all until the system sheet appears.
         .background {
@@ -109,94 +121,145 @@ struct OnboardingServerPage: View {
         }
     }
 
+    /// iOS centers this short page in the space below the header, because pinning it to the top
+    /// of a tall window left a dead gap under it that read as broken. The Mac does the opposite:
+    /// its window is taller still, and centering pushed the form so far from the header above it
+    /// that the two stopped reading as one form. Top-aligned, the header and the fields group
+    /// together and the slack collects above the footer, where a Mac wizard normally has it.
+    private var contentAlignment: Alignment {
+        #if os(macOS)
+        .top
+        #else
+        .center
+        #endif
+    }
+
     private var content: some View {
         // No header here: in the onboarding flow, `WelcomeView.header` already draws the
         // icon/title/subtitle for this step, fixed in position across every step. The Settings
-        // re-pair sheet (`isOnboardingFlow == false`) has no such header, which is why the footer
-        // text below is unconditional rather than gated on `isOnboardingFlow`.
-        VStack(spacing: 32) {
-            VStack(alignment: .leading, spacing: 8) {
+        // re-pair sheet (`isOnboardingFlow == false`) has no such header, which is why the field's
+        // explanatory footnote below is restored for that case only -- in the onboarding flow it
+        // would repeat the header subtitle word for word.
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Server Address")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-                card {
-                    // A plain `TextField` placeholder here renders link-blue, not the standard
-                    // gray placeholder color — iOS auto-styles a `.keyboardType(.URL)` field's
-                    // placeholder as a hyperlink when the placeholder text itself parses as a
-                    // URL. An explicit overlay sidesteps that and always renders as a normal
-                    // gray placeholder.
-                    //
-                    // The overlay's own `Text(_:)` needs `verbatim:` too: a bare string
-                    // literal resolves to `Text(LocalizedStringKey)`, which Markdown-parses
-                    // its content — and Markdown autolinks bare URLs, rendering this right
-                    // back in link-blue.
-                    ZStack(alignment: .leading) {
-                        if serverURLText.isEmpty {
-                            Text(verbatim: "https://your-server.example.com")
-                                .foregroundStyle(.secondary)
-                        }
-                        TextField("", text: $serverURLText)
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($isURLFieldFocused)
-                            .submitLabel(.go)
-                            .onSubmit(signIn)
-                    }
-                }
+                    .font(.subheadline.weight(.medium))
+                serverAddressField
                 if !trimmedServerURLText.isEmpty, validatedServerURL == nil {
                     Text(trimmedServerURLText.lowercased().hasPrefix("http")
                          ? "This doesn't look like a valid server address."
                          : "Enter a full address, including https://.")
                         .font(.footnote)
                         .foregroundStyle(.red)
-                        .padding(.horizontal, 4)
-                } else {
+                } else if !isOnboardingFlow {
                     Text("Yana needs a Yana Server to sign in and sync your feeds.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
                 }
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                card {
-                    if state.isPaired {
-                        Label("Signed in", systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Button("Sign In", action: signIn)
-                            .disabled(validatedServerURL == nil)
-                    }
-                }
+                signInControl
                 if let pairingFailure {
                     Text(Self.failureMessage(pairingFailure))
                         .font(.footnote)
                         .foregroundStyle(.red)
-                        .padding(.horizontal, 4)
                 }
                 if isOnboardingFlow, !state.isPaired {
                     Text("You'll see demo content until you pair a server. Pair anytime from Settings.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 32)
-        .frame(maxWidth: 480)
-        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+        .padding(.bottom, 24)
+        // In the wizard the content is a narrow column centered in a wide pane. In Settings'
+        // sheet the panel *is* the column: capping and centering there left the fields indented
+        // past the sheet's own title, which no Mac dialog does.
+        .modifier(OnboardingContentWidth(isCentered: isOnboardingFlow))
     }
 
+    /// AppKit draws a bordered text field itself, so the Mac uses the stock one; iOS has no
+    /// equivalent built-in chrome inside a plain view, hence the hand-drawn field there.
+    @ViewBuilder
+    private var serverAddressField: some View {
+        #if os(macOS)
+        // `prompt:` renders AppKit's own placeholder inside the field's text area, correctly
+        // inset -- an overlaid `Text` would sit at the container's leading edge instead. It is
+        // `verbatim:` for the same reason the iOS overlay below is: a bare literal resolves to
+        // `Text(LocalizedStringKey)`, whose Markdown pass autolinks a URL into link-blue.
+        TextField("", text: $serverURLText, prompt: Text(verbatim: "https://your-server.example.com"))
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.large)
+            .autocorrectionDisabled()
+            .focused($isURLFieldFocused)
+            .onSubmit(signIn)
+        #else
+        card {
+            // A plain `TextField` placeholder here renders link-blue, not the standard
+            // gray placeholder color -- iOS auto-styles a `.keyboardType(.URL)` field's
+            // placeholder as a hyperlink when the placeholder text itself parses as a
+            // URL. An explicit overlay sidesteps that and always renders as a normal
+            // gray placeholder.
+            //
+            // The overlay's own `Text(_:)` needs `verbatim:` too: a bare string
+            // literal resolves to `Text(LocalizedStringKey)`, which Markdown-parses
+            // its content -- and Markdown autolinks bare URLs, rendering this right
+            // back in link-blue.
+            ZStack(alignment: .leading) {
+                if serverURLText.isEmpty {
+                    Text(verbatim: "https://your-server.example.com")
+                        .foregroundStyle(.secondary)
+                }
+                TextField("", text: $serverURLText)
+                    // Software-keyboard hints, so iOS-only: the Mac has a hardware keyboard
+                    // with no URL layout to switch to and no autocapitalization to suppress.
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($isURLFieldFocused)
+                    .submitLabel(.go)
+                    .onSubmit(signIn)
+            }
+        }
+        #endif
+    }
+
+    /// The Mac puts a push button at its natural width under the field it acts on; iOS keeps the
+    /// full-width row this page has always used, which is the idiom there.
+    @ViewBuilder
+    private var signInControl: some View {
+        if state.isPaired {
+            Label("Signed in", systemImage: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+        } else {
+            #if os(macOS)
+            Button("Sign In", action: signIn)
+                .controlSize(.large)
+                .disabled(validatedServerURL == nil)
+            #else
+            card {
+                Button("Sign In", action: signIn)
+                    .disabled(validatedServerURL == nil)
+            }
+            #endif
+        }
+    }
+
+    #if !os(macOS)
+    /// iOS has no built-in chrome for a control sitting in a plain view, so the field and the
+    /// sign-in row draw their own grouped-row background. The Mac uses AppKit's own bordered
+    /// text field and push button instead, and never calls this.
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
+    #endif
 
     /// `URL(string:)` alone isn't enough validation: a host-only address like
     /// "yana.example.com" (no scheme) parses successfully as a *relative* URL with a nil host,
@@ -268,4 +331,22 @@ struct OnboardingServerPage: View {
         .environment(AppState())
         .environment(ArticleStore(container: AppContainer.shared))
         .environment(AppSettings())
+}
+
+/// Caps and centers the page's column in the onboarding wizard; fills the width, leading-aligned,
+/// everywhere else. A `ViewModifier` rather than an `if` in the body so both branches keep the
+/// same view identity and the field does not lose focus when the flag changes.
+private struct OnboardingContentWidth: ViewModifier {
+    let isCentered: Bool
+
+    func body(content: Content) -> some View {
+        if isCentered {
+            content
+                .frame(maxWidth: 420)
+                .frame(maxWidth: .infinity)
+        } else {
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 }

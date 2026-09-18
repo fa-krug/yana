@@ -1,5 +1,10 @@
 import SwiftUI
 import WebKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// Hosts the server's own feed/tag/settings web UI. Every time this view appears it bootstraps a
 /// fresh browser session for the server via `POST /api/v1/auth/webview-session-token` (a
@@ -52,7 +57,9 @@ struct ManagementWebView: View {
             }
         }
         .navigationTitle(title ?? "")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar {
             if showsBackButton {
                 ToolbarItem(placement: .navigation) {
@@ -142,7 +149,15 @@ struct ManagementWebView: View {
     }
 }
 
-private struct ManagementWKWebView: UIViewRepresentable {
+/// The web view itself. **The representable protocol is forked; nothing else is.**
+///
+/// `WKWebView` is one class on both platforms — same configuration, same navigation delegate, same
+/// diagnostics — but it is a `UIView` on iOS and an `NSView` on macOS, so only the two-method
+/// protocol conformance can differ. Everything with behavior in it (the coordinator, the
+/// configuration, the KVO registration, the requested-URL bookkeeping) lives on the struct itself
+/// and is called from both conformances below, so a change to how this view loads cannot land on
+/// one platform only.
+private struct ManagementWKWebView {
     let url: URL
     @Binding var diagnostic: ManagementWebViewDiagnostic?
     @Binding var webView: WKWebView?
@@ -289,10 +304,17 @@ private struct ManagementWKWebView: UIViewRepresentable {
         )
     }
 
-    func makeUIView(context: Context) -> WKWebView {
+    /// Builds the web view. Shared by `makeUIView`/`makeNSView` -- see the type comment.
+    ///
+    /// `@MainActor` because of the `\.canGoBack` key path below: on macOS WebKit annotates that
+    /// property as main-actor isolated, and a key path to an isolated property can only be formed
+    /// from an isolated context. Both callers are already main-actor (SwiftUI's representable
+    /// methods are), so this only writes down the isolation that was already in force.
+    @MainActor
+    func makeWebView(coordinator: Coordinator) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
-        config.userContentController.add(context.coordinator, name: ManagementWebViewProbe.messageHandlerName)
+        config.userContentController.add(coordinator, name: ManagementWebViewProbe.messageHandlerName)
         config.userContentController.addUserScript(
             WKUserScript(
                 source: ManagementWebViewProbe.script,
@@ -300,39 +322,67 @@ private struct ManagementWKWebView: UIViewRepresentable {
                 forMainFrameOnly: true
             )
         )
+        #if os(macOS)
+        // No `ScrollTrackingWebView` on the Mac: that subclass exists purely to hand its
+        // `UIScrollView` to the enclosing nav bar so the bar can resolve its scroll edge effect,
+        // and neither the scroll view nor that effect exists here -- a macOS `WKWebView` has no
+        // `.scrollView` property at all, and the window's title bar draws its own material.
+        let webView = WKWebView(frame: .zero, configuration: config)
+        #else
         let webView = ScrollTrackingWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
-        // Enables the standard Safari-style edge-swipe to go back/forward through the server web
-        // UI's own page history, matching the toolbar back button's behavior below.
+        #endif
+        webView.navigationDelegate = coordinator
+        // Enables the standard Safari-style back/forward swipe through the server web UI's own page
+        // history, matching the toolbar back button's behavior below.
         webView.allowsBackForwardNavigationGestures = true
         #if DEBUG
-        // Lets Safari's Develop menu attach to this web view on a connected device, which is the
-        // only way to read the page's own console/network state from outside the app.
+        // Lets Safari's Develop menu attach to this web view, which is the only way to read the
+        // page's own console/network state from outside the app.
         webView.isInspectable = true
         #endif
-        context.coordinator.requestedURL = url
+        coordinator.requestedURL = url
         // No `.initial`: `canGoBack` starts false, matching this view's own `@State` default, and
-        // firing the callback synchronously here (inside `makeUIView`, itself part of a SwiftUI
-        // view update) would trip the same "modifying state during view update" warning as above.
-        context.coordinator.canGoBackObservation = webView.observe(\.canGoBack, options: [.new]) {
+        // firing the callback synchronously here (inside `makeUIView`/`makeNSView`, itself part of a
+        // SwiftUI view update) would trip the "modifying state during view update" warning.
+        coordinator.canGoBackObservation = webView.observe(\.canGoBack, options: [.new]) {
             observedWebView, _ in
-            context.coordinator.onCanGoBackChange(observedWebView.canGoBack)
+            coordinator.onCanGoBackChange(observedWebView.canGoBack)
         }
         webView.load(URLRequest(url: url))
         // Deferred a tick: assigning straight into the `@State`-backed binding here would mutate
-        // SwiftUI state mid-view-update (`makeUIView` runs as part of one), which triggers SwiftUI's
+        // SwiftUI state mid-view-update (this runs as part of one), which triggers SwiftUI's
         // "Modifying state during view update" runtime warning.
         DispatchQueue.main.async { self.webView = webView }
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        guard context.coordinator.requestedURL != url else { return }
-        context.coordinator.requestedURL = url
+    @MainActor
+    func updateWebView(_ webView: WKWebView, coordinator: Coordinator) {
+        guard coordinator.requestedURL != url else { return }
+        coordinator.requestedURL = url
         webView.load(URLRequest(url: url))
     }
 }
 
+#if os(macOS)
+extension ManagementWKWebView: NSViewRepresentable {
+    func makeNSView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        updateWebView(webView, coordinator: context.coordinator)
+    }
+}
+#else
+extension ManagementWKWebView: UIViewRepresentable {
+    func makeUIView(context: Context) -> WKWebView { makeWebView(coordinator: context.coordinator) }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        updateWebView(webView, coordinator: context.coordinator)
+    }
+}
+#endif
+
+#if os(iOS)
 /// A `WKWebView` that hands its scroll view to the enclosing view controller, so the navigation
 /// bar tracks *this* scroll view for its scroll edge effect -- the progressive glass fade every
 /// other sheet in the app gets for free from its SwiftUI `ScrollView`/`Form`.
@@ -361,6 +411,7 @@ private final class ScrollTrackingWebView: WKWebView {
         return nil
     }
 }
+#endif
 
 /// The JavaScript half of the instrumentation. Kept as plain strings rather than a bundled `.js`
 /// resource so the whole diagnostic path stays readable in one file.

@@ -48,6 +48,11 @@ final class AppSettings {
 
     @ObservationIgnored private let defaults: UserDefaults
 
+    /// Whether this instance reads the process-wide `UserDefaults` rather than an isolated test
+    /// suite. `AuthenticatedClient` uses it to refuse to resolve a live client inside a unit-test
+    /// host -- see that type for why.
+    @ObservationIgnored var usesStandardDefaults: Bool { defaults == .standard }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: [

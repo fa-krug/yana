@@ -1,3 +1,7 @@
+// The iOS reader's swipe pager. iOS-only in its entirety: the Mac window has never had a pager --
+// `MacReaderDetailView` shows the single article the sidebar has selected -- and this file is
+// `UIPageViewController` from top to bottom, with no AppKit counterpart to port it to.
+#if os(iOS)
 import UIKit
 import SafariServices
 import SwiftUI
@@ -210,6 +214,8 @@ final class ReaderArticleViewController: UIViewController,
         // back without completing a transition.
         pagerScrollView?.panGestureRecognizer.addTarget(self, action: #selector(pagerPanGestureChanged))
 
+        // Memory warnings are an iOS-only signal: macOS has no equivalent notification and this
+        // whole file is iOS-only from Stage 5 of the macOS migration onward, so it stays UIKit.
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleMemoryWarning),
             name: UIApplication.didReceiveMemoryWarningNotification, object: nil
@@ -219,13 +225,13 @@ final class ReaderArticleViewController: UIViewController,
         // full-screen in-app browser / video player is dismissed but not on a plain app switch.
         NotificationCenter.default.addObserver(
             self, selector: #selector(handleWillEnterForeground),
-            name: UIApplication.willEnterForegroundNotification, object: nil
+            name: PlatformApp.didBecomeActiveNotification, object: nil
         )
         // Last chance to write the reading position before the app can be terminated — the anchor
         // records *which* article, this records how far into it. See `saveReadingOffset`.
         NotificationCenter.default.addObserver(
             self, selector: #selector(saveReadingOffset),
-            name: UIApplication.didEnterBackgroundNotification, object: nil
+            name: PlatformApp.willResignActiveNotification, object: nil
         )
 
         // Tap the nav bar to hide bars (NNW behavior).
@@ -1012,3 +1018,4 @@ final class ReaderArticleViewController: UIViewController,
 
     deinit { NotificationCenter.default.removeObserver(self) }
 }
+#endif

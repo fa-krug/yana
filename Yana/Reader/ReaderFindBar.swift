@@ -1,3 +1,4 @@
+#if os(iOS)
 import UIKit
 
 /// The "Find in Article" bar both platforms show: a search field, the "n of m" count, previous/next
@@ -178,3 +179,4 @@ final class ReaderFindBar: UIView, UITextFieldDelegate {
         return false
     }
 }
+#endif
