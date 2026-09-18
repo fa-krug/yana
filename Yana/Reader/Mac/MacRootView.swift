@@ -211,86 +211,131 @@ struct MacRootView: View {
     /// title, `accessibilityLabel`/`.help` carry the name) is what MySquad's own Mac toolbar buttons
     /// use, too.
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        // Two capsules, not one run of six buttons: the article's own actions (read aloud, share,
+        // open the page) first, then the ones acting on the library or the app (star, update all,
+        // everything else). **`ToolbarSpacer(.fixed)` is what breaks the glass group** -- declaring
+        // two `ToolbarItemGroup`s does not; they merge back into a single capsule. Same pattern as
+        // `../mysquad`'s `ActivityProjectListView`.
         ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                if let article = model.selectedArticle() { model.toggleStar(article) }
-            } label: {
-                Image(systemName: isSelectedStarred ? "star.fill" : "star")
-            }
-            .disabled(model.selectedSummary == nil)
-            .help(Text(isSelectedStarred ? "Unstar" : "Star"))
-            .accessibilityLabel(Text(isSelectedStarred ? "Unstar" : "Star"))
-
-            Button {
-                if let article = model.selectedArticle() { toggleSpeech(article) }
-            } label: {
-                Image(systemName: speech.state == .speaking ? "pause.fill" : "play.fill")
-            }
-            .disabled(model.selectedSummary == nil)
-            .help(Text("Read Aloud"))
-            .accessibilityLabel(Text("Read Aloud"))
-
+            readAloudButton
+            shareButton
             // Dropped while unpaired/demo: those articles' `url`s aren't real pages worth
             // leaving the app for.
             if model.hasServer {
-                Button {
-                    if let article = model.selectedArticle() { model.openWebsite(article) }
-                } label: {
-                    Image(systemName: "safari")
-                }
-                .disabled(model.selectedSummary == nil)
-                .help(Text("Open in Browser"))
-                .accessibilityLabel(Text("Open in Browser"))
+                openInBrowserButton
             }
+        }
 
+        ToolbarSpacer(.fixed)
+
+        ToolbarItemGroup(placement: .primaryAction) {
+            starButton
             if model.hasServer {
                 updateButton
             }
+            moreMenu
         }
+    }
 
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                // ⌘, is claimed by the app-menu Settings item that the `Settings` scene installs
-                // for us — this button keeps the action but not the shortcut, so only one control
-                // claims it. `openSettings()` targets that same singleton scene.
-                Button { openSettings() } label: { Label("Settings", systemImage: "gearshape") }
-                if model.selectedSummary != nil {
-                    Divider()
-                    let article = model.selectedArticle()
-                    let config = ReaderMenuBuilder.config(
-                        hasURL: !(article?.url.isEmpty ?? true), aiReady: model.aiReady,
-                        hasServerArticle: model.hasServer && article?.serverID != nil
-                    )
-                    if config.showSummarize {
-                        Button {
-                            if let article { model.summarize(article) }
-                        } label: { Label("Summarize", systemImage: "sparkles") }
-                            .disabled(model.isSummarizing)
-                    }
-                    if config.showReload {
-                        Button {
-                            if let article { model.forceUpdateArticle(article) }
-                        } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
-                    }
-                    if config.showCopyLink {
-                        Button {
-                            if let article { model.copyLink(article) }
-                        } label: { Label("Copy link", systemImage: "link") }
-                    }
-                    if config.showOpenOnServer {
-                        Button {
-                            if let article { model.openOnServer(article) }
-                        } label: { Label("Open on Server", systemImage: "server.rack") }
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            // A pull-down chevron beside the ellipsis is redundant — the glyph already reads as
-            // "more". `.menuIndicator(.hidden)` is the standard way to drop it.
-            .menuIndicator(.hidden)
-            .help(Text("More"))
+    private var starButton: some View {
+        Button {
+            if let article = model.selectedArticle() { model.toggleStar(article) }
+        } label: {
+            Image(systemName: isSelectedStarred ? "star.fill" : "star")
         }
+        .disabled(model.selectedSummary == nil)
+        .help(Text(isSelectedStarred ? "Unstar" : "Star"))
+        .accessibilityLabel(Text(isSelectedStarred ? "Unstar" : "Star"))
+    }
+
+    private var readAloudButton: some View {
+        Button {
+            if let article = model.selectedArticle() { toggleSpeech(article) }
+        } label: {
+            Image(systemName: speech.state == .speaking ? "pause.fill" : "play.fill")
+        }
+        .disabled(model.selectedSummary == nil)
+        .help(Text("Read Aloud"))
+        .accessibilityLabel(Text("Read Aloud"))
+    }
+
+    /// `ShareLink` needs a real item up front, so this resolves the article's own URL the same way
+    /// the sidebar's context menu does -- out of `ArticleSummary.identifier`, which holds the
+    /// article's link whenever it is one -- rather than faulting in the full `Article` on every
+    /// toolbar rebuild. Nothing to share means no button, which is why it is not merely disabled.
+    @ViewBuilder
+    private var shareButton: some View {
+        if let url = sharableURL {
+            ShareLink(item: url) {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .help(Text("Share"))
+            .accessibilityLabel(Text("Share"))
+        }
+    }
+
+    private var sharableURL: URL? {
+        guard let summary = model.selectedSummary,
+              let url = URL(string: summary.identifier),
+              url.scheme == "http" || url.scheme == "https" else {
+            return nil
+        }
+        return url
+    }
+
+    private var openInBrowserButton: some View {
+        Button {
+            if let article = model.selectedArticle() { model.openWebsite(article) }
+        } label: {
+            Image(systemName: "safari")
+        }
+        .disabled(model.selectedSummary == nil)
+        .help(Text("Open in Browser"))
+        .accessibilityLabel(Text("Open in Browser"))
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            // ⌘, is claimed by the app-menu Settings item that the `Settings` scene installs
+            // for us — this button keeps the action but not the shortcut, so only one control
+            // claims it. `openSettings()` targets that same singleton scene.
+            Button { openSettings() } label: { Label("Settings", systemImage: "gearshape") }
+            if model.selectedSummary != nil {
+                Divider()
+                let article = model.selectedArticle()
+                let config = ReaderMenuBuilder.config(
+                    hasURL: !(article?.url.isEmpty ?? true), aiReady: model.aiReady,
+                    hasServerArticle: model.hasServer && article?.serverID != nil
+                )
+                if config.showSummarize {
+                    Button {
+                        if let article { model.summarize(article) }
+                    } label: { Label("Summarize", systemImage: "sparkles") }
+                        .disabled(model.isSummarizing)
+                }
+                if config.showReload {
+                    Button {
+                        if let article { model.forceUpdateArticle(article) }
+                    } label: { Label("Reload", systemImage: "arrow.trianglehead.2.clockwise") }
+                }
+                if config.showCopyLink {
+                    Button {
+                        if let article { model.copyLink(article) }
+                    } label: { Label("Copy link", systemImage: "link") }
+                }
+                if config.showOpenOnServer {
+                    Button {
+                        if let article { model.openOnServer(article) }
+                    } label: { Label("Open on Server", systemImage: "server.rack") }
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+        }
+        // A pull-down chevron beside the ellipsis is redundant — the glyph already reads as
+        // "more". `.menuIndicator(.hidden)` is the standard way to drop it.
+        .menuIndicator(.hidden)
+        .help(Text("More"))
     }
 
     private var isSelectedStarred: Bool { model.selectedSummary?.isStarred ?? false }

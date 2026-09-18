@@ -38,8 +38,16 @@ struct MacSettingsWindow: View {
                         .accessibilityIdentifier("mac.settings.pane.\(pane.rawValue)")
                 }
             }
+            // `.sidebar` is what gives the column System Settings' own vibrant material. Without
+            // it the list rendered on a plain (and, inside a `Settings` scene, see-through)
+            // background, so the window behind it showed through the pane list.
+            .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
             .navigationTitle("Settings")
+            // A two-pane Settings window has nothing to collapse -- the pane list IS the window's
+            // navigation -- but `NavigationSplitView` installs the toggle regardless, and it sat
+            // alone above the rows looking like a stray control.
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             detail
                 .navigationSplitViewColumnWidth(min: 460, ideal: 520)
@@ -66,25 +74,25 @@ struct MacSettingsWindow: View {
     @ViewBuilder private var detail: some View {
         switch selection ?? .general {
         case .general:
-            Form {
+            settingsForm {
                 ServerSettingsSection()
                 NotificationsSettingsSection()
                 LibrarySettingsSection()
             }
         case .reader:
-            Form { ReaderSettingsSection() }
+            settingsForm { ReaderSettingsSection() }
         case .manage:
             if availablePanes.contains(.manage) {
                 NavigationStack {
                     ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
                 }
             } else {
-                Form { ServerSettingsSection() }
+                settingsForm { ServerSettingsSection() }
             }
         case .ai:
-            Form { AIModeSettingsSection() }
+            settingsForm { AIModeSettingsSection() }
         case .about:
-            Form {
+            settingsForm {
                 AboutSettingsSection(
                     onRestartOnboarding: {
                         // Reset explicitly: a stale `.server` value from an earlier re-pairing
@@ -102,6 +110,24 @@ struct MacSettingsWindow: View {
                 )
             }
         }
+    }
+
+    /// Every pane's form, with the two things a `Form` on macOS does not do on its own.
+    ///
+    /// **`.formStyle(.grouped)`** is what makes this read like System Settings: leading labels,
+    /// trailing controls, grouped rows. The default macOS style is `.columns`, which right-aligns
+    /// each label against a shared column edge -- that, plus the iOS icon tiles the shared sections
+    /// used to draw (see `TintedIconLabelStyle`), is what left the panes looking jumbled.
+    ///
+    /// **`.scrollContentBackground(.visible)`** puts the window's own surface back behind the
+    /// rows. A `Form` inside a `NavigationSplitView` detail column otherwise leaves its scroll
+    /// background clear, so the Settings window rendered see-through onto whatever was behind it.
+    /// Same call `../mysquad` makes on its Mac lists.
+    @ViewBuilder
+    private func settingsForm<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        Form { content() }
+            .formStyle(.grouped)
+            .scrollContentBackground(.visible)
     }
 }
 

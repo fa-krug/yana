@@ -128,9 +128,12 @@ final class ReaderBlockViewController: NSViewController {
     /// the second half the page keeps a light background after the user switches to dark mode.
     private func applyBackgroundColor() {
         view.wantsLayer = true
-        view.effectiveAppearance.performAsCurrentDrawingAppearance {
-            view.layer?.backgroundColor = PlatformColor.yanaWindowBackground.cgColor
-        }
+        // Deliberately clear: the page inherits the window's own surface, which is what makes it
+        // read as one piece with the toolbar above it (`MacRootView` hides the toolbar's own
+        // background). Painting a colour here -- any colour, semantic or hand-picked -- put a
+        // second shade next to the toolbar's and showed up as a seam. ../mysquad paints none
+        // either. The appearance hook stays: a layer colour set later still has to be re-resolved.
+        view.layer?.backgroundColor = nil
     }
 
     /// Re-render after the article's content changed underneath this page. The find index is

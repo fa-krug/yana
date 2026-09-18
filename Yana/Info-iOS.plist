@@ -41,6 +41,8 @@
 	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Yana uses Face ID to protect your reading data.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Sascha Krug. All rights reserved.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UILaunchScreen</key>

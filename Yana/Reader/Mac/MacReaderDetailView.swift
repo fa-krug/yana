@@ -261,7 +261,9 @@ final class MacReaderContainerViewController: NSViewController {
     /// resolved to a `CGColor` is frozen at the moment it was resolved — so re-resolve it whenever
     /// light/dark mode changes under the window (see `MacReaderBackgroundView`).
     private func applyBackgroundColor() {
-        view.layer?.backgroundColor = PlatformColor.yanaWindowBackground.cgColor
+        // Clear, for the same reason as `ReaderBlockViewController`'s own: the container inherits
+        // the window surface instead of introducing a second shade beside the toolbar's.
+        view.layer?.backgroundColor = nil
     }
 
     /// Render `articles[index]`, swapping the child only when the selected identifier actually

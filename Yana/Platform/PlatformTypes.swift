@@ -83,6 +83,7 @@ extension PlatformColor {
         .systemBackground
         #endif
     }
+
 }
 
 // MARK: - Symbolic font traits

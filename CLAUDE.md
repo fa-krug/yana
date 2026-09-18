@@ -952,6 +952,15 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   huge dead space below it" problem `OnboardingServerPage` had, so this page mirrors that page's
   content-sized, card-styled, centered layout instead, keeping every onboarding step visually
   consistent. Finishing kicks off a first foreground `SyncEngine.sync()`.
+  **`OnboardingServerPage`'s controls are forked by platform, and the fork is the point.** macOS
+  draws a stock bordered `TextField` (`.roundedBorder`, placeholder via `prompt:` so AppKit insets
+  it inside the field) and a natural-width push button; iOS keeps the hand-drawn `card` rows, which
+  is the idiom there and which AppKit has no need of. `WelcomeView`'s footer forks the same way:
+  right-aligned natural-width buttons with the primary one on `.defaultAction` (Return) on macOS,
+  full-width stacked buttons on iOS. The page's vertical alignment forks too (`contentAlignment`) --
+  iOS centers the short content under the header, the Mac top-aligns it, because its window is tall
+  enough that centering floated the form away from the header and the two stopped reading as one
+  form. Note `OnboardingAIModePage` still uses the card styling on both platforms.
   `ContentView`'s `.onAppear` gate now covers two cases, not one: a device that never completed
   onboarding starts at `.welcome`; a device that **did** complete onboarding but currently has no
   valid session (`AuthenticatedClient.current() == nil` — pairing revoked from another device, or the
@@ -982,7 +991,16 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   demo-content mode `OnboardingServerPage`'s "Skip for now" offers, clearing `hasCompletedInitialSync`
   too so a later re-pair goes through the loading screen again instead of silently skipping it.
 - **macOS windowing** (`Yana/Reader/Mac/`): `MacRootView` is a permanent two-column
-  `NavigationSplitView` (article-list sidebar + reader detail) in a `WindowGroup`. The three
+  `NavigationSplitView` (article-list sidebar + reader detail) in a `WindowGroup`. Its toolbar is
+  **two glass capsules** — article actions (read aloud, share, open in browser), then library/app
+  actions (star, update all, the overflow menu) — and **`ToolbarSpacer(.fixed)` between them is what
+  splits them**: two `ToolbarItemGroup`s alone merge back into one capsule. Same pattern as
+  `../mysquad`'s `ActivityProjectListView`. The reader also paints **no background of its own**
+  (`ReaderBlockViewController`/`MacReaderDetailView` set a clear layer, and `ArticleBlockView` adds
+  `.scrollContentBackground(.hidden)` so the `NSScrollView` does not fill itself with
+  `controlBackgroundColor`), so the page inherits the window surface the toolbar sits on. Any colour
+  there — semantic or hand-picked — reads as a seam against the toolbar's own material; painting
+  nothing is what `../mysquad` does, and it was measured twice before landing there. The three
   auxiliary windows are **real macOS scenes** now, not the `WindowGroup(id:for: Bool.self)`
   always-opened-with-`true` singleton workaround Mac Catalyst forced. Settings is a `Settings`
   scene: a true singleton, wired to ⌘, for free, placed in the App menu where a Mac user looks for
@@ -1000,7 +1018,27 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   and too often for the seeds. On content:
   `MacSettingsWindow`'s sidebar panes are `SettingsPane.general/reader/manage/ai/about` (no more
   `.feeds`/`.tags`/`.integrations`/`.diagnostics` — `.manage` pushes the same `ManagementWebView` iOS
-  uses; the hidden-diagnostics reveal was removed entirely, see **Views**). Creating a
+  uses; the hidden-diagnostics reveal was removed entirely, see **Views**).
+  **Four things make that window read as System Settings rather than an iOS form squeezed into a
+  Mac frame**, and each fixes a specific visible defect: `.formStyle(.grouped)` on every pane (the
+  macOS default is `.columns`, which right-aligns labels against a shared column edge);
+  `.scrollContentBackground(.visible)` (a `Form` in a `NavigationSplitView` detail column otherwise
+  leaves its scroll background clear, and the whole window rendered see-through);
+  `.listStyle(.sidebar)` on the pane list (same transparency, plus it is what gives the column the
+  system's vibrant material); and `.toolbar(removing: .sidebarToggle)` (a two-pane Settings window
+  has nothing to collapse, but `NavigationSplitView` installs the toggle anyway and it sat alone
+  above the rows). The shared Settings sections fork for this too: `TintedIconLabelStyle` draws
+  **no icon at all** on macOS, because the iOS tile landed in the same column as the row's title
+  and overlapped it; `ServerSettingsSection`'s server row is a `LabeledContent` plus a "Change…"
+  push button rather than a whole-row `Button` (a button's label fills a grouped row, so the pane
+  looked like a stack of grey slabs); and the `Server`/`Reader`/`About` section headers are dropped
+  on macOS, where the sidebar pane title already names the group. That section's re-pair sheet is
+  a plain panel with a heading and a trailing "Done" button — **not** the iOS `NavigationStack`
+  with an X in its bar, which on the Mac produced a bar-less sheet whose only control was a glyph
+  floating in a footer. It carries an explicit width, and `OnboardingServerPage` skips its
+  `GeometryReader`/`ScrollView` scaffolding outside the onboarding flow: a Mac sheet sizes to its
+  content, a `GeometryReader` reports the height it is *proposed*, and the two together collapsed
+  the sheet to a title and a button. Creating a
   feed is a sheet presenting `ManagementWebView(path: "/feeds/new")`, not the deleted
   `FeedEditorView`/`WindowID.feedEditor`. Everything else — the Mail-style two-pane keyboard focus
   model (`MacFocusPane`), the sidebar's programmatic-scroll-follow (`SidebarScrollRequest`,
@@ -1239,12 +1277,12 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   treating a failure there as real.
 - **Current measured baselines** (both read off `xcodebuild`'s own exit code, never through a pipe):
   - iOS, `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`:
-    **530 passing, 7 failing, exit 65**. All seven are the standing `SummaryBlockTests` signal-trap
+    **531 passing, 7 failing, exit 65**. All seven are the standing `SummaryBlockTests` signal-trap
     crashes (Apple Intelligence is unavailable in the simulator), confirmed by name. **Exit 65 is
     the pass condition here**, not a failure.
   - macOS unit,
     `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test`:
-    **519 passing, 7 failing, 1 expected failure, exit 65**. Same seven crashes; the expected
+    **520 passing, 7 failing, 1 expected failure, exit 65**. Same seven crashes; the expected
     failure is the `withKnownIssue`-wrapped animated find-reveal assertion in
     `ReaderFindScrollTestsMacOS` (see the animation trap below).
   - macOS UI tests **cannot be run from a non-interactive shell at all**. They need an interactive
@@ -1262,13 +1300,20 @@ unconditional UIKit import instead. To typecheck a file in isolation:
     reveal in a page runs with the clip view at the top, where both conversions agree. The test
     that actually catches it forces a reveal against a large non-zero clip origin. Check that a
     macOS scroll test fails for the right reason before trusting it.
-  - **`ArticleWrites.markRead` defaults its `settings:` argument to a live `AppSettings()`**, so it
-    resolves `AuthenticatedClient.current()` against the developer's *real* server URL and login
-    Keychain. Any macOS unit test that parks the timeline on an article will therefore fire a real
-    `PATCH /api/v1/articles/<id>` against that server unless its fixtures carry **no `serverID`** —
-    `ArticleWrites.setRead` guards on `let serverID = article.serverID`, which makes the whole write
-    path structurally unreachable without one. `MacSidebarLaunchScrollTestsMacOS` depends on this
-    and says so in its type doc; do not add `serverID`s to those fixtures.
+  - **A unit test cannot reach the developer's real server, and that is now enforced in one
+    place.** `ArticleWrites.markRead`/`setRead`, `ReadingPositionSync` and every other write path
+    default their `settings:` argument to a live `AppSettings()`, which reads the *developer's*
+    real `serverBaseURL` and login Keychain — so a macOS unit test that merely parks the timeline
+    on an article used to fire a real `PATCH /api/v1/articles/<id>` at that server. The only thing
+    stopping it was fixtures carrying no `serverID`, a rule every new test had to remember.
+    `AuthenticatedClient.current(settings:)` now refuses to resolve a client at all when
+    `TestEnvironment.isRunningUnitTests` (the `XCTestConfigurationFilePath` environment variable,
+    set only in a unit-test host — a UI test drives a separate process and is unaffected) **and**
+    the settings read the standard `UserDefaults`. Settings built on an isolated
+    `UserDefaults(suiteName:)` stay exempt, so a test that wants a resolved client injects one
+    (`AuthenticatedClientTests`, `ReadingPositionSyncTests`); the gate itself is `#if DEBUG`.
+    `MacSidebarLaunchScrollTestsMacOS`'s `serverID`-free fixtures are now belt-and-braces rather
+    than the only protection.
   - **Compile-error counts are not a migration burn-down.** See **Platform split** — the Swift
     driver aborts whole-module compilation at the first unresolvable import.
 - `YanaTests/ReaderPageReassertScrollTests.swift` (iOS only, the Mac has no pager) and

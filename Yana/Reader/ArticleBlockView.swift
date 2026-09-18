@@ -129,6 +129,12 @@ struct ArticleBlockView: View {
         })
         .modifier(RefreshableIfAvailable(onRefresh: onRefresh))
         .modifier(LeadImageReveal(leadImageRef: leadImageRef))
+        #if os(macOS)
+        // An AppKit `NSScrollView` fills itself with `controlBackgroundColor` unless told not to,
+        // which would put a second shade inside the otherwise-clear reader page (see
+        // `ReaderBlockViewController.applyBackgroundColor`) and undo the blend with the toolbar.
+        .scrollContentBackground(.hidden)
+        #endif
     }
 
     @ViewBuilder private func segmentView(_ segment: BodySegment) -> some View {
