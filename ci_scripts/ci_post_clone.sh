@@ -34,16 +34,24 @@ mkdir -p "$RESOLVED_DIR"
 cp ci_scripts/Package.resolved "$RESOLVED_DIR/Package.resolved"
 
 # Set build number to Xcode Cloud build number for unique TestFlight builds.
-# We write CFBundleVersion directly into the app's Info.plist rather than using
+# We write CFBundleVersion directly into each app's Info.plist rather than using
 # `agvtool new-version -all`: agvtool scans every target and misreads the
 # GENERATE_INFOPLIST_FILE boolean (false/true) as Info.plist paths, emitting
 # `Cannot find ".../NO"` / `".../YES"`. On Xcode Cloud's toolchain that returns
-# a non-zero status, which `set -e` turns into a failed post-clone step. The
-# app target uses an explicit INFOPLIST_FILE with GENERATE_INFOPLIST_FILE=false,
-# so this plist is the build's source of truth for the build number.
+# a non-zero status, which `set -e` turns into a failed post-clone step. Both app
+# targets use an explicit INFOPLIST_FILE with GENERATE_INFOPLIST_FILE=false, so
+# these plists are the build's source of truth for the build number.
+#
+# Both are stamped because the Mac app is its own native target (Yana-macOS,
+# Info-macOS.plist) rather than a Mac Catalyst variant of the iOS one. A Mac
+# workflow must archive the `Yana-macOS` scheme against `generic/platform=macOS`;
+# the old `platform=macOS,variant=Mac Catalyst` destination no longer resolves on
+# any scheme in this project, and the `Yana` scheme is iOS-only.
 if [ -n "$CI_BUILD_NUMBER" ]; then
     echo "Setting build number to $CI_BUILD_NUMBER..."
-    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CI_BUILD_NUMBER" Yana/Info-iOS.plist
+    for plist in Yana/Info-iOS.plist Yana/Info-macOS.plist; do
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $CI_BUILD_NUMBER" "$plist"
+    done
     echo "Build number set to $CI_BUILD_NUMBER"
 fi
 
