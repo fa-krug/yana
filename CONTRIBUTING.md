@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- iOS 26.0+
+- iOS 26.0+ / macOS 26.0+
 - Xcode 26.0+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.38+
 
@@ -22,7 +22,10 @@ xcodegen generate
 open Yana.xcodeproj
 ```
 
-Select the **Yana** scheme and press Cmd+R to build and run.
+There are two schemes: **Yana** for iOS/iPadOS and **Yana-macOS** for the native Mac app.
+Select the one for the platform you're working on and press Cmd+R. The Mac app is its own
+target, not a Catalyst variant of the iOS one, so the **Yana** scheme cannot be built for a Mac
+destination.
 
 ## Project Structure
 
@@ -58,9 +61,18 @@ The generated `Yana.xcodeproj` is gitignored — every developer generates it lo
 # iOS Simulator
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' build
 
-# Run tests
+# macOS
+xcodebuild -scheme Yana-macOS -destination 'platform=macOS' build
+
+# Run the iOS tests
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test
+
+# Run the macOS unit tests
+xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test
 ```
+
+Archiving the Mac app uses `-scheme Yana-macOS -destination 'generic/platform=macOS'`. There is
+no `variant=Mac Catalyst` destination on any scheme any more.
 
 ## Code Style
 
@@ -83,9 +95,16 @@ YanaUITests/
 ```
 
 ```bash
-# Run all unit tests
+# Run all unit tests (iOS)
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test
+
+# Run all unit tests (macOS)
+xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test
 ```
+
+Both test targets build from the same `YanaTests/` directory; platform differences are gated in
+the source with `#if`. `-only-testing:YanaTests-macOS` matters on the Mac, because the macOS UI
+tests need an interactive desktop session and can't run from a non-interactive shell.
 
 ## On-Device Aggregation
 

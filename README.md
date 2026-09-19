@@ -1,6 +1,6 @@
 # Yana
 
-A native SwiftUI app for iOS, iPadOS, and Mac (via Catalyst). Yana itself doesn't fetch or
+A native SwiftUI app for iOS, iPadOS, and macOS. Yana itself doesn't fetch or
 parse anything — it's a thin, offline-first client for [Yana Server](https://github.com/fa-krug/yana-server),
 a separate self-hosted project that does the actual work: pulling feeds, running scrapers,
 talking to AI providers. You point this app at a server you run, it syncs down articles,
@@ -15,7 +15,7 @@ or request a new source at [github.com/fa-krug/yana](https://github.com/fa-krug/
 
 ## Requirements
 
-You'll need iOS 26.0+ or macOS 26.0+ (for the Mac Catalyst build), Xcode 26.0+, and
+You'll need iOS 26.0+ or macOS 26.0+ (for the Mac app), Xcode 26.0+, and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) 2.38+ to generate the project. You'll also
 need somewhere to point the app at — a running [Yana Server](https://github.com/fa-krug/yana-server)
 instance, since Yana on its own has nothing to sync.
@@ -35,8 +35,10 @@ xcodegen generate
 open Yana.xcodeproj
 ```
 
-Then select the **Yana** scheme and run it, either on an iOS/iPadOS simulator or device, or
-on **My Mac (Mac Catalyst)**.
+There are two schemes, one per platform. Select **Yana** to run on an iOS/iPadOS simulator
+or device, and **Yana-macOS** to run the native Mac app on **My Mac**. The Mac build is its own
+target rather than a Catalyst variant of the iOS one, so building the **Yana** scheme for a Mac
+destination will not work.
 
 ## How It Works
 
@@ -105,7 +107,7 @@ Yana/
   Models/                   # SwiftData @Model types (Feed, Tag, Article), settings
   Networking/               # YanaAPIClient, block-decoding, run/job-event wire types, SSE parsing
   Services/                 # DevicePairing, SyncEngine/SyncWriter, ArticleActions, ImageStore, AI providers
-  Reader/                   # Native SwiftUI block renderer, pager, Mac Catalyst windowing (Reader/Mac/)
+  Reader/                   # Native SwiftUI block renderer, pager, macOS windowing (Reader/Mac/)
   Views/                    # SwiftUI views (settings, onboarding, management WebView)
   Utilities/                # Constants and extensions
   Resources/                # Asset catalogs, string catalog
@@ -119,8 +121,16 @@ LICENSE                     # MIT license
 ## Tests
 
 ```bash
+# iOS
 xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test
+
+# macOS unit tests
+xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test
 ```
+
+Both test targets build from the same `YanaTests/` directory. On the Mac, pass
+`-only-testing:YanaTests-macOS`: the macOS UI tests need an interactive desktop session and
+can't run from a non-interactive shell.
 
 `YanaTests/` has the unit tests, written with the Swift Testing framework. `YanaUITests/`
 covers UI flows with XCTest, including the flows that capture the App Store screenshots below.
@@ -149,8 +159,11 @@ full pipeline details and the codesigning gotchas for the Mac lane.
 
 ## Architecture
 
-The UI is SwiftUI throughout, shared across iOS, iPadOS, and Mac Catalyst, written in Swift 6
-with strict concurrency and `@MainActor` everywhere it matters. SwiftData is the local,
+The UI is SwiftUI throughout, shared across iOS, iPadOS, and macOS from one source tree,
+written in Swift 6 with strict concurrency and `@MainActor` everywhere it matters. The two app
+targets compile all of `Yana/`, and the places where the platforms genuinely differ are handled
+in the source itself, through the shim layer in `Yana/Platform/` and `#if os(macOS)` gates, with
+AppKit backing the Mac reader where it needs a view layer. SwiftData is the local,
 offline-first mirror of whatever state the server has. Networking goes through
 `YanaAPIClient`, a thin typed wrapper over the server's `/api/v1/**` REST API; `SyncEngine`
 and `SyncWriter` handle pulling articles, feeds, and images down and applying local writes,
