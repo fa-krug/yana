@@ -43,6 +43,15 @@ macOS build.
 - `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test` —
   run the macOS unit tests. `-only-testing` matters: the macOS **UI** tests need an interactive
   desktop session and cannot run from a non-interactive shell at all (see **Tests**).
+- **There is no Mac Catalyst destination on any scheme.** `platform=macOS,variant=Mac Catalyst`
+  (or its archive form `generic/platform=macOS,variant=Mac Catalyst`) fails with "Unable to find a
+  destination matching the provided destination specifier", and against the iOS-only `Yana` scheme
+  even a plain `platform=macOS` is rejected ("My Mac's macOS platform doesn't match Yana.app's
+  supported platforms"). Every Mac invocation — build, test, archive — takes `-scheme Yana-macOS`
+  with `platform=macOS` / `generic/platform=macOS`. This applies to Xcode Cloud too: a Mac workflow
+  left pointing at the `Yana` scheme's Catalyst destination is exactly how that error shows up in
+  CI. `ci_scripts/ci_post_clone.sh` stamps `CI_BUILD_NUMBER` into **both** `Info-iOS.plist` and
+  `Info-macOS.plist` for that reason.
 
 ### Prerequisites
 - `brew install xcodegen` — install XcodeGen (required to generate `.xcodeproj`)
