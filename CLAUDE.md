@@ -1285,15 +1285,20 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   against a 100ms budget, so it can fail spuriously on a loaded machine; re-run it alone before
   treating a failure there as real.
 - **Current measured baselines** (both read off `xcodebuild`'s own exit code, never through a pipe):
-  - iOS, `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' test`:
-    **531 passing, 7 failing, exit 65**. All seven are the standing `SummaryBlockTests` signal-trap
-    crashes (Apple Intelligence is unavailable in the simulator), confirmed by name. **Exit 65 is
-    the pass condition here**, not a failure.
+  - iOS unit,
+    `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:YanaTests test`:
+    **532 passing, 0 failing, exit 0**.
   - macOS unit,
     `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test`:
-    **520 passing, 7 failing, 1 expected failure, exit 65**. Same seven crashes; the expected
-    failure is the `withKnownIssue`-wrapped animated find-reveal assertion in
-    `ReaderFindScrollTestsMacOS` (see the animation trap below).
+    **526 passing, 1 expected failure, exit 0**. The expected failure is the
+    `withKnownIssue`-wrapped animated find-reveal assertion in `ReaderFindScrollTestsMacOS` (see
+    the animation trap below).
+  - **The "7 standing `SummaryBlockTests` crashes" older notes above describe were never about
+    Apple Intelligence.** Every summarize test there uses a stub provider. Its `makeContext()`
+    returned `container.mainContext` and let the `ModelContainer` go out of scope; a
+    `ModelContext(container)` retains its container but `mainContext` does not, so SwiftData
+    trapped on the first `insert`. A test helper must return `ModelContext(container)` or keep the
+    container alive itself. Any failure in a full run is now a real one.
   - macOS UI tests **cannot be run from a non-interactive shell at all**. They need an interactive
     desktop session and fail in two different ways across runs without one. `-only-testing` the
     unit bundle when driving the macOS scheme from a script.
