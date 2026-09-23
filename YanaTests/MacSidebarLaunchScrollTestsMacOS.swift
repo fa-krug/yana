@@ -44,7 +44,10 @@ import Testing
 ///   leaving `serverID` nil makes that whole path structurally unreachable: the write stays local
 ///   to the in-memory container. Nothing here needs a `serverID` — `createdAt` is distinct per
 ///   article so `TimelineOrder`'s tiebreak never engages, and `stableKey` falls back to the
-///   identifier, which is what the assertions key on. **Do not add `serverID`s to these fixtures.**
+///   identifier, which is what the assertions key on. Since then `AuthenticatedClient` refuses to
+///   resolve a client in a unit-test host reading the standard defaults, which is what lets
+///   `aSyncedLibraryLandsOnTheAnchorAndFollowsNextArticle` use `serverID`s -- and it has to, since
+///   the sidebar bug it pins only exists once `stableKey` and `identifier` differ.
 @MainActor
 @Suite("Mac sidebar launch scroll")
 struct MacSidebarLaunchScrollTestsMacOS {
@@ -160,6 +163,60 @@ struct MacSidebarLaunchScrollTestsMacOS {
                 "list too short to prove anything: \(document.frame.height)")
         #expect(scroll.contentView.bounds.origin.y > 0,
                 "the sidebar stayed at the top instead of scrolling to the anchored article")
+    }
+
+    /// Synced articles carry a `serverID`, so their `stableKey` ("s<id>") differs from their
+    /// `identifier`. The first two tests only cover the identifier-fallback case, where the two
+    /// coincide, and so could not see a scroll request keyed by one value while the rows were keyed
+    /// by the other: on a real, paired library the sidebar then never moved at all.
+    ///
+    /// Safe to give these fixtures `serverID`s now, unlike when the suite doc above was written:
+    /// `AuthenticatedClient.current(settings:)` refuses to resolve a client inside a unit-test host
+    /// when reading the standard defaults, so `ArticleWrites.markRead` stays local.
+    @Test func aSyncedLibraryLandsOnTheAnchorAndFollowsNextArticle() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        let articles = seedArticles(context, feed: feed, count: 120)
+        for (i, article) in articles.enumerated() { article.serverID = 10_000 + i }
+        try context.save()
+
+        let settings = freshSettings()
+        let anchor = articles[60]
+        settings.timelineAnchorIdentifier = anchor.identifier
+        settings.timelineAnchorServerID = anchor.serverID
+
+        let cacheURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-sidebar-synced-\(UUID().uuidString).plist")
+        let cache = SummaryIndexCache(fileURL: cacheURL)
+        await cache.save(articles.map { ArticleSummary($0) })
+        let store = ArticleStore(container: container, cache: cache, anchorProvider: {
+            (settings.timelineAnchorIdentifier, settings.timelineAnchorServerID)
+        })
+        let model = TimelineModel(settings: settings)
+        model.configure(modelContext: context, store: store)
+
+        let (window, controller) = host(Harness(model: model, store: store, settings: settings),
+                                        container: container, store: store, settings: settings)
+        defer { window.orderOut(nil) }
+        try await Task.sleep(for: .milliseconds(300))
+        store.start()
+        try await Task.sleep(for: .milliseconds(1500))
+        window.layoutIfNeeded()
+
+        #expect(model.selectedSummary?.serverID == anchor.serverID, "the model itself did not park on the anchor")
+        let scroll = try #require(scrollViews(controller.view).first, "no list scroll view hosted")
+        let launchOffset = scroll.contentView.bounds.origin.y
+        #expect(launchOffset > 0, "the sidebar stayed at the top instead of scrolling to the anchored article")
+
+        // Walk far enough down that the selected row must leave the viewport unless the list follows.
+        for _ in 0..<40 { model.moveSelection(by: 1) }
+        try await Task.sleep(for: .milliseconds(500))
+        window.layoutIfNeeded()
+        #expect(model.selectedSummary?.serverID == articles[100].serverID)
+        #expect(scroll.contentView.bounds.origin.y > launchOffset,
+                "the sidebar did not follow Next Article")
     }
 
     /// The rows may legitimately be visible before the first scroll request ever arrives: a

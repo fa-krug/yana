@@ -48,6 +48,9 @@ final class SyncEngine {
     /// is already injected the same way (`container`, `client`, `settings`).
     private let imageStore: ImageStore
     private let maxConcurrentContentFetches = 6
+    /// How many content-less articles `backfillMissingContent` fetches per batch. A batch bound,
+    /// not a per-sync cap: the backfill keeps going batch after batch until the backlog is empty.
+    private static let contentBackfillBatchSize = 500
 
     /// Pagination page size for `/api/v1/articles/sync`. A page shorter than this means the
     /// server has caught up to head -- see the loop's termination check in `sync()`.
@@ -240,20 +243,37 @@ final class SyncEngine {
     /// the next sync pass. Deliberately swallows individual fetch failures rather than aborting
     /// the whole pass -- a spotty connection should degrade to "some articles still pending,"
     /// not "sync failed."
+    ///
+    /// Drains the whole backlog in batches of `contentBackfillBatchSize`, rather than fetching one
+    /// batch per sync. It used to stop after the first 500, oldest first, so a library that synced
+    /// a few thousand summaries at once (a first sync, or a device that had been away) got its
+    /// newest articles' bodies only after several more syncs -- on the Mac, whose refresh runs on
+    /// an interval, that was hours of articles rendering as a title and a byline with no text.
+    /// The loop ends when nothing is left, or when a batch changes nothing (every fetch in it
+    /// failed): re-requesting the same failing ids inside one pass cannot help, and the next sync
+    /// retries them.
     private func backfillMissingContent() async throws {
         let writer = SyncWriter(modelContainer: container)
-        let pending = await OffMainActor.run { await writer.articlesMissingContent(limit: 500) }
-        guard !pending.isEmpty else { return }
+        var previous: [Int] = []
+        while true {
+            let pending = await OffMainActor.run {
+                await writer.articlesMissingContent(limit: Self.contentBackfillBatchSize)
+            }.map(\.serverID)
+            guard !pending.isEmpty, pending != previous else { return }
+            previous = pending
+            await backfillContent(for: pending, writer: writer)
+        }
+    }
 
+    /// One batch of `backfillMissingContent`.
+    private func backfillContent(for serverIDs: [Int], writer: SyncWriter) async {
         // `articlesMissingContent` returns `persistentID` alongside `serverID`, but nothing below
         // needs the persistentID -- `SyncWriter.applyContent` re-resolves the article by
         // `serverID` itself (the two calls can race against a concurrent removal, and re-fetching
         // is what makes that race safe). Projecting down to `[Int]` also sidesteps passing a
         // tuple across the task-group's `@Sendable` boundary -- tuples can't satisfy an explicit
         // `Sendable` generic constraint, only their elements can.
-        let serverIDs = pending.map(\.serverID)
         let client = client
-        let container = container
         let imageStore = imageStore
 
         await runBounded(serverIDs, maxConcurrency: maxConcurrentContentFetches) { serverID in

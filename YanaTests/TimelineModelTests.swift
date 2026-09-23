@@ -171,7 +171,7 @@ struct TimelineModelTests {
 
         model.applyTimeline()
 
-        #expect(model.scrollTarget?.id == model.selectedSummary?.identifier)
+        #expect(model.scrollTarget?.id == model.selectedSummary?.stableKey)
     }
 
 

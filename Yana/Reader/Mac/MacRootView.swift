@@ -514,7 +514,9 @@ struct MacSidebarView: View {
     @ViewBuilder
     private func sidebarList(proxy: ScrollViewProxy) -> some View {
         List(selection: $model.selection) {
-            ForEach(displayed) { summary in
+            // Identified by `stableKey`, the same value each row is tagged with and every
+            // `SidebarScrollRequest` names, so `proxy.scrollTo` can resolve it (see that type).
+            ForEach(displayed, id: \.stableKey) { summary in
                 MacArticleRow(summary: summary, model: model,
                               isSelected: model.selection == summary.stableKey)
                     .listRowInsets(Self.rowInsets)
@@ -522,7 +524,7 @@ struct MacSidebarView: View {
                     // Only the row currently being scrolled to reports its position, and only
                     // while the launch reveal is still pending -- every other row pays nothing.
                     .modifier(SidebarTargetRowProbe(
-                        isTarget: !isRevealed && summary.identifier == model.scrollTarget?.id,
+                        isTarget: !isRevealed && summary.stableKey == model.scrollTarget?.id,
                         onPosition: targetRowDidReport))
             }
         }

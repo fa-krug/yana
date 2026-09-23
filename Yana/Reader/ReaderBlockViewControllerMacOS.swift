@@ -1,6 +1,7 @@
 #if os(macOS)
 import SwiftUI
 import AppKit
+import SwiftData
 
 /// The AppKit twin of `ReaderBlockViewController` (`ReaderBlockViewController.swift`,
 /// `#if os(iOS)`). Same type name, same public surface — `article`, `reload()`, `summaryPending`,
@@ -24,6 +25,8 @@ import AppKit
 final class ReaderBlockViewController: NSViewController {
 
     let article: Article
+    /// `article`'s id, captured while the instance is known to be live; see `contentMayHaveArrived`.
+    private let articleID: PersistentIdentifier
     private let onRefresh: (() -> Void)?
     private let onRequestShowBars: () -> Void
     private let settings = AppSettings()
@@ -57,6 +60,14 @@ final class ReaderBlockViewController: NSViewController {
     /// Retries attaching the growth observation while a restore is pending; see `armObservationRetry`.
     private var observationRetryTask: Task<Void, Never>?
 
+    /// Whether the last render drew an article whose body had not been fetched yet
+    /// (`Article.hasContent == false`). The body is a `ReaderArticle` *snapshot*, so content that the
+    /// sync engine's backfill writes later never reaches it on its own; `contentMayHaveArrived`
+    /// re-renders the page once it lands. Without this, a page built before its content (the
+    /// launch page on a library whose backfill is still running, and every page prewarmed or
+    /// cached around it) stayed a title and a byline with no body for as long as it was cached.
+    private var renderedAwaitingContent = false
+
     /// True between `willStartLiveScroll` and `didEndLiveScroll`.
     ///
     /// **This stands in for UIKit's `isDragging` / `isDecelerating`, and it is a weaker signal.**
@@ -69,6 +80,7 @@ final class ReaderBlockViewController: NSViewController {
 
     init(article: Article, allowsFullscreen: Bool, onRefresh: (() -> Void)?, onRequestShowBars: @escaping () -> Void) {
         self.article = article
+        self.articleID = article.persistentModelID
         self.onRefresh = onRefresh
         self.onRequestShowBars = onRequestShowBars
         super.init(nibName: nil, bundle: nil)
@@ -115,6 +127,43 @@ final class ReaderBlockViewController: NSViewController {
             self, selector: #selector(rebuild),
             name: AppSettings.articleFontDidChange, object: nil
         )
+        // Any context's save, including `SyncWriter`'s background one: the content backfill is how
+        // a body arrives for an article this page already rendered empty.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(contentMayHaveArrived(_:)),
+            name: ModelContext.didSave, object: nil
+        )
+    }
+
+    /// Re-render once the body this page was built without has landed. `nonisolated` because
+    /// `didSave` is posted on the saving context's own thread, and `SyncWriter` saves off-main.
+    ///
+    /// Only a save that names this page's own article counts, matched by `articleID` captured at
+    /// init. Reading `article` for any other save would be both wasted and unsafe: a cached page
+    /// can outlive its article (a sync removal, a local delete), and touching a destroyed model
+    /// instance traps.
+    @objc nonisolated private func contentMayHaveArrived(_ note: Notification) {
+        let changed = LibraryChangeSet(userInfo: note.userInfo).changed
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.renderedAwaitingContent, changed.contains(self.articleID) else { return }
+                self.refreshArticleFromStore()
+                guard self.article.hasContent else { return }
+                self.reload()
+            }
+        }
+    }
+
+    /// The main context does **not** merge a background context's save into instances it already
+    /// holds -- measured: `article.hasContent` stays `false` indefinitely after `SyncWriter` writes
+    /// it -- but a fetch that returns the instance refreshes it. So re-fetch it by id before
+    /// reading.
+    private func refreshArticleFromStore() {
+        guard let context = article.modelContext else { return }
+        let id = articleID
+        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.persistentModelID == id })
+        descriptor.fetchLimit = 1
+        _ = try? context.fetch(descriptor)
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
@@ -523,6 +572,7 @@ final class ReaderBlockViewController: NSViewController {
         // selectable upgrade. Later rebuilds (font/size change, reload) go straight to selectable.
         let deferSelectable = startsWithFastText
         startsWithFastText = false
+        renderedAwaitingContent = !article.hasContent
         return ArticleBlockView(
             article: ReaderArticle(article),
             textSize: settings.articleTextSize,
