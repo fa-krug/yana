@@ -11,6 +11,10 @@ import SwiftUI
 /// (e.g. the launch anchor restore immediately followed by a remote anchor for that same article)
 /// is not silently deduplicated by SwiftUI's usual value-equality change detection.
 struct SidebarScrollRequest: Equatable {
+    /// The target row's `stableKey` -- the same value the sidebar rows are identified *and* tagged
+    /// by. Not the raw `identifier`: once an article is synced its `stableKey` is `"s<serverID>"`,
+    /// so a request keyed by `identifier` named a row the List did not have and silently scrolled
+    /// nowhere, at launch and on every Next/Previous Article.
     let id: String
     let token: Int
 }
@@ -169,7 +173,7 @@ final class TimelineModel {
         if let modelContext, let article = resolve(filteredArticles[next]) {
             ArticleWrites.markRead(article, modelContext: modelContext)
         }
-        requestScroll(to: filteredArticles[next].identifier)
+        requestScroll(to: filteredArticles[next].stableKey)
     }
 
     /// Bumps `scrollTarget` for a programmatic selection change (never for the `selection` setter's
@@ -217,7 +221,7 @@ final class TimelineModel {
         didRestoreAnchor = true
         // The launch case: the sidebar has no rows to scroll to until this delivery, so this is the
         // first point a scroll request can be made.
-        requestScroll(to: resolved.articles[currentIndex].identifier)
+        requestScroll(to: resolved.articles[currentIndex].stableKey)
     }
 
     /// Applies a reading position pulled from another paired device (see
@@ -249,7 +253,7 @@ final class TimelineModel {
         let previous = currentIndex
         currentIndex = index
         if currentIndex != previous {
-            requestScroll(to: filteredArticles[currentIndex].identifier)
+            requestScroll(to: filteredArticles[currentIndex].stableKey)
         }
         return true
     }
@@ -276,7 +280,7 @@ final class TimelineModel {
             return
         }
         if currentIndex != previous {
-            requestScroll(to: filteredArticles[currentIndex].identifier)
+            requestScroll(to: filteredArticles[currentIndex].stableKey)
         }
     }
 
@@ -300,7 +304,7 @@ final class TimelineModel {
         guard clamped != currentIndex else { return }
         currentIndex = clamped
         if filteredArticles.indices.contains(clamped) {
-            requestScroll(to: filteredArticles[clamped].identifier)
+            requestScroll(to: filteredArticles[clamped].stableKey)
         }
     }
 

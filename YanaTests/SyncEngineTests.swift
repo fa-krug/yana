@@ -150,6 +150,63 @@ struct SyncEngineTests {
         }
     }
 
+    /// The content backfill must drain the whole backlog in one sync, not stop after its first
+    /// batch of 500: a first sync of a few thousand summaries otherwise left every article past
+    /// the 500 oldest without a body until several more syncs had run (on the Mac, hours). An id
+    /// that fails every time must not keep the loop spinning either -- it is left for the next sync.
+    @Test func backfillDrainsTheWholeBacklogInOneSync() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let defaults = UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!
+            let settings = AppSettings(defaults: defaults)
+            let total = 710
+            let failingID = 3
+
+            nonisolated func page(startingAt start: Int, count: Int) -> Data {
+                let items = (0..<count).map { i -> String in
+                    let id = start + i
+                    return #"{"id":\#(id),"feedId":1,"name":"A\#(id)","identifier":"a\#(id)","date":"2026-01-01T00:00:00Z","author":"","icon":null,"read":false,"starred":false,"createdAt":"2026-01-01T00:00:\#(String(format: "%02d", id % 60))Z","updatedAt":"2026-01-01T00:00:00Z"}"#
+                }.joined(separator: ",")
+                return #"{"new":[\#(items)],"updated":[],"removed":[],"nextCursor":"c\#(start)"}"#.data(using: .utf8)!
+            }
+
+            var syncCallCount = 0
+            var failingFetches = 0
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                let path = request.url!.path
+                let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                if path == "/api/v1/feeds" { return (ok, #"{"feeds":[]}"#.data(using: .utf8)!) }
+                if path == "/api/v1/tags" { return (ok, #"{"tags":[]}"#.data(using: .utf8)!) }
+                if path == "/api/v1/reading-position" {
+                    return (ok, #"{"articleId":null,"updatedAt":null}"#.data(using: .utf8)!)
+                }
+                if path == "/api/v1/articles/\(failingID)/content" {
+                    failingFetches += 1
+                    let error = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                    return (error, #"{"error":{"code":"internal","message":"boom"}}"#.data(using: .utf8)!)
+                }
+                if path.hasSuffix("/content") {
+                    return (ok, #"{"version":1,"blocks":[{"type":"paragraph","runs":[{"text":"Body","styles":[],"link":null}]}]}"#.data(using: .utf8)!)
+                }
+                let start = syncCallCount * 200
+                syncCallCount += 1
+                return (ok, page(startingAt: start, count: max(0, min(200, total - start))))
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let engine = SyncEngine(container: container, client: client, settings: settings)
+            try await engine.sync()
+
+            let articles = try container.mainContext.fetch(FetchDescriptor<Article>())
+            #expect(articles.count == total)
+            let missing = articles.filter { !$0.hasContent }.compactMap(\.serverID)
+            #expect(missing == [failingID], "articles left without content after one sync: \(missing.count)")
+            #expect(failingFetches <= 3, "a permanently failing id was retried \(failingFetches) times in one pass")
+        }
+    }
+
     /// A page whose `new`/`updated` arrays are short but whose `removed` array makes up the rest
     /// of `pageLimit` must still be treated as a full page -- otherwise a page consisting mostly
     /// or entirely of deletions would look short and stop the loop early, silently truncating a

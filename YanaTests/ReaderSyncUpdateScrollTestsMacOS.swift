@@ -149,6 +149,43 @@ struct ReaderSyncUpdateScrollTestsMacOS {
         #expect(after == 900, "the reader jumped to \(after) after a sync updated the article")
     }
 
+    /// A page built before the content backfill reached its article (a launch mid-backfill, or a
+    /// prewarmed/cached neighbor) must pick the body up when `SyncWriter` writes it from its own
+    /// background context. The page renders a `ReaderArticle` snapshot, so without the page
+    /// listening for the save it stayed a title and a byline for as long as it was cached.
+    @Test func aPageBuiltBeforeItsContentShowsTheBodyOnceTheBackfillWritesIt() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        let article = Article(title: "Article 5", identifier: "https://example.com/5",
+                              url: "https://example.com/5", date: .now, author: "Author")
+        article.serverID = 105
+        article.feed = feed
+        context.insert(article)
+        try context.save()
+        #expect(!article.hasContent)
+
+        let (window, page) = await makePage(article: article)
+        defer { window.orderOut(nil) }
+        let scroll = try #require(scrollViews(page.view).first, "no hosted scroll view")
+        let emptyHeight = try #require(scroll.documentView).frame.height
+
+        let paragraphs = (0..<30).map { p in
+            #"{"type":"paragraph","runs":[{"text":"Paragraph \#(p). Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor.","styles":[],"link":null}]}"#
+        }
+        let json = #"{"version":1,"blocks":[\#(paragraphs.joined(separator: ","))]}"#
+        let document = try JSONDecoder().decode(WireDocument.self, from: Data(json.utf8))
+        let writer = SyncWriter(modelContainer: container)
+        let applied = await OffMainActor.run { await writer.applyContent(articleServerID: 105, document: document) }
+        #expect(applied)
+        try await Task.sleep(for: .milliseconds(800))
+        window.layoutIfNeeded()
+        let height = try #require(scroll.documentView).frame.height
+        #expect(height > emptyHeight + 600,
+                "the page never re-rendered with the body: \(emptyHeight) -> \(height)")
+    }
+
     /// The held-until-the-body-can-hold-it rule (`applyPendingReadingOffset`), which on macOS is
     /// driven by the document view's `frameDidChange` notification rather than by KVO on a content
     /// size. A restore asked for before the body has grown must stay pending and then land, not be

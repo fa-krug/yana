@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import UIKit
+import SwiftData
 
 /// Hosts one article's native `ArticleBlockView` (a `UIHostingController`) as a page inside the
 /// reader's `UIPageViewController`. Replaces the former `WKWebView`-backed `ReaderWebViewController`:
@@ -11,6 +12,8 @@ import UIKit
 final class ReaderBlockViewController: UIViewController {
 
     let article: Article
+    /// `article`'s id, captured while the instance is known to be live; see `contentMayHaveArrived`.
+    private let articleID: PersistentIdentifier
     private let onRefresh: (() -> Void)?
     private let onRequestShowBars: () -> Void
     private let settings = AppSettings()
@@ -49,8 +52,16 @@ final class ReaderBlockViewController: UIViewController {
     /// it before the view exists, e.g. when prewarming a neighbor).
     private var tapZonesActive = false
 
+    /// Whether the last render drew an article whose body had not been fetched yet
+    /// (`Article.hasContent == false`). The body is a `ReaderArticle` *snapshot* and the pager
+    /// caches pages, so content the sync engine's backfill writes later never reaches it on its
+    /// own; `contentMayHaveArrived` re-renders the page once it lands. Same mechanism as the macOS
+    /// twin (`ReaderBlockViewControllerMacOS.swift`).
+    private var renderedAwaitingContent = false
+
     init(article: Article, allowsFullscreen: Bool, onRefresh: (() -> Void)?, onRequestShowBars: @escaping () -> Void) {
         self.article = article
+        self.articleID = article.persistentModelID
         self.onRefresh = onRefresh
         self.onRequestShowBars = onRequestShowBars
         super.init(nibName: nil, bundle: nil)
@@ -84,11 +95,48 @@ final class ReaderBlockViewController: UIViewController {
             self, selector: #selector(rebuild),
             name: AppSettings.articleFontDidChange, object: nil
         )
+        // Any context's save, including `SyncWriter`'s background one: the content backfill is how
+        // a body arrives for an article this page already rendered empty.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(contentMayHaveArrived(_:)),
+            name: ModelContext.didSave, object: nil
+        )
 
         configureTapZones()
     }
 
     deinit { NotificationCenter.default.removeObserver(self) }
+
+    /// Re-render once the body this page was built without has landed. `nonisolated` because
+    /// `didSave` is posted on the saving context's own thread, and `SyncWriter` saves off-main.
+    ///
+    /// Only a save that names this page's own article counts, matched by `articleID` captured at
+    /// init. Reading `article` for any other save would be both wasted and unsafe: a cached page
+    /// can outlive its article (a sync removal, a local delete), and touching a destroyed model
+    /// instance traps.
+    @objc nonisolated private func contentMayHaveArrived(_ note: Notification) {
+        let changed = LibraryChangeSet(userInfo: note.userInfo).changed
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.renderedAwaitingContent, changed.contains(self.articleID) else { return }
+                self.refreshArticleFromStore()
+                guard self.article.hasContent else { return }
+                self.reload()
+            }
+        }
+    }
+
+    /// The main context does **not** merge a background context's save into instances it already
+    /// holds -- measured: `article.hasContent` stays `false` indefinitely after `SyncWriter` writes
+    /// it -- but a fetch that returns the instance refreshes it. So re-fetch it by id before
+    /// reading.
+    private func refreshArticleFromStore() {
+        guard let context = article.modelContext else { return }
+        let id = articleID
+        var descriptor = FetchDescriptor<Article>(predicate: #Predicate { $0.persistentModelID == id })
+        descriptor.fetchLimit = 1
+        _ = try? context.fetch(descriptor)
+    }
 
     /// Re-render after the article's content changed underneath this page. The find index is
     /// rebuilt against the new body and the query re-run (without scrolling), so highlights and the
@@ -344,6 +392,7 @@ final class ReaderBlockViewController: UIViewController {
         // selectable upgrade. Later rebuilds (font/size change, reload) go straight to selectable.
         let deferSelectable = startsWithFastText
         startsWithFastText = false
+        renderedAwaitingContent = !article.hasContent
         return ArticleBlockView(
             article: ReaderArticle(article),
             textSize: settings.articleTextSize,

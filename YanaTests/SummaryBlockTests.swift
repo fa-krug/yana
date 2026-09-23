@@ -40,10 +40,15 @@ struct SummaryBlockTests {
 
     // MARK: - The summarize action
 
+    /// `ModelContext(container)`, never `container.mainContext`: a context built this way retains
+    /// its container, `mainContext` does not. Returning `mainContext` let the container be freed the
+    /// moment this helper returned, and SwiftData trapped on the first `insert` -- the seven
+    /// "signal trap" crashes this suite used to report, long blamed on Apple Intelligence being
+    /// unavailable in the simulator (every summarize test here uses a stub provider).
     private func makeContext() throws -> ModelContext {
         let container = try ModelContainer(for: Article.self, Feed.self, Tag.self,
                                           configurations: .init(isStoredInMemoryOnly: true))
-        return container.mainContext
+        return ModelContext(container)
     }
 
     private func makeArticle(in context: ModelContext, blocks: [Block]) -> Article {
