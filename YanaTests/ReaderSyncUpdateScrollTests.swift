@@ -115,5 +115,50 @@ struct ReaderSyncUpdateScrollTests {
         print("PROBE sync-update: offset 900 -> \(after)")
         #expect(after == 900, "the reader jumped to \(after) after a sync updated the article")
     }
+    /// The iOS twin of the macOS test of the same name: a page built before the content backfill
+    /// reached its article (the launch page mid-backfill, or a prewarmed/cached neighbor) must pick
+    /// the body up when `SyncWriter` writes it from its own background context. The page renders a
+    /// `ReaderArticle` snapshot and the pager caches pages, so without listening for the save it
+    /// stayed a title and a byline for as long as it was cached.
+    @Test func aPageBuiltBeforeItsContentShowsTheBodyOnceTheBackfillWritesIt() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        let article = Article(title: "Article 5", identifier: "https://example.com/5",
+                              url: "https://example.com/5", date: .now, author: "Author")
+        article.serverID = 105
+        article.feed = feed
+        context.insert(article)
+        try context.save()
+        #expect(!article.hasContent)
+
+        let page = ReaderBlockViewController(article: article, allowsFullscreen: false,
+                                             onRefresh: nil, onRequestShowBars: {})
+        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = page
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(500))
+        window.layoutIfNeeded()
+        let emptyHeight = try #require(innerScrollView(page.view), "no hosted scroll view").contentSize.height
+
+        let paragraphs = (0..<30).map { p in
+            #"{"type":"paragraph","runs":[{"text":"Paragraph \#(p). Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor.","styles":[],"link":null}]}"#
+        }
+        let json = #"{"version":1,"blocks":[\#(paragraphs.joined(separator: ","))]}"#
+        let document = try JSONDecoder().decode(WireDocument.self, from: Data(json.utf8))
+        let writer = SyncWriter(modelContainer: container)
+        let applied = await OffMainActor.run { await writer.applyContent(articleServerID: 105, document: document) }
+        #expect(applied)
+        try await Task.sleep(for: .milliseconds(800))
+        window.layoutIfNeeded()
+        let height = innerScrollView(page.view)?.contentSize.height ?? 0
+        #expect(height > emptyHeight + 600,
+                "the page never re-rendered with the body: \(emptyHeight) -> \(height)")
+    }
 }
 #endif
