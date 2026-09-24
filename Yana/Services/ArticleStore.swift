@@ -24,6 +24,14 @@ actor ArticleSummaryLoader {
     /// saved anchor (inclusive), ascending. Falls back to the newest `2*radius+1` when there is no
     /// anchor or it is gone. Same light columns / prefetch as `load()`.
     func loadWindow(around anchorID: String?, serverID: Int? = nil, radius: Int) throws -> [ArticleSummary] {
+        try Self.window(in: modelContext, around: anchorID, serverID: serverID, radius: radius)
+    }
+
+    /// `loadWindow`'s body, on any context -- `ArticleStore.preloadSynchronously()` runs it on a
+    /// main-thread context because it must return before the Mac window is created.
+    nonisolated static func window(
+        in modelContext: ModelContext, around anchorID: String?, serverID: Int? = nil, radius: Int
+    ) throws -> [ArticleSummary] {
         // The window splits on `createdAt` (`>= anchorCreatedAt` newer, `< anchorCreatedAt`
         // older). Under exact-timestamp ties the anchor may not land in the truncated window; that
         // is acceptable and self-healing — this is only the transient cold-cache first-paint set,
@@ -31,7 +39,7 @@ actor ArticleSummaryLoader {
         // position regardless.
         let tagNamesByID = ArticleSummary.tagNameLookup(in: modelContext)
 
-        if let anchorCreatedAt = try anchorCreatedAt(identifier: anchorID, serverID: serverID) {
+        if let anchorCreatedAt = try anchorCreatedAt(in: modelContext, identifier: anchorID, serverID: serverID) {
             var newerD = lightDescriptor(
                 predicate: #Predicate { $0.createdAt >= anchorCreatedAt }, order: .forward
             )
@@ -66,7 +74,7 @@ actor ArticleSummaryLoader {
     func summaries(for ids: [PersistentIdentifier]) throws -> [ArticleSummary] {
         guard !ids.isEmpty else { return [] }
         let wanted = Set(ids)
-        var descriptor = lightDescriptor(
+        var descriptor = Self.lightDescriptor(
             predicate: #Predicate { wanted.contains($0.persistentModelID) }, order: .forward
         )
         descriptor.fetchLimit = wanted.count
@@ -78,7 +86,9 @@ actor ArticleSummaryLoader {
     /// over `identifier` (only a per-feed dedup key -- two different feeds can share one, which
     /// could otherwise center this cold-start window on the wrong feed's article) -- see
     /// `TimelineIdentifiable.stableKey`.
-    private func anchorCreatedAt(identifier: String?, serverID: Int?) throws -> Date? {
+    private nonisolated static func anchorCreatedAt(
+        in modelContext: ModelContext, identifier: String?, serverID: Int?
+    ) throws -> Date? {
         if let serverID {
             var d = FetchDescriptor<Article>(predicate: #Predicate { $0.serverID == serverID })
             d.fetchLimit = 1
@@ -97,7 +107,7 @@ actor ArticleSummaryLoader {
 
     /// A `(createdAt, serverID)`-sorted descriptor restricted to the light timeline columns, with
     /// `feed`/`tags` prefetched — the same shape `load()` uses, factored out for the windowed fetches.
-    private func lightDescriptor(
+    private nonisolated static func lightDescriptor(
         predicate: Predicate<Article>?, order: SortOrder
     ) -> FetchDescriptor<Article> {
         var d = FetchDescriptor<Article>(
@@ -211,7 +221,8 @@ final class ArticleStore {
     /// anchor-centered DB window) and flip `hasLoaded`, yield so SwiftUI can build the pager off
     /// it, then reconcile to the authoritative full load.
     func bootstrap() async {
-        await publishFastDataset()
+        // Already done synchronously on the Mac, before its window existed.
+        if !hasLoaded { await publishFastDataset() }
         // Let the reader build + adopt the warmed web view before the full DB fetch competes for
         // the main thread; the full load self-heals the displayed position by identifier, so
         // deferring it never strands the anchor.
@@ -228,7 +239,8 @@ final class ArticleStore {
     /// *partial* index, and writing it to the disk cache would leave the next cold start painting a
     /// 51-row timeline. The cache is only ever rewritten from a full load or a splice on top of one.
     func publishFastDataset() async {
-        if let cached = await StartupTrace.measure("ArticleStore.cache.load", { await cache.load() }) {
+        if let cached = await StartupTrace.measure("ArticleStore.cache.load", { await cache.load() }),
+           !cached.isEmpty {
             summaries = cached
         } else {
             let container = container
@@ -244,6 +256,31 @@ final class ArticleStore {
                 }
             }
             summaries = window
+        }
+        hasLoaded = true
+        StartupTrace.event("ArticleStore.hasLoaded")
+    }
+
+    /// `publishFastDataset()`, synchronously on the main thread -- for the Mac, which calls it from
+    /// `YanaApp.init` so the window never exists without a timeline to show. Painting the window
+    /// first and the rows a moment later read as "No Articles", then the articles; holding the
+    /// window this long instead is the smoother of the two. Cheap by construction: the binary cache
+    /// decodes a 30 000-row index in ~11ms (`SummaryIndexCache`), and without a cache the fallback
+    /// is the same ~51-row anchor window the async path fetches. `bootstrap()` then skips its own
+    /// fast step and goes straight to the full reconcile.
+    func preloadSynchronously() {
+        guard !hasLoaded else { return }
+        if let cached = StartupTrace.measure("ArticleStore.preload.cache", { cache.loadNow() }),
+           !cached.isEmpty {
+            summaries = cached
+        } else {
+            let anchor = anchorProvider()
+            summaries = StartupTrace.measure("ArticleStore.preload.window") {
+                (try? ArticleSummaryLoader.window(
+                    in: ModelContext(container),
+                    around: anchor.identifier, serverID: anchor.serverID, radius: Self.windowRadius
+                )) ?? []
+            }
         }
         hasLoaded = true
         StartupTrace.event("ArticleStore.hasLoaded")
