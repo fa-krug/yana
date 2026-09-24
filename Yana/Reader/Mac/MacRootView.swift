@@ -174,6 +174,12 @@ struct MacRootView: View {
             InitialSyncLoadingView()
         } else if appState.initialSyncFailed, !settings.hasCompletedInitialSync {
             InitialSyncFailedView { retryInitialSync() }
+        } else if !store.hasLoaded {
+            // The store publishes its first index a beat after the window appears (it waits on the
+            // disk cache). Judging "empty library" before then flashed "No Articles" on every
+            // launch before the real timeline replaced it, so draw nothing until it has loaded --
+            // the same gate the iOS reader uses (`TimelineLoadState`).
+            Color.clear
         } else if model.filteredArticles.isEmpty {
             MacEmptyLibraryView(
                 isPaired: AuthenticatedClient.current() != nil,
@@ -568,7 +574,9 @@ struct MacSidebarView: View {
         .searchFocused($searchFieldFocused)
         .onChange(of: model.searchFocusToken) { _, _ in searchFieldFocused = true }
         .overlay {
-            if displayed.isEmpty {
+            // `hasLoaded`: before the store's first publish every launch looks like an empty
+            // library -- see `MacRootView.detail`.
+            if displayed.isEmpty, store.hasLoaded || !searchText.isEmpty {
                 if searchText.isEmpty {
                     ContentUnavailableView("No Articles", systemImage: "tray",
                                            description: Text("Pair a Yana Server that has feeds and articles configured."))

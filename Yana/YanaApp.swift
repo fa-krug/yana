@@ -40,6 +40,13 @@ enum AppContainer {
                     return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                              configurations: config)
                 }
+                // Never the developer's real store inside a unit-test host -- see
+                // `TestEnvironment.isolatesProcessStorage`.
+                if TestEnvironment.isolatesProcessStorage {
+                    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+                    return try ModelContainer(for: Feed.self, Tag.self, Article.self,
+                                             configurations: config)
+                }
                 #endif
                 let config = ModelConfiguration()
                 return try ModelContainer(for: Feed.self, Tag.self, Article.self,

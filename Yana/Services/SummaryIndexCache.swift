@@ -12,7 +12,11 @@ actor SummaryIndexCache {
         if let fileURL {
             self.fileURL = fileURL
         } else {
-            let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            // A unit-test host must not overwrite the real app's cache -- see
+            // `TestEnvironment.isolatesProcessStorage`.
+            let dir = TestEnvironment.isolatesProcessStorage
+                ? FileManager.default.temporaryDirectory
+                : FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             self.fileURL = dir.appendingPathComponent("summary-index.plist")
         }
     }
