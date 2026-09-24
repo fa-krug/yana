@@ -9,7 +9,11 @@ import SwiftData
 enum ServerDisconnect {
     @MainActor
     static func disconnect(settings: AppSettings, context: ModelContext = AppContainer.shared.mainContext,
-                           monitor: OperationMonitor = .shared) {
+                           monitor: OperationMonitor = .shared,
+                           appState: AppState? = nil, articleStore: ArticleStore? = nil) {
+        // Up before the wipe, so the window never shows the emptied library or the demo articles
+        // trickling in; lowered only once the index reflects the finished seed.
+        appState?.isLoadingDemoContent = true
         // Stop every operation this device is still waiting on. This is not cosmetic: a monitor
         // that survives the wipe below keeps polling the old server's job/run row and, on a
         // terminal status, runs `SyncEngine.sync()` with the old client -- resurrecting the
@@ -23,9 +27,9 @@ enum ServerDisconnect {
         // `UpdateActivity.cancel()` on top of that covers `PairingSync`'s own `restart`-wrapped
         // initial sync, the only thing still routed through `UpdateActivity.current`. It does NOT
         // cover `BackgroundRefreshManager` or `InitialSyncGate` called from elsewhere, which run
-        // their syncs outside `UpdateActivity` entirely and are therefore not cancellable this way
-        // -- a full fix would require `SyncEngine` to re-check `AuthenticatedClient.current()`
-        // before every write batch, which is out of scope here.
+        // their syncs outside `UpdateActivity` entirely. Those are stopped by `SyncEngine` itself,
+        // which re-checks the stored token before every write and throws `.pairingChanged` once
+        // the deletion below lands; the seed task at the bottom waits for that to happen.
         UpdateActivity.shared.cancel()
 
         KeychainService.deleteDeviceToken()
@@ -56,7 +60,17 @@ enum ServerDisconnect {
         settings.hasCompletedInitialSync = false
 
         Task {
+            // A sync that was mid-page when the token went away can still finish the write it had
+            // already started, after the wipe above. Wait for it to stop, then wipe again: the
+            // seed below bails as soon as any `Feed` exists, so a single stray server feed left
+            // behind would replace the demo library with the old server's articles.
+            await SyncEngine.cancelAndWaitForInFlightSync(container: context.container)
+            LocalLibraryReset.wipe(context: context)
             await ScreenshotSeed.seed(into: context)
+            // The seed's saves reach `ArticleStore` through its debounced splice; settle the index
+            // explicitly before the loading screen lifts, as `InitialSyncGate` does.
+            await articleStore?.refreshNow()
+            appState?.isLoadingDemoContent = false
         }
     }
 }

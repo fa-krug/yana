@@ -28,7 +28,10 @@ struct WelcomeWindowRoot: View {
             // Only self-close when there is genuinely nothing left to do: onboarding is done AND
             // the device still holds a valid session. If re-pairing is needed,
             // `AuthenticatedClient.current()` is nil, so the window correctly stays open.
-            if settings.hasCompletedOnboarding, AuthenticatedClient.current() != nil {
+            // Opened on `.server` it is a deliberate server change from Settings, which a paired
+            // device is exactly the one to make, so it stays open then too.
+            if settings.hasCompletedOnboarding, AuthenticatedClient.current() != nil,
+               appState.welcomeInitialStep != .server {
                 dismiss()
             }
         }

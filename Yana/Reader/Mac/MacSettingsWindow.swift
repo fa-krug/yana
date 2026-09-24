@@ -71,11 +71,21 @@ struct MacSettingsWindow: View {
         }
     }
 
+    /// "Change…" opens the welcome window on its server step, the same screen onboarding pairs
+    /// from, and closes Settings so the two windows are not left stacked.
+    private var serverSection: some View {
+        ServerSettingsSection(onChangeServer: {
+            appState.welcomeInitialStep = .server
+            openWindow(id: WindowID.welcome)
+            dismiss()
+        })
+    }
+
     @ViewBuilder private var detail: some View {
         switch selection ?? .general {
         case .general:
             settingsForm {
-                ServerSettingsSection()
+                serverSection
                 NotificationsSettingsSection()
                 LibrarySettingsSection()
             }
@@ -87,7 +97,7 @@ struct MacSettingsWindow: View {
                     ManagementWebView(serverBaseURL: URL(string: settings.serverBaseURL) ?? URL(string: "https://")!)
                 }
             } else {
-                settingsForm { ServerSettingsSection() }
+                settingsForm { serverSection }
             }
         case .ai:
             settingsForm { AIModeSettingsSection() }

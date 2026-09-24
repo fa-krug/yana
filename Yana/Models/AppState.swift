@@ -25,4 +25,9 @@ final class AppState {
     /// drives the "couldn't reach your server" state with a Retry (audit U3). Cleared when a
     /// retry starts. Meaningless once `hasCompletedInitialSync` is set.
     var initialSyncFailed = false
+    /// True from "Remove Server Connection" until the demo library it falls back to has been seeded
+    /// and the timeline index has caught up, gating the window behind the same full-screen loading
+    /// view as the first sync -- see `ServerDisconnect`. Without it the wiped library and the
+    /// arriving demo articles were both briefly visible.
+    var isLoadingDemoContent = false
 }

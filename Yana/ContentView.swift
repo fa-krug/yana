@@ -166,22 +166,50 @@ struct ContentView: View {
     @Environment(ArticleStore.self) private var store
     @Environment(AppSettings.self) private var settings
 
+    /// The first sync after pairing replaces the whole window on both platforms, not just the
+    /// reader: its backlog lands page by page, and a list that keeps filling and reshuffling under
+    /// the user is exactly what `InitialSyncGate` exists to hide.
+    @ViewBuilder private var gatedRoot: some View {
+        if appState.isLoadingDemoContent {
+            InitialSyncLoadingView(
+                title: "Loading Demo Content",
+                message: "Preparing a few sample articles to try the app with."
+            )
+        } else if appState.isPerformingInitialSync {
+            InitialSyncLoadingView()
+        } else if appState.initialSyncFailed, !settings.hasCompletedInitialSync {
+            InitialSyncFailedView { retryInitialSync() }
+        } else {
+            #if os(macOS)
+            MacRootView(appState: appState, settings: settings)
+            #else
+            ReaderScreen(appState: appState)
+            #endif
+        }
+    }
+
+    /// Retries the blocking first-sync gate after `InitialSyncFailedView`'s "Try Again" button.
+    /// No-ops if the device isn't actually paired (shouldn't happen -- this state is only reachable
+    /// after a successful pairing -- but matches every other call site's nil-client handling).
+    private func retryInitialSync() {
+        guard let client = AuthenticatedClient.current() else { return }
+        appState.initialSyncFailed = false
+        Task {
+            await InitialSyncGate.run(
+                container: AppContainer.shared, client: client,
+                articleStore: store, appState: appState, settings: settings
+            )
+        }
+    }
+
     #if os(macOS)
     var body: some View {
-        MacRootView(appState: appState, settings: settings)
+        gatedRoot
             .modifier(ContentRootLifecycle(appState: appState))
     }
     #else
     var body: some View {
-        Group {
-            if appState.isPerformingInitialSync {
-                InitialSyncLoadingView()
-            } else if appState.initialSyncFailed, !settings.hasCompletedInitialSync {
-                InitialSyncFailedView { retryInitialSync() }
-            } else {
-                ReaderScreen(appState: appState)
-            }
-        }
+        gatedRoot
         .fullScreenCover(isPresented: $appState.showWelcome) {
             WelcomeView(onFinish: {
                 settings.hasCompletedOnboarding = true
@@ -206,23 +234,6 @@ struct ContentView: View {
             .interactiveDismissDisabled()
         }
         .modifier(ContentRootLifecycle(appState: appState))
-    }
-
-    /// Retries the blocking first-sync gate after `InitialSyncFailedView`'s "Try Again" button.
-    /// No-ops if the device isn't actually paired (shouldn't happen -- this state is only reachable
-    /// after a successful pairing -- but matches every other call site's nil-client handling).
-    ///
-    /// iOS-only alongside the root that offers it: the Mac never shows `InitialSyncFailedView`,
-    /// because `MacRootView` is the root there regardless of the gate's state.
-    private func retryInitialSync() {
-        guard let client = AuthenticatedClient.current() else { return }
-        appState.initialSyncFailed = false
-        Task {
-            await InitialSyncGate.run(
-                container: AppContainer.shared, client: client,
-                articleStore: store, appState: appState, settings: settings
-            )
-        }
     }
     #endif
 }

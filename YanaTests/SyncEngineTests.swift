@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftData
 import Testing
 @testable import Yana
@@ -655,6 +656,35 @@ struct SyncEngineTests {
 
             #expect(sawPatch)
             #expect(settings.pendingWrites.isEmpty)
+        }
+    }
+
+    /// "Remove Server Connection" while a sync is running: the pass already holds the old client,
+    /// and the server keeps answering it, so without a pairing check the old server's feeds and
+    /// articles landed in the freshly wiped demo library. The token disappears as the first
+    /// response arrives; nothing from that pass may be written.
+    @Test func syncStopsWritingOnceThePairingChanges() async throws {
+        try await MockURLProtocol.lock.withLock {
+            let container = try makeContainer()
+            let settings = AppSettings(defaults: UserDefaults(suiteName: "SyncEngineTests.\(UUID())")!)
+            let token = OSAllocatedUnfairLock<String?>(initialState: "t")
+
+            let feedsResponse = #"{"feeds":[{"id":1,"name":"Test Feed","aggregator":"feed_content","identifier":"1","enabled":true,"dailyLimit":20,"tagIds":[],"logoImageHash":null,"updatedAt":"2026-01-01T00:00:00Z"}]}"#.data(using: .utf8)!
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [MockURLProtocol.self]
+            MockURLProtocol.stub = { request in
+                // The disconnect lands while the feeds request is on the wire.
+                token.withLock { $0 = nil }
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, feedsResponse)
+            }
+            let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t", session: URLSession(configuration: config))
+
+            let engine = SyncEngine(container: container, client: client, settings: settings,
+                                    currentToken: { token.withLock { $0 } })
+            await #expect(throws: SyncEngineError.pairingChanged) { try await engine.sync() }
+            #expect(try container.mainContext.fetch(FetchDescriptor<Feed>()).isEmpty)
+            #expect(try container.mainContext.fetch(FetchDescriptor<Article>()).isEmpty)
         }
     }
 }

@@ -32,6 +32,11 @@ enum SyncEngineError: Error, Equatable {
     /// or an account stuck in a bad state); looping forever inside a `@MainActor` method is worse
     /// than surfacing an error the caller can retry or report.
     case persistentResyncRequired
+    /// The device stopped being paired with the server this sync's client talks to (the server
+    /// connection was removed, or replaced by a different pairing) while the sync was running.
+    /// The pass stops before its next write rather than filling a library that now belongs to
+    /// demo mode or to another server with this one's articles.
+    case pairingChanged
 }
 
 /// Offline-first sync: a full pass replicates the server's article set -- summaries, full block
@@ -62,12 +67,20 @@ final class SyncEngine {
     /// forever on the main actor.
     private static let maxConsecutiveResyncAttempts = 3
 
+    /// Reads the device's stored pairing token; injectable so tests can simulate the pairing
+    /// changing mid-sync without touching the real Keychain.
+    private let currentToken: @Sendable () -> String?
+    /// `currentToken()` as it was when the running pass started -- see `isStillCurrentPairing`.
+    private var pairingSnapshot: String?
+
     init(container: ModelContainer, client: YanaAPIClient, settings: AppSettings = AppSettings(),
-         imageStore: ImageStore = .shared) {
+         imageStore: ImageStore = .shared,
+         currentToken: @escaping @Sendable () -> String? = { KeychainService.loadDeviceToken() }) {
         self.container = container
         self.client = client
         self.settings = settings
         self.imageStore = imageStore
+        self.currentToken = currentToken
     }
 
     /// In-flight `sync()` tasks, keyed by container identity rather than a single global lock so
@@ -81,6 +94,30 @@ final class SyncEngine {
     /// container is already running just awaits and shares that in-flight result.
     @MainActor
     private static var inFlightSyncs: [ObjectIdentifier: Task<SyncResult, Error>] = [:]
+
+    /// Cancels the sync in flight against `container`, if any, and waits for it to unwind. For
+    /// `ServerDisconnect`: the wipe it performs is only final once nothing is still writing the
+    /// old server's pages into the store behind it.
+    static func cancelAndWaitForInFlightSync(container: ModelContainer) async {
+        guard let task = inFlightSyncs[ObjectIdentifier(container)] else { return }
+        task.cancel()
+        _ = try? await task.value
+    }
+
+    /// Whether the pairing this pass started under is still the device's pairing. Checked before
+    /// every write: a sync that outlives its pairing still holds the old token, and the server
+    /// keeps answering it, so without this a "Remove Server Connection" mid-sync was followed by
+    /// the old server's articles landing in the freshly wiped (demo) library.
+    ///
+    /// Compared against the stored token as it was when the pass began, not against
+    /// `client.token`, so a client built for a test (whose token was never stored) still syncs.
+    private var isStillCurrentPairing: Bool {
+        !Task.isCancelled && currentToken() == pairingSnapshot
+    }
+
+    private func ensureCurrentPairing() throws {
+        guard isStillCurrentPairing else { throw SyncEngineError.pairingChanged }
+    }
 
     @discardableResult
     func sync() async throws -> SyncResult {
@@ -111,6 +148,7 @@ final class SyncEngine {
     }
 
     private func performSync() async throws -> SyncResult {
+        pairingSnapshot = currentToken()
         await PendingWriteQueue.flush(using: ArticleActions(client: client), settings: settings)
         await ReadingPositionSync.flushPending(client: client, settings: settings)
 
@@ -149,6 +187,7 @@ final class SyncEngine {
             let updatedSummaries = page.updated ?? []
             let removed = page.removed ?? []
 
+            try ensureCurrentPairing()
             let writer = SyncWriter(modelContainer: container)
             _ = await OffMainActor.run { await writer.upsertSummaries(newSummaries) }
             _ = await OffMainActor.run { await writer.upsertSummaries(updatedSummaries) }
@@ -176,6 +215,7 @@ final class SyncEngine {
         }
 
         try await backfillMissingContent()
+        try ensureCurrentPairing()
         // Pruning requires decoding every local article body (see SyncWriter.referencedImageHashes),
         // so it runs only when this pass could actually have orphaned something: a server-side
         // removal landed, a feed disappeared, or a local swipe-to-delete flagged it since last time.
@@ -193,6 +233,7 @@ final class SyncEngine {
     /// `removed` list.
     private func syncFeeds() async throws -> Int {
         let response: FeedsResponse = try await client.get("/api/v1/feeds")
+        try ensureCurrentPairing()
         let writer = SyncWriter(modelContainer: container)
         let result = await OffMainActor.run { await writer.replaceFeeds(response.feeds) }
 
@@ -211,6 +252,7 @@ final class SyncEngine {
     /// table stays permanently empty and every article reads as "untagged."
     private func syncTags() async throws {
         let response: TagsResponse = try await client.get("/api/v1/tags")
+        try ensureCurrentPairing()
         let writer = SyncWriter(modelContainer: container)
         _ = await OffMainActor.run { await writer.syncTags(response.tags) }
     }
@@ -229,7 +271,8 @@ final class SyncEngine {
     private func syncReadingPosition() async {
         do {
             let response: ReadingPositionWire = try await client.get("/api/v1/reading-position")
-            guard let articleId = response.articleId, let updatedAt = response.updatedAt else { return }
+            guard isStillCurrentPairing,
+                  let articleId = response.articleId, let updatedAt = response.updatedAt else { return }
             ReadingPositionSync.applyRemoteUpdate(articleId: articleId, updatedAt: updatedAt, settings: settings)
         } catch {
             // See doc comment above.
@@ -256,6 +299,7 @@ final class SyncEngine {
         let writer = SyncWriter(modelContainer: container)
         var previous: [Int] = []
         while true {
+            try ensureCurrentPairing()
             let pending = await OffMainActor.run {
                 await writer.articlesMissingContent(limit: Self.contentBackfillBatchSize)
             }.map(\.serverID)
@@ -275,10 +319,13 @@ final class SyncEngine {
         // `Sendable` generic constraint, only their elements can.
         let client = client
         let imageStore = imageStore
+        let currentToken = currentToken
+        let pairingSnapshot = pairingSnapshot
 
         await runBounded(serverIDs, maxConcurrency: maxConcurrentContentFetches) { serverID in
             do {
                 let document: WireDocument = try await client.get("/api/v1/articles/\(serverID)/content")
+                guard !Task.isCancelled, currentToken() == pairingSnapshot else { return }
                 _ = await writer.applyContent(articleServerID: serverID, document: document)
                 // Eager, not lazy-on-render: every image the article's body actually references
                 // is fetched right alongside its content, not just the lead image on first open

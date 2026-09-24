@@ -24,6 +24,10 @@ enum InitialSyncGate {
     /// retries the gate from scratch instead of quietly accepting a partial mirror.
     private static let maxAttempts = 5
 
+    /// Identifies the newest `run`, so a run abandoned because its pairing went away does not
+    /// lower the loading flags that a newer run (a re-pair right after) has already raised.
+    private static var latestRun = 0
+
     static func run(
         container: ModelContainer,
         client: YanaAPIClient,
@@ -42,14 +46,30 @@ enum InitialSyncGate {
             return
         }
 
+        latestRun &+= 1
+        let thisRun = latestRun
+        // The pairing this gate is syncing for. Removing the server connection (or pairing another
+        // one) while the gate is up must end it on the spot: retrying would pull the old server's
+        // backlog into a library that now holds demo content, and reporting a failure or a
+        // completion would describe a pairing that no longer exists.
+        let pairingToken = KeychainService.loadDeviceToken()
+        func pairingChanged() -> Bool {
+            Task.isCancelled || KeychainService.loadDeviceToken() != pairingToken
+        }
+
         appState.isPerformingInitialSync = true
         appState.initialSyncFailed = false
         var succeeded = false
         var unauthorized = false
+        var abandoned = false
         for attempt in 0..<maxAttempts {
             do {
                 try await sync()
-                succeeded = true
+                succeeded = !pairingChanged()
+                abandoned = !succeeded
+                break
+            } catch SyncEngineError.pairingChanged {
+                abandoned = true
                 break
             } catch YanaAPIClientError.unauthorized {
                 // The token was just deleted by `SyncEngine.sync()` itself (session revoked from
@@ -58,9 +78,23 @@ enum InitialSyncGate {
                 unauthorized = true
                 break
             } catch {
+                if pairingChanged() {
+                    abandoned = true
+                    break
+                }
                 guard attempt < maxAttempts - 1 else { break }
                 try? await Task.sleep(for: retryDelay)
+                if pairingChanged() {
+                    abandoned = true
+                    break
+                }
             }
+        }
+
+        guard thisRun == latestRun else { return }
+        if abandoned {
+            appState.isPerformingInitialSync = false
+            return
         }
 
         if succeeded {
