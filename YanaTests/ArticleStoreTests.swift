@@ -60,6 +60,46 @@ struct ArticleStoreTests {
         #expect(store.summaries.map(\.identifier) == ["x"])
     }
 
+    /// The Mac's pre-window load: it must publish *before returning*, from the cache when there
+    /// is one, and `bootstrap()` must then go straight to the full reconcile.
+    @Test func preloadPublishesTheCacheSynchronously() async throws {
+        let container = try makeContainer()
+        seed(3, into: container.mainContext)
+        try container.mainContext.save()
+        let cache = tempCache()
+        let cached = ArticleSummary(identifier: "cached", serverID: nil, title: "cached", feedName: "Acme",
+                                    feedLogoHash: nil, author: "", date: .now, createdAt: .now,
+                                    tagNames: [], isStarred: false, isRead: false)
+        await cache.save([cached])
+
+        let store = ArticleStore(container: container, cache: cache)
+        store.preloadSynchronously()
+        #expect(store.hasLoaded)
+        #expect(store.summaries.map(\.identifier) == ["cached"])
+
+        await store.bootstrap()
+        #expect(store.summaries.map(\.identifier) == ["a0", "a1", "a2"])
+    }
+
+    /// An empty cache is not a dataset. Publishing it as one put an empty timeline on screen with
+    /// `hasLoaded` set -- the "No Articles, then the articles" launch flash -- whenever the cache had
+    /// been written while the library was empty (e.g. by a wipe right before a re-sync).
+    @Test func anEmptyCacheFallsBackToTheDatabase() async throws {
+        let container = try makeContainer()
+        seed(3, into: container.mainContext)
+        try container.mainContext.save()
+        let cache = tempCache()
+        await cache.save([])
+
+        let preloaded = ArticleStore(container: container, cache: cache)
+        preloaded.preloadSynchronously()
+        #expect(preloaded.summaries.map(\.identifier) == ["a0", "a1", "a2"])
+
+        let async = ArticleStore(container: container, cache: cache)
+        await async.publishFastDataset()
+        #expect(async.summaries.map(\.identifier) == ["a0", "a1", "a2"])
+    }
+
     @Test func bootstrapServesCacheThenReconcilesToDB() async throws {
         let container = try makeContainer()
         seed(3, into: container.mainContext)             // DB has a0,a1,a2

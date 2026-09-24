@@ -12,4 +12,24 @@ enum TestEnvironment {
     static let isRunningUnitTests: Bool = {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }()
+
+    /// Whether process-wide storage must be swapped for a throwaway test copy. `#if DEBUG` so a
+    /// release build can never take the redirected path.
+    ///
+    /// **Why this exists: a macOS unit-test run wiped the developer's real library and unpaired
+    /// the device.** On macOS the unit-test host *is* the real app, in its real sandbox container,
+    /// so `AppContainer.shared`, the login Keychain, the timeline index cache and
+    /// `UserDefaults.standard` are all the developer's own. `PairingSyncTests` calls
+    /// `PairingSync.resetAndFullSync` (which runs `LocalLibraryReset.wipe` on `AppContainer.shared`)
+    /// and `KeychainService.deleteDeviceToken()`, and a dozen other suites delete or overwrite the
+    /// token. On the iOS Simulator the same code only touches the simulator's own container, which
+    /// is why this went unnoticed. Each of those four stores consults this flag and points
+    /// somewhere disposable instead, so no test can reach real data however it is written.
+    static var isolatesProcessStorage: Bool {
+        #if DEBUG
+        return isRunningUnitTests
+        #else
+        return false
+        #endif
+    }
 }

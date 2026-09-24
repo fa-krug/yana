@@ -41,6 +41,36 @@ struct SummaryIndexCacheTests {
         #expect(loaded?.first?.persistentID == nil)   // runtime-only; never persisted
     }
 
+    /// Every field survives the binary format, including the optional and set-valued ones and
+    /// non-ASCII text -- the string table and the flag byte are where a hand-rolled codec goes wrong.
+    @Test func binaryFormatRoundTripsEveryField() throws {
+        let rows = [
+            ArticleSummary(identifier: "https://example.com/ü/1", serverID: 42, title: "Grüße — 🚀",
+                           feedName: "Heise", feedLogoHash: "abc123", author: "Jörg",
+                           date: Date(timeIntervalSinceReferenceDate: 1_000.25),
+                           createdAt: Date(timeIntervalSinceReferenceDate: 2_000.5),
+                           tagNames: ["Tech", "News"], isStarred: true, isRead: false),
+            ArticleSummary(identifier: "b", serverID: nil, title: "", feedName: "Heise",
+                           feedLogoHash: nil, author: "", date: .distantPast, createdAt: .distantFuture,
+                           tagNames: [], isStarred: false, isRead: true),
+        ]
+        let decoded = try #require(SummaryIndexCodec.decode(SummaryIndexCodec.encode(rows)))
+        #expect(decoded == rows)
+        #expect(SummaryIndexCodec.decode(SummaryIndexCodec.encode([])) == [])
+    }
+
+    /// A file cut short by a crash mid-write (or any foreign bytes) decodes as `nil`, never traps
+    /// and never yields a partial index.
+    @Test func truncatedDataDecodesAsNil() {
+        let row = ArticleSummary(identifier: "a", serverID: 1, title: "A", feedName: "F",
+                                 feedLogoHash: "h", author: "x", date: .now, createdAt: .now,
+                                 tagNames: ["t"], isStarred: false, isRead: false)
+        let data = SummaryIndexCodec.encode([row, row])
+        for length in [0, 3, 8, 20, data.count / 2, data.count - 1] {
+            #expect(SummaryIndexCodec.decode(data.prefix(length)) == nil, "length \(length)")
+        }
+    }
+
     @Test func loadReturnsNilWhenAbsent() async throws {
         let cache = SummaryIndexCache(fileURL: tempURL())
         let loaded = await cache.load()

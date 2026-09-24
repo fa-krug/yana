@@ -51,9 +51,21 @@ final class AppSettings {
     /// Whether this instance reads the process-wide `UserDefaults` rather than an isolated test
     /// suite. `AuthenticatedClient` uses it to refuse to resolve a live client inside a unit-test
     /// host -- see that type for why.
-    @ObservationIgnored var usesStandardDefaults: Bool { defaults == .standard }
+    @ObservationIgnored var usesStandardDefaults: Bool { defaults === Self.processDefaults }
 
-    init(defaults: UserDefaults = .standard) {
+    /// The process-wide store a plain `AppSettings()` reads: `UserDefaults.standard`, except in a
+    /// unit-test host, which gets a disposable suite (wiped once per run) so no test can rewrite
+    /// the developer's real preferences -- see `TestEnvironment.isolatesProcessStorage`.
+    // `unsafe`: `UserDefaults` is documented thread-safe but not marked `Sendable`.
+    nonisolated(unsafe) static let processDefaults: UserDefaults = {
+        guard TestEnvironment.isolatesProcessStorage else { return .standard }
+        let suite = AppConstants.bundleID + ".unittests"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }()
+
+    init(defaults: UserDefaults = AppSettings.processDefaults) {
         self.defaults = defaults
         defaults.register(defaults: [
             Key.updateInterval: UpdateInterval.min60.rawValue,

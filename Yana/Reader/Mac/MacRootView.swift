@@ -176,7 +176,13 @@ struct MacRootView: View {
     @ViewBuilder private var detail: some View {
         // The first-sync gate (`InitialSyncLoadingView`/`InitialSyncFailedView`) replaces this
         // whole window in `ContentView`, so it never reaches the detail pane.
-        if model.filteredArticles.isEmpty {
+        if !store.hasLoaded {
+            // Before the store's first publish every launch looks like an empty library. On the Mac
+            // the store is normally preloaded before the window exists (`YanaApp.init`), but the
+            // DEBUG seed launches skip that, so draw nothing rather than flash "No Articles" -- the
+            // same gate the iOS reader uses (`TimelineLoadState`).
+            Color.clear
+        } else if model.filteredArticles.isEmpty {
             MacEmptyLibraryView(
                 isPaired: AuthenticatedClient.current() != nil,
                 onCreateFeed: { showingCreateFeed = true },
@@ -564,7 +570,9 @@ struct MacSidebarView: View {
         .searchFocused($searchFieldFocused)
         .onChange(of: model.searchFocusToken) { _, _ in searchFieldFocused = true }
         .overlay {
-            if displayed.isEmpty {
+            // `hasLoaded`: before the store's first publish every launch looks like an empty
+            // library -- see `MacRootView.detail`.
+            if displayed.isEmpty, store.hasLoaded || !searchText.isEmpty {
                 if searchText.isEmpty {
                     ContentUnavailableView("No Articles", systemImage: "tray",
                                            description: Text("Pair a Yana Server that has feeds and articles configured."))

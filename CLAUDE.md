@@ -615,6 +615,16 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   `.NSPersistentStoreRemoteChange` (to catch CloudKit merges, which land below SwiftData with no
   `didSave` posted) is gone, since `AppContainer.shared` no longer configures a `cloudKitDatabase` at
   all (CloudKit/iCloud sync was removed from this app before this rework began).
+  **On macOS the first dataset is loaded before the window exists:** `YanaApp.init` calls
+  `ArticleStore.preloadSynchronously()` (skipped under the DEBUG `-UITEST_*`/`YANA_SEED_ARTICLES`
+  launches, whose library rewrite runs later), so the main window's first frame already has its
+  timeline instead of drawing "No Articles" and swapping the rows in. That is only affordable
+  because the disk cache (`SummaryIndexCache`, `summary-index.bin`) is a hand-rolled binary format
+  with a string table (`SummaryIndexCodec`): ~11ms for a 30 000-row index, against ~340ms for the
+  `PropertyListDecoder` plist it replaced. An **empty** cached index is never treated as a
+  dataset; it falls back to the DB window, since a cache written while the library was empty is
+  exactly how the "No Articles" flash reached a populated library. The Mac's "No Articles" views
+  are additionally gated on `store.hasLoaded`.
 - **Timeline anchor / reading-position sync** (`Yana/Services/TimelineAnchorWriter.swift`,
   `Yana/Services/ReadingPositionSync.swift`, `Yana/Services/ReadingPositionLiveSync.swift`,
   `Yana/Reader/ReaderAnchorController.swift`, `Yana/Reader/Mac/TimelineModel.swift`): server-backed,
@@ -1295,10 +1305,10 @@ unconditional UIKit import instead. To typecheck a file in isolation:
 - **Current measured baselines** (both read off `xcodebuild`'s own exit code, never through a pipe):
   - iOS unit,
     `xcodebuild -scheme Yana -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:YanaTests test`:
-    **532 passing, 0 failing, exit 0**.
+    **540 passing, 0 failing, exit 0**.
   - macOS unit,
     `xcodebuild -scheme Yana-macOS -destination 'platform=macOS' -only-testing:YanaTests-macOS test`:
-    **526 passing, 1 expected failure, exit 0**. The expected failure is the
+    **535 passing, 1 expected failure, exit 0**. The expected failure is the
     `withKnownIssue`-wrapped animated find-reveal assertion in `ReaderFindScrollTestsMacOS` (see
     the animation trap below).
   - **The "7 standing `SummaryBlockTests` crashes" older notes above describe were never about
@@ -1336,6 +1346,16 @@ unconditional UIKit import instead. To typecheck a file in isolation:
     (`AuthenticatedClientTests`, `ReadingPositionSyncTests`); the gate itself is `#if DEBUG`.
     `MacSidebarLaunchScrollTestsMacOS`'s `serverID`-free fixtures are now belt-and-braces rather
     than the only protection.
+  - **On macOS the unit-test host is the real app, in the real sandbox container.** A test that
+    wiped `AppContainer.shared` (`PairingSyncTests` via `PairingSync.resetAndFullSync`) or called
+    `KeychainService.deleteDeviceToken()` destroyed the developer's actual library and pairing;
+    on the iOS Simulator the same calls only ever hit the simulator's container, which is why it
+    went unnoticed. `TestEnvironment.isolatesProcessStorage` (DEBUG, unit-test host only) now
+    routes all four process-wide stores somewhere disposable: `AppContainer.shared` is in-memory,
+    `KeychainService` files under `<service>.unittests`, `SummaryIndexCache.shared` writes to the
+    temp directory, and a plain `AppSettings()` reads `AppSettings.processDefaults`, a suite wiped
+    once per run. A side effect worth knowing: tests no longer see the developer's own preferences
+    (a larger text size once made a too-short reader fixture pass).
   - **Compile-error counts are not a migration burn-down.** See **Platform split** — the Swift
     driver aborts whole-module compilation at the first unresolvable import.
 - `YanaTests/ReaderPageReassertScrollTests.swift` (iOS only, the Mac has no pager) and

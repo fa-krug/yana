@@ -28,9 +28,13 @@ struct ReaderSyncUpdateScrollTestsMacOS {
     }
 
     /// A body long enough to scroll, shaped like a story with a comment thread under it.
+    ///
+    /// Twenty paragraphs, so it scrolls at the *default* text size. It used to be ten, which was only
+    /// long enough because the test host read the developer's own (larger) text-size preference;
+    /// a unit-test host now gets fresh settings (`TestEnvironment.isolatesProcessStorage`).
     private func body(_ i: Int, comments: Int) -> [Block] {
         var blocks: [Block] = [.heading(level: 1, runs: [InlineRun(text: "Article \(i)")])]
-        for p in 0..<10 {
+        for p in 0..<20 {
             blocks.append(.paragraph([InlineRun(
                 text: "Paragraph \(p). " + String(repeating: "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ", count: 6)
             )]))

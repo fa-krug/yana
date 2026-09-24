@@ -165,6 +165,44 @@ struct MacSidebarLaunchScrollTestsMacOS {
                 "the sidebar stayed at the top instead of scrolling to the anchored article")
     }
 
+    /// The shipping launch order since `YanaApp.init` preloads the store: the index is already
+    /// published when the sidebar first appears, so no `store.summaries` change ever arrives to
+    /// trigger the anchor scroll -- `onAppear`'s `applyTimeline()` has to do it on its own.
+    @Test func aSidebarAppearingOverAPreloadedStoreLandsOnTheAnchor() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let feed = Feed(name: "News", identifier: "1")
+        context.insert(feed)
+        let articles = seedArticles(context, feed: feed, count: 120)
+        try context.save()
+
+        let settings = freshSettings()
+        let anchor = articles[60]
+        settings.timelineAnchorIdentifier = anchor.identifier
+
+        let cache = SummaryIndexCache(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent("mac-sidebar-preload-\(UUID().uuidString).bin"))
+        await cache.save(articles.map { ArticleSummary($0) })
+        let store = ArticleStore(container: container, cache: cache, anchorProvider: {
+            (settings.timelineAnchorIdentifier, settings.timelineAnchorServerID)
+        })
+        store.preloadSynchronously()
+        let model = TimelineModel(settings: settings)
+        model.configure(modelContext: context, store: store)
+
+        let (window, controller) = host(Harness(model: model, store: store, settings: settings),
+                                        container: container, store: store, settings: settings)
+        defer { window.orderOut(nil) }
+        store.start()
+        try await Task.sleep(for: .milliseconds(1500))
+        window.layoutIfNeeded()
+
+        #expect(model.selectedSummary?.identifier == anchor.identifier, "the model itself did not park on the anchor")
+        let scroll = try #require(scrollViews(controller.view).first, "no list scroll view hosted")
+        #expect(scroll.contentView.bounds.origin.y > 0,
+                "the sidebar stayed at the top instead of scrolling to the anchored article")
+    }
+
     /// Synced articles carry a `serverID`, so their `stableKey` ("s<id>") differs from their
     /// `identifier`. The first two tests only cover the identifier-fallback case, where the two
     /// coincide, and so could not see a scroll request keyed by one value while the rows were keyed

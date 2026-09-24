@@ -50,6 +50,25 @@ struct ArticleSummary: Identifiable, Sendable, Hashable, Codable {
         isRead = article.read
     }
 
+    /// A summary rehydrated from `SummaryIndexCodec` -- like the `Codable` path, with no
+    /// `persistentID` (see that property).
+    init(identifier: String, serverID: Int?, title: String, feedName: String, feedLogoHash: String?,
+         author: String, date: Date, createdAt: Date, tagNames: Set<String>,
+         isStarred: Bool, isRead: Bool) {
+        persistentID = nil
+        self.identifier = identifier
+        self.serverID = serverID
+        self.title = title
+        self.feedName = feedName
+        self.feedLogoHash = feedLogoHash
+        self.author = author
+        self.date = date
+        self.createdAt = createdAt
+        self.tagNames = tagNames
+        self.isStarred = isStarred
+        self.isRead = isRead
+    }
+
     // Persist every field EXCEPT the runtime-only `persistentID`.
     private enum CodingKeys: String, CodingKey {
         case identifier, serverID, title, feedName, feedLogoHash, author, date, createdAt, tagNames, isStarred, isRead

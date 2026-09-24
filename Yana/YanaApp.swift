@@ -40,6 +40,13 @@ enum AppContainer {
                     return try ModelContainer(for: Feed.self, Tag.self, Article.self,
                                              configurations: config)
                 }
+                // Never the developer's real store inside a unit-test host -- see
+                // `TestEnvironment.isolatesProcessStorage`.
+                if TestEnvironment.isolatesProcessStorage {
+                    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+                    return try ModelContainer(for: Feed.self, Tag.self, Article.self,
+                                             configurations: config)
+                }
                 #endif
                 let config = ModelConfiguration()
                 return try ModelContainer(for: Feed.self, Tag.self, Article.self,
@@ -165,8 +172,36 @@ struct YanaApp: App {
     #endif
     @State private var appState = AppState()
     @State private var appSettings = AppSettings()
-    @State private var articleStore = ArticleStore(container: AppContainer.shared)
+    @State private var articleStore: ArticleStore
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        let store = ArticleStore(container: AppContainer.shared)
+        #if os(macOS)
+        // Before any window exists: the main window's first frame then already has its timeline,
+        // instead of drawing an empty library and swapping the articles in a moment later. See
+        // `ArticleStore.preloadSynchronously()` for why this is cheap enough to wait on.
+        if Self.preloadsBeforeFirstWindow { store.preloadSynchronously() }
+        #endif
+        _articleStore = State(initialValue: store)
+    }
+
+    #if os(macOS)
+    /// `false` when a DEBUG launch argument rewrites the library during launch
+    /// (`UITestReset`/`DebugSeed`/`ScreenshotSeed`, all run from `commonDidFinishLaunching()`,
+    /// which is after this). Preloading would publish the pre-rewrite library, so those launches
+    /// keep the async first load, which runs after them.
+    private static var preloadsBeforeFirstWindow: Bool {
+        #if DEBUG
+        let info = ProcessInfo.processInfo
+        let rewritesLibrary = info.arguments.contains(where: { $0.hasPrefix("-UITEST_") })
+            || info.environment["YANA_SEED_ARTICLES"] != nil
+        return !rewritesLibrary
+        #else
+        return true
+        #endif
+    }
+    #endif
 
     // `body` is forked wholesale rather than `#if`-ing individual scenes inside one builder:
     // `Settings` and `Window` do not exist on iOS at all, and a result builder is a far less
