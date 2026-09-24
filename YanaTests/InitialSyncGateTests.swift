@@ -58,4 +58,32 @@ struct InitialSyncGateTests {
         #expect(!appState.initialSyncFailed)
         #expect(settings.hasCompletedInitialSync)
     }
+
+    /// A sync stopped because the server connection was removed mid-way must end the gate
+    /// quietly: no retry (it would pull the old server's backlog into the demo library), no
+    /// "couldn't reach your server" screen, and no completion flag for a pairing that is gone.
+    @Test func pairingChangedEndsTheGateWithoutRetryFailureOrCompletion() async throws {
+        let container = try makeContainer()
+        let client = YanaAPIClient(baseURL: URL(string: "https://example.test")!, token: "t")
+        let store = ArticleStore(container: container)
+        let settings = makeSettings()
+        let appState = AppState()
+        settings.hasCompletedInitialSync = false
+        var attempts = 0
+
+        await InitialSyncGate.run(
+            container: container, client: client, articleStore: store,
+            appState: appState, settings: settings,
+            retryDelay: .milliseconds(1),
+            syncOnce: {
+                attempts += 1
+                throw SyncEngineError.pairingChanged
+            }
+        )
+
+        #expect(attempts == 1)
+        #expect(!appState.initialSyncFailed)
+        #expect(!settings.hasCompletedInitialSync)
+        #expect(!appState.isPerformingInitialSync)
+    }
 }

@@ -1,6 +1,7 @@
 import Foundation
 #if os(macOS)
 import AppKit
+import SystemConfiguration
 #else
 import UIKit
 #endif
@@ -68,10 +69,16 @@ enum PlatformApp {
     /// device name ("Sascha's iPhone"), macOS has no equivalent per-app-visible name and reports the
     /// host name instead ("Saschas-MacBook-Pro"). Both are recognizable in the server's device list,
     /// which is all this string is for.
+    ///
+    /// Never `Host.current()` on macOS: it resolves every name and address of the machine through
+    /// DNS, synchronously, and on a network with a slow or unreachable resolver that blocks the
+    /// main thread for seconds. Pairing reads this right before presenting the sign-in browser, so
+    /// the user saw nothing happen after tapping "Sign In". `SCDynamicStoreCopyComputerName` reads
+    /// the same "Computer Name" from `configd` with no network round trip.
     @MainActor
     static var deviceName: String {
         #if os(macOS)
-        Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        (SCDynamicStoreCopyComputerName(nil, nil) as String?) ?? ProcessInfo.processInfo.hostName
         #else
         UIDevice.current.name
         #endif

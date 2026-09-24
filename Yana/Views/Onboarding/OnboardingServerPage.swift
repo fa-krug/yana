@@ -41,6 +41,11 @@ struct OnboardingServerPage: View {
     @State private var pairedURLText: String?
     @State private var isPairing = false
     @State private var pairingFailure: PairingFailure?
+    /// Whether a sign-in succeeded on this page, as opposed to the device already being paired
+    /// when it appeared. Settings' "Change…" opens this step on a paired device; continuing
+    /// without signing in again must leave that pairing and its library alone, not wipe and
+    /// re-download it.
+    @State private var didPairHere = false
     @FocusState private var isURLFieldFocused: Bool
 
     var body: some View {
@@ -98,6 +103,7 @@ struct OnboardingServerPage: View {
                         isPairing = false
                         isURLFieldFocused = false
                         settings.hasSkippedServerPairing = false
+                        didPairHere = true
                         if isOnboardingFlow {
                             // Deferred to the "Continue" tap (`primaryAction`) — see its comment.
                             state.isPaired = true
@@ -236,14 +242,28 @@ struct OnboardingServerPage: View {
             Label("Signed in", systemImage: "checkmark.seal.fill")
                 .foregroundStyle(.green)
         } else {
+            // `ASWebAuthenticationSession` takes a moment to bring up its browser (it runs in a
+            // separate system process), so the button shows a spinner and stops accepting taps
+            // until the sheet is up, rather than looking like the tap did nothing.
             #if os(macOS)
-            Button("Sign In", action: signIn)
-                .controlSize(.large)
-                .disabled(validatedServerURL == nil)
+            HStack(spacing: 8) {
+                Button("Sign In", action: signIn)
+                    .controlSize(.large)
+                    .disabled(validatedServerURL == nil || isPairing)
+                if isPairing {
+                    ProgressView().controlSize(.small)
+                }
+            }
             #else
             card {
-                Button("Sign In", action: signIn)
-                    .disabled(validatedServerURL == nil)
+                HStack {
+                    Button("Sign In", action: signIn)
+                        .disabled(validatedServerURL == nil || isPairing)
+                    Spacer()
+                    if isPairing {
+                        ProgressView()
+                    }
+                }
             }
             #endif
         }
@@ -287,7 +307,7 @@ struct OnboardingServerPage: View {
     /// Lets the URL field's return key trigger the same action as tapping "Sign In", so pairing
     /// doesn't require reaching for the mouse/trackpad after typing the address.
     private func signIn() {
-        guard validatedServerURL != nil else { return }
+        guard validatedServerURL != nil, !isPairing else { return }
         pairingFailure = nil
         isPairing = true
     }
@@ -309,6 +329,10 @@ struct OnboardingServerPage: View {
     /// this pairing (stale demo/prior-server data) and kick off a full resync against the newly
     /// paired server, then advance.
     private func primaryAction() {
+        if state.isPaired, !didPairHere {
+            onPaired()
+            return
+        }
         if state.isPaired {
             PairingSync.resetAndFullSync(
                 appState: appState, articleStore: articleStore, settings: settings
