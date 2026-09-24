@@ -141,6 +141,9 @@ struct ReaderScreen: View {
     @State private var restartOnboardingPending = false
     /// Same pattern as `restartOnboardingPending`, for the Settings "Server Update Notice" row.
     @State private var showServerNoticePending = false
+    /// Same pattern again, for Settings' server "Change…" row: the welcome flow opens on its
+    /// server step once the Settings sheet is gone.
+    @State private var changeServerPending = false
 
     @State private var filteredArticles: [ArticleSummary] = []
 
@@ -285,11 +288,17 @@ struct ReaderScreen: View {
                 showServerNoticePending = false
                 appState.showServerMigrationNotice = true
             }
+            if changeServerPending {
+                changeServerPending = false
+                appState.welcomeInitialStep = .server
+                appState.showWelcome = true
+            }
         }) {
             NavigationStack {
                 SettingsScreenView(
                     onRestartOnboarding: { restartOnboardingPending = true },
-                    onShowServerNotice: { showServerNoticePending = true }
+                    onShowServerNotice: { showServerNoticePending = true },
+                    onChangeServer: { changeServerPending = true }
                 )
             }
         }

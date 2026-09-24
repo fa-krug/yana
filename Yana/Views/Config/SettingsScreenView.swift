@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsScreenView: View {
     var onRestartOnboarding: () -> Void = {}
     var onShowServerNotice: () -> Void = {}
+    var onChangeServer: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @Environment(AppSettings.self) private var settings
@@ -13,7 +14,10 @@ struct SettingsScreenView: View {
 
     var body: some View {
         Form {
-            ServerSettingsSection()
+            ServerSettingsSection(onChangeServer: {
+                onChangeServer()
+                dismiss()
+            })
             // Without a paired server the Manage pane has nothing to load (see
             // `MacSettingsWindow.availablePanes` for the Mac equivalent of this same guard) --
             // pass this view's own `settings` so a server change while this Form is visible is

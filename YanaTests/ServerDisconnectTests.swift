@@ -140,4 +140,24 @@ struct ServerDisconnectTests {
         #expect(settings.trackedOperations.isEmpty)
         #expect(settings.pendingReadingPositionPush == nil)
     }
+
+    /// The window stays behind the loading screen from the moment the server is removed until
+    /// the demo library has been seeded, so neither the emptied library nor half-seeded demo
+    /// content is ever shown.
+    @Test func disconnectHoldsTheLoadingScreenUntilTheDemoLibraryIsSeeded() async throws {
+        let context = try inMemoryContext()
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "Disconnect.\(UUID())")!)
+        let appState = AppState()
+
+        ServerDisconnect.disconnect(settings: settings, context: context,
+                                    monitor: OperationMonitor(activity: UpdateActivity()),
+                                    appState: appState)
+        #expect(appState.isLoadingDemoContent)
+
+        for _ in 0..<100 where appState.isLoadingDemoContent {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(!appState.isLoadingDemoContent)
+        #expect(try !context.fetch(FetchDescriptor<Feed>()).isEmpty, "lifted only after the seed landed")
+    }
 }

@@ -979,7 +979,8 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   `Yana/Services/PairingSync.swift`, `Yana/Services/ServerDisconnect.swift`,
   `Yana/Views/InitialSyncLoadingView.swift`, `Yana/Views/InitialSyncFailedView.swift`):
   `InitialSyncGate.run` blocks the reader behind `InitialSyncLoadingView` for a device's very first
-  sync after pairing, because the timeline sorts by the article's original date rather than import
+  sync after pairing (on both platforms `ContentView` swaps out the **whole** root for it, so on the
+  Mac the sidebar list is hidden too rather than visibly filling), because the timeline sorts by the article's original date rather than import
   order — a large historical backfill landing in ~200-article pages can insert new unread articles
   anywhere in the currently-visible range, which made swiping through the timeline jump to unrelated
   articles while pages were still trickling in. It retries the first `SyncEngine.sync()` call up to
@@ -998,7 +999,14 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   mirrored locally. `ServerDisconnect.disconnect` mirrors that transition in reverse: deletes the
   stored token, clears the server address, wipes the mirror, and falls back into the same
   demo-content mode `OnboardingServerPage`'s "Skip for now" offers, clearing `hasCompletedInitialSync`
-  too so a later re-pair goes through the loading screen again instead of silently skipping it.
+  too so a later re-pair goes through the loading screen again instead of silently skipping it. **A sync that outlives its pairing must stop, not finish:** it
+  still holds the old client and the server keeps answering it, so a disconnect during the first
+  sync used to land the old server's pages in the wiped library (and, since `ScreenshotSeed` bails
+  once any `Feed` exists, the demo seed then did nothing). `SyncEngine` snapshots the stored token
+  when a pass starts and re-checks it before every write, throwing `SyncEngineError.pairingChanged`
+  once it changes; `InitialSyncGate` ends quietly on that (no retry, no failure screen, no
+  completion flag, and a superseded run never lowers a newer run's flags); and `ServerDisconnect`
+  awaits `SyncEngine.cancelAndWaitForInFlightSync` and wipes a second time before seeding.
 - **macOS windowing** (`Yana/Reader/Mac/`): `MacRootView` is a permanent two-column
   `NavigationSplitView` (article-list sidebar + reader detail) in a `WindowGroup`. Its toolbar is
   **two glass capsules** — article actions (read aloud, share, open in browser), then library/app
@@ -1041,13 +1049,13 @@ unconditional UIKit import instead. To typecheck a file in isolation:
   and overlapped it; `ServerSettingsSection`'s server row is a `LabeledContent` plus a "Change…"
   push button rather than a whole-row `Button` (a button's label fills a grouped row, so the pane
   looked like a stack of grey slabs); and the `Server`/`Reader`/`About` section headers are dropped
-  on macOS, where the sidebar pane title already names the group. That section's re-pair sheet is
-  a plain panel with a heading and a trailing "Done" button — **not** the iOS `NavigationStack`
-  with an X in its bar, which on the Mac produced a bar-less sheet whose only control was a glyph
-  floating in a footer. It carries an explicit width, and `OnboardingServerPage` skips its
-  `GeometryReader`/`ScrollView` scaffolding outside the onboarding flow: a Mac sheet sizes to its
-  content, a `GeometryReader` reports the height it is *proposed*, and the two together collapsed
-  the sheet to a title and a button. Creating a
+  on macOS, where the sidebar pane title already names the group. There is **no separate re-pair
+  sheet any more**: "Change…" (both platforms) hands off through `onChangeServer` and reopens
+  `WelcomeView` on its `.server` step -- the Mac opens the Welcome window and closes Settings
+  (`WelcomeWindowRoot` does not self-close when opened on `.server`, even on a paired device), iOS
+  dismisses its Settings sheet and raises the full-screen cover. Continuing past that step without
+  signing in again leaves the existing pairing and library alone (`OnboardingServerPage.didPairHere`);
+  only a sign-in made on the page wipes and resyncs. Creating a
   feed is a sheet presenting `ManagementWebView(path: "/feeds/new")`, not the deleted
   `FeedEditorView`/`WindowID.feedEditor`. Everything else — the Mail-style two-pane keyboard focus
   model (`MacFocusPane`), the sidebar's programmatic-scroll-follow (`SidebarScrollRequest`,

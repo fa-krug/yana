@@ -4696,6 +4696,28 @@
         }
       }
     },
+    "Loading Demo Content": {
+      "comment": "Full-screen loading title shown after removing the server connection, while demo articles are prepared.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo-Inhalte werden geladen"
+          }
+        }
+      }
+    },
+    "Preparing a few sample articles to try the app with.": {
+      "comment": "Full-screen loading message shown after removing the server connection, while demo articles are prepared.",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einige Beispielartikel zum Ausprobieren werden vorbereitet."
+          }
+        }
+      }
+    },
     "Setting Up Your Library": {
       "localizations": {
         "de": {

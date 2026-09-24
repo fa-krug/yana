@@ -151,4 +151,21 @@ struct ArticleStoreIncrementalTests {
         #expect(spliceMS < fullMS / 3,
                 "25-row read took \(Int(spliceMS)) ms vs \(Int(fullMS)) ms for all 4 000")
     }
+
+    /// A batch delete names no rows in `didSave`, so a wiped library (Remove Server Connection,
+    /// re-pairing) used to linger in the index -- rows that no longer resolve to an article.
+    @Test func aLibraryWipeEmptiesTheIndex() async throws {
+        let fixture = try LibraryFixture.make(articleCount: 50)
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let store = makeStore(fixture)
+        store.start()
+        await wait(for: store, toReach: 50)
+        #expect(store.summaries.count == 50)
+
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "ArticleStoreWipe.\(UUID())")!)
+        LocalLibraryReset.wipe(context: fixture.container.mainContext, settings: settings)
+        await wait(for: store, toReach: 0)
+
+        #expect(store.summaries.isEmpty)
+    }
 }

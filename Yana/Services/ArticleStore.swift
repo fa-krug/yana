@@ -140,6 +140,7 @@ final class ArticleStore {
     /// disambiguate two feeds sharing the same `identifier`.
     private let anchorProvider: () -> (identifier: String?, serverID: Int?)
     private var observer: NSObjectProtocol?
+    private var wipeObserver: NSObjectProtocol?
 
     /// Rows reported by saves since the last refresh, folded together. Drained by the coalescer.
     @ObservationIgnored private var pending = LibraryChangeSet()
@@ -197,6 +198,12 @@ final class ArticleStore {
             // don't pay for a refresh at all.
             guard !change.isEmpty else { return }
             Task { @MainActor [weak self] in self?.enqueue(change) }
+        }
+        // Scoped to this store's container so a test's throwaway library never reloads the app's.
+        wipeObserver = NotificationCenter.default.addObserver(
+            forName: LocalLibraryReset.didWipe, object: container, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.refreshNow() }
         }
         Task { await bootstrap() }
     }
@@ -344,5 +351,6 @@ final class ArticleStore {
 
     isolated deinit {
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let wipeObserver { NotificationCenter.default.removeObserver(wipeObserver) }
     }
 }

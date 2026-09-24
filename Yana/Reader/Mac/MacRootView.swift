@@ -57,6 +57,10 @@ struct MacRootView: View {
                 .toolbar { toolbar }
         }
         .accessibilityIdentifier("mac.window.root")
+        // The title only repeated the app's name next to the reader's controls. An empty
+        // `navigationTitle` does not hide it (AppKit falls back to the app name), so it is removed
+        // here instead; the window keeps the "Yana" name for the Window menu and Mission Control.
+        .toolbar(removing: .title)
         .safeAreaInset(edge: .top) {
             if showDemoBanner {
                 DemoModeBanner(
@@ -170,11 +174,9 @@ struct MacRootView: View {
     }
 
     @ViewBuilder private var detail: some View {
-        if appState.isPerformingInitialSync {
-            InitialSyncLoadingView()
-        } else if appState.initialSyncFailed, !settings.hasCompletedInitialSync {
-            InitialSyncFailedView { retryInitialSync() }
-        } else if model.filteredArticles.isEmpty {
+        // The first-sync gate (`InitialSyncLoadingView`/`InitialSyncFailedView`) replaces this
+        // whole window in `ContentView`, so it never reaches the detail pane.
+        if model.filteredArticles.isEmpty {
             MacEmptyLibraryView(
                 isPaired: AuthenticatedClient.current() != nil,
                 onCreateFeed: { showingCreateFeed = true },
@@ -216,6 +218,12 @@ struct MacRootView: View {
         // everything else). **`ToolbarSpacer(.fixed)` is what breaks the glass group** -- declaring
         // two `ToolbarItemGroup`s does not; they merge back into a single capsule. Same pattern as
         // `../mysquad`'s `ActivityProjectListView`.
+        //
+        // The leading flexible spacer holds both capsules at the trailing edge. The window title
+        // used to fill that space; with it removed (`.toolbar(removing: .title)` above) the
+        // buttons slid over to the leading edge of the detail column.
+        ToolbarSpacer(.flexible)
+
         ToolbarItemGroup(placement: .primaryAction) {
             readAloudButton
             shareButton
@@ -380,18 +388,6 @@ struct MacRootView: View {
     private var restoredSidebarWidth: CGFloat {
         let stored = CGFloat(settings.macSidebarWidth)
         return stored > 0 ? SidebarWidth.clamp(stored) : SidebarWidth.ideal
-    }
-
-    /// Retries the blocking first-sync gate after `InitialSyncFailedView`'s "Try Again" button.
-    private func retryInitialSync() {
-        guard let client = AuthenticatedClient.current() else { return }
-        appState.initialSyncFailed = false
-        Task {
-            await InitialSyncGate.run(
-                container: AppContainer.shared, client: client,
-                articleStore: store, appState: appState, settings: settings
-            )
-        }
     }
 
     /// Start narrating the selected article when idle; otherwise pause/resume. Speech is owned at the
