@@ -71,15 +71,20 @@ enum ReaderLinkPolicy {
                 UIApplication.shared.open(url)
             } else if let presenter = presenter() {
                 let safari = SFSafariViewController(url: url)
-                // Present *over* the reader rather than as a full-screen cover. A `.fullScreen`
-                // presentation makes UIKit detach the reader's views from the window once the
-                // transition completes, so iOS reclaims the off-screen pages' layer backing and
-                // TextKit glyph layout while the browser's WKWebView runs on top — leaving the next
-                // swipe to rebuild that layout synchronously under the user's finger (the "can't
-                // instantly swipe after returning from the web view" lag). `.overFullScreen` keeps
-                // the reader — the visible page and its prewarmed ±1 neighbors — alive in the
-                // hierarchy behind the browser, so nothing is reloaded on return.
-                safari.modalPresentationStyle = .overFullScreen
+                // Present as a page sheet, the same card the "Open on Server" and progress sheets
+                // use, so the browser can be pulled down to dismiss like every other sheet in the
+                // app. A `.fullScreen` (or `.overFullScreen`) cover has no swipe-down gesture, only
+                // the Done button.
+                //
+                // It must not be `.fullScreen` for a second reason: that presentation makes UIKit
+                // detach the reader's views from the window once the transition completes, so iOS
+                // reclaims the off-screen pages' layer backing and TextKit glyph layout while the
+                // browser's WKWebView runs on top, leaving the next swipe to rebuild that layout
+                // synchronously under the user's finger (the "can't instantly swipe after returning
+                // from the web view" lag). A page sheet, like the `.overFullScreen` cover it
+                // replaced, keeps the reader (the visible page and its prewarmed ±1 neighbors)
+                // alive in the hierarchy behind the browser, so nothing is reloaded on return.
+                safari.modalPresentationStyle = .pageSheet
                 presenter.present(safari, animated: true)
             }
         }
