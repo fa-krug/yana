@@ -25,6 +25,18 @@ private enum ContentRootGates {
         return false
         #endif
     }
+
+    /// Whether the server-migration notice is due and not yet dismissed. Welcome waits behind it
+    /// (see `WelcomeGate.neededStep`). False whenever the automation guard suppresses the notice,
+    /// so a skipped notice can never also block Welcome.
+    @MainActor
+    static func isServerNoticePending(_ settings: AppSettings) -> Bool {
+        guard !skipServerMigrationAutomation else { return false }
+        return ServerMigrationEligibility.shouldAutoShow(
+            isPreServerMigrationUser: settings.isPreServerMigrationUser,
+            hasDismissedNotice: settings.hasDismissedServerMigrationNotice
+        )
+    }
 }
 
 /// A device that never completed onboarding starts at `.welcome`; a device that completed
@@ -45,7 +57,8 @@ private func presentWelcomeIfNeeded(
     guard let step = WelcomeGate.neededStep(
         hasCompletedOnboarding: settings.hasCompletedOnboarding,
         isPaired: AuthenticatedClient.current() != nil,
-        hasSkippedServerPairing: settings.hasSkippedServerPairing
+        hasSkippedServerPairing: settings.hasSkippedServerPairing,
+        isServerNoticePending: ContentRootGates.isServerNoticePending(settings)
     ) else { return }
     appState.welcomeInitialStep = step
     #if os(macOS)
@@ -81,7 +94,6 @@ private struct ContentRootLifecycle: ViewModifier {
                 #if os(macOS)
                 autoSeedMacDemoLibraryIfNeeded()
                 #endif
-                var migrationNoticeWillShow = false
                 if !ContentRootGates.skipServerMigrationAutomation {
                     // Skip the UserDefaults round-trip once evaluated — `evaluate` itself is what
                     // actually guarantees never-reclassify, this is just an optimization.
@@ -100,7 +112,6 @@ private struct ContentRootLifecycle: ViewModifier {
                         isPreServerMigrationUser: settings.isPreServerMigrationUser,
                         hasDismissedNotice: settings.hasDismissedServerMigrationNotice
                     ) {
-                        migrationNoticeWillShow = true
                         #if os(macOS)
                         openWindow(id: WindowID.serverNotice)
                         #else
@@ -110,12 +121,11 @@ private struct ContentRootLifecycle: ViewModifier {
                 }
                 // Existing users must see the migration notice before Welcome/pairing, not
                 // alongside it — a pre-migration user has, by definition, completed onboarding but
-                // never paired, so it would otherwise also satisfy the re-pairing condition below
-                // in the same pass. `presentWelcomeIfNeeded` is re-run from the notice's dismiss
-                // handler once it closes.
-                if !migrationNoticeWillShow {
-                    presentWelcomeIfNeeded(appState: appState, settings: settings, openWindow: openWindow)
-                }
+                // never paired, so it would otherwise also satisfy the re-pairing condition. Every
+                // `presentWelcomeIfNeeded` call (this one, the `scenePhase` one that fires right
+                // after launch, the session-invalidated one) no-ops while the notice is pending;
+                // the notice's dismiss handler re-runs it once it closes.
+                presentWelcomeIfNeeded(appState: appState, settings: settings, openWindow: openWindow)
             }
             .onChange(of: scenePhase) { _, phase in
                 // A session revoked while backgrounded (or while this window sat open on the Mac)

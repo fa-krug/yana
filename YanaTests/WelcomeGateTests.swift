@@ -38,4 +38,30 @@ struct WelcomeGateTests {
         )
         #expect(step == nil)
     }
+
+    @Test func pendingServerNoticeHoldsBackTheReentryToTheServerStep() {
+        // The pre-migration user's shape: onboarded under the old flow, never paired. Without the
+        // hold this is exactly the `.server` re-pairing case, which must wait for the notice.
+        let step = WelcomeGate.neededStep(
+            hasCompletedOnboarding: true, isPaired: false, hasSkippedServerPairing: false,
+            isServerNoticePending: true
+        )
+        #expect(step == nil)
+    }
+
+    @Test func pendingServerNoticeHoldsBackFirstLaunchWelcomeToo() {
+        let step = WelcomeGate.neededStep(
+            hasCompletedOnboarding: false, isPaired: false, hasSkippedServerPairing: false,
+            isServerNoticePending: true
+        )
+        #expect(step == nil)
+    }
+
+    @Test func dismissedServerNoticeLetsTheServerStepFollow() {
+        let step = WelcomeGate.neededStep(
+            hasCompletedOnboarding: true, isPaired: false, hasSkippedServerPairing: false,
+            isServerNoticePending: false
+        )
+        #expect(step == .server)
+    }
 }
