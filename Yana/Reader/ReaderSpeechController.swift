@@ -16,7 +16,10 @@ import NaturalLanguage
 /// Playback continues while the app is backgrounded or the screen is locked: the `audio`
 /// `UIBackgroundMode` keeps the synthesizer running, and a `MPNowPlayingInfoCenter` /
 /// `MPRemoteCommandCenter` registration surfaces the article on the lock screen with working
-/// play/pause/stop controls.
+/// play/pause/stop controls. That registration is deferred to the first `speak`: the host creates
+/// this controller at launch, and registering remote-command targets alone is enough for the system
+/// to list the app as a Now Playing candidate in Control Center, as an empty "Yana" tile, even
+/// though nothing was ever read aloud.
 @MainActor
 @Observable
 final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
@@ -31,11 +34,13 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
     /// Title of the article currently being read, kept for the lock-screen Now Playing info.
     private var nowPlayingTitle = ""
     private var nowPlayingArtist = ""
+    /// Whether the lock-screen / Control Center command targets have been registered yet. Stays
+    /// `false` until something is actually read aloud; see the type's doc comment for why.
+    private(set) var hasRegisteredRemoteCommands = false
 
     override init() {
         super.init()
         synthesizer.delegate = self
-        configureRemoteCommands()
     }
 
     /// Begin reading `article` aloud from the start. No-op when there is nothing to speak.
@@ -46,6 +51,7 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         nowPlayingTitle = article.title.trimmingCharacters(in: .whitespacesAndNewlines)
         nowPlayingArtist = article.author.trimmingCharacters(in: .whitespacesAndNewlines)
+        configureRemoteCommands()
         activateAudioSession()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.voice(for: text)
@@ -132,9 +138,12 @@ final class ReaderSpeechController: NSObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - Lock-screen Now Playing
 
-    /// Wire the lock-screen / Control Center transport buttons to this controller once. Targets are
-    /// no-ops while idle, so they can stay registered for the controller's lifetime.
+    /// Wire the lock-screen / Control Center transport buttons to this controller once, on the first
+    /// `speak`. Targets are no-ops while idle, so they can stay registered for the rest of the
+    /// controller's lifetime once added.
     private func configureRemoteCommands() {
+        guard !hasRegisteredRemoteCommands else { return }
+        hasRegisteredRemoteCommands = true
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
             MainActor.assumeIsolated {
