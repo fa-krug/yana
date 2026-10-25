@@ -6,6 +6,17 @@ import Testing
 @Suite("ReaderSpeechController")
 struct ReaderSpeechControllerTests {
 
+    /// Registering remote-command targets is enough for the system to list Yana in Control Center's
+    /// Now Playing tile, and the host creates this controller at launch, so creating it must not
+    /// register anything until something is actually read aloud.
+    @Test func creatingTheControllerDoesNotRegisterRemoteCommands() {
+        let speech = ReaderSpeechController()
+        #expect(!speech.hasRegisteredRemoteCommands)
+        speech.stop()
+        speech.togglePauseResume()
+        #expect(!speech.hasRegisteredRemoteCommands)
+    }
+
     @Test func stripsHttpURLFromText() {
         let input = "Read more at https://example.com/path?q=1 today."
         let output = ReaderSpeechController.strippingURLs(from: input)
